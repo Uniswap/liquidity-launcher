@@ -51,7 +51,7 @@ contract TokenLauncher is Ownable {
      * @param name        Token name
      * @param symbol      Token symbol
      * @param decimals    Token decimals
-     * @param totalSupply Total tokens to be minted (to this contract)
+     * @param initialSupply Total tokens to be minted (to this contract)
      * @param tokenData   Extra data needed by the factory
      * @param distributions Array of distribution instructions
      */
@@ -60,15 +60,15 @@ contract TokenLauncher is Ownable {
         string calldata name,
         string calldata symbol,
         uint8 decimals,
-        uint256 totalSupply,
+        uint256 initialSupply,
         bytes calldata tokenData,
         Distribution[] calldata distributions
     ) external returns (address tokenAddress) {
         address factory = tokenFactories[factoryId];
         if (factory == address(0)) revert InvalidFactory();
 
-        // 1) Create token
-        tokenAddress = ITokenFactory(factory).createToken(name, symbol, decimals, totalSupply, tokenData);
+        // 1) Create token, with this contract as the recipient of the initial supply
+        tokenAddress = ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, msg.sender, tokenData);
 
         // 2) Distribute tokens
         //    This contract owns the minted tokens, so it must transfer them
