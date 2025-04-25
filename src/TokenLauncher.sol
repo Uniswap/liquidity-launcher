@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.28;
 
 import {ITokenFactory} from "./interfaces/ITokenFactory.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
@@ -68,7 +68,8 @@ contract TokenLauncher is Ownable {
         if (factory == address(0)) revert InvalidFactory();
 
         // 1) Create token, with this contract as the recipient of the initial supply
-        tokenAddress = ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, msg.sender, tokenData);
+        tokenAddress =
+            ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, address(this), tokenData);
 
         // 2) Distribute tokens
         //    This contract owns the minted tokens, so it must transfer them
