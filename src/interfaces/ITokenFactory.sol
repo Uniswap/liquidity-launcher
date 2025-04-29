@@ -7,7 +7,7 @@ pragma solidity ^0.8.0;
  */
 interface ITokenFactory {
     /// @notice Emitted when a new token is created
-    event TokenCreated(address tokenAddress, string name, string symbol, uint8 decimals, bytes additionalInfo);
+    event TokenCreated(address tokenAddress);
 
     /**
      * @notice Creates a new token contract
