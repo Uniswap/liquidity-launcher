@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IDistributionContract} from "./IDistributionContract.sol";
+
 /**
  * @title IDistributionStrategy
  * @dev Interface for token distribution strategies.
@@ -14,10 +16,10 @@ interface IDistributionStrategy {
      * @param token      The address of the token to be distributed.
      * @param amount     The amount of tokens intended for distribution.
      * @param configData Arbitrary, strategy-specific parameters.
-     * @return distributionContract The address of the contract that will handle or manage the distribution.
+     * @return distributionContract The contract that will handle or manage the distribution.
      *         (Could be `address(this)` if the strategy is handled in-place, or a newly deployed instance).
      */
     function initializeDistribution(address token, uint256 amount, bytes calldata configData)
         external
-        returns (address distributionContract);
+        returns (IDistributionContract distributionContract);
 }

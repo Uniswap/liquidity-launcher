@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {ITokenFactory} from "./interfaces/ITokenFactory.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
+import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
@@ -80,11 +81,14 @@ contract TokenLauncher is Ownable {
             if (strategyAddr == address(0)) revert InvalidStrategy();
 
             // Call the strategy: it might do distribution directly or deploy a new instance.
-            address distributionContract =
+            IDistributionContract distributionContract =
                 IDistributionStrategy(strategyAddr).initializeDistribution(tokenAddress, dist.amount, dist.configData);
 
             // Now transfer the tokens from this contract to the returned address
-            IERC20(tokenAddress).transfer(distributionContract, dist.amount);
+            IERC20(tokenAddress).transfer(address(distributionContract), dist.amount);
+
+            // Notify the distribution contract that it has received the tokens
+            distributionContract.notify(tokenAddress, dist.amount);
         }
 
         if (IERC20(tokenAddress).balanceOf(address(this)) != 0) revert DistributionIncomplete();
