@@ -11,5 +11,5 @@ interface IDistributionContract {
      * @param token      The address of the token to be distributed.
      * @param amount     The amount of tokens intended for distribution.
      */
-    function notify(address token, uint256 amount) external;
+    function onTokensReceived(address token, uint256 amount) external;
 }
