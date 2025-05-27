@@ -3,22 +3,18 @@ pragma solidity ^0.8.0;
 
 import {IDistributionContract} from "./IDistributionContract.sol";
 
-/**
- * @title IDistributionStrategy
- * @dev Interface for token distribution strategies.
- */
+/// @title IDistributionStrategy
+/// @notice Interface for token distribution strategies.
 interface IDistributionStrategy {
-    /**
-     * @notice Initialize a distribution of tokens under this strategy.
-     * @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
-     * implementing contract. For some strategies this function will handle the entire distribution, for others it
-     * could merely set up initial state and provide additional entrypoints to handle the distribution logic.
-     * @param token      The address of the token to be distributed.
-     * @param amount     The amount of tokens intended for distribution.
-     * @param configData Arbitrary, strategy-specific parameters.
-     * @return distributionContract The contract that will handle or manage the distribution.
-     *         (Could be `address(this)` if the strategy is handled in-place, or a newly deployed instance).
-     */
+    /// @notice Initialize a distribution of tokens under this strategy.
+    /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
+    /// implementing contract. For some strategies this function will handle the entire distribution, for others it
+    /// could merely set up initial state and provide additional entrypoints to handle the distribution logic.
+    /// @param token The address of the token to be distributed.
+    /// @param amount The amount of tokens intended for distribution.
+    /// @param configData Arbitrary, strategy-specific parameters.
+    /// @return distributionContract The contract that will handle or manage the distribution.
+    ///         (Could be `address(this)` if the strategy is handled in-place, or a newly deployed instance).
     function initializeDistribution(address token, uint256 amount, bytes calldata configData)
         external
         returns (IDistributionContract distributionContract);

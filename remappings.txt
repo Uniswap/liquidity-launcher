@@ -1,0 +1,1 @@
+uerc20-factory=lib/uerc20-factory
