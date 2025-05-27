@@ -17,7 +17,7 @@ contract TokenLauncher {
     /// @notice Error thrown when a token launch doesn't distribute all tokens
     error DistributionIncomplete();
 
-    /// @notice Main entry point for creating and distributing tokens.
+    /// @notice Creates and distributes tokens.
     ///      1) Deploys a token via chosen factory.
     ///      2) Distributes tokens via one or more strategies.
     ///  @param factory Address of the factory to use
@@ -27,6 +27,7 @@ contract TokenLauncher {
     ///  @param initialSupply Total tokens to be minted (to this contract)
     ///  @param tokenData Extra data needed by the factory
     ///  @param distributions Array of distribution instructions
+    ///  @return tokenAddress The address of the token that was created
     function launchToken(
         address factory,
         string calldata name,
@@ -41,23 +42,38 @@ contract TokenLauncher {
             ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, address(this), tokenData);
 
         // 2) Distribute tokens
-        //    This contract owns the minted tokens, so it must transfer them
-        //    according to each Distribution.
+        _distribute(tokenAddress, distributions);
+    }
+
+    /// @notice Transfer tokens already created to this contract and distribute them via one or more strategies
+    /// @param token The address of the token to distribute
+    /// @param amount The amount of tokens to distribute
+    /// @param distributions Array of distribution instructions
+    function transferAndDistribute(address token, uint256 amount, Distribution[] calldata distributions) external {
+        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        _distribute(token, distributions);
+    }
+
+    /// @notice Distribute tokens via one or more strategies
+    /// @param token The address of the token to distribute
+    /// @param distributions Array of distribution instructions
+    function _distribute(address token, Distribution[] calldata distributions) internal {
+        // This contract owns the tokens, so it must transfer them according to each Distribution.
         for (uint256 i = 0; i < distributions.length; i++) {
             Distribution calldata dist = distributions[i];
 
             // Call the strategy: it might do distributions itself or deploy a new instance.
             // If it does distributions itself, distributionContract == dist.strategy
             IDistributionContract distributionContract =
-                IDistributionStrategy(dist.strategy).initializeDistribution(tokenAddress, dist.amount, dist.configData);
+                IDistributionStrategy(dist.strategy).initializeDistribution(token, dist.amount, dist.configData);
 
             // Now transfer the tokens from this contract to the returned address
-            IERC20(tokenAddress).transfer(address(distributionContract), dist.amount);
+            IERC20(token).transfer(address(distributionContract), dist.amount);
 
             // Notify the distribution contract that it has received the tokens
-            distributionContract.onTokensReceived(tokenAddress, dist.amount);
+            distributionContract.onTokensReceived(token, dist.amount);
         }
 
-        if (IERC20(tokenAddress).balanceOf(address(this)) != 0) revert DistributionIncomplete();
+        if (IERC20(token).balanceOf(address(this)) != 0) revert DistributionIncomplete();
     }
 }
