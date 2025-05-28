@@ -38,8 +38,9 @@ contract TokenLauncher {
         Distribution[] calldata distributions
     ) external returns (address tokenAddress) {
         // 1) Create token, with this contract as the recipient of the initial supply
-        tokenAddress =
-            ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, address(this), tokenData);
+        tokenAddress = ITokenFactory(factory).createToken(
+            name, symbol, decimals, initialSupply, address(this), tokenData, keccak256(abi.encodePacked(msg.sender))
+        );
 
         // 2) Distribute tokens
         _distribute(tokenAddress, distributions);
