@@ -59,16 +59,12 @@ contract TokenLauncher {
     /// @param expectedAmount The total amount that should be distributed
     /// @param distributions Array of distribution instructions
     function _distribute(address token, uint256 expectedAmount, Distribution[] calldata distributions) internal {
-        // Validate that distribution amounts sum to expected total
         uint256 totalDistribution = 0;
-        for (uint256 i = 0; i < distributions.length; i++) {
-            totalDistribution += distributions[i].amount;
-        }
-        if (totalDistribution != expectedAmount) revert DistributionAmountMismatch();
 
-        // Execute distributions
+        // Execute distributions while accumulating total
         for (uint256 i = 0; i < distributions.length; i++) {
             Distribution calldata dist = distributions[i];
+            totalDistribution += dist.amount;
 
             // Call the strategy: it might do distributions itself or deploy a new instance.
             // If it does distributions itself, distributionContract == dist.strategy
@@ -81,5 +77,8 @@ contract TokenLauncher {
             // Notify the distribution contract that it has received the tokens
             distributionContract.onTokensReceived(token, dist.amount);
         }
+
+        // Validate that distribution amounts sum to expected total
+        if (totalDistribution != expectedAmount) revert DistributionAmountMismatch();
     }
 }
