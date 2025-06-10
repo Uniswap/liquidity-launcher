@@ -165,7 +165,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     function sweep(uint256 distributionId) external {
         if (!distributionExists(distributionId)) revert DistributionDoesNotExist();
         
-        Distribution storage dist = distributions[distributionId];
+        Distribution memory dist = distributions[distributionId];
         if (msg.sender != dist.creator) revert OnlyCreator();
         if (block.timestamp <= dist.deadline) revert DistributionNotExpired();
         
