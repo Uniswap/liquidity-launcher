@@ -21,7 +21,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         address creator;        // Address that created this distribution
         uint256 totalAmount;    // Total amount of tokens allocated
         uint256 claimedAmount;  // Total amount of tokens claimed so far
-        uint256 deadline;       // Timestamp when distribution expires
+        uint256 deadline;       // Timestamp when distribution expires (leftover can be swept by creator after)
     }
 
     /// @notice The address of the launcher contract that can initialize distributions
