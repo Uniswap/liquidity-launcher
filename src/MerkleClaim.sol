@@ -73,7 +73,6 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         
         // Decode the merkle root, deadline, and creator from configData
         (bytes32 merkleRoot, uint256 deadline, address creator) = abi.decode(configData, (bytes32, uint256, address));
-        if (creator == address(0)) revert ZeroAddress();
         
         // Create new distribution with unique ID (clearer pattern)
         uint256 distributionId = nextDistributionId;
