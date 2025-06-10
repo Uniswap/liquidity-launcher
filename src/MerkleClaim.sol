@@ -140,7 +140,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     function claim(uint256 distributionId, uint256 index, address account, uint256 amount, bytes32[] calldata merkleProof) external {
         if (!distributionExists(distributionId)) revert DistributionDoesNotExist();
         
-        Distribution storage dist = distributions[distributionId];
+        Distribution memory dist = distributions[distributionId];
         if (block.timestamp > dist.deadline) revert DistributionExpired();
         if (isClaimed(distributionId, index)) revert AlreadyClaimed();
         if (dist.claimedAmount + amount > dist.totalAmount) revert ExceedsTotalAllocation();
@@ -150,7 +150,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         if (!MerkleProof.verify(merkleProof, dist.merkleRoot, leaf)) revert InvalidMerkleProof();
         
         // Update claimed amount and mark index as claimed
-        dist.claimedAmount += amount;
+        distributions[distributionId].claimedAmount += amount;
         _setClaimed(distributionId, index);
         
         emit TokensClaimed(distributionId, dist.token, index, account, amount);
