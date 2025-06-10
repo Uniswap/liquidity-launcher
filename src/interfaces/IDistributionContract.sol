@@ -5,7 +5,6 @@ pragma solidity ^0.8.0;
 /// @notice Interface for token distribution contracts.
 interface IDistributionContract {
     /// @notice Custom errors for distribution contract functionality
-    error AmountMismatch();
     error InsufficientTokenBalance();
 
     /// @notice Notify a distribution contract that it has received the tokens to distribute

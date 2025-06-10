@@ -104,9 +104,6 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
             previousBalance := tload(0x02)    // Load balance before transfer
         }
         
-        // Verify the amount matches what was initialized
-        if (amount != expectedAmount) revert AmountMismatch();
-        
         // Verify the contract actually received the expected tokens
         IERC20 token = IERC20(_token);
         uint256 currentBalance = token.balanceOf(address(this));
