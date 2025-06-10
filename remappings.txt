@@ -1,1 +1,2 @@
 uerc20-factory=lib/uerc20-factory
+@openzeppelin/contracts=lib/openzeppelin-contracts/contracts
