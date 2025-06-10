@@ -12,8 +12,6 @@ import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
 contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrategy, Multicall {
     using SafeERC20 for IERC20;
 
-    error OnlyLauncher();
-
     /// @notice Structure representing a token distribution
     struct Distribution {
         IERC20 token;           // Token being distributed
@@ -36,19 +34,6 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     /// @notice Mapping from distribution ID to claimed bitmap
     /// @dev Each uint256 can track 256 claim statuses as bits
     mapping(uint256 => mapping(uint256 => uint256)) public claimedBitmap;
-
-    /// @notice Emitted when a merkle root is set for a token
-    event MerkleRootSet(IERC20 indexed token, bytes32 merkleRoot);
-    
-    /// @notice Emitted when a new distribution is created
-    event DistributionCreated(
-        uint256 indexed distributionId,
-        IERC20 indexed token,
-        address indexed creator,
-        bytes32 merkleRoot,
-        uint256 totalAmount,
-        uint256 deadline
-    );
 
     /// @notice Restricts access to only the launcher contract
     modifier onlyLauncher() {

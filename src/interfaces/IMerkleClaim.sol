@@ -13,6 +13,20 @@ interface IMerkleClaim {
     error OnlyCreator();
     error DistributionNotExpired();
     error NoTokensToSweep();
+    error OnlyLauncher();
+
+    /// @notice Emitted when a merkle root is set for a token
+    event MerkleRootSet(IERC20 indexed token, bytes32 merkleRoot);
+    
+    /// @notice Emitted when a new distribution is created
+    event DistributionCreated(
+        uint256 indexed distributionId,
+        IERC20 indexed token,
+        address indexed creator,
+        bytes32 merkleRoot,
+        uint256 totalAmount,
+        uint256 deadline
+    );
 
     /// @notice Emitted when tokens are claimed
     event TokensClaimed(
