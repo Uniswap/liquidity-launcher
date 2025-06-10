@@ -153,10 +153,10 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         distributions[distributionId].claimedAmount += amount;
         _setClaimed(distributionId, index);
         
-        emit TokensClaimed(distributionId, dist.token, index, account, amount);
-        
         // Transfer tokens to account
         dist.token.safeTransfer(account, amount);
+
+        emit TokensClaimed(distributionId, dist.token, index, account, amount);
     }
 
     /// @notice Sweep unclaimed tokens back to the creator after deadline
@@ -173,8 +173,8 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         uint256 unclaimedAmount = dist.totalAmount - dist.claimedAmount;
         if (unclaimedAmount == 0) revert NoTokensToSweep();
         
-        emit TokensSwept(distributionId, dist.token, dist.creator, unclaimedAmount);
-        
         dist.token.safeTransfer(dist.creator, unclaimedAmount);
+
+        emit TokensSwept(distributionId, dist.token, dist.creator, unclaimedAmount);
     }
 }
