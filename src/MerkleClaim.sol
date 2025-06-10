@@ -63,12 +63,11 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     {
         IERC20 token = IERC20(_token);
         
-        // Tstore current balance and expected amount for verification
+        // Tstore current balance for verification in onTokensReceived
         uint256 currentBalance = token.balanceOf(address(this));
         assembly {
-            // Store expected amount and balance before transfer for onTokensReceived verification
-            tstore(0x01, amount)                          // Slot 1: expected amount
-            tstore(0x02, currentBalance)                  // Slot 2: balance before transfer
+            // Store balance before transfer for onTokensReceived verification
+            tstore(0x01, currentBalance)                  // Slot 1: balance before transfer
         }
         
         // Decode the merkle root, deadline, and creator from configData
@@ -94,19 +93,17 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
 
     /// @inheritdoc IDistributionContract
     function onTokensReceived(address _token, uint256 amount) external onlyLauncher {
-        // Tload expected values set in initializeDistribution
-        uint256 expectedAmount;
+        // Tload previous balance set in initializeDistribution
         uint256 previousBalance;
         
         assembly {
-            expectedAmount := tload(0x01)     // Load expected amount
-            previousBalance := tload(0x02)    // Load balance before transfer
+            previousBalance := tload(0x01)    // Load balance before transfer
         }
         
         // Verify the contract actually received the expected tokens
         IERC20 token = IERC20(_token);
         uint256 currentBalance = token.balanceOf(address(this));
-        if (currentBalance < previousBalance + expectedAmount) revert InsufficientTokenBalance();
+        if (currentBalance < previousBalance + amount) revert InsufficientTokenBalance();
     }
 
     /// @notice Check if a specific index has been claimed for a distribution
