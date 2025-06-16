@@ -14,8 +14,8 @@ contract TokenLauncher {
         bytes configData;
     }
 
-    /// @notice Error thrown when a token launch doesn't distribute all tokens
-    error DistributionIncomplete();
+    /// @notice Error thrown when distribution amounts don't match expected total
+    error DistributionAmountMismatch();
 
     /// @notice Creates and distributes tokens.
     ///      1) Deploys a token via chosen factory.
@@ -42,7 +42,7 @@ contract TokenLauncher {
             ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, address(this), tokenData);
 
         // 2) Distribute tokens
-        _distribute(tokenAddress, distributions);
+        _distribute(tokenAddress, initialSupply, distributions);
     }
 
     /// @notice Transfer tokens already created to this contract and distribute them via one or more strategies
@@ -51,16 +51,20 @@ contract TokenLauncher {
     /// @param distributions Array of distribution instructions
     function transferAndDistribute(address token, uint256 amount, Distribution[] calldata distributions) external {
         IERC20(token).transferFrom(msg.sender, address(this), amount);
-        _distribute(token, distributions);
+        _distribute(token, amount, distributions);
     }
 
     /// @notice Distribute tokens via one or more strategies
     /// @param token The address of the token to distribute
+    /// @param expectedAmount The total amount that should be distributed
     /// @param distributions Array of distribution instructions
-    function _distribute(address token, Distribution[] calldata distributions) internal {
-        // This contract owns the tokens, so it must transfer them according to each Distribution.
+    function _distribute(address token, uint256 expectedAmount, Distribution[] calldata distributions) internal {
+        uint256 totalDistribution = 0;
+
+        // Execute distributions while accumulating total
         for (uint256 i = 0; i < distributions.length; i++) {
             Distribution calldata dist = distributions[i];
+            totalDistribution += dist.amount;
 
             // Call the strategy: it might do distributions itself or deploy a new instance.
             // If it does distributions itself, distributionContract == dist.strategy
@@ -74,6 +78,7 @@ contract TokenLauncher {
             distributionContract.onTokensReceived(token, dist.amount);
         }
 
-        if (IERC20(token).balanceOf(address(this)) != 0) revert DistributionIncomplete();
+        // Validate that distribution amounts sum to expected total
+        if (totalDistribution != expectedAmount) revert DistributionAmountMismatch();
     }
 }
