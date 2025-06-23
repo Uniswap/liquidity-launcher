@@ -133,4 +133,78 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         // verify the token launcher has no balance of the token
         assertEq(token.balanceOf(address(tokenLauncher)), 0);
     }
+
+    // forge-config: default.isolate = true
+    // forge-config: ci.isolate = true
+    function test_multicall_create_and_distribute_token_gas() public {
+        // Create a token
+        UERC20Metadata memory metadata = UERC20Metadata({
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png"
+        });
+
+        uint256 initialSupply = 1e18;
+
+        // Create a distribution strategy and contract
+        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+
+        // Create a distribution
+        Distribution memory distribution =
+            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+
+        bytes32 graffiti = tokenLauncher.getGraffiti(address(this));
+
+        address precomputedAddress =
+            uerc20Factory.getUERC20Address("Test Token", "TEST", 18, address(tokenLauncher), graffiti);
+
+        bytes memory tokenData = abi.encode(metadata);
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(
+            TokenLauncher.createToken.selector,
+            address(uerc20Factory),
+            "Test Token",
+            "TEST",
+            18,
+            initialSupply,
+            address(tokenLauncher),
+            tokenData
+        );
+        calls[1] =
+            abi.encodeWithSelector(TokenLauncher.distributeToken.selector, precomputedAddress, distribution, false);
+
+        tokenLauncher.multicall(calls);
+        vm.snapshotGasLastCall("multicall create and distribute token");
+    }
+
+    // forge-config: default.isolate = true
+    // forge-config: ci.isolate = true
+    function test_multicall_permit_and_distribute_token_gas() public {
+        uint256 initialSupply = 1e18;
+        MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);
+        // Set up permit2 approval
+        vm.prank(bob);
+        token.approve(address(permit2), type(uint256).max);
+
+        // Create a distribution strategy and contract
+        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+
+        // Create a distribution
+        Distribution memory distribution =
+            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+
+        IAllowanceTransfer.PermitSingle memory permit =
+            defaultERC20PermitAllowance(address(token), type(uint160).max, uint48(block.timestamp + 10e18), 0);
+        permit.spender = address(tokenLauncher);
+        bytes memory sig = getPermitSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
+        calls[1] = abi.encodeWithSelector(TokenLauncher.distributeToken.selector, address(token), distribution, true);
+
+        vm.prank(bob);
+        tokenLauncher.multicall(calls);
+        vm.snapshotGasLastCall("multicall permit and distribute token");
+    }
 }

@@ -158,4 +158,46 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         // verify the user does not have any balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(this)), 0);
     }
+
+    function test_getGraffiti_succeeds() public view {
+        bytes32 graffiti = tokenLauncher.getGraffiti(address(this));
+        assertEq(graffiti, keccak256(abi.encode(address(this))));
+    }
+
+    // forge-config: default.isolate = true
+    // forge-config: ci.isolate = true
+    function test_createToken_gas() public {
+        // Create metadata for the UERC20 token
+        UERC20Metadata memory metadata = UERC20Metadata({
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png"
+        });
+
+        bytes memory tokenData = abi.encode(metadata);
+        uint256 initialSupply = 1e18; // 1 token with 18 decimals
+
+        tokenLauncher.createToken(
+            address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(tokenLauncher), tokenData
+        );
+        vm.snapshotGasLastCall("createToken");
+    }
+
+    // forge-config: default.isolate = true
+    // forge-config: ci.isolate = true
+    function test_distributeToken_gas() public {
+        uint256 initialSupply = 1e18;
+        address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
+
+        // Create a distribution strategy
+        MockDistributionStrategy distributionStrategy = new MockDistributionStrategy();
+
+        // Create a distribution
+        Distribution memory distribution =
+            Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
+
+        // Distribute the token
+        tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        vm.snapshotGasLastCall("distributeToken");
+    }
 }

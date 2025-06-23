@@ -48,4 +48,15 @@ contract Permit2ForwarderTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(_expiration, expiration);
         assertEq(_nonce, nonce + 1); // the nonce was incremented
     }
+
+    // forge-config: default.isolate = true
+    // forge-config: ci.isolate = true
+    function test_permit_single_gas() public {
+        IAllowanceTransfer.PermitSingle memory permit =
+            defaultERC20PermitAllowance(address(token0), amount0, expiration, nonce);
+        bytes memory sig = getPermitSignature(permit, alicePrivateKey, PERMIT2_DOMAIN_SEPARATOR);
+
+        permit2Forwarder.permit(alice, permit, sig);
+        vm.snapshotGasLastCall("permit");
+    }
 }
