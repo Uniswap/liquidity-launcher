@@ -1,1 +1,2 @@
 uerc20-factory=lib/uerc20-factory
+permit2=lib/permit2
