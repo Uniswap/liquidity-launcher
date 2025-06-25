@@ -9,10 +9,13 @@ import {Multicall} from "./Multicall.sol";
 import {Distribution} from "./types/Distribution.sol";
 import {Permit2Forwarder, IAllowanceTransfer} from "./Permit2Forwarder.sol";
 import {ITokenLauncher} from "./interfaces/ITokenLauncher.sol";
+import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title TokenLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
 contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
+    using SafeERC20 for IERC20;
+
     constructor(IAllowanceTransfer _permit2) Permit2Forwarder(_permit2) {}
 
     /// @inheritdoc ITokenLauncher
@@ -26,9 +29,9 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         bytes calldata tokenData
     ) external override returns (address tokenAddress) {
         // Create token, with this contract as the recipient of the initial supply
-        bytes32 graffiti = getGraffiti(msg.sender);
-        tokenAddress =
-            ITokenFactory(factory).createToken(name, symbol, decimals, initialSupply, recipient, tokenData, graffiti);
+        tokenAddress = ITokenFactory(factory).createToken(
+            name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender)
+        );
 
         emit TokenCreated(tokenAddress);
     }
@@ -66,7 +69,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     /// @param amount The amount of tokens to transfer
     function _transferToken(address token, address from, address to, uint256 amount) internal {
         if (from == address(this)) {
-            IERC20(token).transfer(to, amount);
+            IERC20(token).safeTransfer(to, amount);
         } else {
             permit2.transferFrom(from, to, uint160(amount), token);
         }
