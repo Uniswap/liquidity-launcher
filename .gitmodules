@@ -7,3 +7,6 @@
 [submodule "lib/uerc20-factory"]
 	path = lib/uerc20-factory
 	url = git@github.com:Uniswap/uerc20-factory.git
+[submodule "lib/permit2"]
+	path = lib/permit2
+	url = git@github.com:Uniswap/permit2.git
