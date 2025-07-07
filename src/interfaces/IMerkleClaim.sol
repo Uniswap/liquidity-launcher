@@ -7,6 +7,7 @@ interface IMerkleClaim {
     /// @notice Custom errors for merkle claim functionality
     error DistributionDoesNotExist();
     error DistributionExpired();
+    error DistributionNotActive();
     error AlreadyClaimed();
     error ExceedsTotalAllocation();
     error InvalidMerkleProof();

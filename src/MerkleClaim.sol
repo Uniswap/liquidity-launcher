@@ -20,6 +20,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         uint256 totalAmount;    // Total amount of tokens allocated
         uint256 claimedAmount;  // Total amount of tokens claimed so far
         uint256 deadline;       // Timestamp when distribution expires (leftover can be swept by creator after)
+        bool active;            // Whether the distribution is active (tokens have been received)
     }
 
     /// @notice The address of the launcher contract that can initialize distributions
@@ -34,12 +35,6 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     /// @notice Mapping from distribution ID to claimed bitmap
     /// @dev Each uint256 can track 256 claim statuses as bits
     mapping(uint256 => mapping(uint256 => uint256)) public claimedBitmap;
-
-    /// @notice Restricts access to only the launcher contract
-    modifier onlyLauncher() {
-        if (msg.sender != launcher) revert OnlyLauncher();
-        _;
-    }
 
     /// @notice Constructor to set the launcher address
     /// @param _launcher The address of the launcher contract
@@ -58,7 +53,6 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     /// @inheritdoc IDistributionStrategy
     function initializeDistribution(address _token, uint256 amount, bytes calldata configData)
         external
-        onlyLauncher
         returns (IDistributionContract distributionContract)
     {
         IERC20 token = IERC20(_token);
@@ -68,6 +62,8 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         assembly {
             // Store balance before transfer for onTokensReceived verification
             tstore(0x01, currentBalance)                  // Slot 1: balance before transfer
+            // Store the distribution ID that's being created
+            tstore(0x02, sload(nextDistributionId.slot))  // Slot 2: distribution ID
         }
         
         // Decode the merkle root, deadline, and creator from configData
@@ -83,7 +79,8 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
             creator: creator,  // Now uses the actual creator, not the launcher
             totalAmount: amount,
             claimedAmount: 0,
-            deadline: deadline
+            deadline: deadline,
+            active: false  // Distribution starts as inactive until tokens are received
         });
         
         emit DistributionCreated(distributionId, token, creator, merkleRoot, amount, deadline);
@@ -92,18 +89,23 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     }
 
     /// @inheritdoc IDistributionContract
-    function onTokensReceived(address _token, uint256 amount) external onlyLauncher {
+    function onTokensReceived(address _token, uint256 amount) external {
         // Tload previous balance set in initializeDistribution
         uint256 previousBalance;
+        uint256 distributionId;
         
         assembly {
             previousBalance := tload(0x01)    // Load balance before transfer
+            distributionId := tload(0x02)     // Load distribution ID
         }
         
         // Verify the contract actually received the expected tokens
         IERC20 token = IERC20(_token);
         uint256 currentBalance = token.balanceOf(address(this));
         if (currentBalance < previousBalance + amount) revert InsufficientTokenBalance();
+        
+        // Activate the distribution now that tokens have been received
+        distributions[distributionId].active = true;
     }
 
     /// @notice Check if a specific index has been claimed for a distribution
@@ -138,6 +140,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         if (!distributionExists(distributionId)) revert DistributionDoesNotExist();
         
         Distribution memory dist = distributions[distributionId];
+        if (!dist.active) revert DistributionNotActive();
         if (block.timestamp > dist.deadline) revert DistributionExpired();
         if (isClaimed(distributionId, index)) revert AlreadyClaimed();
         if (dist.claimedAmount + amount > dist.totalAmount) revert ExceedsTotalAllocation();
