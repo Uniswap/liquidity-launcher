@@ -9,6 +9,11 @@ import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 
+/// @title MerkleClaim
+/// @notice A gas-efficient merkle tree-based token distribution contract
+/// @dev This contract handles multiple token distributions using merkle proofs. Each distribution is assigned 
+/// a unique ID and can have its own token, merkle root, deadline, and creator. The contract uses bitmap storage
+/// for tracking claims and transient storage for secure token receipt verification.
 contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrategy, Multicall {
     using SafeERC20 for IERC20;
 
