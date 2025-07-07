@@ -17,17 +17,6 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrategy, Multicall {
     using SafeERC20 for IERC20;
 
-    /// @notice Structure representing a token distribution
-    struct Distribution {
-        IERC20 token;           // Token being distributed
-        bytes32 merkleRoot;     // Merkle root for this distribution
-        address creator;        // Address that created this distribution
-        uint256 totalAmount;    // Total amount of tokens allocated
-        uint256 claimedAmount;  // Total amount of tokens claimed so far
-        uint256 deadline;       // Timestamp when distribution expires (leftover can be swept by creator after)
-        bool active;            // Whether the distribution is active (tokens have been received)
-    }
-
     /// @notice The address of the launcher contract that can initialize distributions
     address public immutable launcher;
 
@@ -35,7 +24,7 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     uint256 public nextDistributionId = 1;
 
     /// @notice Mapping from distribution ID to Distribution struct
-    mapping(uint256 => Distribution) public distributions;
+    mapping(uint256 => Distribution) private distributions;
 
     /// @notice Mapping from distribution ID to claimed bitmap
     /// @dev Each uint256 can track 256 claim statuses as bits
@@ -48,11 +37,15 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         launcher = _launcher;
     }
 
-    /// @notice Check if a distribution exists
-    /// @param distributionId The distribution ID to check
-    /// @return exists Whether the distribution exists
-    function distributionExists(uint256 distributionId) public view returns (bool) {
-        return distributionId != 0 && distributionId < nextDistributionId;
+    /// @notice Get distribution details
+    /// @param distributionId The distribution ID to query
+    /// @return The distribution struct
+    /// @dev Reverts if the distribution does not exist
+    function getDistribution(uint256 distributionId) public view returns (Distribution memory) {
+        if (distributionId == 0 || distributionId >= nextDistributionId) {
+            revert DistributionDoesNotExist();
+        }
+        return distributions[distributionId];
     }
 
     /// @inheritdoc IDistributionStrategy
@@ -142,9 +135,8 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     /// @param amount The amount of tokens to claim
     /// @param merkleProof Array of merkle proof hashes to verify the claim
     function claim(uint256 distributionId, uint256 index, address account, uint256 amount, bytes32[] calldata merkleProof) external {
-        if (!distributionExists(distributionId)) revert DistributionDoesNotExist();
+        Distribution memory dist = getDistribution(distributionId);
         
-        Distribution memory dist = distributions[distributionId];
         if (!dist.active) revert DistributionNotActive();
         if (block.timestamp > dist.deadline) revert DistributionExpired();
         if (isClaimed(distributionId, index)) revert AlreadyClaimed();
@@ -168,9 +160,8 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     /// @dev Only the creator can call this function and only after the deadline has passed
     /// @param distributionId The distribution ID to sweep
     function sweep(uint256 distributionId) external {
-        if (!distributionExists(distributionId)) revert DistributionDoesNotExist();
+        Distribution memory dist = getDistribution(distributionId);
         
-        Distribution memory dist = distributions[distributionId];
         if (msg.sender != dist.creator) revert OnlyCreator();
         if (block.timestamp <= dist.deadline) revert DistributionNotExpired();
         

@@ -4,6 +4,17 @@ pragma solidity ^0.8.0;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IMerkleClaim {
+    /// @notice Structure representing a token distribution
+    struct Distribution {
+        IERC20 token;           // Token being distributed
+        bytes32 merkleRoot;     // Merkle root for this distribution
+        address creator;        // Address that created this distribution
+        uint256 totalAmount;    // Total amount of tokens allocated
+        uint256 claimedAmount;  // Total amount of tokens claimed so far
+        uint256 deadline;       // Timestamp when distribution expires (leftover can be swept by creator after)
+        bool active;            // Whether the distribution is active (tokens have been received)
+    }
+
     /// @notice Custom errors for merkle claim functionality
     error DistributionDoesNotExist();
     error DistributionExpired();
@@ -46,10 +57,11 @@ interface IMerkleClaim {
         uint256 amount
     );
 
-    /// @notice Check if a distribution exists
-    /// @param distributionId The distribution ID to check
-    /// @return exists Whether the distribution exists
-    function distributionExists(uint256 distributionId) external view returns (bool);
+    /// @notice Get distribution details
+    /// @param distributionId The distribution ID to query
+    /// @return The distribution struct
+    /// @dev Reverts if the distribution does not exist
+    function getDistribution(uint256 distributionId) external view returns (Distribution memory);
 
     /// @notice Check if a specific index has been claimed for a distribution
     /// @param distributionId The distribution ID
