@@ -8,6 +8,7 @@ import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
 import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
+import {TransientStorage} from "../libraries/TransientStorage.sol";
 
 /// @title MerkleClaim
 /// @notice A gas-efficient merkle tree-based token distribution contract
@@ -29,6 +30,10 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
     /// @notice Mapping from distribution ID to claimed bitmap
     /// @dev Each uint256 can track 256 claim statuses as bits
     mapping(uint256 => mapping(uint256 => uint256)) public claimedBitmap;
+
+    /// @dev Transient storage slots
+    uint256 private constant SLOT_BALANCE_BEFORE = 0x01;
+    uint256 private constant SLOT_DISTRIBUTION_ID = 0x02;
 
     /// @notice Constructor to set the launcher address
     /// @param _launcher The address of the launcher contract
@@ -57,12 +62,8 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
         
         // Tstore current balance for verification in onTokensReceived
         uint256 currentBalance = token.balanceOf(address(this));
-        assembly {
-            // Store balance before transfer for onTokensReceived verification
-            tstore(0x01, currentBalance)                  // Slot 1: balance before transfer
-            // Store the distribution ID that's being created
-            tstore(0x02, sload(nextDistributionId.slot))  // Slot 2: distribution ID
-        }
+        TransientStorage.tstore(SLOT_BALANCE_BEFORE, currentBalance);
+        TransientStorage.tstore(SLOT_DISTRIBUTION_ID, nextDistributionId);
         
         // Decode the merkle root, deadline, and creator from configData
         (bytes32 merkleRoot, uint256 deadline, address creator) = abi.decode(configData, (bytes32, uint256, address));
@@ -88,14 +89,9 @@ contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrate
 
     /// @inheritdoc IDistributionContract
     function onTokensReceived(address _token, uint256 amount) external {
-        // Tload previous balance set in initializeDistribution
-        uint256 previousBalance;
-        uint256 distributionId;
-        
-        assembly {
-            previousBalance := tload(0x01)    // Load balance before transfer
-            distributionId := tload(0x02)     // Load distribution ID
-        }
+        // Tload previous balance and distribution ID from transient storage
+        uint256 previousBalance = TransientStorage.tload(SLOT_BALANCE_BEFORE);
+        uint256 distributionId = TransientStorage.tload(SLOT_DISTRIBUTION_ID);
         
         // Verify the contract actually received the expected tokens
         IERC20 token = IERC20(_token);
