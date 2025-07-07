@@ -5,9 +5,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
-import {IMerkleClaim} from "./interfaces/IMerkleClaim.sol";
-import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
-import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
+import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
+import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 
 contract MerkleClaim is IMerkleClaim, IDistributionContract, IDistributionStrategy, Multicall {
     using SafeERC20 for IERC20;
