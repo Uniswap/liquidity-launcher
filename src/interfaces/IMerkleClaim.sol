@@ -1,85 +1,53 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 interface IMerkleClaim {
-    /// @notice Structure representing a token distribution
-    struct Distribution {
-        IERC20 token;           // Token being distributed
-        bytes32 merkleRoot;     // Merkle root for this distribution
-        address creator;        // Address that created this distribution
-        uint256 totalAmount;    // Total amount of tokens allocated
-        uint256 claimedAmount;  // Total amount of tokens claimed so far
-        uint256 deadline;       // Timestamp when distribution expires (leftover can be swept by creator after)
-        bool active;            // Whether the distribution is active (tokens have been received)
-    }
+    /// @notice Emitted when tokens are swept by the owner after deadline
+    /// @param owner The address that swept the tokens
+    /// @param amount The amount of tokens swept
+    event TokensSwept(address indexed owner, uint256 amount);
 
-    /// @notice Custom errors for merkle claim functionality
-    error DistributionDoesNotExist();
-    error DistributionExpired();
-    error DistributionNotActive();
-    error AlreadyClaimed();
-    error ExceedsTotalAllocation();
-    error InvalidMerkleProof();
-    error OnlyCreator();
-    error DistributionNotExpired();
-    error NoTokensToSweep();
-    error OnlyLauncher();
+    /// @notice The ERC20 token being distributed
+    /// @return The address of the token contract
+    function token() external view returns (address);
 
-    /// @notice Emitted when a merkle root is set for a token
-    event MerkleRootSet(IERC20 indexed token, bytes32 merkleRoot);
-    
-    /// @notice Emitted when a new distribution is created
-    event DistributionCreated(
-        uint256 indexed distributionId,
-        IERC20 indexed token,
-        address indexed creator,
-        bytes32 merkleRoot,
-        uint256 totalAmount,
-        uint256 deadline
-    );
+    /// @notice The merkle root containing all valid claims
+    /// @return The merkle root as bytes32
+    function merkleRoot() external view returns (bytes32);
 
-    /// @notice Emitted when tokens are claimed
-    event TokensClaimed(
-        uint256 indexed distributionId,
-        IERC20 indexed token, 
-        uint256 index, 
-        address indexed account, 
-        uint256 amount
-    );
+    /// @notice The owner who can sweep tokens after deadline
+    /// @return The address of the owner
+    function owner() external view returns (address);
 
-    /// @notice Emitted when unclaimed tokens are swept by the creator
-    event TokensSwept(
-        uint256 indexed distributionId,
-        IERC20 indexed token,
-        address indexed creator,
-        uint256 amount
-    );
+    /// @notice The deadline block number after which tokens can be swept
+    /// @return The deadline block number (0 = no deadline)
+    function deadline() external view returns (uint256);
 
-    /// @notice Get distribution details
-    /// @param distributionId The distribution ID to query
-    /// @return The distribution struct
-    /// @dev Reverts if the distribution does not exist
-    function getDistribution(uint256 distributionId) external view returns (Distribution memory);
-
-    /// @notice Check if a specific index has been claimed for a distribution
-    /// @param distributionId The distribution ID
+    /// @notice Check if a specific index has been claimed
     /// @param index The index to check
-    /// @return claimed Whether the index has been claimed
-    function isClaimed(uint256 distributionId, uint256 index) external view returns (bool);
+    /// @return True if the index has been claimed, false otherwise
+    function isClaimed(uint256 index) external view returns (bool);
 
-    /// @notice Claim tokens from a merkle distribution
-    /// @dev Verifies the merkle proof against the stored root for the distribution and transfers tokens to the account
-    /// @param distributionId The distribution ID to claim from
+    /// @notice Claim tokens from the merkle distribution
+    /// @dev Verifies the merkle proof and transfers tokens to the account
     /// @param index The index of this claim in the merkle tree
     /// @param account The account that will receive the claimed tokens
     /// @param amount The amount of tokens to claim
     /// @param merkleProof Array of merkle proof hashes to verify the claim
-    function claim(uint256 distributionId, uint256 index, address account, uint256 amount, bytes32[] calldata merkleProof) external;
+    function claim(
+        uint256 index,
+        address account,
+        uint256 amount,
+        bytes32[] calldata merkleProof
+    ) external;
 
-    /// @notice Sweep unclaimed tokens back to the creator after deadline
-    /// @dev Only the creator can call this function and only after the deadline has passed
-    /// @param distributionId The distribution ID to sweep
-    function sweep(uint256 distributionId) external;
+    /// @notice Sweep remaining tokens to the owner after deadline
+    /// @dev Only callable by owner and only after deadline block has passed
+    function sweep() external;
+
+    /// @notice Callback function called when tokens are received
+    /// @dev Part of IDistributionContract interface
+    /// @param token_ The token address (must match the token in this contract)
+    /// @param amount The amount of tokens received
+    function onTokensReceived(address token_, uint256 amount) external;
 }

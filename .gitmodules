@@ -7,3 +7,10 @@
 [submodule "lib/uerc20-factory"]
 	path = lib/uerc20-factory
 	url = git@github.com:Uniswap/uerc20-factory.git
+[submodule "lib/merkle-distributor.git"]
+	path = lib/merkle-distributor.git
+	url = https://github.com/Uniswap/merkle-distributor.git
+[submodule "lib/merkle-distributor"]
+	path = lib/merkle-distributor
+	url = https://github.com/Uniswap/merkle-distributor
+	branch = master
