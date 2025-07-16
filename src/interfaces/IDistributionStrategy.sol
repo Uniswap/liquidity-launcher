@@ -6,9 +6,6 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 /// @title IDistributionStrategy
 /// @notice Interface for token distribution strategies.
 interface IDistributionStrategy {
-    /// @notice Custom errors for distribution strategy functionality
-    error ZeroAddress();
-
     /// @notice Initialize a distribution of tokens under this strategy.
     /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
     /// implementing contract. For some strategies this function will handle the entire distribution, for others it

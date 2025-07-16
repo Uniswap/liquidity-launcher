@@ -2,14 +2,11 @@
 pragma solidity =0.8.17;
 
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import {IMerkleFactory} from "../interfaces/IMerkleFactory.sol";
 import {MerkleClaim} from "./MerkleClaim.sol";
 
-error InvalidConfig();
-error ZeroAddress();
-
-contract MerkleClaimFactory is IDistributionStrategy {
+contract MerkleClaimFactory is IMerkleFactory {
     using SafeERC20 for IERC20;
 
     /// @notice Deploys a new MerkleClaim and funds it with `amount` tokens.
