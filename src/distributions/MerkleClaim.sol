@@ -51,8 +51,4 @@ contract MerkleClaim is MerkleDistributor, IDistributionContract, IMerkleClaim {
         }
     }
 
-    /// @inheritdoc IMerkleClaim
-    function onTokensReceived(address token_, uint256 amount) external override {
-        require(token_ == token, "Token mismatch");
-    }
 }

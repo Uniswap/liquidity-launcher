@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-interface IMerkleClaim {
+import {IDistributionContract} from "./IDistributionContract.sol";
+
+interface IMerkleClaim is IDistributionContract {
     /// @notice Custom errors for merkle claim functionality
     error ClaimExpired();
     error OnlyOwner();
@@ -49,10 +51,4 @@ interface IMerkleClaim {
     /// @notice Sweep remaining tokens to the owner after deadline
     /// @dev Only callable by owner and only after deadline block has passed
     function sweep() external;
-
-    /// @notice Callback function called when tokens are received
-    /// @dev Part of IDistributionContract interface
-    /// @param token_ The token address (must match the token in this contract)
-    /// @param amount The amount of tokens received
-    function onTokensReceived(address token_, uint256 amount) external;
 }
