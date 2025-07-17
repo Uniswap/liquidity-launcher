@@ -16,13 +16,13 @@ contract MerkleClaim is MerkleDistributor, IDistributionContract, IMerkleClaim {
     uint256 public immutable deadline;
 
     constructor(
-        address token_,
-        bytes32 merkleRoot_,
-        address owner_,
-        uint256 deadline_
-    ) MerkleDistributor(token_, merkleRoot_) {
-        owner = owner_;
-        deadline = deadline_;
+        address _token,
+        bytes32 _merkleRoot,
+        address _owner,
+        uint256 _deadline
+    ) MerkleDistributor(_token, _merkleRoot) {
+        owner = _owner;
+        deadline = _deadline;
     }
 
     /// @inheritdoc IMerkleClaim
