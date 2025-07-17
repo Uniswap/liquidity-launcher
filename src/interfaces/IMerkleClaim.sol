@@ -2,6 +2,11 @@
 pragma solidity ^0.8.0;
 
 interface IMerkleClaim {
+    /// @notice Custom errors for merkle claim functionality
+    error DeadlineExpired();
+    error OnlyOwner();
+    error DeadlineNotExpired();
+
     /// @notice Emitted when tokens are swept by the owner after deadline
     /// @param owner The address that swept the tokens
     /// @param amount The amount of tokens swept

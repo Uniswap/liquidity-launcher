@@ -6,10 +6,6 @@ import {MerkleDistributor} from "@uniswap/contracts/MerkleDistributor.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
 
-error DeadlineExpired();
-error OnlyOwner();
-error DeadlineNotExpired();
-
 contract MerkleClaim is MerkleDistributor, IDistributionContract, IMerkleClaim {
     using SafeERC20 for IERC20;
 
