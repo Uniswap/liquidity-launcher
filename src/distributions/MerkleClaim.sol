@@ -33,7 +33,7 @@ contract MerkleClaim is MerkleDistributor, IDistributionContract, IMerkleClaim {
         bytes32[] calldata merkleProof
     ) public override {
         if (deadline != 0 && block.number > deadline) {
-            revert DeadlineExpired();
+            revert ClaimExpired();
         }
         
         super.claim(index, account, amount, merkleProof);
@@ -42,7 +42,7 @@ contract MerkleClaim is MerkleDistributor, IDistributionContract, IMerkleClaim {
     /// @inheritdoc IMerkleClaim
     function sweep() external {
         if (msg.sender != owner) revert OnlyOwner();
-        if (deadline == 0 || block.number <= deadline) revert DeadlineNotExpired();
+        if (deadline == 0 || block.number <= deadline) revert ClaimStillActive();
         
         uint256 balance = IERC20(token).balanceOf(address(this));
         if (balance > 0) {
