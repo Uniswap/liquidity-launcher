@@ -25,9 +25,6 @@ contract MerkleClaimFactory is IMerkleFactory {
         // Decode the merkle root, owner, and deadline from configData
         (bytes32 merkleRoot, address owner, uint256 deadline) = abi.decode(configData, (bytes32, address, uint256));
 
-        // Deploy a new MerkleClaim
-        MerkleClaim distributor = new MerkleClaim(token, merkleRoot, owner, deadline);
-
-        return IDistributionContract(address(distributor));
+        return IDistributionContract(new MerkleClaim(token, merkleRoot, owner, deadline));
     }
 }
