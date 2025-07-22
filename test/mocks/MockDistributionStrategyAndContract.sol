@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.26;
 
 import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 
 contract MockDistributionStrategyAndContract is IDistributionStrategy, IDistributionContract {
-    function initializeDistribution(address, uint256, bytes calldata)
+    function initializeDistribution(bytes calldata)
         external
         view
         override

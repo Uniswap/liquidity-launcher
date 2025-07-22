@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity 0.8.26;
 
 import {ITokenFactory} from "uerc20-factory/src/interfaces/ITokenFactory.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
@@ -44,9 +44,8 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     {
         // Call the strategy: it might do distributions itself or deploy a new instance.
         // If it does distributions itself, distributionContract == dist.strategy
-        distributionContract = IDistributionStrategy(distribution.strategy).initializeDistribution(
-            token, distribution.amount, distribution.configData
-        );
+        distributionContract =
+            IDistributionStrategy(distribution.strategy).initializeDistribution(distribution.configData);
 
         // Now transfer the tokens to the returned address
         _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
