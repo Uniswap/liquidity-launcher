@@ -10,8 +10,10 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Plan, Planner} from "../libraries/Planner.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IBasicMigrator} from "../interfaces/IBasicMigrator.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract BasicMigrator is IDistributionContract {
+contract BasicMigrator is IBasicMigrator {
     error MigrationNotAllowed();
     error Unauthorized();
 
@@ -25,8 +27,12 @@ contract BasicMigrator is IDistributionContract {
     uint256 public immutable totalSupply;
     address public immutable token;
     address public immutable currency;
+    uint256 public immutable tokenAmount;
 
     IPositionManager public immutable positionManager;
+
+    Currency public immutable currency0;
+    Currency public immutable currency1;
 
     constructor(MigratorParameters memory parameters) {
         token = parameters.token;
@@ -39,21 +45,32 @@ contract BasicMigrator is IDistributionContract {
         hookData = parameters.hookData;
         positionRecipient = parameters.positionRecipient;
         migrationBlock = parameters.migrationBlock;
+
+        (currency0, currency1) = currency < token
+            ? (Currency.wrap(currency), Currency.wrap(token))
+            : (Currency.wrap(token), Currency.wrap(currency));
     }
 
     function migrate() public {
         if (block.number < migrationBlock) revert MigrationNotAllowed();
 
-        (Currency currency0, Currency currency1) = Currency.wrap(currency) < Currency.wrap(token)
-            ? (Currency.wrap(currency), Currency.wrap(token))
-            : (Currency.wrap(token), Currency.wrap(currency));
-
         PoolKey memory key =
             PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
 
+        // initialize pool
+        // does not revert if pool already exists
+        // need to calculate sqrtPriceX96
+        // positionManager.initializePool(key, sqrtPriceX96);
+
         Plan memory planner = Planner.init();
-        planner.add(Actions.SETTLE, abi.encode(currency0, currency0.balanceOf(address(this)), true));
-        planner.add(Actions.SETTLE, abi.encode(currency1, currency1.balanceOf(address(this)), true));
+
+        if (currency0 == Currency.wrap(currency)) {
+            planner.add(Actions.SETTLE, abi.encode(currency0, currency0.balanceOf(address(this)), true));
+            planner.add(Actions.SETTLE, abi.encode(currency1, tokenAmount, true));
+        } else {
+            planner.add(Actions.SETTLE, abi.encode(currency0, tokenAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(currency1, currency1.balanceOf(address(this)), true));
+        }
         planner.add(
             Actions.MINT_POSITION_FROM_DELTAS,
             abi.encode(
@@ -75,6 +92,7 @@ contract BasicMigrator is IDistributionContract {
     function onTokensReceived(address _token, uint256 _amount) external view {
         if (_token != address(token)) revert IDistributionContract.InvalidToken();
         if (_amount != totalSupply) revert IDistributionContract.InvalidAmount();
+        if (IERC20(token).balanceOf(address(this)) != _amount) revert IDistributionContract.InvalidAmountReceived();
     }
 
     function setInitialPrice(address _currency, uint256 _amount, uint256 _price) public payable {

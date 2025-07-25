@@ -7,7 +7,5 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 interface IBasicMigrator is IDistributionContract {
     function migrate() external;
 
-    function setInitialPrice(address currency, uint256 amount) external payable;
-
-    function onTokensReceived(address _token, uint256 _amount) external view;
+    function setInitialPrice(address currency, uint256 amount, uint256 price) external payable;
 }

@@ -7,6 +7,7 @@ interface IDistributionContract {
     error InvalidToken();
     error InvalidAmount();
     error InvalidCurrency();
+    error InvalidAmountReceived();
 
     /// @notice Notify a distribution contract that it has received the tokens to distribute
     /// @param token The address of the token to be distributed.
