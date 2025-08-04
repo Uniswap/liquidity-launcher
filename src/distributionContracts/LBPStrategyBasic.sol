@@ -7,13 +7,13 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {Plan, Planner} from "../libraries/Planner.sol";
+import {Planner} from "../libraries/Planner.sol";
+import {Plan} from "../types/Plan.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
@@ -24,11 +24,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
+    using Planner for Plan;
 
     /// @notice The token split is measured in bips (10000 = 100%)
-    uint24 public constant MAX_TOKEN_SPLIT = 10000;
+    uint16 public constant MAX_TOKEN_SPLIT = 10000;
 
-    address public immutable token;
+    address public immutable tokenAddress;
     address public immutable currency;
 
     uint24 public immutable fee;
@@ -41,14 +42,18 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     IPositionManager public immutable positionManager;
 
-    uint160 public sqrtPriceX96;
     uint256 public tokensForInitialPosition;
+    uint160 public sqrtPriceX96;
 
-    constructor(address _token, uint256 _totalSupply, bytes memory configData) HookBasic(configData) {
+    /// @notice Initializes the LBPStrategyBasic contract and creates the auction contract
+    /// @param _tokenAddress The token to distribute
+    /// @param _totalSupply The total supply of the token
+    /// @param _configData The configuration data for the LBPStrategyBasic contract
+    constructor(address _tokenAddress, uint256 _totalSupply, bytes memory _configData) HookBasic(_configData) {
         (MigratorParameters memory parameters, bytes memory auctionParamsEncoded) =
-            abi.decode(configData, (MigratorParameters, bytes));
+            abi.decode(_configData, (MigratorParameters, bytes));
 
-        token = _token;
+        tokenAddress = _tokenAddress;
         currency = parameters.currency;
         totalSupply = _totalSupply;
         positionManager = IPositionManager(parameters.positionManager);
@@ -61,19 +66,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint256 auctionSupply = totalSupply * parameters.tokenSplit / MAX_TOKEN_SPLIT;
 
         auction = address(
-            IDistributionStrategy(auctionFactory).initializeDistribution(token, auctionSupply, auctionParamsEncoded)
+            IDistributionStrategy(auctionFactory).initializeDistribution(
+                tokenAddress, auctionSupply, auctionParamsEncoded
+            )
         );
-        IERC20(token).safeTransfer(auction, auctionSupply);
-        IDistributionContract(auction).onTokensReceived(token, auctionSupply);
+        IERC20(tokenAddress).safeTransfer(auction, auctionSupply);
+        IDistributionContract(auction).onTokensReceived(tokenAddress, auctionSupply);
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function migrate() public {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
-        (Currency currency0, Currency currency1) = currency < token
-            ? (Currency.wrap(currency), Currency.wrap(token))
-            : (Currency.wrap(token), Currency.wrap(currency));
+        (Currency currency0, Currency currency1) = currency < tokenAddress
+            ? (Currency.wrap(currency), Currency.wrap(tokenAddress))
+            : (Currency.wrap(tokenAddress), Currency.wrap(currency));
 
         PoolKey memory key = PoolKey({
             currency0: currency0,
@@ -114,17 +121,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc IDistributionContract
-    function onTokensReceived(address _token, uint256 _amount) external view {
-        if (_token != address(token)) InvalidToken.selector.revertWith();
-        if (_amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
-        if (IERC20(token).balanceOf(address(this)) != _amount) InvalidAmountReceived.selector.revertWith();
+    function onTokensReceived(address token, uint256 amount) external view {
+        if (token != address(tokenAddress)) InvalidToken.selector.revertWith();
+        if (amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
+        if (IERC20(token).balanceOf(address(this)) != amount) InvalidAmountReceived.selector.revertWith();
     }
 
     /// @inheritdoc ILBPStrategyBasic
     /// @dev The sqrt price will be opposite the auction price if the currency address is less than the token address
-    function setInitialPrice(uint160 _sqrtPriceX96, uint256 _tokensForInitialPosition) public payable {
+    function setInitialPrice(uint160 initialSqrtPriceX96, uint256 initialTokenAmount) public payable {
         if (msg.sender != auction) OnlyAuctionCanSetPrice.selector.revertWith();
-        sqrtPriceX96 = _sqrtPriceX96;
-        tokensForInitialPosition = _tokensForInitialPosition;
+        sqrtPriceX96 = initialSqrtPriceX96;
+        tokensForInitialPosition = initialTokenAmount;
     }
 }

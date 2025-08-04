@@ -16,7 +16,7 @@ interface ILBPStrategyBasic is IDistributionContract {
     function migrate() external;
 
     /// @notice Sets the initial price of the pool based on the auction results
-    /// @param _sqrtPriceX96 The initial sqrt price of the pool
-    /// @param _tokenAmount The amount of tokens needed for that price
-    function setInitialPrice(uint160 _sqrtPriceX96, uint256 _tokenAmount) external payable;
+    /// @param initialSqrtPriceX96 The initial sqrt price of the pool
+    /// @param initialTokenAmount The amount of tokens needed for that price
+    function setInitialPrice(uint160 initialSqrtPriceX96, uint256 initialTokenAmount) external payable;
 }
