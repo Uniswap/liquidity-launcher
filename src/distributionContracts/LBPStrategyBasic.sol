@@ -12,15 +12,21 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+/// @title LBPStrategyBasic
+/// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using CustomRevert for bytes4;
+    using SafeERC20 for IERC20;
+
+    /// @notice The token split is measured in bips (10000 = 100%)
+    uint24 public constant MAX_TOKEN_SPLIT = 10000;
 
     address public immutable token;
     address public immutable currency;
@@ -36,7 +42,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     IPositionManager public immutable positionManager;
 
     uint160 public sqrtPriceX96;
-    uint256 public tokenAmount;
+    uint256 public tokensForInitialPosition;
 
     constructor(address _token, uint256 _totalSupply, bytes memory configData) HookBasic(configData) {
         (MigratorParameters memory parameters, bytes memory auctionParamsEncoded) =
@@ -52,17 +58,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         migrationBlock = parameters.migrationBlock;
         auctionFactory = parameters.auctionFactory;
 
-        uint256 auctionSupply = totalSupply * parameters.tokenSplit / 100;
-
-        // require tokenSplit less than or equal to 50?
+        uint256 auctionSupply = totalSupply * parameters.tokenSplit / MAX_TOKEN_SPLIT;
 
         auction = address(
             IDistributionStrategy(auctionFactory).initializeDistribution(token, auctionSupply, auctionParamsEncoded)
         );
-        IERC20(token).transfer(auction, auctionSupply);
+        IERC20(token).safeTransfer(auction, auctionSupply);
         IDistributionContract(auction).onTokensReceived(token, auctionSupply);
     }
 
+    /// @inheritdoc ILBPStrategyBasic
     function migrate() public {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
@@ -85,9 +90,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         if (currency0 == Currency.wrap(currency)) {
             planner.add(Actions.SETTLE, abi.encode(currency0, currency0.balanceOf(address(this)), true));
-            planner.add(Actions.SETTLE, abi.encode(currency1, tokenAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(currency1, tokensForInitialPosition, true));
         } else {
-            planner.add(Actions.SETTLE, abi.encode(currency0, tokenAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(currency0, tokensForInitialPosition, true));
             planner.add(Actions.SETTLE, abi.encode(currency1, currency1.balanceOf(address(this)), true));
         }
         planner.add(
@@ -108,17 +113,18 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionManager.modifyLiquidities(plan, block.timestamp + 1);
     }
 
+    /// @inheritdoc IDistributionContract
     function onTokensReceived(address _token, uint256 _amount) external view {
         if (_token != address(token)) InvalidToken.selector.revertWith();
-        if (_amount != totalSupply) InvalidAmount.selector.revertWith();
+        if (_amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
         if (IERC20(token).balanceOf(address(this)) != _amount) InvalidAmountReceived.selector.revertWith();
     }
 
-    // on the auction side, the sqrt price will be inverted if the currency address is less than the token address
-    function setInitialPrice(uint160 _sqrtPriceX96, uint256 _tokenAmount) public payable {
-        // only auction can set initial price
-        if (msg.sender != auction) InvalidSender.selector.revertWith();
+    /// @inheritdoc ILBPStrategyBasic
+    /// @dev The sqrt price will be opposite the auction price if the currency address is less than the token address
+    function setInitialPrice(uint160 _sqrtPriceX96, uint256 _tokensForInitialPosition) public payable {
+        if (msg.sender != auction) OnlyAuctionCanSetPrice.selector.revertWith();
         sqrtPriceX96 = _sqrtPriceX96;
-        tokenAmount = _tokenAmount;
+        tokensForInitialPosition = _tokensForInitialPosition;
     }
 }

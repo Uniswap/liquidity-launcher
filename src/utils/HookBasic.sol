@@ -8,8 +8,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 
+/// @title HookBasic
+/// @notice Basic hook for the LBPStrategyBasic contract
 contract HookBasic is BaseHook {
-    error Unauthorized();
+    /// @notice Error thrown when the initializer of the pool is not address(this)
+    error InvalidInitializer();
 
     constructor(bytes memory configData) BaseHook(IPoolManager(_extractPoolManager(configData))) {}
 
@@ -19,6 +22,7 @@ contract HookBasic is BaseHook {
         return IPoolManager(parameters.poolManager);
     }
 
+    /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
@@ -38,8 +42,9 @@ contract HookBasic is BaseHook {
         });
     }
 
+    /// @inheritdoc BaseHook
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
-        if (sender != address(this)) revert Unauthorized();
+        if (sender != address(this)) revert InvalidInitializer();
         return IHooks.beforeInitialize.selector;
     }
 }
