@@ -6,7 +6,6 @@ pragma solidity ^0.8.0;
 interface IDistributionContract {
     error InvalidToken();
     error InvalidAmount();
-    error InvalidCurrency();
     error InvalidAmountReceived();
 
     /// @notice Notify a distribution contract that it has received the tokens to distribute

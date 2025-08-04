@@ -5,14 +5,13 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 /// @notice Parameters for the BasicMigrator contract
 struct MigratorParameters {
-    address token;
     address currency;
-    uint256 totalSupply;
     address positionManager;
+    address poolManager;
     uint24 fee;
     int24 tickSpacing;
-    IHooks hooks;
-    bytes hookData;
     address positionRecipient;
     uint64 migrationBlock;
+    address auctionFactory;
+    uint256 tokenSplit;
 }
