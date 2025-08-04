@@ -42,8 +42,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     IPositionManager public immutable positionManager;
 
-    uint256 public tokensForInitialPosition;
-    uint160 public sqrtPriceX96;
+    uint256 public initialTokenAmount;
+    uint256 public initialCurrencyAmount;
+    uint160 public initialSqrtPriceX96;
 
     /// @notice Initializes the LBPStrategyBasic contract and creates the auction contract
     /// @param _tokenAddress The token to distribute
@@ -91,16 +92,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         // initialize pool with starting price
-        positionManager.initializePool(key, sqrtPriceX96);
+        positionManager.initializePool(key, initialSqrtPriceX96);
 
         Plan memory planner = Planner.init();
 
         if (currency0 == Currency.wrap(currency)) {
-            planner.add(Actions.SETTLE, abi.encode(currency0, currency0.balanceOf(address(this)), true));
-            planner.add(Actions.SETTLE, abi.encode(currency1, tokensForInitialPosition, true));
+            planner.add(Actions.SETTLE, abi.encode(currency0, initialCurrencyAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(currency1, initialTokenAmount, true));
         } else {
-            planner.add(Actions.SETTLE, abi.encode(currency0, tokensForInitialPosition, true));
-            planner.add(Actions.SETTLE, abi.encode(currency1, currency1.balanceOf(address(this)), true));
+            planner.add(Actions.SETTLE, abi.encode(currency0, initialTokenAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(currency1, initialCurrencyAmount, true));
         }
         planner.add(
             Actions.MINT_POSITION_FROM_DELTAS,
@@ -129,9 +130,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @inheritdoc ILBPStrategyBasic
     /// @dev The sqrt price will be opposite the auction price if the currency address is less than the token address
-    function setInitialPrice(uint160 initialSqrtPriceX96, uint256 initialTokenAmount) public payable {
+    function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
         if (msg.sender != auction) OnlyAuctionCanSetPrice.selector.revertWith();
-        sqrtPriceX96 = initialSqrtPriceX96;
-        tokensForInitialPosition = initialTokenAmount;
+        if (Currency.wrap(currency).isAddressZero()) {
+            if (msg.value != tokenAmount) InvalidCurrencyAmount.selector.revertWith();
+        } else {
+            IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
+        }
+        initialSqrtPriceX96 = sqrtPriceX96;
+        initialTokenAmount = tokenAmount;
+        initialCurrencyAmount = currencyAmount;
     }
 }
