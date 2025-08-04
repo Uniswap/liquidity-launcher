@@ -7,7 +7,6 @@ import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MerkleClaim} from "./MerkleClaim.sol";
 
 error ZeroAddress();
-error InvalidConfig();
 
 contract MerkleClaimFactory is IDistributionStrategy {
     using SafeERC20 for IERC20;
@@ -23,7 +22,6 @@ contract MerkleClaimFactory is IDistributionStrategy {
         bytes calldata configData
     ) external override returns (IDistributionContract distributionContract) {
         if (token == address(0)) revert ZeroAddress();
-        if (configData.length != 96) revert InvalidConfig(); // 32 bytes for merkleRoot + 20 bytes for owner + 32 bytes for deadline
 
         // Decode the merkle root, owner, and deadline from configData
         (bytes32 merkleRoot, address owner, uint256 deadline) = abi.decode(configData, (bytes32, address, uint256));
