@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 import {ITokenFactory} from "uerc20-factory/src/interfaces/ITokenFactory.sol";

@@ -32,76 +32,64 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable tokenAddress;
     address public immutable currency;
 
-    uint24 public immutable fee;
     uint256 public immutable totalSupply;
-    int24 public immutable tickSpacing;
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
-    address public immutable auction;
+    uint16 public immutable tokenSplit;
 
     IPositionManager public immutable positionManager;
 
+    bytes public auctionParameters;
     uint256 public initialTokenAmount;
     uint256 public initialCurrencyAmount;
-    uint160 public initialSqrtPriceX96;
+    uint160 public initialSqrtPriceX96; // currency1 / currency0
+    address public auction;
+    PoolKey public key;
 
     /// @notice Initializes the LBPStrategyBasic contract and creates the auction contract
     /// @param _tokenAddress The token to distribute
     /// @param _totalSupply The total supply of the token
     /// @param _configData The configuration data for the LBPStrategyBasic contract
     constructor(address _tokenAddress, uint256 _totalSupply, bytes memory _configData) HookBasic(_configData) {
-        (MigratorParameters memory parameters, bytes memory auctionParamsEncoded) =
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(_configData, (MigratorParameters, bytes));
 
+        auctionParameters = auctionParams;
+
         tokenAddress = _tokenAddress;
-        currency = parameters.currency;
+        currency = migratorParams.currency;
         totalSupply = _totalSupply;
-        positionManager = IPositionManager(parameters.positionManager);
-        fee = parameters.fee;
-        tickSpacing = parameters.tickSpacing;
-        positionRecipient = parameters.positionRecipient;
-        migrationBlock = parameters.migrationBlock;
-        auctionFactory = parameters.auctionFactory;
+        positionManager = IPositionManager(migratorParams.positionManager);
+        positionRecipient = migratorParams.positionRecipient;
+        migrationBlock = migratorParams.migrationBlock;
+        auctionFactory = migratorParams.auctionFactory;
+        tokenSplit = migratorParams.tokenSplit;
 
-        uint256 auctionSupply = totalSupply * parameters.tokenSplit / MAX_TOKEN_SPLIT;
-
-        auction = address(
-            IDistributionStrategy(auctionFactory).initializeDistribution(
-                tokenAddress, auctionSupply, auctionParamsEncoded
-            )
-        );
-        IERC20(tokenAddress).safeTransfer(auction, auctionSupply);
-        IDistributionContract(auction).onTokensReceived(tokenAddress, auctionSupply);
+        key = PoolKey({
+            currency0: currency < tokenAddress ? Currency.wrap(currency) : Currency.wrap(tokenAddress),
+            currency1: currency < tokenAddress ? Currency.wrap(tokenAddress) : Currency.wrap(currency),
+            fee: migratorParams.fee,
+            tickSpacing: migratorParams.tickSpacing,
+            hooks: IHooks(address(this))
+        });
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function migrate() public {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
-        (Currency currency0, Currency currency1) = currency < tokenAddress
-            ? (Currency.wrap(currency), Currency.wrap(tokenAddress))
-            : (Currency.wrap(tokenAddress), Currency.wrap(currency));
-
-        PoolKey memory key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: fee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(address(this))
-        });
-
         // initialize pool with starting price
         positionManager.initializePool(key, initialSqrtPriceX96);
 
         Plan memory planner = Planner.init();
 
-        if (currency0 == Currency.wrap(currency)) {
-            planner.add(Actions.SETTLE, abi.encode(currency0, initialCurrencyAmount, true));
-            planner.add(Actions.SETTLE, abi.encode(currency1, initialTokenAmount, true));
+        if (key.currency0 == Currency.wrap(currency)) {
+            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialCurrencyAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialTokenAmount, true));
         } else {
-            planner.add(Actions.SETTLE, abi.encode(currency0, initialTokenAmount, true));
-            planner.add(Actions.SETTLE, abi.encode(currency1, initialCurrencyAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialTokenAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialCurrencyAmount, true));
         }
         planner.add(
             Actions.MINT_POSITION_FROM_DELTAS,
@@ -119,13 +107,24 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes memory plan = planner.encode();
 
         positionManager.modifyLiquidities(plan, block.timestamp + 1);
+
+        emit PoolInitialized(key, initialSqrtPriceX96);
     }
 
     /// @inheritdoc IDistributionContract
-    function onTokensReceived(address token, uint256 amount) external view {
+    function onTokensReceived(address token, uint256 amount) external {
         if (token != address(tokenAddress)) InvalidToken.selector.revertWith();
         if (amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
         if (IERC20(token).balanceOf(address(this)) != amount) InvalidAmountReceived.selector.revertWith();
+
+        uint256 auctionSupply = amount * tokenSplit / MAX_TOKEN_SPLIT;
+
+        auction = address(
+            IDistributionStrategy(auctionFactory).initializeDistribution(tokenAddress, auctionSupply, auctionParameters)
+        );
+
+        IERC20(token).safeTransfer(auction, auctionSupply);
+        IDistributionContract(auction).onTokensReceived(tokenAddress, auctionSupply);
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -140,5 +139,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialSqrtPriceX96 = sqrtPriceX96;
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
+
+        emit InitialPriceSet(sqrtPriceX96, tokenAmount, currencyAmount);
     }
 }

@@ -16,5 +16,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         bytes32 salt = keccak256(configData);
         lbp = IDistributionContract(address(new LBPStrategyBasic{salt: salt}(token, totalSupply, configData)));
+
+        emit DistributionInitialized(address(lbp), token, totalSupply);
     }
 }

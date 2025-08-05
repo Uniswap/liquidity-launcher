@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
 import {IDistributionContract} from "./IDistributionContract.sol";
@@ -6,6 +6,9 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 /// @title IDistributionStrategy
 /// @notice Interface for token distribution strategies.
 interface IDistributionStrategy {
+    /// @notice Emitted when a distribution is initialized
+    event DistributionInitialized(address distributionContract, address token, uint256 totalSupply);
+
     /// @notice Initialize a distribution of tokens under this strategy.
     /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
     /// implementing contract. For some strategies this function will handle the entire distribution, for others it
