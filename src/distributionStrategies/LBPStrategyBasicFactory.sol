@@ -19,13 +19,6 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         lbp = IDistributionContract(address(new LBPStrategyBasic{salt: _salt}(token, totalSupply, configData)));
 
         emit DistributionInitialized(address(lbp), token, totalSupply);
-        // bytes memory creationCode = abi.encodePacked(
-        //     type(LBPStrategyBasic).creationCode,
-        //     abi.encode(token, totalSupply, configData)
-        // );
-
-        // bytes32 salt = keccak256(abi.encode(msg.sender, user, _salt));
-        // lbp = IDistributionContract(CREATE3.deploy(salt, creationCode));
     }
 
     function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
