@@ -8,7 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @notice Interface for the LBPStrategyBasic contract
 interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Emitted when the pool is initialized
-    event PoolInitialized(PoolKey key, uint160 initialSqrtPriceX96);
+    event PoolInitialized(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     /// @notice Emitted when the initial price is set
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
@@ -21,6 +21,12 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Error thrown when the currency amount transferred is invalid
     error InvalidCurrencyAmount();
+
+    /// @notice Error thrown when ETH is sent to the contract but the configured currency is not ETH (e.g. an ERC20 token)
+    error NonETHCurrencyCannotReceiveETH();
+
+    /// @notice Error thrown when the token split is too high
+    error TokenSplitTooHigh();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;

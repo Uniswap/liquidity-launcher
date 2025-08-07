@@ -17,8 +17,12 @@ import {IDistributionContract} from "../../src/interfaces/IDistributionContract.
 import {TokenLauncher} from "../../src/TokenLauncher.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract LBPStrategyBasicTest is Test, DeployPermit2 {
+    event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
+
     LBPStrategyBasicNoValidation lbp;
     IAllowanceTransfer permit2 = IAllowanceTransfer(deployPermit2());
     TokenLauncher tokenLauncher = new TokenLauncher(permit2);
@@ -74,10 +78,32 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
         assertEq(address(hooks), address(lbp));
     }
 
+    function test_setUp_revertsWithTokenSplitTooHigh() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            totalSupply,
+            abi.encode(
+                MigratorParameters({
+                    currency: address(0),
+                    fee: 500,
+                    positionManager: mockPositionManager,
+                    tickSpacing: 100,
+                    poolManager: address(poolManager),
+                    tokenSplit: 5001,
+                    auctionFactory: address(mock),
+                    positionRecipient: address(this),
+                    migrationBlock: uint64(block.number + 1000)
+                }),
+                bytes("")
+            )
+        );
+    }
+
     function test_onTokenReceived_revertsWithInvalidToken() public {
         vm.prank(address(tokenLauncher));
         vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector));
-        lbp.onTokensReceived(address(0), 1000e18);
+        lbp.onTokensReceived(address(0), totalSupply);
     }
 
     function test_onTokenReceived_revertsWithIncorrectTokenSupply() public {
@@ -93,10 +119,139 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
         lbp.onTokensReceived(address(token), totalSupply);
     }
 
-    function test_onTokenReceived_createsAuction() public {
+    function test_onTokenReceived_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);
         lbp.onTokensReceived(address(token), totalSupply);
-        assertEq(lbp.auction(), address(0));
+
+        // verify auction is created and set
+        assertNotEq(lbp.auction(), address(0));
+        // Verify half of the tokens are in the auction and half are in the LBP
+        assertEq(token.balanceOf(address(lbp.auction())), totalSupply / 2);
+        assertEq(token.balanceOf(address(lbp)), totalSupply / 2);
+    }
+
+    function test_setInitialPrice_revertsWithOnlyAuctionCanSetPrice() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.OnlyAuctionCanSetPrice.selector));
+        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, totalSupply, totalSupply);
+    }
+
+    function test_setInitialPrice_revertsWithInvalidCurrencyAmount() public {
+        vm.deal(address(lbp.auction()), totalSupply);
+        vm.prank(address(lbp.auction()));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidCurrencyAmount.selector));
+        lbp.setInitialPrice{value: totalSupply - 1}(TickMath.MIN_SQRT_PRICE, totalSupply, totalSupply);
+    }
+
+    function test_setInitialPrice_succeeds() public {
+        vm.deal(address(lbp.auction()), totalSupply);
+        vm.prank(address(lbp.auction()));
+
+        vm.expectEmit(false, false, false, true);
+        emit InitialPriceSet(TickMath.MIN_SQRT_PRICE, totalSupply, 1e18);
+        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, totalSupply, 1e18);
+
+        // Verify the pool was initialized
+        assertEq(lbp.initialSqrtPriceX96(), TickMath.MIN_SQRT_PRICE);
+        assertEq(lbp.initialTokenAmount(), totalSupply);
+        assertEq(lbp.initialCurrencyAmount(), 1e18);
+        assertEq(address(lbp).balance, 1e18);
+    }
+
+    function test_setInitialPrice_revertsWithNonETHCurrencyCannotReceiveETH() public {
+        MockERC20 usdc = new MockERC20("USDC", "USDC", 1000e6, address(this));
+
+        // Deploy the contract without validation - we'll test it at its deployed address
+        lbp = new LBPStrategyBasicNoValidation(
+            address(token),
+            totalSupply,
+            abi.encode(
+                MigratorParameters({
+                    currency: address(usdc),
+                    fee: 500,
+                    positionManager: mockPositionManager,
+                    tickSpacing: 100,
+                    poolManager: address(poolManager),
+                    tokenSplit: 5000,
+                    auctionFactory: address(mock),
+                    positionRecipient: address(this),
+                    migrationBlock: uint64(block.number + 1000)
+                }),
+                bytes("")
+            )
+        );
+
+        // First, we need to initialize the auction by sending tokens to the LBP
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), totalSupply);
+        lbp.onTokensReceived(address(token), totalSupply);
+
+        // Now the auction should be created and we can transfer USDC to it
+        usdc.transfer(lbp.auction(), usdc.balanceOf(address(this)));
+
+        // Give the auction contract some ETH so it can attempt to send it (which should fail)
+        vm.deal(lbp.auction(), 1e18);
+
+        vm.prank(lbp.auction());
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.NonETHCurrencyCannotReceiveETH.selector));
+        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, totalSupply, 1e18);
+    }
+
+    function test_setInitialPrice_withNonETHCurrency_succeeds() public {
+        MockERC20 usdcCurrency = new MockERC20("USDC", "USDC", 1000e6, address(this));
+
+        // Deploy the contract without validation - we'll test it at its deployed address
+        lbp = new LBPStrategyBasicNoValidation(
+            address(token),
+            totalSupply,
+            abi.encode(
+                MigratorParameters({
+                    currency: address(usdcCurrency),
+                    fee: 500,
+                    positionManager: mockPositionManager,
+                    tickSpacing: 100,
+                    poolManager: address(poolManager),
+                    tokenSplit: 5000,
+                    auctionFactory: address(mock),
+                    positionRecipient: address(this),
+                    migrationBlock: uint64(block.number + 1000)
+                }),
+                bytes("")
+            )
+        );
+
+        // First, we need to initialize the auction by sending tokens to the LBP
+        vm.startPrank(address(tokenLauncher));
+        token.transfer(address(lbp), totalSupply);
+        lbp.onTokensReceived(address(token), totalSupply);
+        vm.stopPrank();
+
+        uint256 usdcSupply = usdcCurrency.balanceOf(address(this));
+
+        // Now the auction should be created and we can transfer USDC to it
+        usdcCurrency.transfer(lbp.auction(), usdcSupply);
+
+        vm.startPrank(lbp.auction());
+        usdcCurrency.approve(address(lbp), usdcSupply);
+
+        vm.expectEmit(false, false, false, true);
+        emit InitialPriceSet(TickMath.MIN_SQRT_PRICE, totalSupply, usdcSupply);
+
+        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, totalSupply, usdcSupply);
+        vm.stopPrank();
+
+        // Verify values are set correctly
+        assertEq(lbp.initialSqrtPriceX96(), TickMath.MIN_SQRT_PRICE);
+        assertEq(lbp.initialTokenAmount(), totalSupply);
+        assertEq(lbp.initialCurrencyAmount(), usdcSupply);
+
+        // Verify the auction has no USDC and the LBP has all the USDC
+        assertEq(usdcCurrency.balanceOf(address(lbp.auction())), 0);
+        assertEq(usdcCurrency.balanceOf(address(lbp)), usdcSupply);
+    }
+
+    function test_migrate_revertsWithMigrationNotAllowed() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.MigrationNotAllowed.selector));
+        lbp.migrate();
     }
 }

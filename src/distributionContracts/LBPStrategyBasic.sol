@@ -43,7 +43,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     bytes public auctionParameters;
     uint256 public initialTokenAmount;
     uint256 public initialCurrencyAmount;
-    uint160 public initialSqrtPriceX96; // currency1 / currency0
+    uint160 public initialSqrtPriceX96; // expressed as currency1/currency0
     address public auction;
     PoolKey public key;
 
@@ -54,6 +54,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     constructor(address _tokenAddress, uint256 _totalSupply, bytes memory _configData) HookBasic(_configData) {
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(_configData, (MigratorParameters, bytes));
+
+        // validate token split is less than or equal to 50%
+        if (migratorParams.tokenSplit > 5000) TokenSplitTooHigh.selector.revertWith();
 
         auctionParameters = auctionParams;
 
@@ -80,6 +83,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
         // initialize pool with starting price
+        // fails if price is 0, does not fail if already initialized
         positionManager.initializePool(key, initialSqrtPriceX96);
 
         Plan memory planner = Planner.init();
@@ -128,12 +132,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc ILBPStrategyBasic
-    /// @dev The sqrt price will be opposite the auction price if the currency address is less than the token address
+    /// @dev The sqrt price is always expressed as currency1/currency0, where currency0 < currency1
     function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
         if (msg.sender != auction) OnlyAuctionCanSetPrice.selector.revertWith();
         if (Currency.wrap(currency).isAddressZero()) {
-            if (msg.value != tokenAmount) InvalidCurrencyAmount.selector.revertWith();
+            if (msg.value != currencyAmount) InvalidCurrencyAmount.selector.revertWith();
         } else {
+            if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith();
             IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
         }
         initialSqrtPriceX96 = sqrtPriceX96;
