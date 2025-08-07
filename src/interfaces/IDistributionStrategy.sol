@@ -16,7 +16,7 @@ interface IDistributionStrategy {
     /// @param configData Arbitrary, strategy-specific parameters.
     /// @return distributionContract The contract that will handle or manage the distribution.
     ///         (Could be `address(this)` if the strategy is handled in-place, or a newly deployed instance).
-    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData)
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         returns (IDistributionContract distributionContract);
 }

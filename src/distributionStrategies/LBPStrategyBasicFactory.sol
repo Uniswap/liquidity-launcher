@@ -5,19 +5,36 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
-import {create3} from "solady/utils/Create3.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract
 contract LBPStrategyBasicFactory is IDistributionStrategy {
     /// @inheritdoc IDistributionStrategy
-    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData)
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         returns (IDistributionContract lbp)
     {
-        bytes32 salt = keccak256(configData);
-        lbp = IDistributionContract(address(new LBPStrategyBasic{salt: salt}(token, totalSupply, configData)));
+        bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
+        lbp = IDistributionContract(address(new LBPStrategyBasic{salt: _salt}(token, totalSupply, configData)));
 
         emit DistributionInitialized(address(lbp), token, totalSupply);
+        // bytes memory creationCode = abi.encodePacked(
+        //     type(LBPStrategyBasic).creationCode,
+        //     abi.encode(token, totalSupply, configData)
+        // );
+
+        // bytes32 salt = keccak256(abi.encode(msg.sender, user, _salt));
+        // lbp = IDistributionContract(CREATE3.deploy(salt, creationCode));
+    }
+
+    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
+        external
+        view
+        returns (address)
+    {
+        bytes32 initCodeHash =
+            keccak256(abi.encodePacked(type(LBPStrategyBasic).creationCode, abi.encode(token, totalSupply, configData)));
+        return Create2.computeAddress(salt, initCodeHash, address(this));
     }
 }

@@ -37,7 +37,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     }
 
     /// @inheritdoc ITokenLauncher
-    function distributeToken(address token, Distribution calldata distribution, bool payerIsUser)
+    function distributeToken(address token, Distribution calldata distribution, bool payerIsUser, bytes32 salt)
         external
         override
         returns (IDistributionContract distributionContract)
@@ -45,7 +45,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         // Call the strategy: it might do distributions itself or deploy a new instance.
         // If it does distributions itself, distributionContract == dist.strategy
         distributionContract = IDistributionStrategy(distribution.strategy).initializeDistribution(
-            token, distribution.amount, distribution.configData
+            token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
         );
 
         // Now transfer the tokens to the returned address

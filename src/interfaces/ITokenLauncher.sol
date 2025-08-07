@@ -42,7 +42,7 @@ interface ITokenLauncher {
     /// @param distribution Distribution instructions
     /// @param payerIsUser Whether the payer is the user
     /// @return distributionContract The address of the distribution contract
-    function distributeToken(address tokenAddress, Distribution memory distribution, bool payerIsUser)
+    function distributeToken(address tokenAddress, Distribution memory distribution, bool payerIsUser, bytes32 salt)
         external
         returns (IDistributionContract distributionContract);
 

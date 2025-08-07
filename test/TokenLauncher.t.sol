@@ -96,7 +96,8 @@ contract TokenLauncherTest is Test, DeployPermit2 {
 
         // Distribute the token
         // payer is the token launcher
-        IDistributionContract distributionContract = tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        IDistributionContract distributionContract =
+            tokenLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
 
         // Verify the distribution was successful
         assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), initialSupply);
@@ -117,7 +118,8 @@ contract TokenLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
 
         // Distribute the token
-        IDistributionContract distributionContract = tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        IDistributionContract distributionContract =
+            tokenLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
 
         // verify the distribution contract is the same as the strategy
         assertEq(address(distributionContract), address(distributionStrategyAndContract));
@@ -144,7 +146,8 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         IERC20(tokenAddress).approve(address(tokenLauncher), initialSupply);
 
         // Distribute the token
-        IDistributionContract distributionContract = tokenLauncher.distributeToken(tokenAddress, distribution, true);
+        IDistributionContract distributionContract =
+            tokenLauncher.distributeToken(tokenAddress, distribution, true, bytes32(0));
 
         // verify the distribution contract is the same as the strategy
         assertEq(address(distributionContract), address(distributionStrategyAndContract));
@@ -197,7 +200,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
 
         // Distribute the token
-        tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        tokenLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
         vm.snapshotGasLastCall("distributeToken");
     }
 }

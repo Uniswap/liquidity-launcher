@@ -6,7 +6,7 @@ import {IDistributionContract} from "../../src/interfaces/IDistributionContract.
 import {MockDistributionContract} from "./MockDistributionContract.sol";
 
 contract MockDistributionStrategy is IDistributionStrategy {
-    function initializeDistribution(address, uint256, bytes calldata)
+    function initializeDistribution(address, uint256, bytes calldata, bytes32)
         external
         override
         returns (IDistributionContract distributionContract)

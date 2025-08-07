@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
@@ -7,7 +7,6 @@ import {MigratorParameters} from "../../src/distributionContracts/LBPStrategyBas
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {MockDistributionStrategy} from "../mocks/MockDistributionStrategy.sol";
-import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -19,6 +18,7 @@ import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 
 contract LBPStrategyBasicTest is Test, DeployPermit2 {
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
@@ -34,16 +34,25 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
     // Create a mock position manager address
     address mockPositionManager = address(0x1234567890123456789012345678901234567890);
 
+    LBPStrategyBasicNoValidation liquidityPool;
+
+    uint160 constant hookPermissionCount = 14;
+    uint160 constant clearAllHookPermissionsMask = ~uint160(0) << (hookPermissionCount);
+
     function setUp() public {
+        lbp = LBPStrategyBasicNoValidation(
+            address(uint160(uint256(type(uint160).max) & clearAllHookPermissionsMask | Hooks.BEFORE_INITIALIZE_FLAG))
+        );
+
         // Deploy the contract without validation - we'll test it at its deployed address
-        lbp = new LBPStrategyBasicNoValidation(
+        liquidityPool = new LBPStrategyBasicNoValidation(
             address(token),
             totalSupply,
             abi.encode(
                 MigratorParameters({
                     currency: address(0),
                     fee: 500,
-                    positionManager: mockPositionManager,
+                    positionManager: address(mockPositionManager),
                     tickSpacing: 100,
                     poolManager: address(poolManager),
                     tokenSplit: 5000,
@@ -54,13 +63,30 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
                 bytes("")
             )
         );
+
+        vm.etch(address(lbp), address(liquidityPool).code);
+
+        // Copy all storage slots (0-10 should cover everything)
+        bytes32 value;
+        for (uint256 i = 0; i < 10; i++) {
+            value = vm.load(address(liquidityPool), bytes32(i));
+            vm.store(address(lbp), bytes32(i), value);
+        }
+
+        // Update the hooks address in the PoolKey (stored in slot 7)
+        // The hooks address is stored in the lower 20 bytes of slot 7
+        bytes32 slot7 = vm.load(address(lbp), bytes32(uint256(7)));
+        // Clear the lower 20 bytes and set the new hooks address
+        bytes32 updatedSlot7 =
+            (slot7 & bytes32(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFF) << 160)) | bytes32(uint256(uint160(address(lbp))));
+        vm.store(address(lbp), bytes32(uint256(7)), updatedSlot7);
     }
 
     function test_setUpProperly() public view {
         assertEq(lbp.tokenAddress(), address(token));
         assertEq(lbp.currency(), address(0));
         assertEq(lbp.totalSupply(), 1000e18);
-        assertEq(address(lbp.positionManager()), address(0x1234567890123456789012345678901234567890));
+        assertEq(address(lbp.positionManager()), address(mockPositionManager));
         assertEq(lbp.positionRecipient(), address(this));
         assertEq(lbp.migrationBlock(), uint64(block.number + 1000));
         assertEq(lbp.auctionFactory(), address(mock));
@@ -87,7 +113,7 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
                 MigratorParameters({
                     currency: address(0),
                     fee: 500,
-                    positionManager: mockPositionManager,
+                    positionManager: address(mockPositionManager),
                     tickSpacing: 100,
                     poolManager: address(poolManager),
                     tokenSplit: 5001,
@@ -169,7 +195,7 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
                 MigratorParameters({
                     currency: address(usdc),
                     fee: 500,
-                    positionManager: mockPositionManager,
+                    positionManager: address(mockPositionManager),
                     tickSpacing: 100,
                     poolManager: address(poolManager),
                     tokenSplit: 5000,
@@ -208,7 +234,7 @@ contract LBPStrategyBasicTest is Test, DeployPermit2 {
                 MigratorParameters({
                     currency: address(usdcCurrency),
                     fee: 500,
-                    positionManager: mockPositionManager,
+                    positionManager: address(mockPositionManager),
                     tickSpacing: 100,
                     poolManager: address(poolManager),
                     tokenSplit: 5000,

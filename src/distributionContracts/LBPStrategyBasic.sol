@@ -18,6 +18,8 @@ import {HookBasic} from "../utils/HookBasic.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IPoolInitializer_v4} from "@uniswap/v4-periphery/src/interfaces/IPoolInitializer_v4.sol";
+import {IMulticall_v4} from "@uniswap/v4-periphery/src/interfaces/IMulticall_v4.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -82,9 +84,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function migrate() public {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
+        // Use multicall to initialize a pool and mint liquidity
+        bytes[] memory calls = new bytes[](2);
         // initialize pool with starting price
         // fails if price is 0, does not fail if already initialized
-        positionManager.initializePool(key, initialSqrtPriceX96);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer_v4.initializePool.selector, key, initialSqrtPriceX96);
 
         Plan memory planner = Planner.init();
 
@@ -110,7 +114,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         bytes memory plan = planner.encode();
 
-        positionManager.modifyLiquidities(plan, block.timestamp + 1);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, plan, block.timestamp + 1);
+
+        IMulticall_v4(address(positionManager)).multicall(calls);
 
         emit PoolInitialized(key, initialSqrtPriceX96);
     }
@@ -124,7 +130,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint256 auctionSupply = amount * tokenSplit / MAX_TOKEN_SPLIT;
 
         auction = address(
-            IDistributionStrategy(auctionFactory).initializeDistribution(tokenAddress, auctionSupply, auctionParameters)
+            IDistributionStrategy(auctionFactory).initializeDistribution(
+                tokenAddress, auctionSupply, auctionParameters, bytes32(0)
+            )
         );
 
         IERC20(token).safeTransfer(auction, auctionSupply);
