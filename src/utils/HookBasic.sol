@@ -11,8 +11,8 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 /// @title HookBasic
 /// @notice Basic hook for the LBPStrategyBasic contract
 contract HookBasic is BaseHook {
-    /// @notice Error thrown when the initializer of the pool is not address(this)
-    error InvalidInitializer();
+    /// @notice Error thrown when the initializer of the pool is not the strategy contract
+    error InvalidInitializer(address caller, address strategy);
 
     constructor(bytes memory configData) BaseHook(IPoolManager(_extractPoolManager(configData))) {}
 
@@ -44,7 +44,7 @@ contract HookBasic is BaseHook {
 
     /// @inheritdoc BaseHook
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
-        if (sender != address(this)) revert InvalidInitializer();
+        if (sender != address(this)) revert InvalidInitializer(sender, address(this));
         return IHooks.beforeInitialize.selector;
     }
 }

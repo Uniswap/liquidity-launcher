@@ -8,7 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @notice Interface for the LBPStrategyBasic contract
 interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Emitted when the pool is initialized
-    event PoolInitialized(PoolKey indexed key, uint160 initialSqrtPriceX96);
+    event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     /// @notice Emitted when the initial price is set
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);

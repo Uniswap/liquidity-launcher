@@ -18,8 +18,8 @@ import {HookBasic} from "../utils/HookBasic.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IPoolInitializer_v4} from "@uniswap/v4-periphery/src/interfaces/IPoolInitializer_v4.sol";
-import {IMulticall_v4} from "@uniswap/v4-periphery/src/interfaces/IMulticall_v4.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -84,11 +84,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function migrate() public {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
-        // Use multicall to initialize a pool and mint liquidity
-        bytes[] memory calls = new bytes[](2);
+        // transfer tokens to the position manager
+        //IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
+
         // initialize pool with starting price
-        // fails if price is 0, does not fail if already initialized
-        calls[0] = abi.encodeWithSelector(IPoolInitializer_v4.initializePool.selector, key, initialSqrtPriceX96);
+        // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
+        poolManager.initialize(key, initialSqrtPriceX96);
 
         Plan memory planner = Planner.init();
 
@@ -99,6 +100,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             planner.add(Actions.SETTLE, abi.encode(key.currency0, initialTokenAmount, true));
             planner.add(Actions.SETTLE, abi.encode(key.currency1, initialCurrencyAmount, true));
         }
+
         planner.add(
             Actions.MINT_POSITION_FROM_DELTAS,
             abi.encode(
@@ -114,11 +116,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         bytes memory plan = planner.encode();
 
-        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, plan, block.timestamp + 1);
+        if (currency == address(0)) {
+            positionManager.modifyLiquidities{value: initialCurrencyAmount}(plan, block.timestamp + 1);
+        } else {
+            positionManager.modifyLiquidities(plan, block.timestamp + 1);
+        }
 
-        IMulticall_v4(address(positionManager)).multicall(calls);
-
-        emit PoolInitialized(key, initialSqrtPriceX96);
+        emit Migrated(key, initialSqrtPriceX96);
     }
 
     /// @inheritdoc IDistributionContract
@@ -144,6 +148,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
         if (msg.sender != auction) OnlyAuctionCanSetPrice.selector.revertWith();
         if (Currency.wrap(currency).isAddressZero()) {
+            console2.log("currency is zero");
+            console2.log("Currency is", currency);
             if (msg.value != currencyAmount) InvalidCurrencyAmount.selector.revertWith();
         } else {
             if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith();
