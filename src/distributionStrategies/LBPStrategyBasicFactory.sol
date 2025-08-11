@@ -28,6 +28,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         bytes32 initCodeHash =
             keccak256(abi.encodePacked(type(LBPStrategyBasic).creationCode, abi.encode(token, totalSupply, configData)));
+        // should the salt be hashed with msg.sender or assume it is already hashed?
         return Create2.computeAddress(salt, initCodeHash, address(this));
     }
 }
