@@ -108,6 +108,7 @@ contract LBPStrategyBasicTest is Test {
         assertEq(lbp.auctionFactory(), address(mock));
         assertEq(lbp.tokenSplit(), 5000);
         assertEq(lbp.auction(), address(0));
+        assertEq(address(lbp.poolManager()), POOL_MANAGER);
 
         // Get the pool key components from the contract
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();

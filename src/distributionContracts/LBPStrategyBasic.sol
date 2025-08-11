@@ -7,8 +7,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {Planner} from "../libraries/Planner.sol";
-import {Plan} from "../types/Plan.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
@@ -25,7 +23,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
-    using Planner for Plan;
 
     /// @notice The token split is measured in bips (10000 = 100%)
     uint16 public constant MAX_TOKEN_SPLIT = 10000;
@@ -86,7 +83,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // transfer tokens to the position manager
         IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
 
-        if (currency != address(0)) {
+        // transfer raised currency to the position manager if currency is not ETH
+        if (!Currency.wrap(currency).isAddressZero()) {
             IERC20(currency).safeTransfer(address(positionManager), initialCurrencyAmount);
         }
 
@@ -94,32 +92,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
         poolManager.initialize(key, initialSqrtPriceX96);
 
-        Plan memory planner = Planner.init();
+        bytes memory plan = _createPlan();
 
-        if (key.currency0 == Currency.wrap(currency)) {
-            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialCurrencyAmount, false));
-            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialTokenAmount, false));
-        } else {
-            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialTokenAmount, false));
-            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialCurrencyAmount, false));
-        }
-
-        planner.add(
-            Actions.MINT_POSITION_FROM_DELTAS,
-            abi.encode(
-                key,
-                TickMath.MIN_TICK,
-                TickMath.MAX_TICK,
-                type(uint128).max,
-                type(uint128).max,
-                positionRecipient,
-                Constants.ZERO_BYTES
-            )
-        );
-
-        bytes memory plan = planner.encode();
-
-        if (currency == address(0)) {
+        // if currency is ETH, we need to send ETH to the position manager
+        if (Currency.wrap(currency).isAddressZero()) {
             positionManager.modifyLiquidities{value: initialCurrencyAmount}(plan, block.timestamp + 1);
         } else {
             positionManager.modifyLiquidities(plan, block.timestamp + 1);
@@ -161,5 +137,33 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialCurrencyAmount = currencyAmount;
 
         emit InitialPriceSet(sqrtPriceX96, tokenAmount, currencyAmount);
+    }
+
+    function _createPlan() internal view returns (bytes memory) {
+        bytes memory actions;
+        bytes[] memory params = new bytes[](3);
+
+        actions =
+            abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
+
+        if (key.currency0 == Currency.wrap(currency)) {
+            params[0] = abi.encode(key.currency0, initialCurrencyAmount, false);
+            params[1] = abi.encode(key.currency1, initialTokenAmount, false);
+        } else {
+            params[0] = abi.encode(key.currency0, initialTokenAmount, false);
+            params[1] = abi.encode(key.currency1, initialCurrencyAmount, false);
+        }
+
+        params[2] = abi.encode(
+            key,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK,
+            type(uint128).max,
+            type(uint128).max,
+            positionRecipient,
+            Constants.ZERO_BYTES
+        );
+
+        return abi.encode(actions, params);
     }
 }
