@@ -19,7 +19,6 @@ import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -85,7 +84,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
         // transfer tokens to the position manager
-        //IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
+        IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
+
+        if (currency != address(0)) {
+            IERC20(currency).safeTransfer(address(positionManager), initialCurrencyAmount);
+        }
 
         // initialize pool with starting price
         // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
@@ -94,11 +97,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         Plan memory planner = Planner.init();
 
         if (key.currency0 == Currency.wrap(currency)) {
-            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialCurrencyAmount, true));
-            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialTokenAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialCurrencyAmount, false));
+            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialTokenAmount, false));
         } else {
-            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialTokenAmount, true));
-            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialCurrencyAmount, true));
+            planner.add(Actions.SETTLE, abi.encode(key.currency0, initialTokenAmount, false));
+            planner.add(Actions.SETTLE, abi.encode(key.currency1, initialCurrencyAmount, false));
         }
 
         planner.add(
@@ -148,8 +151,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
         if (msg.sender != auction) OnlyAuctionCanSetPrice.selector.revertWith();
         if (Currency.wrap(currency).isAddressZero()) {
-            console2.log("currency is zero");
-            console2.log("Currency is", currency);
             if (msg.value != currencyAmount) InvalidCurrencyAmount.selector.revertWith();
         } else {
             if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith();
