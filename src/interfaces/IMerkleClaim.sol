@@ -9,7 +9,7 @@ interface IMerkleClaim is IDistributionContract {
     error OnlyOwner();
     error ClaimStillActive();
 
-    /// @notice Emitted when tokens are swept by the owner after deadline
+    /// @notice Emitted when tokens are swept by the owner after endTime
     /// @param owner The address that swept the tokens
     /// @param amount The amount of tokens swept
     event TokensSwept(address indexed owner, uint256 amount);
@@ -22,13 +22,13 @@ interface IMerkleClaim is IDistributionContract {
     /// @return The merkle root as bytes32
     function merkleRoot() external view returns (bytes32);
 
-    /// @notice The owner who can sweep tokens after deadline
+    /// @notice The owner who can sweep tokens after endTime
     /// @return The address of the owner
     function owner() external view returns (address);
 
-    /// @notice The deadline block number after which tokens can be swept
-    /// @return The deadline block number (0 = no deadline)
-    function deadline() external view returns (uint256);
+    /// @notice The timestamp after which claims expire and tokens can be swept
+    /// @return The end timestamp (type(uint256).max = no deadline)
+    function endTime() external view returns (uint256);
 
     /// @notice Check if a specific index has been claimed
     /// @param index The index to check
@@ -48,7 +48,7 @@ interface IMerkleClaim is IDistributionContract {
         bytes32[] calldata merkleProof
     ) external;
 
-    /// @notice Sweep remaining tokens to the owner after deadline
-    /// @dev Only callable by owner and only after deadline block has passed
+    /// @notice Sweep remaining tokens to the owner after endTime
+    /// @dev Only callable by owner and only after endTime has passed
     function sweep() external;
 }
