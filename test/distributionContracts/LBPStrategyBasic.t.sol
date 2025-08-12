@@ -187,14 +187,14 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setInitialPrice_revertsWithInvalidCurrencyAmount() public {
-        vm.deal(address(address(lbp.auction())), TOTAL_SUPPLY); // auction has tokens
+        vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidCurrencyAmount.selector));
         lbp.setInitialPrice{value: TOTAL_SUPPLY - 1}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY); // incorrect amount of ETH is transferred
     }
 
     function test_setInitialPrice_succeeds() public {
-        vm.deal(address(address(lbp.auction())), TOTAL_SUPPLY); // auction has tokens
+        vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
         vm.prank(address(lbp.auction()));
 
         vm.expectEmit(false, false, false, true);
@@ -209,7 +209,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setInitialPrice_gas() public {
-        vm.deal(address(address(lbp.auction())), TOTAL_SUPPLY); // auction has tokens
+        vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
         vm.prank(address(lbp.auction()));
         lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18);
         vm.snapshotGasLastCall("setInitialPriceWithETH");
@@ -349,7 +349,7 @@ contract LBPStrategyBasicTest is Test {
         lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
 
         // give the auction ETH
-        deal(address(address(lbp.auction())), 500e18);
+        deal(address(lbp.auction()), 500e18);
 
         // set the initial price
         vm.prank(address(lbp.auction()));
@@ -449,7 +449,7 @@ contract LBPStrategyBasicTest is Test {
         lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
 
         // give the auction ETH
-        deal(address(address(lbp.auction())), 500e18);
+        deal(address(lbp.auction()), 500e18);
 
         // set the initial price
         vm.prank(address(lbp.auction()));
@@ -531,7 +531,7 @@ contract LBPStrategyBasicTest is Test {
         lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
 
         // give the auction ETH
-        deal(address(address(lbp.auction())), 500e18);
+        deal(address(lbp.auction()), 500e18);
 
         // set the initial price
         vm.prank(address(lbp.auction()));
