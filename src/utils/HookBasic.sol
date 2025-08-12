@@ -9,18 +9,12 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 
 /// @title HookBasic
-/// @notice Basic hook for the LBPStrategyBasic contract
+/// @notice Hook contract that only allows itself to initialize the pool
 contract HookBasic is BaseHook {
     /// @notice Error thrown when the initializer of the pool is not the strategy contract
     error InvalidInitializer(address caller, address strategy);
 
     constructor(bytes memory configData) BaseHook(IPoolManager(_extractPoolManager(configData))) {}
-
-    // Helper function to extract poolManager from configData
-    function _extractPoolManager(bytes memory configData) private pure returns (IPoolManager) {
-        (MigratorParameters memory parameters,) = abi.decode(configData, (MigratorParameters, bytes));
-        return IPoolManager(parameters.poolManager);
-    }
 
     /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -46,5 +40,11 @@ contract HookBasic is BaseHook {
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
         if (sender != address(this)) revert InvalidInitializer(sender, address(this));
         return IHooks.beforeInitialize.selector;
+    }
+
+    /// @notice Helper function to extract poolManager from configData
+    function _extractPoolManager(bytes memory configData) private pure returns (IPoolManager) {
+        (MigratorParameters memory parameters,) = abi.decode(configData, (MigratorParameters, bytes));
+        return IPoolManager(parameters.poolManager);
     }
 }

@@ -41,6 +41,7 @@ interface ITokenLauncher {
     /// @param tokenAddress The address of the token to distribute
     /// @param distribution Distribution instructions
     /// @param payerIsUser Whether the payer is the user
+    /// @param salt The salt to pass into the distribution strategy contract if needed
     /// @return distributionContract The address of the distribution contract
     function distributeToken(address tokenAddress, Distribution memory distribution, bool payerIsUser, bytes32 salt)
         external

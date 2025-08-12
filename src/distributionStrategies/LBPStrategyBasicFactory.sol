@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract
@@ -28,7 +28,6 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         bytes32 initCodeHash =
             keccak256(abi.encodePacked(type(LBPStrategyBasic).creationCode, abi.encode(token, totalSupply, configData)));
-        // should the salt be hashed with msg.sender or assume it is already hashed?
         return Create2.computeAddress(salt, initCodeHash, address(this));
     }
 }
