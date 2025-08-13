@@ -45,14 +45,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint160 public initialSqrtPriceX96; // expressed as currency1/currency0
     PoolKey public key;
 
-    /// @notice Initializes the LBPStrategyBasic contract and creates the auction contract
-    /// @param _tokenAddress The token to distribute
-    /// @param _totalSupply The total supply of the token
-    /// @param _configData The configuration data for the LBPStrategyBasic contract
-    constructor(address _tokenAddress, uint256 _totalSupply, bytes memory _configData) HookBasic(_configData) {
-        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
-            abi.decode(_configData, (MigratorParameters, bytes));
-
+    constructor(
+        address _tokenAddress,
+        uint256 _totalSupply,
+        MigratorParameters memory migratorParams,
+        bytes memory auctionParams
+    ) HookBasic(migratorParams) {
         // validate token split is less than or equal to 50%
         if (migratorParams.tokenSplit > 5000) TokenSplitTooHigh.selector.revertWith();
 
@@ -74,34 +72,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             tickSpacing: migratorParams.tickSpacing,
             hooks: IHooks(address(this))
         });
-    }
-
-    /// @inheritdoc ILBPStrategyBasic
-    function migrate() public {
-        if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
-
-        // transfer tokens to the position manager
-        IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
-
-        // transfer raised currency to the position manager if currency is not ETH
-        if (!Currency.wrap(currency).isAddressZero()) {
-            IERC20(currency).safeTransfer(address(positionManager), initialCurrencyAmount);
-        }
-
-        // initialize pool with starting price
-        // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
-        poolManager.initialize(key, initialSqrtPriceX96);
-
-        bytes memory plan = _createPlan();
-
-        // if currency is ETH, we need to send ETH to the position manager
-        if (Currency.wrap(currency).isAddressZero()) {
-            positionManager.modifyLiquidities{value: initialCurrencyAmount}(plan, block.timestamp + 1);
-        } else {
-            positionManager.modifyLiquidities(plan, block.timestamp + 1);
-        }
-
-        emit Migrated(key, initialSqrtPriceX96);
     }
 
     /// @inheritdoc IDistributionContract
@@ -137,11 +107,43 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit InitialPriceSet(sqrtPriceX96, tokenAmount, currencyAmount);
     }
 
+    /// @inheritdoc ILBPStrategyBasic
+    function migrate() public {
+        if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
+
+        // transfer tokens to the position manager
+        IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
+
+        bool currencyIsNative = Currency.wrap(currency).isAddressZero();
+        // transfer raised currency to the position manager if currency is not ETH
+        if (!currencyIsNative) {
+            IERC20(currency).safeTransfer(address(positionManager), initialCurrencyAmount);
+        }
+
+        // initialize pool with starting price
+        // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
+        poolManager.initialize(key, initialSqrtPriceX96);
+
+        bytes memory plan = _createPlan();
+
+        // if currency is ETH, we need to send ETH to the position manager
+        if (currencyIsNative) {
+            positionManager.modifyLiquidities{value: initialCurrencyAmount}(plan, block.timestamp + 1);
+        } else {
+            positionManager.modifyLiquidities(plan, block.timestamp + 1);
+        }
+
+        emit Migrated(key, initialSqrtPriceX96);
+    }
+
     /// @notice Creates the plan for the position manager to mint the full range position
     /// @return The plan for the position manager
     function _createPlan() internal view returns (bytes memory) {
         bytes memory actions;
         bytes[] memory params = new bytes[](3);
+
+        // actions =
+        //     abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
 
         actions =
             abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
@@ -163,6 +165,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             positionRecipient,
             Constants.ZERO_BYTES
         );
+
+        // if (key.currency0 == Currency.wrap(currency)) {
+        //     params[3] = abi.encode(key.currency1, totalSupply - initialCurrencyAmount, false);
+        //     params[4] = abi.encode(key, TickMath.MIN_TICK, current tick / tickSpacing * tickSpacing, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
+        // } else {
+        //     params[3] = abi.encode(key.currency0, totalSupply - initialTokenAmount, false);
+        //     params[4] = abi.encode(key, ceil(current tick / tickSpacing) * tickSpacing, TickMath.MAX_TICK, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
+        // }
 
         return abi.encode(actions, params);
     }

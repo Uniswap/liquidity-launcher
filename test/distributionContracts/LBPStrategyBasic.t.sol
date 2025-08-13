@@ -63,20 +63,18 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: address(0),
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 1,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5000,
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: address(0),
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 1,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5000,
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
 
         // set the code of the lbp to the code of the impl
@@ -126,20 +124,18 @@ contract LBPStrategyBasicTest is Test {
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: address(0),
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 100,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5001, // too many tokens would be sent to the auction
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: address(0),
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 100,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5001, // too many tokens would be sent to the auction
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
     }
 
@@ -220,20 +216,18 @@ contract LBPStrategyBasicTest is Test {
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: DAI,
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 100,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5000,
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: DAI,
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 100,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5000,
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
 
         // First, we need to initialize the auction by sending tokens to the LBP
@@ -257,20 +251,18 @@ contract LBPStrategyBasicTest is Test {
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: DAI,
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 100,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5000,
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: DAI,
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 100,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5000,
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
 
         // initialize the auction by sending tokens to the LBP
@@ -306,20 +298,18 @@ contract LBPStrategyBasicTest is Test {
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: DAI,
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 100,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5000,
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: DAI,
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 100,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5000,
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
 
         // initialize the auction by sending tokens to the LBP
@@ -380,20 +370,18 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: DAI,
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 1,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5000,
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: DAI,
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 1,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5000,
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
 
         vm.etch(address(lbp), address(impl).code);
@@ -469,20 +457,18 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                MigratorParameters({
-                    currency: DAI,
-                    fee: 500,
-                    positionManager: POSITION_MANAGER,
-                    tickSpacing: 1,
-                    poolManager: POOL_MANAGER,
-                    tokenSplit: 5000,
-                    auctionFactory: address(mock),
-                    positionRecipient: address(this),
-                    migrationBlock: uint64(block.number + 1000)
-                }),
-                bytes("")
-            )
+            MigratorParameters({
+                currency: DAI,
+                fee: 500,
+                positionManager: POSITION_MANAGER,
+                tickSpacing: 1,
+                poolManager: POOL_MANAGER,
+                tokenSplit: 5000,
+                auctionFactory: address(mock),
+                positionRecipient: address(this),
+                migrationBlock: uint64(block.number + 1000)
+            }),
+            bytes("")
         );
 
         vm.etch(address(lbp), address(impl).code);

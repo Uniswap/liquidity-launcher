@@ -14,7 +14,7 @@ contract HookBasic is BaseHook {
     /// @notice Error thrown when the initializer of the pool is not the strategy contract
     error InvalidInitializer(address caller, address strategy);
 
-    constructor(bytes memory configData) BaseHook(IPoolManager(_extractPoolManager(configData))) {}
+    constructor(MigratorParameters memory migratorParams) BaseHook(IPoolManager(migratorParams.poolManager)) {}
 
     /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {

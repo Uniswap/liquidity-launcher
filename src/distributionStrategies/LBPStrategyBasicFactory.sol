@@ -15,8 +15,13 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         external
         returns (IDistributionContract lbp)
     {
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
+
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
-        lbp = IDistributionContract(address(new LBPStrategyBasic{salt: _salt}(token, totalSupply, configData)));
+        lbp = IDistributionContract(
+            address(new LBPStrategyBasic{salt: _salt}(token, totalSupply, migratorParams, auctionParams))
+        );
 
         emit DistributionInitialized(address(lbp), token, totalSupply);
     }
