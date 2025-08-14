@@ -21,6 +21,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract LBPStrategyBasicTest is Test {
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
@@ -104,7 +105,6 @@ contract LBPStrategyBasicTest is Test {
         assertEq(lbp.positionRecipient(), address(this));
         assertEq(lbp.migrationBlock(), uint64(block.number + 1000));
         assertEq(lbp.auctionFactory(), address(mock));
-        assertEq(lbp.tokenSplit(), 5000);
         assertEq(address(lbp.auction()), address(0));
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
 
@@ -538,6 +538,10 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_migrate_revertsWithInvalidSqrtPrice() public {
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY);
+        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+
         vm.roll(lbp.migrationBlock()); // fast forward to the migration block
         vm.prank(address(tokenLauncher));
         vm.expectRevert(abi.encodeWithSelector(TickMath.InvalidSqrtPrice.selector, 0)); // invalid sqrt price

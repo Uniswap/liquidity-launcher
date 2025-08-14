@@ -11,18 +11,21 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {UnsafeMath} from "@uniswap/v4-core/src/libraries/UnsafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
+import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
+    using UnsafeMath for uint256;
 
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant MAX_TOKEN_SPLIT = 10_000;
@@ -31,10 +34,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable currency;
 
     uint256 public immutable totalSupply;
+    uint256 public immutable reserveSupply;
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
-    uint16 public immutable tokenSplit;
 
     IPositionManager public immutable positionManager;
     IDistributionContract public auction;
@@ -59,11 +62,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         tokenAddress = _tokenAddress;
         currency = migratorParams.currency;
         totalSupply = _totalSupply;
+        reserveSupply = _totalSupply * migratorParams.tokenSplit / MAX_TOKEN_SPLIT;
         positionManager = IPositionManager(migratorParams.positionManager);
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
-        tokenSplit = migratorParams.tokenSplit;
 
         key = PoolKey({
             currency0: currency < tokenAddress ? Currency.wrap(currency) : Currency.wrap(tokenAddress),
@@ -80,14 +83,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
         if (IERC20(token).balanceOf(address(this)) != amount) InvalidAmountReceived.selector.revertWith();
 
-        uint256 auctionSupply = amount * tokenSplit / MAX_TOKEN_SPLIT;
-
         auction = IDistributionStrategy(auctionFactory).initializeDistribution(
-            tokenAddress, auctionSupply, auctionParameters, bytes32(0)
+            tokenAddress, reserveSupply, auctionParameters, bytes32(0)
         );
 
-        IERC20(token).safeTransfer(address(auction), auctionSupply);
-        auction.onTokensReceived(tokenAddress, auctionSupply);
+        IERC20(token).safeTransfer(address(auction), reserveSupply);
+        auction.onTokensReceived(tokenAddress, reserveSupply);
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -112,7 +113,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
         // transfer tokens to the position manager
-        IERC20(tokenAddress).safeTransfer(address(positionManager), initialTokenAmount);
+        IERC20(tokenAddress).safeTransfer(address(positionManager), reserveSupply);
 
         bool currencyIsNative = Currency.wrap(currency).isAddressZero();
         // transfer raised currency to the position manager if currency is not ETH
@@ -140,13 +141,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @return The plan for the position manager
     function _createPlan() internal view returns (bytes memory) {
         bytes memory actions;
+        //bytes[] memory params = new bytes[](5);
         bytes[] memory params = new bytes[](3);
-
-        // actions =
-        //     abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
 
         actions =
             abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
+
+        // actions =
+        //     abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
 
         if (key.currency0 == Currency.wrap(currency)) {
             params[0] = abi.encode(key.currency0, initialCurrencyAmount, false);
@@ -166,14 +168,38 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             Constants.ZERO_BYTES
         );
 
+        // int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
+
+        // params[3] = abi.encode(Currency.wrap(tokenAddress), reserveSupply - initialTokenAmount, false);
+
         // if (key.currency0 == Currency.wrap(currency)) {
-        //     params[3] = abi.encode(key.currency1, totalSupply - initialCurrencyAmount, false);
-        //     params[4] = abi.encode(key, TickMath.MIN_TICK, current tick / tickSpacing * tickSpacing, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
+        //     params[4] = abi.encode(key, TickMath.MIN_TICK, _floorDiv(initialTick, key.tickSpacing) * key.tickSpacing, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
         // } else {
-        //     params[3] = abi.encode(key.currency0, totalSupply - initialTokenAmount, false);
-        //     params[4] = abi.encode(key, ceil(current tick / tickSpacing) * tickSpacing, TickMath.MAX_TICK, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
+        //     params[4] = abi.encode(key, _ceilDiv(initialTick, key.tickSpacing) * key.tickSpacing, TickMath.MAX_TICK, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
         // }
 
         return abi.encode(actions, params);
+    }
+
+    function _floorDiv(int24 a, int24 b) internal pure returns (int24) {
+        int24 result = a / b;
+        int24 rem = a % b;
+        if (rem != 0 && ((a ^ b) < 0)) {
+            // signs differ
+            result -= 1;
+        }
+        return result;
+    }
+
+    function _ceilDiv(int24 a, int24 b) internal pure returns (int24) {
+        int24 result = a / b; // truncates toward zero
+        int24 rem = a % b; // remainder
+
+        // If there's a remainder and signs are the same, we need to bump up
+        if (rem != 0 && ((a ^ b) >= 0)) {
+            // signs are the same
+            result += 1;
+        }
+        return result;
     }
 }

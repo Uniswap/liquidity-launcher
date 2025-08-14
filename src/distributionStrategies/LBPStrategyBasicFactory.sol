@@ -31,8 +31,13 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         view
         returns (address)
     {
-        bytes32 initCodeHash =
-            keccak256(abi.encodePacked(type(LBPStrategyBasic).creationCode, abi.encode(token, totalSupply, configData)));
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(LBPStrategyBasic).creationCode, abi.encode(token, totalSupply, migratorParams, auctionParams)
+            )
+        );
         return Create2.computeAddress(salt, initCodeHash, address(this));
     }
 }
