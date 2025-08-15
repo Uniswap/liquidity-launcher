@@ -13,6 +13,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LBPStrategyBasicNoValidation} from "../mocks/LBPStrategyBasicNoValidation.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
+import {HookAddressHelper} from "../mocks/HookAddressHelper.sol";
 import {TokenLauncher} from "../../src/TokenLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
@@ -21,7 +22,9 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {console2} from "forge-std/console2.sol";
+import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 contract LBPStrategyBasicTest is Test {
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
@@ -32,16 +35,17 @@ contract LBPStrategyBasicTest is Test {
     address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
-    uint256 constant TOTAL_SUPPLY = 1000e18;
-    uint160 constant HOOK_PERMISSION_COUNT = 14;
-    uint160 constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
+    uint256 constant TOTAL_SUPPLY = 1_000e18;
     uint256 constant TOKEN_SPLIT = 5000;
 
-    LBPStrategyBasicNoValidation lbp;
+    LBPStrategyBasic lbp;
     TokenLauncher tokenLauncher;
     LBPStrategyBasicNoValidation impl;
     MockERC20 token;
     MockDistributionStrategy mock;
+    MigratorParameters migratorParams;
+
+    uint256 nextTokenId;
 
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
@@ -50,51 +54,38 @@ contract LBPStrategyBasicTest is Test {
         // deploy the token and give the total supply to the token launcher
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(tokenLauncher));
 
-        // give 1000 DAI to this address
-        deal(DAI, address(this), 1000e18);
+        nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
+
+        // give 1_000 DAI to this address
+        deal(DAI, address(this), 1_000e18);
+
+        // Initialize migratorParams now that mock is deployed
+        migratorParams = MigratorParameters({
+            currency: address(0),
+            fee: 500,
+            positionManager: POSITION_MANAGER,
+            tickSpacing: 1,
+            poolManager: POOL_MANAGER,
+            tokenSplitToAuction: 5000,
+            auctionFactory: address(mock),
+            positionRecipient: address(3),
+            migrationBlock: uint64(block.number + 1_000)
+        });
+
+        // Get the hook address with BEFORE_INITIALIZE permission
+        address hookAddress = HookAddressHelper.getHookAddress(Hooks.BEFORE_INITIALIZE_FLAG);
 
         // set the address of the lbp
-        lbp = LBPStrategyBasicNoValidation(
-            address(
-                uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
-            )
-        );
+        lbp = LBPStrategyBasic(hookAddress);
 
         // Deploy the contract without address validation. This is because it validates the address in the constructor which is not set yet
-        impl = new LBPStrategyBasicNoValidation(
-            address(token),
-            TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: address(0),
-                fee: 500,
-                positionManager: POSITION_MANAGER,
-                tickSpacing: 1,
-                poolManager: POOL_MANAGER,
-                tokenSplit: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
-            }),
-            bytes("")
-        );
+        impl = new LBPStrategyBasicNoValidation(address(token), TOTAL_SUPPLY, migratorParams, bytes(""));
 
-        // set the code of the lbp to the code of the impl
-        vm.etch(address(lbp), address(impl).code);
+        // Set up the hook contract at the correct address
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
 
-        // Copy all storage slots since storage is not copied by default (only the immutable variables are copied)
-        bytes32 value;
-        for (uint256 i = 0; i < 10; i++) {
-            value = vm.load(address(impl), bytes32(i));
-            vm.store(address(lbp), bytes32(i), value);
-        }
-
-        // Update the hooks address in the PoolKey (stored in slot 7)
-        // The hooks address is stored in the lower 20 bytes of slot 7
-        bytes32 slot7 = vm.load(address(lbp), bytes32(uint256(7)));
-        // Clear the lower 20 bytes and set the new hooks address
-        bytes32 updatedSlot7 =
-            (slot7 & bytes32(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFF) << 160)) | bytes32(uint256(uint160(address(lbp))));
-        vm.store(address(lbp), bytes32(uint256(7)), updatedSlot7);
+        // Update the PoolKey hook address (stored in slot 6)
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
     }
 
     function test_setUpProperly() public view {
@@ -102,8 +93,8 @@ contract LBPStrategyBasicTest is Test {
         assertEq(lbp.currency(), address(0));
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
-        assertEq(lbp.positionRecipient(), address(this));
-        assertEq(lbp.migrationBlock(), uint64(block.number + 1000));
+        assertEq(lbp.positionRecipient(), address(3));
+        assertEq(lbp.migrationBlock(), uint64(block.number + 1_000));
         assertEq(lbp.auctionFactory(), address(mock));
         assertEq(address(lbp.auction()), address(0));
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
@@ -130,10 +121,10 @@ contract LBPStrategyBasicTest is Test {
                 positionManager: POSITION_MANAGER,
                 tickSpacing: 100,
                 poolManager: POOL_MANAGER,
-                tokenSplit: 5001, // too many tokens would be sent to the auction
+                tokenSplitToAuction: 5001, // too many tokens would be sent to the auction
                 auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
+                positionRecipient: address(3),
+                migrationBlock: uint64(block.number + 1_000)
             }),
             bytes("")
         );
@@ -166,8 +157,8 @@ contract LBPStrategyBasicTest is Test {
         // verify auction is created and set
         assertNotEq(address(lbp.auction()), address(0));
         // Verify half of the tokens are in the auction and half are in the LBP
-        assertEq(token.balanceOf(address(lbp.auction())), TOTAL_SUPPLY * 5000 / 10000); // half of the tokens are in the auction
-        assertEq(token.balanceOf(address(lbp)), TOTAL_SUPPLY * 5000 / 10000); // half of the tokens are in the LBP
+        assertEq(token.balanceOf(address(lbp.auction())), TOTAL_SUPPLY * 5000 / 1_0000); // half of the tokens are in the auction
+        assertEq(token.balanceOf(address(lbp)), TOTAL_SUPPLY * 5000 / 1_0000); // half of the tokens are in the LBP
     }
 
     function test_onTokensReceived_gas() public {
@@ -222,10 +213,10 @@ contract LBPStrategyBasicTest is Test {
                 positionManager: POSITION_MANAGER,
                 tickSpacing: 100,
                 poolManager: POOL_MANAGER,
-                tokenSplit: 5000,
+                tokenSplitToAuction: 5000,
                 auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
+                positionRecipient: address(3),
+                migrationBlock: uint64(block.number + 1_000)
             }),
             bytes("")
         );
@@ -236,7 +227,7 @@ contract LBPStrategyBasicTest is Test {
         lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
 
         // give the auction DAI
-        deal(DAI, address(lbp.auction()), 1000e18);
+        deal(DAI, address(lbp.auction()), 1_000e18);
 
         // Give the auction contract some ETH so it can attempt to send it (which should fail)
         vm.deal(address(lbp.auction()), 1e18);
@@ -257,10 +248,10 @@ contract LBPStrategyBasicTest is Test {
                 positionManager: POSITION_MANAGER,
                 tickSpacing: 100,
                 poolManager: POOL_MANAGER,
-                tokenSplit: 5000,
+                tokenSplitToAuction: 5000,
                 auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
+                positionRecipient: address(3),
+                migrationBlock: uint64(block.number + 1_000)
             }),
             bytes("")
         );
@@ -272,10 +263,10 @@ contract LBPStrategyBasicTest is Test {
         vm.stopPrank();
 
         // give the auction DAI
-        deal(DAI, address(lbp.auction()), 1000e18);
+        deal(DAI, address(lbp.auction()), 1_000e18);
 
         vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), 1000e18);
+        ERC20(DAI).approve(address(lbp), 1_000e18);
 
         vm.expectEmit(false, false, false, true);
         emit InitialPriceSet(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
@@ -304,10 +295,10 @@ contract LBPStrategyBasicTest is Test {
                 positionManager: POSITION_MANAGER,
                 tickSpacing: 100,
                 poolManager: POOL_MANAGER,
-                tokenSplit: 5000,
+                tokenSplitToAuction: 5000,
                 auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
+                positionRecipient: address(3),
+                migrationBlock: uint64(block.number + 1_000)
             }),
             bytes("")
         );
@@ -319,10 +310,10 @@ contract LBPStrategyBasicTest is Test {
         vm.stopPrank();
 
         // give the auction DAI
-        deal(DAI, address(lbp.auction()), 1000e18);
+        deal(DAI, address(lbp.auction()), 1_000e18);
 
         vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), 1000e18);
+        ERC20(DAI).approve(address(lbp), 1_000e18);
 
         lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
         vm.snapshotGasLastCall("setInitialPriceWithNonETHCurrency");
@@ -363,6 +354,72 @@ contract LBPStrategyBasicTest is Test {
         assertEq(lbp.initialTokenAmount(), TOTAL_SUPPLY / 2);
         assertEq(lbp.initialCurrencyAmount(), 500e18);
         assertEq(address(lbp).balance, 0);
+
+        (PoolKey memory poolKey, PositionInfo info) =
+            IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+        assertEq(Currency.unwrap(poolKey.currency0), address(0));
+        assertEq(Currency.unwrap(poolKey.currency1), address(token));
+        assertEq(poolKey.fee, 500);
+        assertEq(poolKey.tickSpacing, 1);
+        assertEq(info.tickLower(), TickMath.MIN_TICK);
+        assertEq(info.tickUpper(), TickMath.MAX_TICK);
+    }
+
+    function test_migrate_withOneSidedPosition_succeeds() public {
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY); // send all tokens to the LBP
+        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+
+        uint256 ethAmt = 500e18;
+        deal(address(lbp.auction()), ethAmt); // give the auction ETH
+        uint256 tokenAmt = lbp.reserveSupply() / 2;
+        // price is token / eth
+        uint256 priceX192 = FullMath.mulDiv(tokenAmt, 2 ** 192, ethAmt);
+        uint256 sqrtPriceX192 = sqrt(priceX192);
+        uint160 sqrtPriceX96 = uint160(sqrtPriceX192);
+
+        vm.prank(address(lbp.auction()));
+        lbp.setInitialPrice{value: ethAmt}(sqrtPriceX96, tokenAmt, ethAmt);
+
+        // fast forward to the migration block
+        vm.roll(lbp.migrationBlock());
+
+        // migrate
+        vm.prank(address(lbp));
+        lbp.migrate();
+
+        // assert auction has no ETH
+        assertEq(address(lbp.auction()).balance, 0);
+
+        // assert position was created at the correct token id
+        (PoolKey memory poolKey, PositionInfo info) =
+            IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+        assertEq(Currency.unwrap(poolKey.currency0), address(0));
+        assertEq(Currency.unwrap(poolKey.currency1), address(token));
+        assertEq(poolKey.fee, 500);
+        assertEq(poolKey.tickSpacing, 1);
+        assertEq(info.tickLower(), TickMath.MIN_TICK);
+        assertEq(info.tickUpper(), TickMath.MAX_TICK);
+
+        // assert one sided position was created at the correct token id
+        (PoolKey memory poolKey2, PositionInfo info2) =
+            IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
+        assertEq(Currency.unwrap(poolKey2.currency0), address(0));
+        assertEq(Currency.unwrap(poolKey2.currency1), address(token));
+        assertEq(poolKey2.fee, 500);
+        assertEq(poolKey2.tickSpacing, 1);
+        assertEq(info2.tickLower(), TickMath.MIN_TICK);
+        assertEq(info2.tickUpper(), TickMath.getTickAtSqrtPrice(sqrtPriceX96)); // upper tick is inclusive
+    }
+
+    function sqrt(uint256 x) internal pure returns (uint256 y) {
+        if (x == 0) return 0;
+        uint256 z = (x + 1) / 2;
+        y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        }
     }
 
     function test_migrate_withNonETHCurrency_succeeds() public {
@@ -376,30 +433,19 @@ contract LBPStrategyBasicTest is Test {
                 positionManager: POSITION_MANAGER,
                 tickSpacing: 1,
                 poolManager: POOL_MANAGER,
-                tokenSplit: 5000,
+                tokenSplitToAuction: 5000,
                 auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
+                positionRecipient: address(3),
+                migrationBlock: uint64(block.number + 1_000)
             }),
             bytes("")
         );
 
-        vm.etch(address(lbp), address(impl).code);
+        // Set up the hook contract at the correct address
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
 
-        // Copy all storage slots since storage is not copied by default (only the immutable variables are copied)
-        bytes32 value;
-        for (uint256 i = 0; i < 10; i++) {
-            value = vm.load(address(impl), bytes32(i));
-            vm.store(address(lbp), bytes32(i), value);
-        }
-
-        // Update the hooks address in the PoolKey (stored in slot 7)
-        // The hooks address is stored in the lower 20 bytes of slot 7
-        bytes32 slot7 = vm.load(address(lbp), bytes32(uint256(7)));
-        // Clear the lower 20 bytes and set the new hooks address
-        bytes32 updatedSlot7 =
-            (slot7 & bytes32(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFF) << 160)) | bytes32(uint256(uint160(address(lbp))));
-        vm.store(address(lbp), bytes32(uint256(7)), updatedSlot7);
+        // Update the PoolKey hook address (stored in slot 6)
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -463,30 +509,18 @@ contract LBPStrategyBasicTest is Test {
                 positionManager: POSITION_MANAGER,
                 tickSpacing: 1,
                 poolManager: POOL_MANAGER,
-                tokenSplit: 5000,
+                tokenSplitToAuction: 5000,
                 auctionFactory: address(mock),
-                positionRecipient: address(this),
-                migrationBlock: uint64(block.number + 1000)
+                positionRecipient: address(3),
+                migrationBlock: uint64(block.number + 1_000)
             }),
             bytes("")
         );
 
-        vm.etch(address(lbp), address(impl).code);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
 
-        // Copy all storage slots since storage is not copied by default (only the immutable variables are copied)
-        bytes32 value;
-        for (uint256 i = 0; i < 10; i++) {
-            value = vm.load(address(impl), bytes32(i));
-            vm.store(address(lbp), bytes32(i), value);
-        }
-
-        // Update the hooks address in the PoolKey (stored in slot 7)
-        // The hooks address is stored in the lower 20 bytes of slot 7
-        bytes32 slot7 = vm.load(address(lbp), bytes32(uint256(7)));
-        // Clear the lower 20 bytes and set the new hooks address
-        bytes32 updatedSlot7 =
-            (slot7 & bytes32(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFF) << 160)) | bytes32(uint256(uint160(address(lbp))));
-        vm.store(address(lbp), bytes32(uint256(7)), updatedSlot7);
+        // Update the PoolKey hook address (stored in slot 6)
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -495,10 +529,10 @@ contract LBPStrategyBasicTest is Test {
         vm.stopPrank();
 
         // give the auction DAI
-        deal(DAI, address(lbp.auction()), 1000e18);
+        deal(DAI, address(lbp.auction()), 1_000e18);
 
         vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), 1000e18);
+        ERC20(DAI).approve(address(lbp), 1_000e18);
 
         lbp.setInitialPrice(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
         vm.stopPrank();

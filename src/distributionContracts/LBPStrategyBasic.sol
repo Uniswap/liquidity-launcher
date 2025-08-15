@@ -18,7 +18,7 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {console2} from "forge-std/console2.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -38,15 +38,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
-
     IPositionManager public immutable positionManager;
-    IDistributionContract public auction;
 
-    bytes public auctionParameters;
+    IDistributionContract public auction;
+    uint160 public initialSqrtPriceX96; // expressed as currency1/currency0
     uint256 public initialTokenAmount;
     uint256 public initialCurrencyAmount;
-    uint160 public initialSqrtPriceX96; // expressed as currency1/currency0
     PoolKey public key;
+    bytes public auctionParameters;
 
     constructor(
         address _tokenAddress,
@@ -55,14 +54,23 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes memory auctionParams
     ) HookBasic(migratorParams) {
         // validate token split is less than or equal to 50%
-        if (migratorParams.tokenSplit > 5000) TokenSplitTooHigh.selector.revertWith();
+        if (migratorParams.tokenSplitToAuction > 5000) TokenSplitTooHigh.selector.revertWith();
+        if (migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING) TickSpacingTooHigh.selector.revertWith();
+        if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) InvalidFee.selector.revertWith();
+        // cannot mint a position to the zero address (not allowed by the position manager)
+        // address(1) is msg.sender of the migrate action, address(2) is address(this)
+        // if position recipient is a contract, it may need to accept ETH
+        if (
+            migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1)
+                || migratorParams.positionRecipient == address(2)
+        ) InvalidPositionRecipient.selector.revertWith();
 
         auctionParameters = auctionParams;
 
         tokenAddress = _tokenAddress;
         currency = migratorParams.currency;
         totalSupply = _totalSupply;
-        reserveSupply = _totalSupply * migratorParams.tokenSplit / MAX_TOKEN_SPLIT;
+        reserveSupply = _totalSupply - (_totalSupply * migratorParams.tokenSplitToAuction / MAX_TOKEN_SPLIT);
         positionManager = IPositionManager(migratorParams.positionManager);
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
@@ -83,6 +91,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
         if (IERC20(token).balanceOf(address(this)) != amount) InvalidAmountReceived.selector.revertWith();
 
+        // will revert if this was already called
+        // return address instead? and not transfer tokens?
+        // if address already created, this is guaranteed to be the calling contract because of create2
         auction = IDistributionStrategy(auctionFactory).initializeDistribution(
             tokenAddress, reserveSupply, auctionParameters, bytes32(0)
         );
@@ -95,6 +106,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @dev The sqrt price is always expressed as currency1/currency0, where currency0 < currency1
     function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
         if (msg.sender != address(auction)) OnlyAuctionCanSetPrice.selector.revertWith();
+        // auction should also ensure this
+        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+            InvalidSqrtPrice.selector.revertWith();
+        }
         if (Currency.wrap(currency).isAddressZero()) {
             if (msg.value != currencyAmount) InvalidCurrencyAmount.selector.revertWith();
         } else {
@@ -125,7 +140,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
         poolManager.initialize(key, initialSqrtPriceX96);
 
-        bytes memory plan = _createPlan();
+        (bytes memory plan, bytes memory newPlan) = _createPlan();
 
         // if currency is ETH, we need to send ETH to the position manager
         if (currencyIsNative) {
@@ -134,21 +149,25 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             positionManager.modifyLiquidities(plan, block.timestamp + 1);
         }
 
+        if (newPlan.length > 0) {
+            positionManager.modifyLiquidities(newPlan, block.timestamp + 1);
+        }
+
         emit Migrated(key, initialSqrtPriceX96);
     }
 
     /// @notice Creates the plan for the position manager to mint the full range position
     /// @return The plan for the position manager
-    function _createPlan() internal view returns (bytes memory) {
+    function _createPlan() internal view returns (bytes memory, bytes memory) {
         bytes memory actions;
-        //bytes[] memory params = new bytes[](5);
-        bytes[] memory params = new bytes[](3);
+        bytes[] memory params = new bytes[](4);
 
-        actions =
-            abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
-
-        // actions =
-        //     abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
+        actions = abi.encodePacked(
+            uint8(Actions.SETTLE),
+            uint8(Actions.SETTLE),
+            uint8(Actions.MINT_POSITION_FROM_DELTAS),
+            uint8(Actions.TAKE_PAIR)
+        );
 
         if (key.currency0 == Currency.wrap(currency)) {
             params[0] = abi.encode(key.currency0, initialCurrencyAmount, false);
@@ -168,38 +187,56 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             Constants.ZERO_BYTES
         );
 
-        // int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
+        params[3] = abi.encode(key.currency0, key.currency1, positionRecipient);
 
-        // params[3] = abi.encode(Currency.wrap(tokenAddress), reserveSupply - initialTokenAmount, false);
+        bytes memory newActions;
+        bytes[] memory newParams;
 
-        // if (key.currency0 == Currency.wrap(currency)) {
-        //     params[4] = abi.encode(key, TickMath.MIN_TICK, _floorDiv(initialTick, key.tickSpacing) * key.tickSpacing, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
-        // } else {
-        //     params[4] = abi.encode(key, _ceilDiv(initialTick, key.tickSpacing) * key.tickSpacing, TickMath.MAX_TICK, type(uint128).max, type(uint128).max, positionRecipient, Constants.ZERO_BYTES);
-        // }
+        // if reserveSupply - initialTokenAmount != 0, create one sided position
+        // if new tick does not go past min or max tick, create a one sided position. else tokens will stay in this contract (extreme case)
+        if (reserveSupply - initialTokenAmount != 0) {
+            int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
-        return abi.encode(actions, params);
-    }
-
-    function _floorDiv(int24 a, int24 b) internal pure returns (int24) {
-        int24 result = a / b;
-        int24 rem = a % b;
-        if (rem != 0 && ((a ^ b) < 0)) {
-            // signs differ
-            result -= 1;
+            // if amt of ticks between absolute value of current tick and max tick is less than tick spacing, cannot create
+            if (TickMath.MAX_TICK - initialTick > key.tickSpacing && initialTick - TickMath.MIN_TICK >= key.tickSpacing)
+            {
+                // create new actions and params
+                newActions = abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
+                newParams = new bytes[](2);
+                newParams[0] = abi.encode(Currency.wrap(tokenAddress), reserveSupply - initialTokenAmount, false);
+                if (key.currency0 == Currency.wrap(currency)) {
+                    newParams[1] = abi.encode(
+                        key,
+                        TickMath.MIN_TICK,
+                        // could be current tick or lower
+                        // what if this is max tick? - full range. okay?
+                        // if this is min tick or less, cannot create! (if current tick - min tick < tick spacing, cannot create)
+                        (
+                            initialTick / key.tickSpacing
+                                - (initialTick % key.tickSpacing != 0 && initialTick < 0 ? int24(1) : int24(0))
+                        ) * key.tickSpacing, // go to previous tick or self that is a multiple of tick spacing; upper tick is exclusive
+                        type(uint128).max,
+                        type(uint128).max,
+                        positionRecipient,
+                        Constants.ZERO_BYTES
+                    );
+                } else {
+                    newParams[1] = abi.encode(
+                        key,
+                        // will never be min tick.
+                        // current is min, this would be [min+1, MAX)
+                        // if this is max tick or greater, cannot create! (if max tick - current tick < tick spacing, cannot create)
+                        (initialTick / key.tickSpacing + 1) * key.tickSpacing, // go to next tick that is a multiple of tick spacing; lower tick is inclusive
+                        TickMath.MAX_TICK,
+                        type(uint128).max,
+                        type(uint128).max,
+                        positionRecipient,
+                        Constants.ZERO_BYTES
+                    );
+                }
+            }
         }
-        return result;
-    }
 
-    function _ceilDiv(int24 a, int24 b) internal pure returns (int24) {
-        int24 result = a / b; // truncates toward zero
-        int24 rem = a % b; // remainder
-
-        // If there's a remainder and signs are the same, we need to bump up
-        if (rem != 0 && ((a ^ b) >= 0)) {
-            // signs are the same
-            result += 1;
-        }
-        return result;
+        return (abi.encode(actions, params), abi.encode(newActions, newParams));
     }
 }

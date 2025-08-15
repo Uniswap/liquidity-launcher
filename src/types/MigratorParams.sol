@@ -12,7 +12,7 @@ struct MigratorParameters {
     address positionManager;
     int24 tickSpacing;
     address poolManager;
-    uint16 tokenSplit;
+    uint16 tokenSplitToAuction;
     address auctionFactory;
     address positionRecipient;
 }

@@ -28,6 +28,18 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the token split is too high
     error TokenSplitTooHigh();
 
+    /// @notice Error thrown when the tick spacing is greater than the max tick spacing
+    error TickSpacingTooHigh();
+
+    /// @notice Error thrown when the fee is greater than the max fee
+    error InvalidFee();
+
+    /// @notice Error thrown when the position recipient is the zero address
+    error InvalidPositionRecipient();
+
+    /// @notice Error thrown when the sqrt price is not within bounds
+    error InvalidSqrtPrice();
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
 
