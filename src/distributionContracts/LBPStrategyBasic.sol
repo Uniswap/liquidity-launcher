@@ -140,7 +140,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
         poolManager.initialize(key, initialSqrtPriceX96);
 
-        (bytes memory plan, bytes memory newPlan) = _createPlan();
+        (bytes memory plan) = _createPlan();
 
         // if currency is ETH, we need to send ETH to the position manager
         if (currencyIsNative) {
@@ -149,16 +149,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             positionManager.modifyLiquidities(plan, block.timestamp + 1);
         }
 
-        if (newPlan.length > 0) {
-            positionManager.modifyLiquidities(newPlan, block.timestamp + 1);
-        }
-
         emit Migrated(key, initialSqrtPriceX96);
     }
 
     /// @notice Creates the plan for the position manager to mint the full range position
     /// @return The plan for the position manager
-    function _createPlan() internal view returns (bytes memory, bytes memory) {
+    function _createPlan() internal view returns (bytes memory) {
         bytes memory actions;
         bytes[] memory params = new bytes[](4);
 
@@ -189,9 +185,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         params[3] = abi.encode(key.currency0, key.currency1, positionRecipient); // where should dust go? if position recipient is a contract, it may have to be able to accept ETH
 
-        bytes memory newActions;
-        bytes[] memory newParams;
-
         // if reserveSupply - initialTokenAmount != 0, create one sided position
         // if new tick does not go past min or max tick, create a one sided position. else tokens will stay in this contract (extreme case)
         if (reserveSupply - initialTokenAmount != 0) {
@@ -200,12 +193,20 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // if amt of ticks between absolute value of current tick and max tick is less than tick spacing, cannot create
             if (TickMath.MAX_TICK - initialTick > key.tickSpacing && initialTick - TickMath.MIN_TICK >= key.tickSpacing)
             {
+                // expand action and params by 2 length
+                actions = abi.encodePacked(actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
+
+                // Create new params array and copy old params
+                bytes[] memory newParams = new bytes[](params.length + 2);
+                for (uint256 i = 0; i < params.length; i++) {
+                    newParams[i] = params[i];
+                }
+                params = newParams;
+
                 // create new actions and params
-                newActions = abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
-                newParams = new bytes[](2);
-                newParams[0] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
+                params[4] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
                 if (key.currency0 == Currency.wrap(currency)) {
-                    newParams[1] = abi.encode(
+                    params[5] = abi.encode(
                         key,
                         TickMath.MIN_TICK,
                         // could be current tick or lower
@@ -221,7 +222,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                         Constants.ZERO_BYTES
                     );
                 } else {
-                    newParams[1] = abi.encode(
+                    params[5] = abi.encode(
                         key,
                         // will never be min tick.
                         // current is min, this would be [min+1, MAX)
@@ -237,6 +238,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             }
         }
 
-        return (abi.encode(actions, params), abi.encode(newActions, newParams));
+        return abi.encode(actions, params);
     }
 }
