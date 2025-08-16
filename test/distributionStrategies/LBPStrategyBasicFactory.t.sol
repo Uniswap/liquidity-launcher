@@ -59,7 +59,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         );
 
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
-        assertEq(lbp.tokenAddress(), address(token));
+        assertEq(lbp.token(), address(token));
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(0));

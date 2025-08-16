@@ -11,7 +11,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {UnsafeMath} from "@uniswap/v4-core/src/libraries/UnsafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
@@ -25,12 +24,12 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
-    using UnsafeMath for uint256;
 
     /// @notice The token split is measured in bips (10_000 = 100%)
-    uint16 public constant MAX_TOKEN_SPLIT = 10_000;
+    uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
+    uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5000;
 
-    address public immutable tokenAddress;
+    address public immutable token;
     address public immutable currency;
 
     uint256 public immutable totalSupply;
@@ -48,13 +47,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     bytes public auctionParameters;
 
     constructor(
-        address _tokenAddress,
+        address _token,
         uint256 _totalSupply,
         MigratorParameters memory migratorParams,
         bytes memory auctionParams
     ) HookBasic(migratorParams) {
         // validate token split is less than or equal to 50%
-        if (migratorParams.tokenSplitToAuction > 5000) TokenSplitTooHigh.selector.revertWith();
+        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) TokenSplitTooHigh.selector.revertWith();
         if (migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING) TickSpacingTooHigh.selector.revertWith();
         if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) InvalidFee.selector.revertWith();
         // cannot mint a position to the zero address (not allowed by the position manager)
@@ -65,20 +64,24 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 || migratorParams.positionRecipient == address(2)
         ) InvalidPositionRecipient.selector.revertWith();
 
+        // bad if there is a mistake that occurs because then tokens can get trapped in auction contract.
+        // check if position manager, pool manager are all not the zero address
+        // check that token address and currency are not the same
+
         auctionParameters = auctionParams;
 
-        tokenAddress = _tokenAddress;
+        token = _token;
         currency = migratorParams.currency;
         totalSupply = _totalSupply;
-        reserveSupply = _totalSupply - (_totalSupply * migratorParams.tokenSplitToAuction / MAX_TOKEN_SPLIT);
+        reserveSupply = _totalSupply - (_totalSupply * migratorParams.tokenSplitToAuction / TOKEN_SPLIT_DENOMINATOR);
         positionManager = IPositionManager(migratorParams.positionManager);
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
 
         key = PoolKey({
-            currency0: currency < tokenAddress ? Currency.wrap(currency) : Currency.wrap(tokenAddress),
-            currency1: currency < tokenAddress ? Currency.wrap(tokenAddress) : Currency.wrap(currency),
+            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
+            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
             fee: migratorParams.fee,
             tickSpacing: migratorParams.tickSpacing,
             hooks: IHooks(address(this))
@@ -86,20 +89,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc IDistributionContract
-    function onTokensReceived(address token, uint256 amount) external {
-        if (token != address(tokenAddress)) InvalidToken.selector.revertWith();
-        if (amount != totalSupply) IncorrectTokenSupply.selector.revertWith();
-        if (IERC20(token).balanceOf(address(this)) != amount) InvalidAmountReceived.selector.revertWith();
+    function onTokensReceived() external {
+        if (IERC20(token).balanceOf(address(this)) != totalSupply) InvalidAmountReceived.selector.revertWith();
 
-        // will revert if this was already called
-        // return address instead? and not transfer tokens?
-        // if address already created, this is guaranteed to be the calling contract because of create2
         auction = IDistributionStrategy(auctionFactory).initializeDistribution(
-            tokenAddress, reserveSupply, auctionParameters, bytes32(0)
+            token, reserveSupply, auctionParameters, bytes32(0)
         );
 
         IERC20(token).safeTransfer(address(auction), reserveSupply);
-        auction.onTokensReceived(tokenAddress, reserveSupply);
+        auction.onTokensReceived();
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -128,7 +126,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
 
         // transfer tokens to the position manager
-        IERC20(tokenAddress).safeTransfer(address(positionManager), reserveSupply);
+        IERC20(token).safeTransfer(address(positionManager), reserveSupply);
 
         bool currencyIsNative = Currency.wrap(currency).isAddressZero();
         // transfer raised currency to the position manager if currency is not ETH
@@ -203,7 +201,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // create new actions and params
                 newActions = abi.encodePacked(uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
                 newParams = new bytes[](2);
-                newParams[0] = abi.encode(Currency.wrap(tokenAddress), reserveSupply - initialTokenAmount, false);
+                newParams[0] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
                 if (key.currency0 == Currency.wrap(currency)) {
                     newParams[1] = abi.encode(
                         key,

@@ -89,7 +89,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUpProperly() public view {
-        assertEq(lbp.tokenAddress(), address(token));
+        assertEq(lbp.token(), address(token));
         assertEq(lbp.currency(), address(0));
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
@@ -130,29 +130,17 @@ contract LBPStrategyBasicTest is Test {
         );
     }
 
-    function test_onTokenReceived_revertsWithInvalidToken() public {
-        vm.prank(address(tokenLauncher));
-        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector));
-        lbp.onTokensReceived(address(0), TOTAL_SUPPLY); // token address is not the same as the token address set in the contract
-    }
-
-    function test_onTokenReceived_revertsWithIncorrectTokenSupply() public {
-        vm.prank(address(tokenLauncher));
-        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.IncorrectTokenSupply.selector));
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY - 1); // token supply is not the same as the total supply set in the contract
-    }
-
     function test_onTokenReceived_revertsWithInvalidAmountReceived() public {
         vm.prank(address(tokenLauncher));
         ERC20(token).transfer(address(lbp), TOTAL_SUPPLY - 1); // incorrect amount of tokens were transferred to the contract
         vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidAmountReceived.selector));
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
     }
 
     function test_onTokenReceived_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY); // transfer all the tokens from the token launcher contract to the lbp contract
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         // verify auction is created and set
         assertNotEq(address(lbp.auction()), address(0));
@@ -164,7 +152,7 @@ contract LBPStrategyBasicTest is Test {
     function test_onTokensReceived_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
         vm.snapshotGasLastCall("onTokensReceived");
     }
 
@@ -224,7 +212,7 @@ contract LBPStrategyBasicTest is Test {
         // First, we need to initialize the auction by sending tokens to the LBP
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         // give the auction DAI
         deal(DAI, address(lbp.auction()), 1_000e18);
@@ -259,7 +247,7 @@ contract LBPStrategyBasicTest is Test {
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
         vm.stopPrank();
 
         // give the auction DAI
@@ -306,7 +294,7 @@ contract LBPStrategyBasicTest is Test {
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
         vm.stopPrank();
 
         // give the auction DAI
@@ -327,7 +315,7 @@ contract LBPStrategyBasicTest is Test {
     function test_migrate_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         // give the auction ETH
         deal(address(lbp.auction()), 500e18);
@@ -368,7 +356,7 @@ contract LBPStrategyBasicTest is Test {
     function test_migrate_withOneSidedPosition_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY); // send all tokens to the LBP
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         uint256 ethAmt = 500e18;
         deal(address(lbp.auction()), ethAmt); // give the auction ETH
@@ -450,7 +438,7 @@ contract LBPStrategyBasicTest is Test {
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
         vm.stopPrank();
 
         // give the auction DAI
@@ -480,7 +468,7 @@ contract LBPStrategyBasicTest is Test {
     function test_migrate_withETH_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         // give the auction ETH
         deal(address(lbp.auction()), 500e18);
@@ -525,7 +513,7 @@ contract LBPStrategyBasicTest is Test {
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
         vm.stopPrank();
 
         // give the auction DAI
@@ -548,7 +536,7 @@ contract LBPStrategyBasicTest is Test {
     function test_migrate_revertsWithAlreadyInitialized() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         // give the auction ETH
         deal(address(lbp.auction()), 500e18);
@@ -574,7 +562,7 @@ contract LBPStrategyBasicTest is Test {
     function test_migrate_revertsWithInvalidSqrtPrice() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived(address(token), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
 
         vm.roll(lbp.migrationBlock()); // fast forward to the migration block
         vm.prank(address(tokenLauncher));

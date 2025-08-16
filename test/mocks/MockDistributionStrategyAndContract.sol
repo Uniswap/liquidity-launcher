@@ -14,5 +14,5 @@ contract MockDistributionStrategyAndContract is IDistributionStrategy, IDistribu
         return IDistributionContract(address(this));
     }
 
-    function onTokensReceived(address token, uint256 amount) external {}
+    function onTokensReceived() external {}
 }

@@ -52,7 +52,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
 
         // Notify the distribution contract that it has received the tokens
-        distributionContract.onTokensReceived(token, distribution.amount);
+        distributionContract.onTokensReceived();
 
         emit TokenDistributed(token, address(distributionContract), distribution.amount);
     }

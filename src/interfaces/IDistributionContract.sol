@@ -12,7 +12,5 @@ interface IDistributionContract {
     error InvalidAmountReceived();
 
     /// @notice Notify a distribution contract that it has received the tokens to distribute
-    /// @param token The address of the token to be distributed.
-    /// @param amount The amount of tokens intended for distribution.
-    function onTokensReceived(address token, uint256 amount) external;
+    function onTokensReceived() external;
 }
