@@ -54,7 +54,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ) HookBasic(migratorParams) {
         // validate token split is less than or equal to 50%
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) TokenSplitTooHigh.selector.revertWith();
-        if (migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING) TickSpacingTooHigh.selector.revertWith();
+        // these would prevent liquidity from being migrated
+        if (
+            migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING
+                || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
+        ) InvalidTickSpacing.selector.revertWith();
         if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) InvalidFee.selector.revertWith();
         // cannot mint a position to the zero address (not allowed by the position manager)
         // address(1) is msg.sender of the migrate action, address(2) is address(this)
@@ -63,10 +67,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1)
                 || migratorParams.positionRecipient == address(2)
         ) InvalidPositionRecipient.selector.revertWith();
+        if (_token == migratorParams.currency) InvalidTokenAndCurrency.selector.revertWith();
 
-        // bad if there is a mistake that occurs because then tokens can get trapped in auction contract.
-        // check if position manager, pool manager are all not the zero address
-        // check that token address and currency are not the same
+        // if there is a mistake that occurs, tokens can get trapped in auction contract.
+        if (migratorParams.positionManager == address(0)) InvalidPositionManager.selector.revertWith();
+        if (migratorParams.poolManager == address(0)) InvalidPoolManager.selector.revertWith();
 
         auctionParameters = auctionParams;
 
@@ -104,10 +109,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @dev The sqrt price is always expressed as currency1/currency0, where currency0 < currency1
     function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
         if (msg.sender != address(auction)) OnlyAuctionCanSetPrice.selector.revertWith();
-        // auction should also ensure this
-        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            InvalidSqrtPrice.selector.revertWith();
-        }
+        // auction should ensure price is not less than min or greater than max. If it is, it will not be able to migrate.
         if (Currency.wrap(currency).isAddressZero()) {
             if (msg.value != currencyAmount) InvalidCurrencyAmount.selector.revertWith();
         } else {
@@ -185,7 +187,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             Constants.ZERO_BYTES
         );
 
-        params[3] = abi.encode(key.currency0, key.currency1, positionRecipient);
+        params[3] = abi.encode(key.currency0, key.currency1, positionRecipient); // where should dust go? if position recipient is a contract, it may have to be able to accept ETH
 
         bytes memory newActions;
         bytes[] memory newParams;
@@ -213,7 +215,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                             initialTick / key.tickSpacing
                                 - (initialTick % key.tickSpacing != 0 && initialTick < 0 ? int24(1) : int24(0))
                         ) * key.tickSpacing, // go to previous tick or self that is a multiple of tick spacing; upper tick is exclusive
-                        type(uint128).max,
+                        0, // one sided position - no currency will be sent, only token
                         type(uint128).max,
                         positionRecipient,
                         Constants.ZERO_BYTES
@@ -227,7 +229,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                         (initialTick / key.tickSpacing + 1) * key.tickSpacing, // go to next tick that is a multiple of tick spacing; lower tick is inclusive
                         TickMath.MAX_TICK,
                         type(uint128).max,
-                        type(uint128).max,
+                        0, // one sided position - no currency will be sent, only token
                         positionRecipient,
                         Constants.ZERO_BYTES
                     );

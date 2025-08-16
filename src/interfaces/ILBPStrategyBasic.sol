@@ -13,7 +13,7 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Emitted when the initial price is set
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
 
-    /// @notice Error thrown when migration to a v4 poolis not allowed yet
+    /// @notice Error thrown when migration to a v4 pool is not allowed yet
     error MigrationNotAllowed();
 
     /// @notice Error thrown when caller is not the auction contract
@@ -28,17 +28,23 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the token split is too high
     error TokenSplitTooHigh();
 
-    /// @notice Error thrown when the tick spacing is greater than the max tick spacing
-    error TickSpacingTooHigh();
+    /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
+    error InvalidTickSpacing();
 
     /// @notice Error thrown when the fee is greater than the max fee
     error InvalidFee();
 
-    /// @notice Error thrown when the position recipient is the zero address
+    /// @notice Error thrown when the position recipient is the zero address, address(1), or address(2)
     error InvalidPositionRecipient();
 
-    /// @notice Error thrown when the sqrt price is not within bounds
-    error InvalidSqrtPrice();
+    /// @notice Error thrown when the position manager is the zero address
+    error InvalidPositionManager();
+
+    /// @notice Error thrown when the pool manager is the zero address
+    error InvalidPoolManager();
+
+    /// @notice Error thrown when the token and currency are the same
+    error InvalidTokenAndCurrency();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
