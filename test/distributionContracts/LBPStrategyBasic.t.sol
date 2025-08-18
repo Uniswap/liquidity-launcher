@@ -598,6 +598,44 @@ contract LBPStrategyBasicTest is Test {
         vm.stopPrank();
     }
 
+    function test_migrate_revertsWithAlreadyInitialized() public {
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
+
+        // give the auction ETH
+        deal(address(lbp.auction()), 500e18);
+
+        // set the initial price
+        vm.prank(address(lbp.auction()));
+        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
+
+        // fast forward to the migration block
+        vm.roll(lbp.migrationBlock());
+
+        // migrate
+        vm.prank(address(lbp));
+        lbp.migrate();
+
+        // give the auction more tokens for test purposes
+        deal(address(token), address(lbp), TOTAL_SUPPLY);
+
+        vm.expectRevert(abi.encodeWithSelector(Pool.PoolAlreadyInitialized.selector)); // pool is already initialized. Cannot migrate again
+        lbp.migrate();
+    }
+
+    function test_migrate_revertsWithInvalidSqrtPrice() public {
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
+
+        vm.roll(lbp.migrationBlock()); // fast forward to the migration block
+        vm.prank(address(tokenLauncher));
+        vm.expectRevert(abi.encodeWithSelector(TickMath.InvalidSqrtPrice.selector, 0)); // invalid sqrt price
+        // setInitialPrice was never called by the auction
+        lbp.migrate();
+    }
+
     function test_migrate_withETH_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
@@ -745,43 +783,5 @@ contract LBPStrategyBasicTest is Test {
         // migrate
         lbp.migrate();
         vm.snapshotGasLastCall("migrateWithNonETHCurrency_withOneSidedPosition");
-    }
-
-    function test_migrate_revertsWithAlreadyInitialized() public {
-        vm.prank(address(tokenLauncher));
-        token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-
-        // give the auction ETH
-        deal(address(lbp.auction()), 500e18);
-
-        // set the initial price
-        vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
-
-        // fast forward to the migration block
-        vm.roll(lbp.migrationBlock());
-
-        // migrate
-        vm.prank(address(lbp));
-        lbp.migrate();
-
-        // give the auction more tokens for test purposes
-        deal(address(token), address(lbp), TOTAL_SUPPLY);
-
-        vm.expectRevert(abi.encodeWithSelector(Pool.PoolAlreadyInitialized.selector)); // pool is already initialized. Cannot migrate again
-        lbp.migrate();
-    }
-
-    function test_migrate_revertsWithInvalidSqrtPrice() public {
-        vm.prank(address(tokenLauncher));
-        token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-
-        vm.roll(lbp.migrationBlock()); // fast forward to the migration block
-        vm.prank(address(tokenLauncher));
-        vm.expectRevert(abi.encodeWithSelector(TickMath.InvalidSqrtPrice.selector, 0)); // invalid sqrt price
-        // setInitialPrice was never called by the auction
-        lbp.migrate();
     }
 }

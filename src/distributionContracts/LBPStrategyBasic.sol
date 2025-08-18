@@ -145,12 +145,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         //      - Initial price is not set (sqrtPriceX96 = 0)
         poolManager.initialize(key, initialSqrtPriceX96);
 
-        bool currencyIsCurrency0 = key.currency0 == Currency.wrap(currency);
-
-        (bytes memory actions, bytes[] memory params) = _createFullRangePositionPlan(currencyIsCurrency0);
+        (bytes memory actions, bytes[] memory params) = _createFullRangePositionPlan();
         // occurs whenever final price > initial clearing price
         if (reserveSupply > initialTokenAmount) {
-            (actions, params) = _createOneSidedPositionPlan(actions, params, currencyIsCurrency0);
+            (actions, params) = _createOneSidedPositionPlan(actions, params);
         }
 
         bytes memory plan = abi.encode(actions, params);
@@ -165,11 +163,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
-    function _createFullRangePositionPlan(bool currencyIsCurrency0)
-        internal
-        view
-        returns (bytes memory, bytes[] memory)
-    {
+    function _createFullRangePositionPlan() internal view returns (bytes memory, bytes[] memory) {
         bytes memory actions;
         bytes[] memory params = new bytes[](4);
 
@@ -180,7 +174,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             uint8(Actions.TAKE_PAIR)
         );
 
-        if (currencyIsCurrency0) {
+        if (key.currency0 == Currency.wrap(currency)) {
             params[0] = abi.encode(key.currency0, initialCurrencyAmount, false);
             params[1] = abi.encode(key.currency1, initialTokenAmount, false);
         } else {
@@ -203,49 +197,41 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return (actions, params);
     }
 
-    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, bool currencyIsCurrency0)
+    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params)
         internal
         view
         returns (bytes memory newActions, bytes[] memory newParams)
     {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
-        // Skip position creation if initial tick is too close to boundaries
-        // Need more than one tick spacing from both MIN_TICK and MAX_TICK to ensure valid position ranges
-        if (TickMath.MAX_TICK - initialTick <= key.tickSpacing || initialTick - TickMath.MIN_TICK < key.tickSpacing) {
-            return (actions, params);
-        }
+        if (key.currency0 == Currency.wrap(currency)) {
+            // Skip position creation if initial tick is too close to boundaries
+            if (initialTick - TickMath.MIN_TICK < key.tickSpacing) {
+                return (actions, params);
+            }
+            (newActions, newParams) = _setUpActionsAndParams(actions, params);
 
-        // expand action and params by 3 length
-        newActions = abi.encodePacked(
-            actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.TAKE)
-        );
-
-        // Create new params array and copy old params
-        newParams = new bytes[](params.length + 3);
-        for (uint256 i = 0; i < params.length; i++) {
-            newParams[i] = params[i];
-        }
-
-        // create new actions and params
-        newParams[4] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
-
-        if (currencyIsCurrency0) {
             // Position is on the left hand side of current tick
-            // For a one-sided position, we create a range from [MIN_TICK, current tick) (upper tick is exclusive)
+            // For a one-sided position, we create a range from [MIN_TICK, current tick) (because upper tick is exclusive)
             // The upper tick must be a multiple of tickSpacing and exclusive
             newParams[5] = abi.encode(
                 key,
                 TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing, // Lower tick rounded to tickSpacing towards 0
-                _floorToTickSpacing(initialTick, key.tickSpacing), // Upper tick rounded down or the same to tickSpacing multiple
+                _roundDownToTickSpacing(initialTick, key.tickSpacing), // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
                 0, // No currency amount (one-sided position)
                 type(uint128).max, // Maximum token amount
                 positionRecipient,
                 Constants.ZERO_BYTES
             );
         } else {
+            // Skip position creation if initial tick is too close to boundaries
+            if (TickMath.MAX_TICK - initialTick <= key.tickSpacing) {
+                return (actions, params);
+            }
+            (newActions, newParams) = _setUpActionsAndParams(actions, params);
+
             // Position is on the right hand side of current tick
-            // For a one-sided position, we create a range from (current tick, MAX_TICK) (lower tick is inclusive)
+            // For a one-sided position, we create a range from (current tick, MAX_TICK) (because lower tick is inclusive)
             // The lower tick must be:
             // - A multiple of tickSpacing (inclusive)
             // - Greater than current tick
@@ -267,9 +253,25 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return (newActions, newParams);
     }
 
-    function _floorToTickSpacing(int24 tick, int24 tickSpacing) private pure returns (int24) {
+    function _roundDownToTickSpacing(int24 tick, int24 tickSpacing) private pure returns (int24) {
         int24 compressed = tick / tickSpacing;
         if (tick < 0 && tick % tickSpacing != 0) compressed--;
         return compressed * tickSpacing;
+    }
+
+    function _setUpActionsAndParams(bytes memory actions, bytes[] memory params)
+        internal
+        view
+        returns (bytes memory, bytes[] memory)
+    {
+        bytes memory newActions = abi.encodePacked(
+            actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.TAKE)
+        );
+        bytes[] memory newParams = new bytes[](params.length + 3);
+        for (uint256 i = 0; i < params.length; i++) {
+            newParams[i] = params[i];
+        }
+        newParams[4] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
+        return (newActions, newParams);
     }
 }
