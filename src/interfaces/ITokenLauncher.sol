@@ -32,7 +32,7 @@ interface ITokenLauncher {
         string calldata name,
         string calldata symbol,
         uint8 decimals,
-        uint256 initialSupply,
+        uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
     ) external returns (address tokenAddress);

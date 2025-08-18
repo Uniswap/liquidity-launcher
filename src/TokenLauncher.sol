@@ -24,7 +24,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         string calldata name,
         string calldata symbol,
         uint8 decimals,
-        uint256 initialSupply,
+        uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
     ) external override returns (address tokenAddress) {

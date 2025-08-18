@@ -43,7 +43,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             image: "https://test.com/image.png"
         });
 
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
@@ -102,7 +102,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     }
 
     function test_multicall_permit_and_distribute_token() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);
         // Set up permit2 approval
         vm.prank(bob);
@@ -144,7 +144,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             image: "https://test.com/image.png"
         });
 
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
@@ -181,7 +181,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     // forge-config: default.isolate = true
     // forge-config: ci.isolate = true
     function test_multicall_permit_and_distribute_token_gas() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);
         // Set up permit2 approval
         vm.prank(bob);

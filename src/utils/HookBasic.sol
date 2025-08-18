@@ -6,7 +6,6 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {MigratorParameters} from "../types/MigratorParams.sol";
 
 /// @title HookBasic
 /// @notice Hook contract that only allows itself to initialize the pool
@@ -14,7 +13,7 @@ contract HookBasic is BaseHook {
     /// @notice Error thrown when the initializer of the pool is not the strategy contract
     error InvalidInitializer(address caller, address strategy);
 
-    constructor(MigratorParameters memory migratorParams) BaseHook(IPoolManager(migratorParams.poolManager)) {}
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
     /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -40,11 +39,5 @@ contract HookBasic is BaseHook {
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
         if (sender != address(this)) revert InvalidInitializer(sender, address(this));
         return IHooks.beforeInitialize.selector;
-    }
-
-    /// @notice Helper function to extract poolManager from configData
-    function _extractPoolManager(bytes memory configData) private pure returns (IPoolManager) {
-        (MigratorParameters memory parameters,) = abi.decode(configData, (MigratorParameters, bytes));
-        return IPoolManager(parameters.poolManager);
     }
 }

@@ -8,7 +8,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -17,7 +19,6 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -27,20 +28,20 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
-    uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5000;
+    uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
 
     address public immutable token;
     address public immutable currency;
 
-    uint256 public immutable totalSupply;
-    uint256 public immutable reserveSupply;
+    uint128 public immutable totalSupply;
+    uint128 public immutable reserveSupply;
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
     IPositionManager public immutable positionManager;
 
     IDistributionContract public auction;
-    uint160 public initialSqrtPriceX96; // expressed as currency1/currency0
+    uint160 public initialSqrtPriceX96; // expressed in terms of currency1/currency0 where currency0 < currency1
     uint256 public initialTokenAmount;
     uint256 public initialCurrencyAmount;
     PoolKey public key;
@@ -48,10 +49,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     constructor(
         address _token,
-        uint256 _totalSupply,
+        uint128 _totalSupply,
         MigratorParameters memory migratorParams,
-        bytes memory auctionParams
-    ) HookBasic(migratorParams) {
+        bytes memory auctionParams,
+        IPositionManager _positionManager,
+        IPoolManager _poolManager
+    ) HookBasic(_poolManager) {
         // validate token split is less than or equal to 50%
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) TokenSplitTooHigh.selector.revertWith();
         // these would prevent liquidity from being migrated
@@ -69,17 +72,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         ) InvalidPositionRecipient.selector.revertWith();
         if (_token == migratorParams.currency) InvalidTokenAndCurrency.selector.revertWith();
 
-        // if there is a mistake that occurs, tokens can get trapped in auction contract.
-        if (migratorParams.positionManager == address(0)) InvalidPositionManager.selector.revertWith();
-        if (migratorParams.poolManager == address(0)) InvalidPoolManager.selector.revertWith();
-
         auctionParameters = auctionParams;
 
         token = _token;
         currency = migratorParams.currency;
         totalSupply = _totalSupply;
         reserveSupply = _totalSupply - (_totalSupply * migratorParams.tokenSplitToAuction / TOKEN_SPLIT_DENOMINATOR);
-        positionManager = IPositionManager(migratorParams.positionManager);
+        positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
@@ -140,7 +139,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // fails if already initialized or if the price is not set / is 0 (MIN_SQRT_PRICE is 4295128739)
         poolManager.initialize(key, initialSqrtPriceX96);
 
-        (bytes memory plan) = _createPlan();
+        (bytes memory actions, bytes[] memory params) = _createFullRangePosition();
+        // occurs whenever final price > initial clearing price
+        if (reserveSupply > initialTokenAmount) {
+            (actions, params) = _createOneSidedPosition(actions, params);
+        }
+
+        bytes memory plan = abi.encode(actions, params);
 
         // if currency is ETH, we need to send ETH to the position manager
         if (currencyIsNative) {
@@ -152,9 +157,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
-    /// @notice Creates the plan for the position manager to mint the full range position
-    /// @return The plan for the position manager
-    function _createPlan() internal view returns (bytes memory) {
+    function _createFullRangePosition() internal view returns (bytes memory, bytes[] memory) {
         bytes memory actions;
         bytes[] memory params = new bytes[](4);
 
@@ -175,8 +178,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         params[2] = abi.encode(
             key,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK,
+            TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing,
+            TickMath.MAX_TICK / key.tickSpacing * key.tickSpacing,
             type(uint128).max,
             type(uint128).max,
             positionRecipient,
@@ -185,59 +188,66 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         params[3] = abi.encode(key.currency0, key.currency1, positionRecipient); // where should dust go? if position recipient is a contract, it may have to be able to accept ETH
 
-        // if reserveSupply - initialTokenAmount != 0, create one sided position
-        // if new tick does not go past min or max tick, create a one sided position. else tokens will stay in this contract (extreme case)
-        if (reserveSupply - initialTokenAmount != 0) {
-            int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
+        return (actions, params);
+    }
 
-            // if amt of ticks between absolute value of current tick and max tick is less than tick spacing, cannot create
-            if (TickMath.MAX_TICK - initialTick > key.tickSpacing && initialTick - TickMath.MIN_TICK >= key.tickSpacing)
-            {
-                // expand action and params by 2 length
-                actions = abi.encodePacked(actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS));
+    function _createOneSidedPosition(bytes memory actions, bytes[] memory params)
+        internal
+        view
+        returns (bytes memory, bytes[] memory)
+    {
+        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
-                // Create new params array and copy old params
-                bytes[] memory newParams = new bytes[](params.length + 2);
-                for (uint256 i = 0; i < params.length; i++) {
-                    newParams[i] = params[i];
-                }
-                params = newParams;
+        // if amt of ticks between absolute value of current tick and max tick is less than tick spacing, cannot create
+        if (TickMath.MAX_TICK - initialTick > key.tickSpacing && initialTick - TickMath.MIN_TICK >= key.tickSpacing) {
+            // expand action and params by 2 length
+            actions = abi.encodePacked(
+                actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.TAKE)
+            );
 
-                // create new actions and params
-                params[4] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
-                if (key.currency0 == Currency.wrap(currency)) {
-                    params[5] = abi.encode(
-                        key,
-                        TickMath.MIN_TICK,
-                        // could be current tick or lower
-                        // what if this is max tick? - full range. okay?
-                        // if this is min tick or less, cannot create! (if current tick - min tick < tick spacing, cannot create)
-                        (
-                            initialTick / key.tickSpacing
-                                - (initialTick % key.tickSpacing != 0 && initialTick < 0 ? int24(1) : int24(0))
-                        ) * key.tickSpacing, // go to previous tick or self that is a multiple of tick spacing; upper tick is exclusive
-                        0, // one sided position - no currency will be sent, only token
-                        type(uint128).max,
-                        positionRecipient,
-                        Constants.ZERO_BYTES
-                    );
-                } else {
-                    params[5] = abi.encode(
-                        key,
-                        // will never be min tick.
-                        // current is min, this would be [min+1, MAX)
-                        // if this is max tick or greater, cannot create! (if max tick - current tick < tick spacing, cannot create)
-                        (initialTick / key.tickSpacing + 1) * key.tickSpacing, // go to next tick that is a multiple of tick spacing; lower tick is inclusive
-                        TickMath.MAX_TICK,
-                        type(uint128).max,
-                        0, // one sided position - no currency will be sent, only token
-                        positionRecipient,
-                        Constants.ZERO_BYTES
-                    );
-                }
+            // Create new params array and copy old params
+            bytes[] memory newParams = new bytes[](params.length + 3);
+            for (uint256 i = 0; i < params.length; i++) {
+                newParams[i] = params[i];
             }
+            params = newParams;
+
+            // create new actions and params
+            params[4] = abi.encode(Currency.wrap(token), reserveSupply - initialTokenAmount, false);
+            if (key.currency0 == Currency.wrap(currency)) {
+                params[5] = abi.encode(
+                    key,
+                    TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing, // rounds towards 0
+                    // could be current tick or lower
+                    // what if this is max tick? - full range. okay?
+                    // if this is min tick or less, cannot create! (if current tick - min tick < tick spacing, cannot create)
+                    (
+                        initialTick / key.tickSpacing
+                            - (initialTick % key.tickSpacing != 0 && initialTick < 0 ? int24(1) : int24(0))
+                    ) * key.tickSpacing, // go to previous tick or self that is a multiple of tick spacing (because upper tick is exclusive)
+                    0, // one sided position - no currency will be sent, only token
+                    type(uint128).max,
+                    positionRecipient,
+                    Constants.ZERO_BYTES
+                );
+            } else {
+                params[5] = abi.encode(
+                    key,
+                    // will never be min tick.
+                    // current is min, this would be [min+1, MAX)
+                    // if this is max tick or greater, cannot create! (if max tick - current tick < tick spacing, cannot create)
+                    (initialTick / key.tickSpacing + 1) * key.tickSpacing, // go to next tick that is a multiple of tick spacing (because lower tick is inclusive)
+                    TickMath.MAX_TICK / key.tickSpacing * key.tickSpacing, // rounds towards 0
+                    type(uint128).max,
+                    0, // one sided position - no currency will be sent, only token
+                    positionRecipient,
+                    Constants.ZERO_BYTES
+                );
+            }
+
+            params[6] = abi.encode(Currency.wrap(token), positionRecipient, ActionConstants.OPEN_DELTA);
         }
 
-        return abi.encode(actions, params);
+        return (actions, params);
     }
 }

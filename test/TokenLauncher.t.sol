@@ -51,7 +51,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         });
 
         bytes memory tokenData = abi.encode(metadata);
-        uint256 initialSupply = 1e18; // 1 token with 18 decimals
+        uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         address tokenAddress = tokenLauncher.createToken(
             address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(tokenLauncher), tokenData
@@ -84,7 +84,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     }
 
     function test_distributeToken_strategy_succeeds() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy
@@ -107,7 +107,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     }
 
     function test_distributeToken_strategyAndContract_succeeds() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy and contract
@@ -132,7 +132,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     }
 
     function test_payerIsUser_succeeds() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(this), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy and contract
@@ -178,7 +178,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         });
 
         bytes memory tokenData = abi.encode(metadata);
-        uint256 initialSupply = 1e18; // 1 token with 18 decimals
+        uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         tokenLauncher.createToken(
             address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(tokenLauncher), tokenData
@@ -189,7 +189,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     // forge-config: default.isolate = true
     // forge-config: ci.isolate = true
     function test_distributeToken_gas() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy
