@@ -37,12 +37,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the position recipient is the zero address, address(1), or address(2)
     error InvalidPositionRecipient();
 
-    /// @notice Error thrown when the position manager is the zero address
-    error InvalidPositionManager();
-
-    /// @notice Error thrown when the pool manager is the zero address
-    error InvalidPoolManager();
-
     /// @notice Error thrown when the token and currency are the same
     error InvalidTokenAndCurrency();
 
