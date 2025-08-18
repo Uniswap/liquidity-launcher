@@ -205,7 +205,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         if (key.currency0 == Currency.wrap(currency)) {
-            // Skip position creation if initial tick is too close to boundaries
+            // Skip position creation if initial tick is too close to lower boundary
             if (initialTick - TickMath.MIN_TICK < key.tickSpacing) {
                 return (actions, params);
             }
@@ -224,7 +224,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 Constants.ZERO_BYTES
             );
         } else {
-            // Skip position creation if initial tick is too close to boundaries
+            // Skip position creation if initial tick is too close to upper boundary
             if (TickMath.MAX_TICK - initialTick <= key.tickSpacing) {
                 return (actions, params);
             }

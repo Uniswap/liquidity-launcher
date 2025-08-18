@@ -27,6 +27,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 contract LBPStrategyBasicTest is Test {
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
@@ -38,7 +39,7 @@ contract LBPStrategyBasicTest is Test {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     uint128 constant TOTAL_SUPPLY = 1_000e18;
-    uint256 constant TOKEN_SPLIT = 5000;
+    uint16 constant TOKEN_SPLIT = 5000;
 
     LBPStrategyBasic lbp;
     TokenLauncher tokenLauncher;
@@ -49,6 +50,24 @@ contract LBPStrategyBasicTest is Test {
     MigratorParameters migratorParams;
 
     uint256 nextTokenId;
+
+    function setUpMigratorParams(
+        address currency,
+        uint24 fee,
+        int24 tickSpacing,
+        uint16 tokenSplitToAuction,
+        address positionRecipient
+    ) public view returns (MigratorParameters memory) {
+        return MigratorParameters({
+            currency: currency,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            tokenSplitToAuction: tokenSplitToAuction,
+            auctionFactory: address(mock),
+            positionRecipient: positionRecipient,
+            migrationBlock: uint64(block.number + 1_000)
+        });
+    }
 
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
@@ -65,16 +84,7 @@ contract LBPStrategyBasicTest is Test {
         // give 1_000 DAI to this address
         deal(DAI, address(this), 1_000e18);
 
-        // Initialize migratorParams now that mock is deployed
-        migratorParams = MigratorParameters({
-            currency: address(0),
-            fee: 500,
-            tickSpacing: 1,
-            tokenSplitToAuction: 5000,
-            auctionFactory: address(mock),
-            positionRecipient: address(3),
-            migrationBlock: uint64(block.number + 1_000)
-        });
+        migratorParams = setUpMigratorParams(address(0), 500, 1, TOKEN_SPLIT, address(3));
 
         // Get the hook address with BEFORE_INITIALIZE permission
         address hookAddress = HookAddressHelper.getHookAddress(Hooks.BEFORE_INITIALIZE_FLAG);
@@ -97,9 +107,7 @@ contract LBPStrategyBasicTest is Test {
 
         // Update the PoolKey hook address (stored in slot 6)
         HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
-    }
 
-    function test_setUpProperly() public view {
         assertEq(lbp.token(), address(token));
         assertEq(lbp.currency(), address(0));
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
@@ -116,8 +124,8 @@ contract LBPStrategyBasicTest is Test {
         // Test pool key properties
         assertEq(Currency.unwrap(currency0), address(0));
         assertEq(Currency.unwrap(currency1), address(token));
-        assertEq(fee, 500);
-        assertEq(tickSpacing, 1);
+        assertEq(fee, migratorParams.fee);
+        assertEq(tickSpacing, migratorParams.tickSpacing);
         assertEq(address(hooks), address(lbp));
     }
 
@@ -126,15 +134,91 @@ contract LBPStrategyBasicTest is Test {
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: address(0),
-                fee: 500,
-                tickSpacing: 100,
-                tokenSplitToAuction: 5001, // too many tokens would be sent to the auction
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT + 1, address(3)), // too many tokens would be sent to the auction
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidTickSpacing_tooLow() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, TOKEN_SPLIT, address(3)), // tick spacing cannot be less than min tick spacing
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidTickSpacing_tooHigh() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, TOKEN_SPLIT, address(3)), // tick spacing cannot be less than min tick spacing
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidFee() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, TOKEN_SPLIT, address(3)), // fee cannot be greater than max fee
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidPositionRecipient_address0() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT, address(0)), // position recipient cannot be 0
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidPositionRecipient_address1() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT, address(1)), // position recipient cannot be address(1) - position manager correlates this to msg.sender
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidPositionRecipient_address2() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT, address(2)), // position recipient cannot be address(2) - position manager correlates this to address(this)
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidTokenAndCurrency() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAndCurrency.selector));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(address(token), 500, 100, TOKEN_SPLIT, address(3)), // token and currency cannot be the same
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -158,13 +242,6 @@ contract LBPStrategyBasicTest is Test {
         // Verify half of the tokens are in the auction and half are in the LBP
         assertEq(token.balanceOf(address(lbp.auction())), TOTAL_SUPPLY * 5000 / 1_0000); // half of the tokens are in the auction
         assertEq(token.balanceOf(address(lbp)), TOTAL_SUPPLY * 5000 / 1_0000); // half of the tokens are in the LBP
-    }
-
-    function test_onTokensReceived_gas() public {
-        vm.prank(address(tokenLauncher));
-        token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-        vm.snapshotGasLastCall("onTokensReceived");
     }
 
     function test_setInitialPrice_revertsWithOnlyAuctionCanSetPrice() public {
@@ -194,27 +271,12 @@ contract LBPStrategyBasicTest is Test {
         assertEq(address(lbp).balance, 1e18);
     }
 
-    function test_setInitialPrice_gas() public {
-        vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
-        vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18);
-        vm.snapshotGasLastCall("setInitialPriceWithETH");
-    }
-
     function test_setInitialPrice_revertsWithNonETHCurrencyCannotReceiveETH() public {
         // Deploy the contract with currency set to DAI (non-ETH currency)
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 100,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(DAI, 500, 100, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -241,15 +303,7 @@ contract LBPStrategyBasicTest is Test {
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 100,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(DAI, 500, 100, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -283,47 +337,50 @@ contract LBPStrategyBasicTest is Test {
         assertEq(ERC20(DAI).balanceOf(address(lbp)), TOTAL_SUPPLY);
     }
 
-    function test_setInitialPrice_withNonETHCurrency_gas() public {
-        // Deploy the contract with currency set to DAI (non-ETH currency)
-        lbp = new LBPStrategyBasicNoValidation(
-            address(token),
-            TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 100,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
-            bytes(""),
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
-        );
-
-        // initialize the auction by sending tokens to the LBP
-        vm.startPrank(address(tokenLauncher));
-        token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-        vm.stopPrank();
-
-        // give the auction DAI
-        deal(DAI, address(lbp.auction()), 1_000e18);
-
-        vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), 1_000e18);
-
-        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
-        vm.snapshotGasLastCall("setInitialPriceWithNonETHCurrency");
-    }
-
     function test_migrate_revertsWithMigrationNotAllowed() public {
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.MigrationNotAllowed.selector)); // migration block is not reached
         lbp.migrate();
     }
 
-    function test_migrate_succeeds() public {
+    function test_migrate_revertsWithAlreadyInitialized() public {
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
+
+        // give the auction ETH
+        deal(address(lbp.auction()), 500e18);
+
+        // set the initial price
+        vm.prank(address(lbp.auction()));
+        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
+
+        // fast forward to the migration block
+        vm.roll(lbp.migrationBlock());
+
+        // migrate
+        vm.prank(address(lbp));
+        lbp.migrate();
+
+        // give the auction more tokens for test purposes
+        deal(address(token), address(lbp), TOTAL_SUPPLY);
+
+        vm.expectRevert(abi.encodeWithSelector(Pool.PoolAlreadyInitialized.selector)); // pool is already initialized. Cannot migrate again
+        lbp.migrate();
+    }
+
+    function test_migrate_revertsWithInvalidSqrtPrice() public {
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
+
+        vm.roll(lbp.migrationBlock()); // fast forward to the migration block
+        vm.prank(address(tokenLauncher));
+        vm.expectRevert(abi.encodeWithSelector(TickMath.InvalidSqrtPrice.selector, 0)); // invalid sqrt price
+        // setInitialPrice was never called by the auction
+        lbp.migrate();
+    }
+
+    function test_migrate_fullRange_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
         lbp.onTokensReceived();
@@ -363,6 +420,103 @@ contract LBPStrategyBasicTest is Test {
         assertEq(info.tickLower(), TickMath.MIN_TICK);
         assertEq(info.tickUpper(), TickMath.MAX_TICK);
     }
+
+    function test_migrate_fullRange_withNonETHCurrency_succeeds() public {
+        // Deploy the contract with currency set to DAI (non-ETH currency)
+        impl = new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(DAI, 500, 1, TOKEN_SPLIT, address(3)),
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+
+        // Set up the hook contract at the correct address
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+
+        // Update the PoolKey hook address (stored in slot 6)
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+
+        // initialize the auction by sending tokens to the LBP
+        vm.startPrank(address(tokenLauncher));
+        token.transfer(address(lbp), TOTAL_SUPPLY);
+        lbp.onTokensReceived();
+        vm.stopPrank();
+
+        // give the auction DAI
+        deal(DAI, address(lbp.auction()), TOTAL_SUPPLY / 2);
+
+        vm.startPrank(address(lbp.auction()));
+        ERC20(DAI).approve(address(lbp), TOTAL_SUPPLY / 2);
+
+        lbp.setInitialPrice(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
+        vm.stopPrank();
+
+        // fast forward to the migration block
+        vm.roll(lbp.migrationBlock());
+
+        // migrate
+        lbp.migrate();
+
+        // verify the pool was initialized
+        assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
+        assertEq(lbp.initialTokenAmount(), TOTAL_SUPPLY / 2);
+        assertEq(lbp.initialCurrencyAmount(), TOTAL_SUPPLY / 2);
+        assertEq(address(lbp).balance, 0);
+        assertEq(ERC20(DAI).balanceOf(address(lbp.auction())), 0);
+        assertEq(ERC20(DAI).balanceOf(address(lbp)), 0);
+    }
+
+    // function test_fuzz_migrate_fullRange_succeeds(uint128 totalSupply, uint24 fee, int24 tickSpacing) public {
+    //     fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
+    //     tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+
+    //     lbp = new LBPStrategyBasicNoValidation(
+    //         address(token),
+    //         totalSupply,
+    //         setUpMigratorParams(address(0), fee, tickSpacing, TOKEN_SPLIT, address(3)),
+    //         bytes(""),
+    //         IPositionManager(POSITION_MANAGER),
+    //         IPoolManager(POOL_MANAGER)
+    //     );
+
+    //     vm.prank(address(tokenLauncher));
+    //     token.transfer(address(lbp), totalSupply);
+    //     lbp.onTokensReceived();
+
+    //     // give the auction ETH
+    //     deal(address(lbp.auction()), totalSupply / 2);
+
+    //     // set the initial price
+    //     vm.prank(address(lbp.auction()));
+    //     lbp.setInitialPrice{value: totalSupply / 2}(TickMath.getSqrtPriceAtTick(0), totalSupply / 2, totalSupply / 2);
+
+    //     // fast forward to the migration block
+    //     vm.roll(lbp.migrationBlock());
+
+    //     // migrate
+    //     vm.prank(address(lbp));
+    //     lbp.migrate();
+
+    //     // verify the pool was initialized
+    //     assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
+    //     assertEq(lbp.initialTokenAmount(), totalSupply / 2);
+    //     assertEq(lbp.initialCurrencyAmount(), totalSupply / 2);
+    //     assertEq(address(lbp).balance, 0);
+
+    //     (PoolKey memory poolKey, PositionInfo info) =
+    //         IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+    //     assertEq(Currency.unwrap(poolKey.currency0), address(0));
+    //     assertEq(Currency.unwrap(poolKey.currency1), address(token));
+    //     assertEq(poolKey.fee, fee);
+    //     assertEq(poolKey.tickSpacing, tickSpacing);
+    //     assertEq(info.tickLower(), TickMath.MIN_TICK / tickSpacing * tickSpacing);
+    //     assertEq(info.tickUpper(), TickMath.MAX_TICK / tickSpacing * tickSpacing);
+
+    //     assertLe(TickMath.MIN_TICK, info.tickLower());
+    //     assertGe(TickMath.MAX_TICK, info.tickUpper());
+    // }
 
     function test_migrate_withOneSidedPosition_succeeds() public {
         vm.prank(address(tokenLauncher));
@@ -426,15 +580,7 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 20,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(DAI, 500, 20, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -499,61 +645,6 @@ contract LBPStrategyBasicTest is Test {
         assertEq(info2.tickUpper(), 887260);
     }
 
-    function test_migrate_withNonETHCurrency_succeeds() public {
-        // Deploy the contract with currency set to DAI (non-ETH currency)
-        impl = new LBPStrategyBasicNoValidation(
-            address(token),
-            TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 1,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
-            bytes(""),
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
-        );
-
-        // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
-
-        // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
-
-        // initialize the auction by sending tokens to the LBP
-        vm.startPrank(address(tokenLauncher));
-        token.transfer(address(lbp), TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-        vm.stopPrank();
-
-        // give the auction DAI
-        deal(DAI, address(lbp.auction()), TOTAL_SUPPLY / 2);
-
-        vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), TOTAL_SUPPLY / 2);
-
-        lbp.setInitialPrice(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
-        vm.stopPrank();
-
-        // fast forward to the migration block
-        vm.roll(lbp.migrationBlock());
-
-        // migrate
-        lbp.migrate();
-
-        // verify the pool was initialized
-        assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
-        assertEq(lbp.initialTokenAmount(), TOTAL_SUPPLY / 2);
-        assertEq(lbp.initialCurrencyAmount(), TOTAL_SUPPLY / 2);
-        assertEq(address(lbp).balance, 0);
-        assertEq(ERC20(DAI).balanceOf(address(lbp.auction())), 0);
-        assertEq(ERC20(DAI).balanceOf(address(lbp)), 0);
-    }
-
     function test_fuzz_migrate(
         uint16 tokenSplitToAuction,
         uint24 fee,
@@ -571,15 +662,7 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: address(0),
-                fee: fee,
-                tickSpacing: tickSpacing,
-                tokenSplitToAuction: tokenSplitToAuction,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(address(0), fee, tickSpacing, tokenSplitToAuction, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -598,42 +681,45 @@ contract LBPStrategyBasicTest is Test {
         vm.stopPrank();
     }
 
-    function test_migrate_revertsWithAlreadyInitialized() public {
+    function test_onTokensReceived_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
         lbp.onTokensReceived();
-
-        // give the auction ETH
-        deal(address(lbp.auction()), 500e18);
-
-        // set the initial price
-        vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
-
-        // fast forward to the migration block
-        vm.roll(lbp.migrationBlock());
-
-        // migrate
-        vm.prank(address(lbp));
-        lbp.migrate();
-
-        // give the auction more tokens for test purposes
-        deal(address(token), address(lbp), TOTAL_SUPPLY);
-
-        vm.expectRevert(abi.encodeWithSelector(Pool.PoolAlreadyInitialized.selector)); // pool is already initialized. Cannot migrate again
-        lbp.migrate();
+        vm.snapshotGasLastCall("onTokensReceived");
     }
 
-    function test_migrate_revertsWithInvalidSqrtPrice() public {
-        vm.prank(address(tokenLauncher));
+    function test_setInitialPrice_withETH_gas() public {
+        vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
+        vm.prank(address(lbp.auction()));
+        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18);
+        vm.snapshotGasLastCall("setInitialPriceWithETH");
+    }
+
+    function test_setInitialPrice_withNonETHCurrency_gas() public {
+        // Deploy the contract with currency set to DAI (non-ETH currency)
+        lbp = new LBPStrategyBasicNoValidation(
+            address(token),
+            TOTAL_SUPPLY,
+            setUpMigratorParams(DAI, 500, 100, TOKEN_SPLIT, address(3)),
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+
+        // initialize the auction by sending tokens to the LBP
+        vm.startPrank(address(tokenLauncher));
         token.transfer(address(lbp), TOTAL_SUPPLY);
         lbp.onTokensReceived();
+        vm.stopPrank();
 
-        vm.roll(lbp.migrationBlock()); // fast forward to the migration block
-        vm.prank(address(tokenLauncher));
-        vm.expectRevert(abi.encodeWithSelector(TickMath.InvalidSqrtPrice.selector, 0)); // invalid sqrt price
-        // setInitialPrice was never called by the auction
-        lbp.migrate();
+        // give the auction DAI
+        deal(DAI, address(lbp.auction()), 1_000e18);
+
+        vm.startPrank(address(lbp.auction()));
+        ERC20(DAI).approve(address(lbp), 1_000e18);
+
+        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
+        vm.snapshotGasLastCall("setInitialPriceWithNonETHCurrency");
     }
 
     function test_migrate_withETH_gas() public {
@@ -687,15 +773,7 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 1,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(DAI, 500, 1, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -734,15 +812,7 @@ contract LBPStrategyBasicTest is Test {
         impl = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
-            MigratorParameters({
-                currency: DAI,
-                fee: 500,
-                tickSpacing: 20,
-                tokenSplitToAuction: 5000,
-                auctionFactory: address(mock),
-                positionRecipient: address(3),
-                migrationBlock: uint64(block.number + 1_000)
-            }),
+            setUpMigratorParams(DAI, 500, 20, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
