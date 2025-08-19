@@ -5,7 +5,7 @@ pragma solidity ^0.8.0;
 /// @notice Interface for token distribution contracts.
 interface IDistributionContract {
     /// @notice Error thrown when the amount received is invalid upon receiving tokens
-    error InvalidAmountReceived();
+    error InvalidAmountReceived(uint256 expected, uint256 received);
 
     /// @notice Notify a distribution contract that it has received the tokens to distribute
     function onTokensReceived() external;

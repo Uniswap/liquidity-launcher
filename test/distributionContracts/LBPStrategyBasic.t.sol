@@ -28,6 +28,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 
 contract LBPStrategyBasicTest is Test {
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
@@ -39,7 +40,7 @@ contract LBPStrategyBasicTest is Test {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     uint128 constant TOTAL_SUPPLY = 1_000e18;
-    uint16 constant TOKEN_SPLIT = 5000;
+    uint16 constant TOKEN_SPLIT = 5_000;
 
     LBPStrategyBasic lbp;
     TokenLauncher tokenLauncher;
@@ -130,7 +131,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, TOKEN_SPLIT + 1));
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -142,7 +143,9 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidTickSpacing_tooLow() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MIN_TICK_SPACING - 1)
+        );
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -154,7 +157,9 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidTickSpacing_tooHigh() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MAX_TICK_SPACING + 1)
+        );
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -166,7 +171,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidFee() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1));
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -178,7 +183,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidPositionRecipient_address0() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, address(0)));
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -190,7 +195,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidPositionRecipient_address1() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, address(1)));
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -202,7 +207,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidPositionRecipient_address2() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, address(2)));
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -214,7 +219,7 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setUp_revertsWithInvalidTokenAndCurrency() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAndCurrency.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAndCurrency.selector, address(token)));
         new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -228,7 +233,9 @@ contract LBPStrategyBasicTest is Test {
     function test_onTokenReceived_revertsWithInvalidAmountReceived() public {
         vm.prank(address(tokenLauncher));
         ERC20(token).transfer(address(lbp), TOTAL_SUPPLY - 1); // incorrect amount of tokens were transferred to the contract
-        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidAmountReceived.selector));
+        vm.expectRevert(
+            abi.encodeWithSelector(IDistributionContract.InvalidAmountReceived.selector, TOTAL_SUPPLY, TOTAL_SUPPLY - 1)
+        );
         lbp.onTokensReceived();
     }
 
@@ -245,15 +252,19 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_setInitialPrice_revertsWithOnlyAuctionCanSetPrice() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.OnlyAuctionCanSetPrice.selector));
-        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
+        vm.expectRevert(
+            abi.encodeWithSelector(ISubscriber.OnlyAuctionCanSetPrice.selector, address(lbp.auction()), address(this))
+        );
+        lbp.setInitialPrice(TOTAL_SUPPLY, TOTAL_SUPPLY);
     }
 
     function test_setInitialPrice_revertsWithInvalidCurrencyAmount() public {
         vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
         vm.prank(address(lbp.auction()));
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidCurrencyAmount.selector));
-        lbp.setInitialPrice{value: TOTAL_SUPPLY - 1}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY); // incorrect amount of ETH is transferred
+        vm.expectRevert(
+            abi.encodeWithSelector(ISubscriber.InvalidCurrencyAmount.selector, TOTAL_SUPPLY - 1, TOTAL_SUPPLY)
+        );
+        lbp.setInitialPrice{value: TOTAL_SUPPLY - 1}(TOTAL_SUPPLY, TOTAL_SUPPLY); // incorrect amount of ETH is transferred
     }
 
     function test_setInitialPrice_succeeds() public {
@@ -261,18 +272,19 @@ contract LBPStrategyBasicTest is Test {
         vm.prank(address(lbp.auction()));
 
         vm.expectEmit(false, false, false, true);
-        emit InitialPriceSet(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18);
-        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18);
+        emit InitialPriceSet(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY, TOTAL_SUPPLY);
+        lbp.setInitialPrice{value: TOTAL_SUPPLY}(TOTAL_SUPPLY, TOTAL_SUPPLY);
 
         // Verify the pool was initialized
-        assertEq(lbp.initialSqrtPriceX96(), TickMath.MIN_SQRT_PRICE);
+        assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
         assertEq(lbp.initialTokenAmount(), TOTAL_SUPPLY);
-        assertEq(lbp.initialCurrencyAmount(), 1e18);
-        assertEq(address(lbp).balance, 1e18);
+        assertEq(lbp.initialCurrencyAmount(), TOTAL_SUPPLY);
+        assertEq(address(lbp).balance, TOTAL_SUPPLY);
     }
 
     function test_setInitialPrice_revertsWithNonETHCurrencyCannotReceiveETH() public {
         // Deploy the contract with currency set to DAI (non-ETH currency)
+        // does not need to have correct hook address because not migrating yet
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -294,12 +306,13 @@ contract LBPStrategyBasicTest is Test {
         vm.deal(address(lbp.auction()), 1e18);
 
         vm.prank(address(lbp.auction()));
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.NonETHCurrencyCannotReceiveETH.selector));
-        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18); // attempts to send ETH when DAI is set as the currency
+        vm.expectRevert(abi.encodeWithSelector(ISubscriber.NonETHCurrencyCannotReceiveETH.selector, DAI));
+        lbp.setInitialPrice{value: 1e18}(TOTAL_SUPPLY, 1e18); // attempts to send ETH when DAI is set as the currency
     }
 
     function test_setInitialPrice_withNonETHCurrency_succeeds() public {
         // Deploy the contract with currency set to DAI (non-ETH currency)
+        // does not need to have correct hook address because not migrating yet
         lbp = new LBPStrategyBasicNoValidation(
             address(token),
             TOTAL_SUPPLY,
@@ -322,13 +335,13 @@ contract LBPStrategyBasicTest is Test {
         ERC20(DAI).approve(address(lbp), 1_000e18);
 
         vm.expectEmit(false, false, false, true);
-        emit InitialPriceSet(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
+        emit InitialPriceSet(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY, TOTAL_SUPPLY);
 
-        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
+        lbp.setInitialPrice(TOTAL_SUPPLY, TOTAL_SUPPLY);
         vm.stopPrank();
 
         // Verify values are set correctly
-        assertEq(lbp.initialSqrtPriceX96(), TickMath.MIN_SQRT_PRICE);
+        assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
         assertEq(lbp.initialTokenAmount(), TOTAL_SUPPLY);
         assertEq(lbp.initialCurrencyAmount(), TOTAL_SUPPLY);
 
@@ -338,7 +351,9 @@ contract LBPStrategyBasicTest is Test {
     }
 
     function test_migrate_revertsWithMigrationNotAllowed() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.MigrationNotAllowed.selector)); // migration block is not reached
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.MigrationNotAllowed.selector, lbp.migrationBlock(), block.number)
+        ); // migration block is not reached
         lbp.migrate();
     }
 
@@ -352,7 +367,7 @@ contract LBPStrategyBasicTest is Test {
 
         // set the initial price
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
+        lbp.setInitialPrice{value: 500e18}(TOTAL_SUPPLY / 2, 500e18);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());
@@ -390,7 +405,7 @@ contract LBPStrategyBasicTest is Test {
 
         // set the initial price
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
+        lbp.setInitialPrice{value: 500e18}(TOTAL_SUPPLY / 2, 500e18);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());
@@ -450,7 +465,7 @@ contract LBPStrategyBasicTest is Test {
         vm.startPrank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), TOTAL_SUPPLY / 2);
 
-        lbp.setInitialPrice(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
+        lbp.setInitialPrice(TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
         vm.stopPrank();
 
         // fast forward to the migration block
@@ -532,7 +547,7 @@ contract LBPStrategyBasicTest is Test {
         uint160 sqrtPriceX96 = uint160(sqrtPriceX192);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmt}(sqrtPriceX96, tokenAmt, ethAmt);
+        lbp.setInitialPrice{value: ethAmt}(tokenAmt, ethAmt);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());
@@ -608,12 +623,9 @@ contract LBPStrategyBasicTest is Test {
 
         uint256 tokenAmt = lbp.reserveSupply() / 2;
         // price is dai / token
-        uint256 priceX192 = FullMath.mulDiv(daiAmt, 2 ** 192, tokenAmt);
-        uint256 sqrtPriceX192 = sqrt(priceX192);
-        uint160 sqrtPriceX96 = uint160(sqrtPriceX192);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice(sqrtPriceX96, tokenAmt, daiAmt);
+        lbp.setInitialPrice(tokenAmt, daiAmt);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());
@@ -691,7 +703,7 @@ contract LBPStrategyBasicTest is Test {
     function test_setInitialPrice_withETH_gas() public {
         vm.deal(address(lbp.auction()), TOTAL_SUPPLY); // auction has tokens
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 1e18}(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, 1e18);
+        lbp.setInitialPrice{value: 1e18}(TOTAL_SUPPLY, 1e18);
         vm.snapshotGasLastCall("setInitialPriceWithETH");
     }
 
@@ -718,7 +730,7 @@ contract LBPStrategyBasicTest is Test {
         vm.startPrank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), 1_000e18);
 
-        lbp.setInitialPrice(TickMath.MIN_SQRT_PRICE, TOTAL_SUPPLY, TOTAL_SUPPLY);
+        lbp.setInitialPrice(TOTAL_SUPPLY, TOTAL_SUPPLY);
         vm.snapshotGasLastCall("setInitialPriceWithNonETHCurrency");
     }
 
@@ -732,7 +744,7 @@ contract LBPStrategyBasicTest is Test {
 
         // set the initial price
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: 500e18}(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, 500e18);
+        lbp.setInitialPrice{value: 500e18}(TOTAL_SUPPLY / 2, 500e18);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());
@@ -752,12 +764,9 @@ contract LBPStrategyBasicTest is Test {
         deal(address(lbp.auction()), ethAmt); // give the auction ETH
         uint256 tokenAmt = lbp.reserveSupply() / 2;
         // price is token / eth
-        uint256 priceX192 = FullMath.mulDiv(tokenAmt, 2 ** 192, ethAmt);
-        uint256 sqrtPriceX192 = sqrt(priceX192);
-        uint160 sqrtPriceX96 = uint160(sqrtPriceX192);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmt}(sqrtPriceX96, tokenAmt, ethAmt);
+        lbp.setInitialPrice{value: ethAmt}(tokenAmt, ethAmt);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());
@@ -796,7 +805,7 @@ contract LBPStrategyBasicTest is Test {
         vm.startPrank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), 1_000e18);
 
-        lbp.setInitialPrice(TickMath.getSqrtPriceAtTick(0), TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
+        lbp.setInitialPrice(TOTAL_SUPPLY / 2, TOTAL_SUPPLY / 2);
         vm.stopPrank();
 
         // fast forward to the migration block
@@ -840,12 +849,9 @@ contract LBPStrategyBasicTest is Test {
 
         uint256 tokenAmt = lbp.reserveSupply() / 2;
         // price is dai / token
-        uint256 priceX192 = FullMath.mulDiv(daiAmt, 2 ** 192, tokenAmt);
-        uint256 sqrtPriceX192 = sqrt(priceX192);
-        uint160 sqrtPriceX96 = uint160(sqrtPriceX192);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice(sqrtPriceX96, tokenAmt, daiAmt);
+        lbp.setInitialPrice(tokenAmt, daiAmt);
 
         // fast forward to the migration block
         vm.roll(lbp.migrationBlock());

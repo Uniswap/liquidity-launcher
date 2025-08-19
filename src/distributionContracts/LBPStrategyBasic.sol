@@ -14,11 +14,14 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
+import {ISubscriber} from "../interfaces/ISubscriber.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -59,20 +62,24 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ) HookBasic(_poolManager) {
         // Validate that the amount of tokens sent to auction is <= 50% of total supply
         // This ensures at least half of the tokens remain for the initial liquidity position
-        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) TokenSplitTooHigh.selector.revertWith();
+        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
+        }
         if (
             migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING
                 || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
-        ) InvalidTickSpacing.selector.revertWith();
-        if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) InvalidFee.selector.revertWith();
+        ) InvalidTickSpacing.selector.revertWith(migratorParams.tickSpacing);
+        if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.fee);
         // Cannot mint a position to the zero address (not allowed by the position manager)
         // address(1) is msg.sender of the migrate action
         // address(2) is address(this)
         if (
             migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1)
                 || migratorParams.positionRecipient == address(2)
-        ) InvalidPositionRecipient.selector.revertWith();
-        if (_token == migratorParams.currency) InvalidTokenAndCurrency.selector.revertWith();
+        ) InvalidPositionRecipient.selector.revertWith(migratorParams.positionRecipient);
+        if (_token == migratorParams.currency) {
+            InvalidTokenAndCurrency.selector.revertWith(_token, migratorParams.currency);
+        }
 
         auctionParameters = auctionParams;
 
@@ -98,7 +105,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {
-        if (IERC20(token).balanceOf(address(this)) != totalSupply) InvalidAmountReceived.selector.revertWith();
+        if (IERC20(token).balanceOf(address(this)) != totalSupply) {
+            revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
+        }
 
         auction = IDistributionStrategy(auctionFactory).initializeDistribution(
             token, reserveSupply, auctionParameters, bytes32(0)
@@ -108,32 +117,43 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.onTokensReceived();
     }
 
-    /// @inheritdoc ILBPStrategyBasic
-    /// @dev The sqrt price is always expressed as currency1/currency0, where currency0 < currency1
-    function setInitialPrice(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount) public payable {
-        if (msg.sender != address(auction)) OnlyAuctionCanSetPrice.selector.revertWith();
-        // auction should ensure sqrtPriceX96 is not less than TickMath.MIN_SQRT_PRICE or greater than TickMath.MAX_SQRT_PRICE. If it is, it will not be able to migrate.
-        if (Currency.wrap(currency).isAddressZero()) {
-            if (msg.value != currencyAmount) InvalidCurrencyAmount.selector.revertWith();
+    /// @inheritdoc ISubscriber
+    function setInitialPrice(uint256 tokenAmount, uint256 currencyAmount) public payable {
+        if (msg.sender != address(auction)) OnlyAuctionCanSetPrice.selector.revertWith(address(auction), msg.sender);
+        if (currency == address(0)) {
+            if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
         } else {
-            if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith();
+            if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith(currency);
             IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
         }
+        uint256 priceX192;
+        uint160 sqrtPriceX96;
+        if (currency < token) {
+            priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, currencyAmount);
+            sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        } else {
+            priceX192 = FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount);
+            sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        }
+        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+            revert InvalidPrice(sqrtPriceX96);
+        }
+
         initialSqrtPriceX96 = sqrtPriceX96;
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
 
-        emit InitialPriceSet(sqrtPriceX96, tokenAmount, currencyAmount);
+        emit InitialPriceSet(initialSqrtPriceX96, tokenAmount, currencyAmount);
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function migrate() public {
-        if (block.number < migrationBlock) MigrationNotAllowed.selector.revertWith();
+        if (block.number < migrationBlock) revert MigrationNotAllowed(migrationBlock, block.number);
 
         // transfer tokens to the position manager
         IERC20(token).safeTransfer(address(positionManager), reserveSupply);
 
-        bool currencyIsNative = Currency.wrap(currency).isAddressZero();
+        bool currencyIsNative = currency == address(0);
         // transfer raised currency to the position manager if currency is not native
         if (!currencyIsNative) {
             IERC20(currency).safeTransfer(address(positionManager), initialCurrencyAmount);
@@ -174,7 +194,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             uint8(Actions.TAKE_PAIR)
         );
 
-        if (key.currency0 == Currency.wrap(currency)) {
+        if (currency < token) {
             params[0] = abi.encode(key.currency0, initialCurrencyAmount, false);
             params[1] = abi.encode(key.currency1, initialTokenAmount, false);
         } else {
@@ -204,7 +224,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
-        if (key.currency0 == Currency.wrap(currency)) {
+        if (currency < token) {
             // Skip position creation if initial tick is too close to lower boundary
             if (initialTick - TickMath.MIN_TICK < key.tickSpacing) {
                 return (actions, params);
