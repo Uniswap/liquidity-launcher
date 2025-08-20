@@ -22,6 +22,7 @@ import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
+import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -88,7 +89,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         // e.g. if tokenSplitToAuction = 5000 (50%), then half goes to auction and half is reserved
-        reserveSupply = _totalSupply - ((_totalSupply * migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR);
+        // Rounds down so auction always gets less than or equal to half of the total supply
+        reserveSupply = _totalSupply
+            - uint128(FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, TOKEN_SPLIT_DENOMINATOR));
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
@@ -110,10 +113,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         auction = IDistributionStrategy(auctionFactory).initializeDistribution(
-            token, reserveSupply, auctionParameters, bytes32(0)
+            token, totalSupply - reserveSupply, auctionParameters, bytes32(0)
         );
 
-        IERC20(token).safeTransfer(address(auction), reserveSupply);
+        IERC20(token).safeTransfer(address(auction), totalSupply - reserveSupply);
         auction.onTokensReceived();
     }
 
@@ -143,6 +146,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
 
+        // calculate max liquidity per tick based on the amounts and tick range
+        // if over the max liquidity per tick spacing, revert
+
         emit InitialPriceSet(initialSqrtPriceX96, tokenAmount, currencyAmount);
     }
 
@@ -171,6 +177,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             (actions, params) = _createOneSidedPositionPlan(actions, params);
         }
 
+        // take the token
+        params[params.length - 1] = abi.encode(Currency.wrap(token), positionRecipient, ActionConstants.OPEN_DELTA);
+
         bytes memory plan = abi.encode(actions, params);
 
         // if currency is ETH, we need to send ETH to the position manager
@@ -188,10 +197,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params = new bytes[](4);
 
         actions = abi.encodePacked(
-            uint8(Actions.SETTLE),
-            uint8(Actions.SETTLE),
-            uint8(Actions.MINT_POSITION_FROM_DELTAS),
-            uint8(Actions.TAKE_PAIR)
+            uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.TAKE)
         );
 
         if (currency < token) {
@@ -204,15 +210,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         params[2] = abi.encode(
             key,
-            TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing, // rounds towards 0
-            TickMath.MAX_TICK / key.tickSpacing * key.tickSpacing, // rounds towards 0
+            TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing, // rounds toward 0
+            TickMath.MAX_TICK / key.tickSpacing * key.tickSpacing, // rounds toward 0
             type(uint128).max,
             type(uint128).max,
             positionRecipient,
             Constants.ZERO_BYTES
         );
 
-        params[3] = abi.encode(key.currency0, key.currency1, positionRecipient); // where should dust go? if position recipient is a contract, it may have to be able to accept ETH
+        // if eth, wrap to weth and take
+        params[3] = abi.encode(Currency.wrap(currency), positionRecipient, ActionConstants.OPEN_DELTA); // where should dust go? if position recipient is a contract, it may have to be able to accept ETH
 
         return (actions, params);
     }
@@ -267,8 +274,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 Constants.ZERO_BYTES
             );
         }
-
-        newParams[6] = abi.encode(Currency.wrap(token), positionRecipient, ActionConstants.OPEN_DELTA);
 
         return (newActions, newParams);
     }
