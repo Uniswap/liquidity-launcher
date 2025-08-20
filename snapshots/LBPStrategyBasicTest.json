@@ -4,6 +4,6 @@
   "migrateWithNonETHCurrency": "463170",
   "migrateWithNonETHCurrency_withOneSidedPosition": "629316",
   "onTokensReceived": "99066",
-  "setInitialPriceWithETH": "51596",
-  "setInitialPriceWithNonETHCurrency": "76469"
+  "setInitialPriceWithETH": "53915",
+  "setInitialPriceWithNonETHCurrency": "78732"
 }

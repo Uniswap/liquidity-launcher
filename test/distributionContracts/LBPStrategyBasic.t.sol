@@ -30,9 +30,13 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {MathHelpers} from "../shared/MathHelpers.t.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {console2} from "forge-std/console2.sol";
 
 contract LBPStrategyBasicTest is Test {
+    using MathHelpers for int24;
+
     event InitialPriceSet(uint160 sqrtPriceX96, uint256 tokenAmount, uint256 currencyAmount);
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
@@ -577,14 +581,19 @@ contract LBPStrategyBasicTest is Test {
         assertEq(ERC20(DAI).balanceOf(address(lbp)), 0);
     }
 
-    function test_fuzz_migrate_fullRange_succeeds() public {
-        uint128 totalSupply = 16306210629269603649197458450808237841;
-        uint24 fee = 5357347;
-        int24 tickSpacing = 0;
-
+    function test_fuzz_migrate_fullRange_succeeds(uint128 totalSupply, uint24 fee, int24 tickSpacing) public {
         totalSupply = uint128(bound(totalSupply, 1, type(uint128).max));
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+
+        uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
+        );
 
         setUpWithSupply(totalSupply);
 
@@ -612,6 +621,17 @@ contract LBPStrategyBasicTest is Test {
 
         // set the initial price
         vm.prank(address(lbp.auction()));
+        if (liquidity > maxLiquidityPerTick) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ISubscriber.InvalidLiquidity.selector, maxLiquidityPerTick, liquidity)
+            );
+            lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
+                totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
+                totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
+            );
+            return; // Exit early when we expect a revert
+        }
+
         lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
             totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
             totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))

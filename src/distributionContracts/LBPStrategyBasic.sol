@@ -145,8 +145,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.MIN_SQRT_PRICE,
-            TickMath.MAX_SQRT_PRICE,
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / key.tickSpacing * key.tickSpacing),
             currency < token ? currencyAmount : tokenAmount,
             currency < token ? tokenAmount : currencyAmount
         );
