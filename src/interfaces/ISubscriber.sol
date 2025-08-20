@@ -22,8 +22,11 @@ interface ISubscriber {
     /// @notice Error thrown when the price is invalid
     error InvalidPrice(uint256 price);
 
+    /// @notice Error thrown when the liquidity is invalid
+    error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
+
     /// @notice Sets the initial price of the pool based on the auction results and transfers the currency to the contract
     /// @param tokenAmount The amount of tokens needed for that price
     /// @param currencyAmount The amount of currency needed for that price and transferred to the contract
-    function setInitialPrice(uint256 tokenAmount, uint256 currencyAmount) external payable;
+    function setInitialPrice(uint128 tokenAmount, uint128 currencyAmount) external payable;
 }

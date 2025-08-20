@@ -108,10 +108,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         assertEq(lbp.token(), address(token));
         assertEq(lbp.currency(), address(0));
@@ -165,10 +165,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         assertEq(lbp.token(), address(token));
         assertEq(lbp.currency(), address(0));
@@ -542,10 +542,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -586,10 +586,6 @@ contract LBPStrategyBasicTest is Test {
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 
-        console2.log("totalSupply", totalSupply);
-        console2.log("fee", fee);
-        console2.log("tickSpacing", tickSpacing);
-
         setUpWithSupply(totalSupply);
 
         impl = new LBPStrategyBasicNoValidation(
@@ -602,10 +598,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);
@@ -617,8 +613,8 @@ contract LBPStrategyBasicTest is Test {
         // set the initial price
         vm.prank(address(lbp.auction()));
         lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
-            totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000),
-            totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
         );
 
         // fast forward to the migration block
@@ -652,9 +648,9 @@ contract LBPStrategyBasicTest is Test {
         token.transfer(address(lbp), TOTAL_SUPPLY); // send all tokens to the LBP
         lbp.onTokensReceived();
 
-        uint256 ethAmt = 500e18;
+        uint128 ethAmt = 500e18;
         deal(address(lbp.auction()), ethAmt); // give the auction ETH
-        uint256 tokenAmt = lbp.reserveSupply() / 2;
+        uint128 tokenAmt = lbp.reserveSupply() / 2;
         // price is token / eth
 
         vm.prank(address(lbp.auction()));
@@ -703,10 +699,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -714,7 +710,7 @@ contract LBPStrategyBasicTest is Test {
         lbp.onTokensReceived();
         vm.stopPrank();
 
-        uint256 daiAmt = TOTAL_SUPPLY / 2;
+        uint128 daiAmt = TOTAL_SUPPLY / 2;
 
         // give the auction DAI
         deal(DAI, address(lbp.auction()), TOTAL_SUPPLY / 2);
@@ -722,7 +718,7 @@ contract LBPStrategyBasicTest is Test {
         vm.prank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), TOTAL_SUPPLY / 2);
 
-        uint256 tokenAmt = lbp.reserveSupply() / 2;
+        uint128 tokenAmt = lbp.reserveSupply() / 2;
         // price is dai / token
 
         vm.prank(address(lbp.auction()));
@@ -782,10 +778,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -861,9 +857,9 @@ contract LBPStrategyBasicTest is Test {
         token.transfer(address(lbp), TOTAL_SUPPLY);
         lbp.onTokensReceived();
 
-        uint256 ethAmt = 500e18;
+        uint128 ethAmt = 500e18;
         deal(address(lbp.auction()), ethAmt); // give the auction ETH
-        uint256 tokenAmt = lbp.reserveSupply() / 2;
+        uint128 tokenAmt = lbp.reserveSupply() / 2;
         // price is token / eth
 
         vm.prank(address(lbp.auction()));
@@ -889,10 +885,10 @@ contract LBPStrategyBasicTest is Test {
             IPoolManager(POOL_MANAGER)
         );
 
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -929,10 +925,10 @@ contract LBPStrategyBasicTest is Test {
         );
 
         // Set up the hook contract at the correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 10);
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
         // Update the PoolKey hook address (stored in slot 6)
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 6);
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
         // initialize the auction by sending tokens to the LBP
         vm.startPrank(address(tokenLauncher));
@@ -940,7 +936,7 @@ contract LBPStrategyBasicTest is Test {
         lbp.onTokensReceived();
         vm.stopPrank();
 
-        uint256 daiAmt = TOTAL_SUPPLY / 2;
+        uint128 daiAmt = TOTAL_SUPPLY / 2;
 
         // give the auction DAI
         deal(DAI, address(lbp.auction()), TOTAL_SUPPLY / 2);
@@ -948,7 +944,7 @@ contract LBPStrategyBasicTest is Test {
         vm.prank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), TOTAL_SUPPLY / 2);
 
-        uint256 tokenAmt = lbp.reserveSupply() / 2;
+        uint128 tokenAmt = lbp.reserveSupply() / 2;
         // price is dai / token
 
         vm.prank(address(lbp.auction()));
