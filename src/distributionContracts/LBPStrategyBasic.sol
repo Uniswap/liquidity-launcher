@@ -79,12 +79,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
         ) InvalidTickSpacing.selector.revertWith(migratorParams.tickSpacing);
         if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.fee);
-        // Cannot mint a position to the zero address (not allowed by the position manager)
-        // address(1) is msg.sender of the migrate action
-        // address(2) is address(this)
         if (
-            migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1)
-                || migratorParams.positionRecipient == address(2)
+            migratorParams.positionRecipient == address(0)
+                || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
+                || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
         ) InvalidPositionRecipient.selector.revertWith(migratorParams.positionRecipient);
         if (_token == migratorParams.currency) {
             InvalidTokenAndCurrency.selector.revertWith(_token, migratorParams.currency);
