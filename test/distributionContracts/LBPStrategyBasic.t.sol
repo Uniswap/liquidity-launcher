@@ -32,8 +32,8 @@ import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {MathHelpers} from "../shared/MathHelpers.t.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {console2} from "forge-std/console2.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 
 contract LBPStrategyBasicTest is Test {
     using MathHelpers for int24;
@@ -45,6 +45,7 @@ contract LBPStrategyBasicTest is Test {
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
     address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // Default value for non-fuzzed tests
     uint128 constant TOTAL_SUPPLY = 1_000e18;
@@ -109,7 +110,8 @@ contract LBPStrategyBasicTest is Test {
             migratorParams,
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // Set up the hook contract at the correct address
@@ -166,7 +168,8 @@ contract LBPStrategyBasicTest is Test {
             migratorParams,
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // Set up the hook contract at the correct address
@@ -194,7 +197,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT + 1, address(3)), // too many tokens would be sent to the auction
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -208,7 +212,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, TOKEN_SPLIT, address(3)), // tick spacing cannot be less than min tick spacing
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -222,7 +227,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, TOKEN_SPLIT, address(3)), // tick spacing cannot be less than min tick spacing
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -234,7 +240,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, TOKEN_SPLIT, address(3)), // fee cannot be greater than max fee
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -246,7 +253,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT, address(0)), // position recipient cannot be 0
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -258,7 +266,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT, address(1)), // position recipient cannot be address(1) - position manager correlates this to msg.sender
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -270,7 +279,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(0), 500, 100, TOKEN_SPLIT, address(2)), // position recipient cannot be address(2) - position manager correlates this to address(this)
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -282,7 +292,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(address(token), 500, 100, TOKEN_SPLIT, address(3)), // token and currency cannot be the same
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
     }
 
@@ -363,7 +374,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 100, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // First, we need to initialize the auction by sending tokens to the LBP
@@ -391,7 +403,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 100, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // initialize the auction by sending tokens to the LBP
@@ -422,7 +435,7 @@ contract LBPStrategyBasicTest is Test {
         assertEq(ERC20(DAI).balanceOf(address(lbp)), TOTAL_SUPPLY / 2);
     }
 
-    function test_priceSetCorrectly() public {
+    function test_priceSetCorrectly() public pure {
         uint256 priceX192 = FullMath.mulDiv(1e18, 2 ** 192, 1e18);
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
@@ -517,6 +530,9 @@ contract LBPStrategyBasicTest is Test {
         uint256 tokenAmtInPoolmBefore = IERC20(token).balanceOf(address(POOL_MANAGER));
         uint256 currencyAmtInPoolmBefore = POSITION_MANAGER.balance;
 
+        // get amt of weth in the position recipient
+        uint256 wethAmtInPosmBefore = IWETH9(WETH9).balanceOf(address(3));
+
         // migrate
         vm.prank(address(lbp));
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
@@ -545,14 +561,19 @@ contract LBPStrategyBasicTest is Test {
         // verify the amount of token and currency in the position manager is unchanged
         assertEq(IERC20(token).balanceOf(POSITION_MANAGER), tokenAmtInPosmBefore);
         assertEq(POSITION_MANAGER.balance, currencyAmtInPosmBefore);
+        assertEq(IWETH9(WETH9).balanceOf(POSITION_MANAGER), 0);
 
         // verify nothing is left in the lbp
         assertEq(address(lbp).balance, 0);
+        assertEq(IWETH9(WETH9).balanceOf(address(lbp)), 0);
         assertEq(ERC20(token).balanceOf(address(lbp)), 0);
 
         // verify it was deposited into the pool manager
         assertGt(IERC20(token).balanceOf(address(POOL_MANAGER)), tokenAmtInPoolmBefore);
         assertGt(POOL_MANAGER.balance, currencyAmtInPoolmBefore);
+
+        // verify position recipient has weth
+        assertGe(IWETH9(WETH9).balanceOf(address(3)), wethAmtInPosmBefore);
     }
 
     function test_migrate_fullRange_withNonETHCurrency_succeeds() public {
@@ -563,7 +584,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 1, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // Set up the hook contract at the correct address
@@ -622,107 +644,108 @@ contract LBPStrategyBasicTest is Test {
         assertGt(IERC20(DAI).balanceOf(address(POOL_MANAGER)), currencyAmtInPoolmBefore);
     }
 
-    // function test_fuzz_migrate_fullRange_succeeds(uint128 totalSupply, uint24 fee, int24 tickSpacing) public {
-    //     totalSupply = uint128(bound(totalSupply, 1, type(uint128).max));
-    //     fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
-    //     tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+    function test_fuzz_migrate_fullRange_succeeds(uint128 totalSupply, uint24 fee, int24 tickSpacing) public {
+        totalSupply = uint128(bound(totalSupply, 1, type(uint128).max));
+        fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
+        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 
-    //     uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
-    //     uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-    //         TickMath.getSqrtPriceAtTick(0),
-    //         TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-    //         TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
-    //         totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
-    //         totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
-    //     );
+        uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
+        );
 
-    //     setUpWithSupply(totalSupply);
+        setUpWithSupply(totalSupply);
 
-    //     impl = new LBPStrategyBasicNoValidation(
-    //         address(token),
-    //         totalSupply,
-    //         setUpMigratorParams(address(0), fee, tickSpacing, TOKEN_SPLIT, address(3)),
-    //         bytes(""),
-    //         IPositionManager(POSITION_MANAGER),
-    //         IPoolManager(POOL_MANAGER)
-    //     );
+        impl = new LBPStrategyBasicNoValidation(
+            address(token),
+            totalSupply,
+            setUpMigratorParams(address(0), fee, tickSpacing, TOKEN_SPLIT, address(3)),
+            bytes(""),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
+        );
 
-    //     // Set up the hook contract at the correct address
-    //     HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
+        // Set up the hook contract at the correct address
+        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
 
-    //     // Update the PoolKey hook address (stored in slot 6)
-    //     HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
+        // Update the PoolKey hook address (stored in slot 6)
+        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
 
-    //     vm.prank(address(tokenLauncher));
-    //     token.transfer(address(lbp), totalSupply);
-    //     lbp.onTokensReceived();
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), totalSupply);
+        lbp.onTokensReceived();
 
-    //     // give the auction ETH
-    //     deal(address(lbp.auction()), totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000));
+        // give the auction ETH
+        deal(address(lbp.auction()), totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000));
 
-    //     // set the initial price
-    //     vm.prank(address(lbp.auction()));
-    //     if (liquidity > maxLiquidityPerTick) {
-    //         vm.expectRevert(
-    //             abi.encodeWithSelector(ISubscriber.InvalidLiquidity.selector, maxLiquidityPerTick, liquidity)
-    //         );
-    //         lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
-    //             totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
-    //             totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
-    //         );
-    //         return; // Exit early when we expect a revert
-    //     }
+        // set the initial price
+        vm.prank(address(lbp.auction()));
+        if (liquidity > maxLiquidityPerTick) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ISubscriber.InvalidLiquidity.selector, maxLiquidityPerTick, liquidity)
+            );
+            lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
+                totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
+                totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
+            );
+            return; // Exit early when we expect a revert
+        }
 
-    //     lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
-    //         totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
-    //         totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
-    //     );
+        lbp.setInitialPrice{value: totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000)}(
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000)),
+            totalSupply - uint128(FullMath.mulDiv(totalSupply, 5000, 10_000))
+        );
 
-    //     // fast forward to the migration block
-    //     vm.roll(lbp.migrationBlock());
+        // fast forward to the migration block
+        vm.roll(lbp.migrationBlock());
 
-    //     // get amounts of token and currency in the position manager
-    //     uint256 tokenAmtInPosmBefore = IERC20(token).balanceOf(POSITION_MANAGER);
-    //     uint256 currencyAmtInPosmBefore = POSITION_MANAGER.balance;
+        // get amounts of token and currency in the position manager
+        uint256 tokenAmtInPosmBefore = IERC20(token).balanceOf(POSITION_MANAGER);
+        uint256 currencyAmtInPosmBefore = POSITION_MANAGER.balance;
 
-    //     // get amounts of token and currency in the pool manager
-    //     uint256 tokenAmtInPoolmBefore = IERC20(token).balanceOf(address(POOL_MANAGER));
-    //     uint256 currencyAmtInPoolmBefore = POSITION_MANAGER.balance;
+        // get amounts of token and currency in the pool manager
+        uint256 tokenAmtInPoolmBefore = IERC20(token).balanceOf(address(POOL_MANAGER));
+        uint256 currencyAmtInPoolmBefore = POSITION_MANAGER.balance;
 
-    //     // migrate
-    //     vm.prank(address(lbp));
-    //     lbp.migrate();
+        // migrate
+        vm.prank(address(lbp));
+        lbp.migrate();
 
-    //     // verify the pool was initialized
-    //     assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
-    //     assertEq(lbp.initialTokenAmount(), totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000));
-    //     assertEq(lbp.initialCurrencyAmount(), totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000));
-    //     assertEq(address(lbp).balance, 0);
+        // verify the pool was initialized
+        assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
+        assertEq(lbp.initialTokenAmount(), totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000));
+        assertEq(lbp.initialCurrencyAmount(), totalSupply - FullMath.mulDiv(totalSupply, 5000, 10_000));
+        assertEq(address(lbp).balance, 0);
 
-    //     (PoolKey memory poolKey, PositionInfo info) =
-    //         IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
-    //     assertEq(Currency.unwrap(poolKey.currency0), address(0));
-    //     assertEq(Currency.unwrap(poolKey.currency1), address(token));
-    //     assertEq(poolKey.fee, fee);
-    //     assertEq(poolKey.tickSpacing, tickSpacing);
-    //     assertEq(info.tickLower(), TickMath.MIN_TICK / tickSpacing * tickSpacing);
-    //     assertEq(info.tickUpper(), TickMath.MAX_TICK / tickSpacing * tickSpacing);
+        (PoolKey memory poolKey, PositionInfo info) =
+            IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+        assertEq(Currency.unwrap(poolKey.currency0), address(0));
+        assertEq(Currency.unwrap(poolKey.currency1), address(token));
+        assertEq(poolKey.fee, fee);
+        assertEq(poolKey.tickSpacing, tickSpacing);
+        assertEq(info.tickLower(), TickMath.MIN_TICK / tickSpacing * tickSpacing);
+        assertEq(info.tickUpper(), TickMath.MAX_TICK / tickSpacing * tickSpacing);
 
-    //     assertLe(TickMath.MIN_TICK, info.tickLower());
-    //     assertGe(TickMath.MAX_TICK, info.tickUpper());
+        assertLe(TickMath.MIN_TICK, info.tickLower());
+        assertGe(TickMath.MAX_TICK, info.tickUpper());
 
-    //     // verify the amount of token and currency in the position manager is unchanged
-    //     assertEq(IERC20(token).balanceOf(POSITION_MANAGER), tokenAmtInPosmBefore);
-    //     assertEq(POSITION_MANAGER.balance, currencyAmtInPosmBefore);
+        // verify the amount of token and currency in the position manager is unchanged
+        assertEq(IERC20(token).balanceOf(POSITION_MANAGER), tokenAmtInPosmBefore);
+        assertEq(POSITION_MANAGER.balance, currencyAmtInPosmBefore);
 
-    //     // verify nothing is left in the lbp
-    //     assertEq(address(lbp).balance, 0);
-    //     assertEq(ERC20(token).balanceOf(address(lbp)), 0);
+        // verify nothing is left in the lbp
+        assertEq(address(lbp).balance, 0);
+        assertEq(ERC20(token).balanceOf(address(lbp)), 0);
 
-    //     // verify it was deposited into the pool manager
-    //     assertGt(IERC20(token).balanceOf(address(POOL_MANAGER)), tokenAmtInPoolmBefore);
-    //     assertGt(POOL_MANAGER.balance, currencyAmtInPoolmBefore);
-    // }
+        // verify it was deposited into the pool manager
+        assertGt(IERC20(token).balanceOf(address(POOL_MANAGER)), tokenAmtInPoolmBefore);
+        assertGt(POOL_MANAGER.balance, currencyAmtInPoolmBefore);
+    }
 
     function test_migrate_withOneSidedPosition_succeeds() public {
         vm.prank(address(tokenLauncher));
@@ -747,6 +770,9 @@ contract LBPStrategyBasicTest is Test {
         // get amounts of token and currency in the pool manager
         uint256 tokenAmtInPoolmBefore = IERC20(token).balanceOf(address(POOL_MANAGER));
         uint256 currencyAmtInPoolmBefore = POSITION_MANAGER.balance;
+
+        // get amt of weth in the position recipient
+        uint256 wethAmtInPosmBefore = IWETH9(WETH9).balanceOf(address(3));
 
         // migrate
         vm.prank(address(lbp));
@@ -778,14 +804,19 @@ contract LBPStrategyBasicTest is Test {
         // verify the amount of token and currency in the position manager is unchanged
         assertEq(IERC20(token).balanceOf(POSITION_MANAGER), tokenAmtInPosmBefore);
         assertEq(POSITION_MANAGER.balance, currencyAmtInPosmBefore);
+        assertEq(IWETH9(WETH9).balanceOf(POSITION_MANAGER), 0);
 
         // verify nothing is left in the lbp
         assertEq(address(lbp).balance, 0);
         assertEq(ERC20(token).balanceOf(address(lbp)), 0);
+        assertEq(IWETH9(WETH9).balanceOf(address(lbp)), 0);
 
         // verify it was deposited into the pool manager
         assertGt(IERC20(token).balanceOf(address(POOL_MANAGER)), tokenAmtInPoolmBefore);
         assertGt(POOL_MANAGER.balance, currencyAmtInPoolmBefore);
+
+        // verify position recipient has weth
+        assertGe(IWETH9(WETH9).balanceOf(address(3)), wethAmtInPosmBefore);
     }
 
     function test_migrate_withNonETHCurrency_withOneSidedPosition_succeeds() public {
@@ -796,7 +827,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 20, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // Set up the hook contract at the correct address
@@ -903,7 +935,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 100, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // initialize the auction by sending tokens to the LBP
@@ -979,7 +1012,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 1, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
@@ -1020,7 +1054,8 @@ contract LBPStrategyBasicTest is Test {
             setUpMigratorParams(DAI, 500, 20, TOKEN_SPLIT, address(3)),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            IWETH9(WETH9)
         );
 
         // Set up the hook contract at the correct address

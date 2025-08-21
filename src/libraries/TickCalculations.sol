@@ -3,6 +3,8 @@ pragma solidity 0.8.26;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
+/// @title TickCalculations
+/// @notice Library for tick calculations
 library TickCalculations {
     /// @notice Derives max liquidity per tick from given tick spacing
     /// @dev Taken directly from Pool.sol

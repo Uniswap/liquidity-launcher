@@ -13,12 +13,14 @@ import {MockDistributionStrategy} from "../mocks/MockDistributionStrategy.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     uint128 constant TOTAL_SUPPLY = 1000e18;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    address constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     LBPStrategyBasicFactory public factory;
     MockERC20 token;
     TokenLauncher tokenLauncher;
@@ -27,7 +29,8 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
-        factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
+        factory =
+            new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER), IWETH9(WETH9));
         tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(tokenLauncher));
         mock = new MockDistributionStrategy();

@@ -13,6 +13,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -48,6 +49,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
     IPositionManager public immutable positionManager;
+    IWETH9 public immutable WETH9;
 
     IDistributionContract public auction;
     // The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
@@ -64,7 +66,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         MigratorParameters memory migratorParams,
         bytes memory auctionParams,
         IPositionManager _positionManager,
-        IPoolManager _poolManager
+        IPoolManager _poolManager,
+        IWETH9 _WETH9
     ) HookBasic(_poolManager) {
         // Validate that the amount of tokens sent to auction is <= 50% of total supply
         // This ensures at least half of the tokens remain for the initial liquidity position
@@ -101,6 +104,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
+        WETH9 = _WETH9;
 
         key = PoolKey({
             currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
@@ -147,15 +151,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidPrice(sqrtPriceX96);
         }
 
+        int24 tickSpacing = key.tickSpacing;
+
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / key.tickSpacing * key.tickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / key.tickSpacing * key.tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
             currency < token ? currencyAmount : tokenAmount,
             currency < token ? tokenAmount : currencyAmount
         );
 
-        uint128 maxLiquidityPerTick = key.tickSpacing.tickSpacingToMaxLiquidityPerTick();
+        uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
 
         if (liquidity > maxLiquidityPerTick) {
             revert InvalidLiquidity(maxLiquidityPerTick, liquidity);
@@ -243,11 +249,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return (planner, liquidity);
     }
 
-    function _createOneSidedPositionPlan(Plan memory planner, uint128 liquidity)
-        internal
-        view
-        returns (Plan memory)
-    {
+    function _createOneSidedPositionPlan(Plan memory planner, uint128 liquidity) internal view returns (Plan memory) {
         // create something similar where you check if enough liquidity per tick spacing.
         // then mint the position, then settle.
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
@@ -327,20 +329,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             );
         }
 
-        planner.add(Actions.SETTLE, abi.encode(Currency.wrap(token), ActionConstants.OPEN_DELTA, false));
+        planner.add(Actions.SETTLE, abi.encode(Currency.wrap(token), ActionConstants.OPEN_DELTA, false)); // only need to settle token
 
         return planner;
     }
 
     function _sweepLeftovers(Plan memory planner) internal view returns (Plan memory) {
         // sweep token.
+        planner.add(Actions.SWEEP, abi.encode(Currency.wrap(token), positionRecipient));
         // if currency == native, wrap to weth and sweep.
         if (currency == address(0)) {
-            planner.add(Actions.SWEEP, abi.encode(Currency.wrap(token), positionRecipient));
             planner.add(Actions.WRAP, abi.encode(ActionConstants.CONTRACT_BALANCE));
-            planner.add(Actions.SWEEP, abi.encode(Currency.wrap(currency), positionRecipient));
+            planner.add(Actions.SWEEP, abi.encode(address(WETH9), positionRecipient));
         } else {
-            planner.add(Actions.SWEEP, abi.encode(Currency.wrap(token), positionRecipient));
             planner.add(Actions.SWEEP, abi.encode(Currency.wrap(currency), positionRecipient));
         }
         return planner;
