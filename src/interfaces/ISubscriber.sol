@@ -25,6 +25,9 @@ interface ISubscriber {
     /// @notice Error thrown when the liquidity is invalid
     error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
 
+    /// @notice Error thrown when the token amount is invalid
+    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
+
     /// @notice Sets the initial price of the pool based on the auction results and transfers the currency to the contract
     /// @param tokenAmount The amount of tokens needed for that price
     /// @param currencyAmount The amount of currency needed for that price and transferred to the contract
