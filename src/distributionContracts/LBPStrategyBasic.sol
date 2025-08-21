@@ -130,7 +130,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc ISubscriber
-    function setInitialPrice(uint128 tokenAmount, uint128 currencyAmount) public payable {
+    function setInitialPrice(uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) public payable {
         if (msg.sender != address(auction)) OnlyAuctionCanSetPrice.selector.revertWith(address(auction), msg.sender);
         if (currency == address(0)) {
             if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
@@ -138,17 +138,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith(currency);
             IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
         }
-        uint256 priceX192;
-        uint160 sqrtPriceX96;
-        if (currency < token) {
-            priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, currencyAmount);
-            sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        } else {
-            priceX192 = FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount);
-            sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        if (tokenAmount > reserveSupply) {
+            revert InvalidTokenAmount(tokenAmount, reserveSupply);
         }
+        if (currency < token) {
+            if (priceX192 != FullMath.mulDiv(tokenAmount, 2 ** 192, currencyAmount)) {
+                revert InvalidPrice(priceX192);
+            }
+        } else {
+            if (priceX192 != FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount)) {
+                revert InvalidPrice(priceX192);
+            }
+        }
+        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(sqrtPriceX96);
+            revert InvalidPrice(priceX192);
         }
 
         int24 tickSpacing = key.tickSpacing;
@@ -171,7 +175,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
 
-        emit InitialPriceSet(initialSqrtPriceX96, tokenAmount, currencyAmount);
+        emit InitialPriceSet(priceX192, tokenAmount, currencyAmount);
     }
 
     /// @inheritdoc ILBPStrategyBasic
