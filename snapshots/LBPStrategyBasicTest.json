@@ -1,9 +1,0 @@
-{
-  "migrateWithETH": "456505",
-  "migrateWithETH_withOneSidedPosition": "683425",
-  "migrateWithNonETHCurrency": "473603",
-  "migrateWithNonETHCurrency_withOneSidedPosition": "691156",
-  "onTokensReceived": "127408",
-  "setInitialPriceWithETH": "77065",
-  "setInitialPriceWithNonETHCurrency": "116304"
-}

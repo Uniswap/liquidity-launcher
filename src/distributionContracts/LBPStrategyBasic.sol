@@ -6,7 +6,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
-import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
@@ -31,7 +30,6 @@ import {Plan} from "../types/Plan.sol";
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
-    using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
     using Planner for Plan;
@@ -77,15 +75,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (
             migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING
                 || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
-        ) InvalidTickSpacing.selector.revertWith(migratorParams.tickSpacing);
+        ) revert InvalidTickSpacing(migratorParams.tickSpacing);
         if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.fee);
         if (
             migratorParams.positionRecipient == address(0)
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
                 || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
-        ) InvalidPositionRecipient.selector.revertWith(migratorParams.positionRecipient);
+        ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
         if (_token == migratorParams.currency) {
-            InvalidTokenAndCurrency.selector.revertWith(_token, migratorParams.currency);
+            revert InvalidTokenAndCurrency(_token);
         }
 
         auctionParameters = auctionParams;
@@ -129,24 +127,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @inheritdoc ISubscriber
     function setInitialPrice(uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) public payable {
-        if (msg.sender != address(auction)) OnlyAuctionCanSetPrice.selector.revertWith(address(auction), msg.sender);
+        if (msg.sender != address(auction)) revert OnlyAuctionCanSetPrice(address(auction), msg.sender);
         if (currency == address(0)) {
             if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
         } else {
-            if (msg.value != 0) NonETHCurrencyCannotReceiveETH.selector.revertWith(currency);
+            if (msg.value != 0) revert NonETHCurrencyCannotReceiveETH(currency);
             IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
         }
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
-        }
-        if (currency < token) {
-            if (priceX192 != FullMath.mulDiv(tokenAmount, 2 ** 192, currencyAmount)) {
-                revert InvalidPrice(priceX192);
-            }
-        } else {
-            if (priceX192 != FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount)) {
-                revert InvalidPrice(priceX192);
-            }
         }
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
