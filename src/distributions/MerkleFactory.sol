@@ -16,11 +16,11 @@ contract MerkleClaimFactory is IDistributionStrategy {
     /// @param amount Amount of `token` intended for distribution.
     /// @param configData ABI-encoded (merkleRoot, owner, endTime) where endTime is optional (0 = no deadline).
     /// @return distributionContract The freshly deployed MerkleClaim.
-    function initializeDistribution(
-        address token,
-        uint256 amount,
-        bytes calldata configData
-    ) external override returns (IDistributionContract distributionContract) {
+    function initializeDistribution(address token, uint256 amount, bytes calldata configData)
+        external
+        override
+        returns (IDistributionContract distributionContract)
+    {
         if (token == address(0)) revert ZeroAddress();
 
         // Decode the merkle root, owner, and endTime from configData

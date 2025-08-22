@@ -4,13 +4,15 @@
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
-[submodule "lib/uerc20-factory"]
-	path = lib/uerc20-factory
-	url = git@github.com:Uniswap/uerc20-factory.git
+[submodule "lib/permit2"]
+	path = lib/permit2
+	url = https://github.com/Uniswap/permit2
 [submodule "lib/merkle-distributor.git"]
 	path = lib/merkle-distributor.git
 	url = https://github.com/Uniswap/merkle-distributor.git
-[submodule "lib/merkle-distributor"]
-	path = lib/merkle-distributor
-	url = https://github.com/Uniswap/merkle-distributor
-	branch = master
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/Vectorized/solady
+[submodule "lib/optimism"]
+	path = lib/optimism
+	url = https://github.com/ethereum-optimism/optimism

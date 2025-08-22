@@ -41,12 +41,7 @@ interface IMerkleClaim is IDistributionContract {
     /// @param account The account that will receive the claimed tokens
     /// @param amount The amount of tokens to claim
     /// @param merkleProof Array of merkle proof hashes to verify the claim
-    function claim(
-        uint256 index,
-        address account,
-        uint256 amount,
-        bytes32[] calldata merkleProof
-    ) external;
+    function claim(uint256 index, address account, uint256 amount, bytes32[] calldata merkleProof) external;
 
     /// @notice Sweep remaining tokens to the owner after endTime
     /// @dev Only callable by owner and only after endTime has passed

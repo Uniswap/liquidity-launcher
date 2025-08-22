@@ -11,12 +11,9 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract, IM
 
     error InsufficientTokensReceived(uint256 expected, uint256 actual);
 
-    constructor(
-        address _token,
-        bytes32 _merkleRoot,
-        address _owner,
-        uint256 _endTime
-    ) MerkleDistributorWithDeadline(_token, _merkleRoot, _endTime == 0 ? type(uint256).max : _endTime) {
+    constructor(address _token, bytes32 _merkleRoot, address _owner, uint256 _endTime)
+        MerkleDistributorWithDeadline(_token, _merkleRoot, _endTime == 0 ? type(uint256).max : _endTime)
+    {
         // Transfer ownership to the specified owner
         _transferOwnership(_owner);
     }
@@ -34,12 +31,11 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract, IM
     function sweep() external {
         // Get the balance before withdrawal
         uint256 balance = IERC20(token).balanceOf(address(this));
-        
+
         // Use the parent's withdraw function
         withdraw();
-        
+
         // Emit event with the actual amount swept
         emit TokensSwept(owner(), balance);
     }
-
 }
