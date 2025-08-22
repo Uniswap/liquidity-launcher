@@ -25,9 +25,7 @@ interface ISubscriber {
     /// @notice Error thrown when the token amount is invalid
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
 
-    /// @notice Sets the initial price of the pool based on the auction results and transfers the currency to the contract
-    /// @param priceX192 The price of the pool in 192-bit fixed point format (2 ** 192 * price)
-    /// @param tokenAmount The amount of tokens needed for that price
-    /// @param currencyAmount The amount of currency needed for that price and transferred to the contract
-    function setInitialPrice(uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) external payable;
+    /// @notice Sets the initial price of the pool based on the auction results
+    /// @param data The data to be passed to the subscriber regarding the initial price
+    function setInitialPrice(bytes memory data) external payable;
 }

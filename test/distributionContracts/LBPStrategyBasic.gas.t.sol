@@ -43,7 +43,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         // Set initial price
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmount}(priceX192, tokenAmount, ethAmount);
+        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
         vm.snapshotGasLastCall("setInitialPriceWithETH");
     }
 
@@ -69,7 +69,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Approve and set price
         vm.startPrank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), 1_000e18);
-        lbp.setInitialPrice(priceX192, tokenAmount, daiAmount);
+        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
         vm.snapshotGasLastCall("setInitialPriceWithNonETHCurrency");
     }
 
@@ -156,7 +156,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
 
-        lbp.setInitialPrice(priceX192, tokenAmount, daiAmount);
+        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
         vm.stopPrank();
 
         // Fast forward and migrate

@@ -218,7 +218,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice(priceX192, tokenAmount, daiAmount);
+        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
 
         // Migrate
         LBPTestHelpers.migrateToMigrationBlock(lbp);

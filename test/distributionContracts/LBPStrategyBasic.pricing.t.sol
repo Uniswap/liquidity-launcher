@@ -22,7 +22,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(ISubscriber.OnlyAuctionCanSetPrice.selector, address(lbp.auction()), address(this))
         );
-        lbp.setInitialPrice(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, DEFAULT_TOTAL_SUPPLY);
+        lbp.setInitialPrice(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, DEFAULT_TOTAL_SUPPLY));
     }
 
     // ============ ETH Currency Tests ============
@@ -37,7 +37,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.deal(address(lbp.auction()), sentAmount);
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidCurrencyAmount.selector, sentAmount, expectedAmount));
-        lbp.setInitialPrice{value: sentAmount}(TickMath.getSqrtPriceAtTick(0), expectedAmount, expectedAmount);
+        lbp.setInitialPrice{value: sentAmount}(
+            abi.encode(TickMath.getSqrtPriceAtTick(0), expectedAmount, expectedAmount)
+        );
     }
 
     function test_setInitialPrice_withETH_succeeds() public {
@@ -56,7 +58,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         emit InitialPriceSet(priceX192, tokenAmount, ethAmount);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmount}(priceX192, tokenAmount, ethAmount);
+        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
 
         // Verify state
         assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -80,7 +82,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ISubscriber.NonETHCurrencyCannotReceiveETH.selector, DAI));
-        lbp.setInitialPrice{value: 1e18}(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, 1e18);
+        lbp.setInitialPrice{value: 1e18}(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, 1e18));
     }
 
     // ============ Non-ETH Currency Tests ============
@@ -108,7 +110,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         emit InitialPriceSet(priceX192, tokenAmount, daiAmount);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice(priceX192, tokenAmount, daiAmount);
+        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
 
         // Verify state
         assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -187,7 +189,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         if (isValidPrice) {
             // Should succeed
-            lbp.setInitialPrice{value: ethAmount}(priceX192, tokenAmount, ethAmount);
+            lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
 
             // Verify
             assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -197,7 +199,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         } else {
             // Should revert with InvalidPrice
             vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidPrice.selector, priceX192));
-            lbp.setInitialPrice{value: ethAmount}(priceX192, tokenAmount, ethAmount);
+            lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
         }
     }
 
@@ -213,7 +215,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.deal(address(lbp.auction()), ethAmount);
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidPrice.selector, priceX192));
-        lbp.setInitialPrice{value: ethAmount}(priceX192, tokenAmount, ethAmount);
+        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
     }
 
     // Note: Testing for prices above MAX_SQRT_PRICE is not feasible with uint128 inputs

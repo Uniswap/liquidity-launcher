@@ -143,7 +143,7 @@ library LBPTestHelpers {
         uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
 
         _vm().prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmount}(priceX192, tokenAmount, ethAmount);
+        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
     }
 
     function setInitialPriceToken(LBPStrategyBasic lbp, address currency, uint128 tokenAmount, uint128 currencyAmount)
@@ -159,7 +159,7 @@ library LBPTestHelpers {
         uint256 priceX192 = FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount);
 
         _vm().prank(address(lbp.auction()));
-        lbp.setInitialPrice(priceX192, tokenAmount, currencyAmount);
+        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, currencyAmount));
     }
 
     function migrateToMigrationBlock(LBPStrategyBasic lbp) internal {
