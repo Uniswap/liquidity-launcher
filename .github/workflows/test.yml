@@ -31,3 +31,4 @@ jobs:
         run: forge test
         env:
           FORGE_SNAPSHOT_CHECK: true
+          FORK_URL: ${{ secrets.FORK_URL }}
