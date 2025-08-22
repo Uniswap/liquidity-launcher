@@ -8,6 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
@@ -33,6 +34,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
     using Planner for Plan;
+    using CurrencyLibrary for Currency;
 
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
@@ -67,24 +69,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPoolManager _poolManager,
         IWETH9 _WETH9
     ) HookBasic(_poolManager) {
-        // Validate that the amount of tokens sent to auction is <= 50% of total supply
-        // This ensures at least half of the tokens remain for the initial liquidity position
-        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
-        }
-        if (
-            migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING
-                || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
-        ) revert InvalidTickSpacing(migratorParams.tickSpacing);
-        if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.fee);
-        if (
-            migratorParams.positionRecipient == address(0)
-                || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
-                || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
-        ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        if (_token == migratorParams.currency) {
-            revert InvalidTokenAndCurrency(_token);
-        }
+        _validateMigratorParams(_token, migratorParams);
 
         auctionParameters = auctionParams;
 
@@ -121,12 +106,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             token, totalSupply - reserveSupply, auctionParameters, bytes32(0)
         );
 
-        IERC20(token).safeTransfer(address(auction), totalSupply - reserveSupply);
+        Currency.wrap(token).transfer(address(auction), totalSupply - reserveSupply);
         auction.onTokensReceived();
     }
 
     /// @inheritdoc ISubscriber
-    function setInitialPrice(uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) public payable {
+    function setInitialPrice(uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) external payable {
         if (msg.sender != address(auction)) revert OnlyAuctionCanSetPrice(address(auction), msg.sender);
         if (currency == address(0)) {
             if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
@@ -166,16 +151,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc ILBPStrategyBasic
-    function migrate() public {
+    function migrate() external {
         if (block.number < migrationBlock) revert MigrationNotAllowed(migrationBlock, block.number);
 
         // transfer tokens to the position manager
-        IERC20(token).safeTransfer(address(positionManager), reserveSupply);
+        Currency.wrap(token).transfer(address(positionManager), reserveSupply);
 
-        bool currencyIsNative = currency == address(0);
+        bool currencyIsNative = Currency.wrap(currency).isAddressZero();
         // transfer raised currency to the position manager if currency is not native
         if (!currencyIsNative) {
-            IERC20(currency).safeTransfer(address(positionManager), initialCurrencyAmount);
+            Currency.wrap(currency).transfer(address(positionManager), initialCurrencyAmount);
         }
 
         // Initialize the pool with the starting price determined by the auction
@@ -196,7 +181,28 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
-    function _createPlan() internal view returns (bytes memory) {
+    function _validateMigratorParams(address _token, MigratorParameters memory migratorParams) private view {
+        // Validate that the amount of tokens sent to auction is <= 50% of total supply
+        // This ensures at least half of the tokens remain for the initial liquidity position
+        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
+        }
+        if (
+            migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING
+                || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
+        ) revert InvalidTickSpacing(migratorParams.tickSpacing);
+        if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.fee);
+        if (
+            migratorParams.positionRecipient == address(0)
+                || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
+                || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
+        ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
+        if (_token == migratorParams.currency) {
+            revert InvalidTokenAndCurrency(_token);
+        }
+    }
+
+    function _createPlan() private view returns (bytes memory) {
         Plan memory planner = Planner.init();
         uint128 liquidity;
         (planner, liquidity) = _createFullRangePositionPlan(planner);
@@ -209,7 +215,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return planner.encode();
     }
 
-    function _createFullRangePositionPlan(Plan memory planner) internal view returns (Plan memory, uint128) {
+    function _createFullRangePositionPlan(Plan memory planner) private view returns (Plan memory, uint128) {
         int24 tickSpacing = key.tickSpacing;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -240,7 +246,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return (planner, liquidity);
     }
 
-    function _createOneSidedPositionPlan(Plan memory planner, uint128 liquidity) internal view returns (Plan memory) {
+    function _createOneSidedPositionPlan(Plan memory planner, uint128 liquidity) private view returns (Plan memory) {
         // create something similar where you check if enough liquidity per tick spacing.
         // then mint the position, then settle.
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
@@ -325,7 +331,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return planner;
     }
 
-    function _sweepLeftovers(Plan memory planner) internal view returns (Plan memory) {
+    function _sweepLeftovers(Plan memory planner) private view returns (Plan memory) {
         // sweep token.
         planner.add(Actions.SWEEP, abi.encode(Currency.wrap(token), positionRecipient));
         // if currency == native, wrap to weth and sweep.
