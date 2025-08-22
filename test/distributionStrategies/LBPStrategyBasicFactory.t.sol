@@ -7,7 +7,6 @@ import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic
 import {TokenLauncher} from "../../src/TokenLauncher.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../../src/types/MigratorParams.sol";
 import {MockDistributionStrategy} from "../mocks/MockDistributionStrategy.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
@@ -48,20 +47,20 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function test_initializeDistribution_succeeds() public {
         // mined a salt that when hashed with address(this), gives a valid hook address with beforeInitialize flag set to true
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(
-                type(LBPStrategyBasic).creationCode,
-                abi.encode(
-                    address(token),
-                    TOTAL_SUPPLY,
-                    migratorParams,
-                    bytes(""),
-                    IPositionManager(POSITION_MANAGER),
-                    IPoolManager(POOL_MANAGER),
-                    IWETH9(WETH9)
-                )
-            )
-        );
+        // bytes32 initCodeHash = keccak256(
+        //     abi.encodePacked(
+        //         type(LBPStrategyBasic).creationCode,
+        //         abi.encode(
+        //             address(token),
+        //             TOTAL_SUPPLY,
+        //             migratorParams,
+        //             bytes(""),
+        //             IPositionManager(POSITION_MANAGER),
+        //             IPoolManager(POOL_MANAGER),
+        //             IWETH9(WETH9)
+        //         )
+        //     )
+        // );
         // console2.logBytes32(initCodeHash);
         LBPStrategyBasic lbp = LBPStrategyBasic(
             address(

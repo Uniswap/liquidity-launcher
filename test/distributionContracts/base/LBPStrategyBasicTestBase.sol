@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
-import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {MockDistributionStrategy} from "../../mocks/MockDistributionStrategy.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -117,7 +116,7 @@ abstract contract LBPStrategyBasicTestBase is Test {
         _verifyPoolKey();
     }
 
-    function _verifyPoolKey() internal {
+    function _verifyPoolKey() internal view {
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
 
         assertEq(Currency.unwrap(currency0), migratorParams.currency);
