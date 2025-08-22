@@ -39,7 +39,7 @@ contract LBPStrategyBasicFactoryTest is Test {
             currency: address(0),
             fee: 500,
             tickSpacing: 60,
-            positionRecipient: address(0),
+            positionRecipient: address(3),
             migrationBlock: uint64(block.number + 1),
             auctionFactory: address(mock),
             tokenSplitToAuction: 5000
@@ -48,15 +48,34 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function test_initializeDistribution_succeeds() public {
         // mined a salt that when hashed with address(this), gives a valid hook address with beforeInitialize flag set to true
-        // bytes32 initCodeHash = keccak256(abi.encodePacked(type(LBPStrategyBasic).creationCode, abi.encode(address(token), TOTAL_SUPPLY, migratorParams, bytes(""))));
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(LBPStrategyBasic).creationCode,
+                abi.encode(
+                    address(token),
+                    TOTAL_SUPPLY,
+                    migratorParams,
+                    bytes(""),
+                    IPositionManager(POSITION_MANAGER),
+                    IPoolManager(POOL_MANAGER),
+                    IWETH9(WETH9)
+                )
+            )
+        );
         // console2.logBytes32(initCodeHash);
         LBPStrategyBasic lbp = LBPStrategyBasic(
             address(
                 factory.initializeDistribution(
                     address(token),
                     TOTAL_SUPPLY,
-                    abi.encode(migratorParams, bytes("")),
-                    0x7fa9385be102ac3eac297483dd6233d62b3e1496040c8dc26096f8620389b1a9
+                    abi.encode(
+                        migratorParams,
+                        bytes(""),
+                        IPositionManager(POSITION_MANAGER),
+                        IPoolManager(POOL_MANAGER),
+                        IWETH9(WETH9)
+                    ),
+                    0x7fa9385be102ac3eac297483dd6233d62b3e149663eac0adac2fc9f92ae2b299
                 )
             )
         );
@@ -65,25 +84,36 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(lbp.token(), address(token));
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
-        assertEq(lbp.positionRecipient(), address(0));
+        assertEq(lbp.positionRecipient(), address(3));
         assertEq(lbp.migrationBlock(), block.number + 1);
         assertEq(lbp.auctionFactory(), address(mock));
         assertEq(lbp.auctionParameters(), bytes(""));
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496040c8dc26096f8620389b1a9;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e149663eac0adac2fc9f92ae2b299;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(migratorParams, bytes("")),
+            abi.encode(
+                migratorParams, bytes(""), IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER), IWETH9(WETH9)
+            ),
             keccak256(abi.encode(address(this), salt))
         );
         assertEq(
             lbpAddress,
             address(
                 factory.initializeDistribution(
-                    address(token), TOTAL_SUPPLY, abi.encode(migratorParams, bytes("")), salt
+                    address(token),
+                    TOTAL_SUPPLY,
+                    abi.encode(
+                        migratorParams,
+                        bytes(""),
+                        IPositionManager(POSITION_MANAGER),
+                        IPoolManager(POOL_MANAGER),
+                        IWETH9(WETH9)
+                    ),
+                    salt
                 )
             )
         );
