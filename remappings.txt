@@ -1,2 +1,6 @@
-uerc20-factory=lib/uerc20-factory
 permit2=lib/permit2
+@uniswap/v4-core/=lib/v4-core/
+@uniswap/v4-periphery/=lib/v4-periphery/
+@openzeppelin=lib/openzeppelin-contracts/
+@solady/=lib/solady/
+@optimism/=lib/optimism/packages/contracts-bedrock/
