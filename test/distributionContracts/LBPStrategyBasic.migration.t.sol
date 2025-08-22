@@ -7,12 +7,11 @@ import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     using LBPTestHelpers for *;

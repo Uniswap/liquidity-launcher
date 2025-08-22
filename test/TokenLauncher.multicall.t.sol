@@ -9,10 +9,8 @@ import {UERC20Factory} from "../src/token-factories/uerc20-factory/factories/UER
 import {UERC20Metadata} from "../src/token-factories/uerc20-factory/libraries/UERC20MetadataLibrary.sol";
 import {UERC20} from "../src/token-factories/uerc20-factory/tokens/UERC20.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {MockDistributionStrategy} from "./mocks/MockDistributionStrategy.sol";
 import {Distribution} from "../src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {IDistributionContract} from "../src/interfaces/IDistributionContract.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
 import {Permit2Forwarder} from "../src/Permit2Forwarder.sol";
 import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";

@@ -63,7 +63,7 @@ library LBPTestHelpers {
         int24 expectedTickSpacing,
         int24 expectedTickLower,
         int24 expectedTickUpper
-    ) internal {
+    ) internal view {
         (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
 
         _vm().assertEq(Currency.unwrap(poolKey.currency0), expectedCurrency0);
@@ -76,6 +76,7 @@ library LBPTestHelpers {
 
     function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency, address weth9)
         internal
+        view
     {
         // Assert LBP is empty
         _vm().assertEq(address(lbp).balance, 0);
@@ -98,7 +99,7 @@ library LBPTestHelpers {
         BalanceSnapshot memory before,
         BalanceSnapshot memory afterMigration,
         bool expectOneSidedPosition
-    ) internal {
+    ) internal pure {
         // Position Manager balances should be unchanged
         _vm().assertEq(afterMigration.tokenInPosm, before.tokenInPosm);
         _vm().assertEq(afterMigration.currencyInPosm, before.currencyInPosm);
