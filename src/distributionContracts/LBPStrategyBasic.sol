@@ -98,7 +98,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {
-        if (IERC20(token).balanceOf(address(this)) != totalSupply) {
+        if (IERC20(token).balanceOf(address(this)) < totalSupply) {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
@@ -111,9 +111,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc ISubscriber
-    function setInitialPrice(uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) external payable {
+    function setInitialPrice(bytes memory data) external payable {
+        (uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) = abi.decode(data, (uint256, uint128, uint128));
         if (msg.sender != address(auction)) revert OnlyAuctionCanSetPrice(address(auction), msg.sender);
-        if (currency == address(0)) {
+        if (Currency.wrap(currency).isAddressZero()) {
             if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
         } else {
             if (msg.value != 0) revert NonETHCurrencyCannotReceiveETH(currency);
