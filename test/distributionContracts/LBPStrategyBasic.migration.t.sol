@@ -244,18 +244,4 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         LBPTestHelpers.setInitialPriceETH(lbp, tokenAmount, currencyAmount);
     }
-
-    function sqrt(uint256 x) private pure returns (uint256) {
-        if (x == 0) return 0;
-
-        uint256 z = (x + 1) / 2;
-        uint256 y = x;
-
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
-        }
-
-        return y;
-    }
 }

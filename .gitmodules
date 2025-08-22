@@ -16,3 +16,9 @@
 [submodule "lib/v4-periphery"]
 	path = lib/v4-periphery
 	url = https://github.com/Uniswap/v4-periphery.git
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/Vectorized/solady
+[submodule "lib/optimism"]
+	path = lib/optimism
+	url = https://github.com/ethereum-optimism/optimism
