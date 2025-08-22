@@ -28,6 +28,6 @@ jobs:
         run: forge build
 
       - name: Run tests
-        run: forge test --isolate
+        run: forge test
         env:
           FORGE_SNAPSHOT_CHECK: true
