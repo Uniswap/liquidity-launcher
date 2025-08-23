@@ -158,10 +158,6 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     function test_fuzz_onNotify_withETH(uint128 tokenAmount, uint128 ethAmount) public {
         vm.assume(tokenAmount <= DEFAULT_TOTAL_SUPPLY / 2);
 
-        // Prevent division by zero
-        vm.assume(tokenAmount > 0);
-        vm.assume(ethAmount > 0);
-
         // Prevent overflow in FullMath.mulDiv
         // We need to ensure that when calculating tokenAmount * 2^192,
         // the upper 256 bits (prod1) must be less than ethAmount

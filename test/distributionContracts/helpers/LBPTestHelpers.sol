@@ -100,9 +100,9 @@ library LBPTestHelpers {
         BalanceSnapshot memory afterMigration,
         bool expectOneSidedPosition
     ) internal pure {
-        // Position Manager balances should be unchanged
-        _vm().assertEq(afterMigration.tokenInPosm, before.tokenInPosm);
-        _vm().assertEq(afterMigration.currencyInPosm, before.currencyInPosm);
+        // May be leftover dust in position manager
+        _vm().assertGe(afterMigration.tokenInPosm, before.tokenInPosm);
+        _vm().assertGe(afterMigration.currencyInPosm, before.currencyInPosm);
 
         // Pool Manager should have received funds
         _vm().assertGt(afterMigration.tokenInPoolm, before.tokenInPoolm);

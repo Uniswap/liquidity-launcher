@@ -25,15 +25,12 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
-import {Planner} from "../libraries/Planner.sol";
-import {Plan} from "../types/Plan.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
-    using Planner for Plan;
     using CurrencyLibrary for Currency;
 
     /// @notice The token split is measured in bips (10_000 = 100%)
@@ -204,19 +201,26 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     function _createPlan() private view returns (bytes memory) {
-        Plan memory planner = Planner.init();
+        bytes memory actions;
+        bytes[] memory params;
         uint128 liquidity;
-        (planner, liquidity) = _createFullRangePositionPlan(planner);
-        // occurs whenever final price > initial clearing price
-        if (reserveSupply > initialTokenAmount) {
-            planner = _createOneSidedPositionPlan(planner, liquidity);
+        if (reserveSupply == initialTokenAmount) {
+            params = new bytes[](3);
+            (actions, params,) = _createFullRangePositionPlan(actions, params);
+        } else {
+            params = new bytes[](5);
+            (actions, params, liquidity) = _createFullRangePositionPlan(actions, params);
+            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         }
-        planner = _sweepLeftovers(planner);
 
-        return planner.encode();
+        return abi.encode(actions, params);
     }
 
-    function _createFullRangePositionPlan(Plan memory planner) private view returns (Plan memory, uint128) {
+    function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params)
+        private
+        view
+        returns (bytes memory, bytes[] memory, uint128)
+    {
         int24 tickSpacing = key.tickSpacing;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -227,82 +231,95 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             currency < token ? initialTokenAmount : initialCurrencyAmount
         );
 
-        planner.add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                key,
-                TickMath.MIN_TICK / tickSpacing * tickSpacing,
-                TickMath.MAX_TICK / tickSpacing * tickSpacing,
-                liquidity,
-                currency < token ? initialCurrencyAmount : initialTokenAmount,
-                currency < token ? initialTokenAmount : initialCurrencyAmount,
-                positionRecipient,
-                Constants.ZERO_BYTES
-            )
+        actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE));
+
+        params[0] = abi.encode(
+            key,
+            TickMath.MIN_TICK / tickSpacing * tickSpacing,
+            TickMath.MAX_TICK / tickSpacing * tickSpacing,
+            liquidity,
+            currency < token ? initialCurrencyAmount : initialTokenAmount,
+            currency < token ? initialTokenAmount : initialCurrencyAmount,
+            positionRecipient,
+            Constants.ZERO_BYTES
         );
 
-        planner.add(Actions.SETTLE, abi.encode(key.currency0, ActionConstants.OPEN_DELTA, false));
-        planner.add(Actions.SETTLE, abi.encode(key.currency1, ActionConstants.OPEN_DELTA, false));
+        params[1] = abi.encode(key.currency0, ActionConstants.OPEN_DELTA, false);
+        params[2] = abi.encode(key.currency1, ActionConstants.OPEN_DELTA, false);
 
-        return (planner, liquidity);
+        return (actions, params, liquidity);
     }
 
-    function _createOneSidedPositionPlan(Plan memory planner, uint128 liquidity) private view returns (Plan memory) {
+    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 liquidity)
+        private
+        view
+        returns (bytes memory, bytes[] memory)
+    {
         // create something similar where you check if enough liquidity per tick spacing.
         // then mint the position, then settle.
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
         int24 tickSpacing = key.tickSpacing;
+        uint256 tokenAmount = reserveSupply - initialTokenAmount;
+        int24 minTick = TickMath.MIN_TICK;
+        int24 maxTick = TickMath.MAX_TICK;
 
         if (currency < token) {
             // Skip position creation if initial tick is too close to lower boundary
-            if (initialTick - TickMath.MIN_TICK < tickSpacing) {
-                return planner;
+            if (initialTick - minTick < tickSpacing) {
+                // truncate params to length 3
+                return (actions, _truncate(params));
             }
+            int24 lowerTick = minTick / tickSpacing * tickSpacing; // Lower tick rounded to tickSpacing towards 0
+            int24 upperTick = initialTick.tickFloor(tickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
+
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
                 initialSqrtPriceX96,
-                TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-                TickMath.getSqrtPriceAtTick(initialTick.tickFloor(tickSpacing)),
+                TickMath.getSqrtPriceAtTick(lowerTick),
+                TickMath.getSqrtPriceAtTick(upperTick),
                 0,
-                reserveSupply - initialTokenAmount
+                tokenAmount
             );
             // check that liquidity is within limits
             if (liquidity + newLiquidity > tickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-                return planner;
+                // truncate params to length 3
+                return (actions, _truncate(params));
             }
 
             // Position is on the left hand side of current tick
             // For a one-sided position, we create a range from [MIN_TICK, current tick) (because upper tick is exclusive)
             // The upper tick must be a multiple of tickSpacing and exclusive
-            planner.add(
-                Actions.MINT_POSITION,
-                abi.encode(
-                    key,
-                    TickMath.MIN_TICK / tickSpacing * tickSpacing, // Lower tick rounded to tickSpacing towards 0
-                    initialTick.tickFloor(tickSpacing), // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
-                    newLiquidity,
-                    0, // No currency amount (one-sided position)
-                    reserveSupply - initialTokenAmount, // Maximum token amount
-                    positionRecipient,
-                    Constants.ZERO_BYTES
-                )
+            params[3] = abi.encode(
+                key,
+                lowerTick,
+                upperTick,
+                newLiquidity,
+                0, // No currency amount (one-sided position)
+                tokenAmount, // Maximum token amount
+                positionRecipient,
+                Constants.ZERO_BYTES
             );
         } else {
             // Skip position creation if initial tick is too close to upper boundary
-            if (TickMath.MAX_TICK - initialTick <= tickSpacing) {
-                return planner;
+            if (maxTick - initialTick <= tickSpacing) {
+                // truncate params to length 3
+                return (actions, _truncate(params));
             }
+            int24 lowerTick = (initialTick / tickSpacing + 1) * tickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
+            int24 upperTick = maxTick / tickSpacing * tickSpacing; // MAX_TICK rounded to tickSpacing towards 0
+
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
                 initialSqrtPriceX96,
-                TickMath.getSqrtPriceAtTick((initialTick / tickSpacing + 1) * tickSpacing),
-                TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
-                reserveSupply - initialTokenAmount,
+                TickMath.getSqrtPriceAtTick(lowerTick),
+                TickMath.getSqrtPriceAtTick(upperTick),
+                tokenAmount,
                 0
             );
             // check that liquidity is within limits
             if (liquidity + newLiquidity > tickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-                return planner;
+                // truncate params to length 3
+                return (actions, _truncate(params));
             }
 
             // Position is on the right hand side of current tick
@@ -312,36 +329,28 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // - Greater than current tick
             // The upper tick must be:
             // - A multiple of tickSpacing
-            planner.add(
-                Actions.MINT_POSITION,
-                abi.encode(
-                    key,
-                    (initialTick / tickSpacing + 1) * tickSpacing, // Next tick multiple after current tick (because lower tick is inclusive)
-                    TickMath.MAX_TICK / tickSpacing * tickSpacing, // MAX_TICK rounded to tickSpacing towards 0
-                    newLiquidity,
-                    reserveSupply - initialTokenAmount, // Maximum token amount
-                    0, // No currency amount (one-sided position)
-                    positionRecipient,
-                    Constants.ZERO_BYTES
-                )
+            params[3] = abi.encode(
+                key,
+                lowerTick,
+                upperTick,
+                newLiquidity,
+                tokenAmount, // Maximum token amount
+                0, // No currency amount (one-sided position)
+                positionRecipient,
+                Constants.ZERO_BYTES
             );
         }
+        actions = abi.encodePacked(actions, uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE));
+        params[4] = abi.encode(Currency.wrap(token), ActionConstants.OPEN_DELTA, false);
 
-        planner.add(Actions.SETTLE, abi.encode(Currency.wrap(token), ActionConstants.OPEN_DELTA, false)); // only need to settle token
-
-        return planner;
+        return (actions, params);
     }
 
-    function _sweepLeftovers(Plan memory planner) private view returns (Plan memory) {
-        // sweep token.
-        planner.add(Actions.SWEEP, abi.encode(Currency.wrap(token), positionRecipient));
-        // if currency == native, wrap to weth and sweep.
-        if (currency == address(0)) {
-            planner.add(Actions.WRAP, abi.encode(ActionConstants.CONTRACT_BALANCE));
-            planner.add(Actions.SWEEP, abi.encode(address(WETH9), positionRecipient));
-        } else {
-            planner.add(Actions.SWEEP, abi.encode(Currency.wrap(currency), positionRecipient));
-        }
-        return planner;
+    function _truncate(bytes[] memory params) private pure returns (bytes[] memory) {
+        bytes[] memory truncated = new bytes[](3);
+        truncated[0] = params[0];
+        truncated[1] = params[1];
+        truncated[2] = params[2];
+        return truncated;
     }
 }

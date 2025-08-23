@@ -78,7 +78,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                         IPoolManager(POOL_MANAGER),
                         IWETH9(WETH9)
                     ),
-                    0x7fa9385be102ac3eac297483dd6233d62b3e14966f61827b394b83cc2aae7e62
+                    0x7fa9385be102ac3eac297483dd6233d62b3e14961ac5f1b4e3b78845c0d1efac
                 )
             )
         );
@@ -94,7 +94,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e14966f61827b394b83cc2aae7e62;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e14961ac5f1b4e3b78845c0d1efac;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,

@@ -7,7 +7,7 @@ solc = "0.8.26"
 bytecode_hash = "none"
 
 [profile.default.fuzz]
-runs = 100
+runs = 10000
 
 [profile.ci.fuzz]
 runs = 100000
