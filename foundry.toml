@@ -6,4 +6,10 @@ libs = ["lib"]
 solc = "0.8.26"
 bytecode_hash = "none"
 
+[profile.default.fuzz]
+runs = 10000
+
+[profile.ci.fuzz]
+runs = 100000
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
