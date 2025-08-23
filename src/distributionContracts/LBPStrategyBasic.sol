@@ -9,6 +9,7 @@ import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
@@ -16,7 +17,6 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
@@ -40,8 +40,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable token;
     address public immutable currency;
 
-    uint24 public immutable fee;
-    int24 public immutable tickSpacing;
+    uint24 public immutable poolLPFee;
+    int24 public immutable poolTickSpacing;
 
     uint128 public immutable totalSupply;
     uint128 public immutable reserveSupply;
@@ -86,8 +86,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auctionFactory = migratorParams.auctionFactory;
         WETH9 = _WETH9;
 
-        fee = migratorParams.fee;
-        tickSpacing = migratorParams.tickSpacing;
+        poolLPFee = migratorParams.poolLPFee;
+        poolTickSpacing = migratorParams.poolTickSpacing;
     }
 
     /// @inheritdoc IDistributionContract
@@ -121,6 +121,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
             revert InvalidPrice(priceX192);
         }
+
+        int24 tickSpacing = poolTickSpacing;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
@@ -159,8 +161,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         PoolKey memory key = PoolKey({
             currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
             currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
-            fee: fee,
-            tickSpacing: tickSpacing,
+            fee: poolLPFee,
+            tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
         });
 
@@ -189,10 +191,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
         }
         if (
-            migratorParams.tickSpacing > TickMath.MAX_TICK_SPACING
-                || migratorParams.tickSpacing < TickMath.MIN_TICK_SPACING
-        ) revert InvalidTickSpacing(migratorParams.tickSpacing);
-        if (migratorParams.fee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.fee);
+            migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
+                || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
+        ) revert InvalidTickSpacing(migratorParams.poolTickSpacing);
+        if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.poolLPFee);
         if (
             migratorParams.positionRecipient == address(0)
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
@@ -224,13 +226,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         view
         returns (bytes memory, bytes[] memory, uint128)
     {
+        int24 tickSpacing = poolTickSpacing;
         int24 minTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
         int24 maxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
 
         PoolKey memory key = PoolKey({
             currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
             currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
-            fee: fee,
+            fee: poolLPFee,
             tickSpacing: tickSpacing,
             hooks: IHooks(address(this))
         });
@@ -274,10 +277,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         if (currency < token) {
             // Skip position creation if initial tick is too close to lower boundary
-            if (initialTick - TickMath.MIN_TICK < tickSpacing) {
+            if (initialTick - TickMath.MIN_TICK < poolTickSpacing) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
+            int24 tickSpacing = poolTickSpacing;
             int24 lowerTick = TickMath.MIN_TICK / tickSpacing * tickSpacing; // Lower tick rounded to tickSpacing towards 0
             int24 upperTick = initialTick.tickFloor(tickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
 
@@ -302,7 +306,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 PoolKey({
                     currency0: Currency.wrap(currency),
                     currency1: Currency.wrap(token),
-                    fee: fee,
+                    fee: poolLPFee,
                     tickSpacing: tickSpacing,
                     hooks: IHooks(address(this))
                 }),
@@ -316,10 +320,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             );
         } else {
             // Skip position creation if initial tick is too close to upper boundary
-            if (TickMath.MAX_TICK - initialTick <= tickSpacing) {
+            if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
+            int24 tickSpacing = poolTickSpacing;
             int24 lowerTick = (initialTick / tickSpacing + 1) * tickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
             int24 upperTick = TickMath.MAX_TICK / tickSpacing * tickSpacing; // MAX_TICK rounded to tickSpacing towards 0
 
@@ -348,7 +353,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 PoolKey({
                     currency0: Currency.wrap(token),
                     currency1: Currency.wrap(currency),
-                    fee: fee,
+                    fee: poolLPFee,
                     tickSpacing: tickSpacing,
                     hooks: IHooks(address(this))
                 }),

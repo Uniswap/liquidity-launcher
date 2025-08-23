@@ -114,34 +114,22 @@ abstract contract LBPStrategyBasicTestBase is Test {
         assertEq(lbp.auctionFactory(), address(mock));
         assertEq(address(lbp.auction()), address(0));
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
-        assertEq(lbp.fee(), migratorParams.fee);
-        assertEq(lbp.tickSpacing(), migratorParams.tickSpacing);
-
-        //_verifyPoolKey();
+        assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
+        assertEq(lbp.poolTickSpacing(), migratorParams.poolTickSpacing);
     }
-
-    // function _verifyPoolKey() internal view {
-    //     (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
-
-    //     assertEq(Currency.unwrap(currency0), migratorParams.currency);
-    //     assertEq(Currency.unwrap(currency1), address(token));
-    //     assertEq(fee, migratorParams.fee);
-    //     assertEq(tickSpacing, migratorParams.tickSpacing);
-    //     assertEq(address(hooks), address(lbp));
-    // }
 
     // Helper function to create migrator params
     function createMigratorParams(
         address currency,
-        uint24 fee,
-        int24 tickSpacing,
+        uint24 poolLPFee,
+        int24 poolTickSpacing,
         uint16 tokenSplitToAuction,
         address positionRecipient
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
-            fee: fee,
-            tickSpacing: tickSpacing,
+            poolLPFee: poolLPFee,
+            poolTickSpacing: poolTickSpacing,
             tokenSplitToAuction: tokenSplitToAuction,
             auctionFactory: address(mock),
             positionRecipient: positionRecipient,
@@ -159,8 +147,8 @@ abstract contract LBPStrategyBasicTestBase is Test {
     function setupWithCurrency(address currency) internal {
         migratorParams = createMigratorParams(
             currency,
-            migratorParams.fee,
-            migratorParams.tickSpacing,
+            migratorParams.poolLPFee,
+            migratorParams.poolTickSpacing,
             migratorParams.tokenSplitToAuction,
             migratorParams.positionRecipient
         );

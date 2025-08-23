@@ -11,7 +11,6 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import "forge-std/console2.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     LBPTestDataBuilder dataBuilder;
@@ -152,8 +151,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(address(token)),
-            fee: lbp.fee(),
-            tickSpacing: lbp.tickSpacing(),
+            fee: lbp.poolLPFee(),
+            tickSpacing: lbp.poolTickSpacing(),
             hooks: IHooks(address(lbp))
         });
         vm.expectRevert();
@@ -179,8 +178,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_fuzz_constructor_validation(
-        uint24 fee,
-        int24 tickSpacing,
+        uint24 poolLPFee,
+        int24 poolTickSpacing,
         uint16 tokenSplit,
         address positionRecipient
     ) public {
@@ -189,12 +188,12 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit));
         }
         // Test tick spacing validation
-        else if (tickSpacing < TickMath.MIN_TICK_SPACING || tickSpacing > TickMath.MAX_TICK_SPACING) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, tickSpacing));
+        else if (poolTickSpacing < TickMath.MIN_TICK_SPACING || poolTickSpacing > TickMath.MAX_TICK_SPACING) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, poolTickSpacing));
         }
         // Test fee validation
-        else if (fee > LPFeeLibrary.MAX_LP_FEE) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, fee));
+        else if (poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee));
         }
         // Test position recipient validation
         else if (positionRecipient == address(0) || positionRecipient == address(1) || positionRecipient == address(2))
@@ -207,7 +206,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), fee, tickSpacing, tokenSplit, positionRecipient),
+            createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
             bytes(""),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
