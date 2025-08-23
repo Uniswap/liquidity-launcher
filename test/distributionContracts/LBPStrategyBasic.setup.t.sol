@@ -148,9 +148,14 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // only the hook can initialize the pool
     function test_initializeFailsIfNotHook() public {
         setupWithSupply(DEFAULT_TOTAL_SUPPLY);
-        (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
-        PoolKey memory poolKey =
-            PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
+        // (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
+        PoolKey memory poolKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(token)),
+            fee: lbp.fee(),
+            tickSpacing: lbp.tickSpacing(),
+            hooks: IHooks(address(lbp))
+        });
         vm.expectRevert();
         IPoolManager(POOL_MANAGER).initialize(poolKey, 1);
     }

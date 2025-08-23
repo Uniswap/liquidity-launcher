@@ -11,7 +11,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LBPStrategyBasicNoValidation} from "../../mocks/LBPStrategyBasicNoValidation.sol";
-import {HookAddressHelper} from "../../mocks/HookAddressHelper.sol";
 import {TokenLauncher} from "../../../src/TokenLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -33,6 +32,9 @@ abstract contract LBPStrategyBasicTestBase is Test {
 
     // Test token address (make it > address(0) but < DAI)
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
+
+    uint160 constant HOOK_PERMISSION_COUNT = 14;
+    uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
 
     // Events
     event Notified(bytes data);
@@ -83,7 +85,9 @@ abstract contract LBPStrategyBasicTestBase is Test {
         deal(address(token), address(tokenLauncher), totalSupply);
 
         // Get hook address with BEFORE_INITIALIZE permission
-        address hookAddress = HookAddressHelper.getHookAddress(Hooks.BEFORE_INITIALIZE_FLAG);
+        address hookAddress = address(
+            uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
+        );
         lbp = LBPStrategyBasic(hookAddress);
 
         // Deploy implementation
@@ -97,9 +101,7 @@ abstract contract LBPStrategyBasicTestBase is Test {
             IWETH9(WETH9)
         );
 
-        // Setup hook contract at correct address
-        HookAddressHelper.setupHookContract(vm, address(impl), address(lbp), 9);
-        HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
+        vm.etch(address(lbp), address(impl).code);
     }
 
     function _verifyInitialState() internal view {
@@ -112,19 +114,21 @@ abstract contract LBPStrategyBasicTestBase is Test {
         assertEq(lbp.auctionFactory(), address(mock));
         assertEq(address(lbp.auction()), address(0));
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
+        assertEq(lbp.fee(), migratorParams.fee);
+        assertEq(lbp.tickSpacing(), migratorParams.tickSpacing);
 
-        _verifyPoolKey();
+        //_verifyPoolKey();
     }
 
-    function _verifyPoolKey() internal view {
-        (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
+    // function _verifyPoolKey() internal view {
+    //     (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
 
-        assertEq(Currency.unwrap(currency0), migratorParams.currency);
-        assertEq(Currency.unwrap(currency1), address(token));
-        assertEq(fee, migratorParams.fee);
-        assertEq(tickSpacing, migratorParams.tickSpacing);
-        assertEq(address(hooks), address(lbp));
-    }
+    //     assertEq(Currency.unwrap(currency0), migratorParams.currency);
+    //     assertEq(Currency.unwrap(currency1), address(token));
+    //     assertEq(fee, migratorParams.fee);
+    //     assertEq(tickSpacing, migratorParams.tickSpacing);
+    //     assertEq(address(hooks), address(lbp));
+    // }
 
     // Helper function to create migrator params
     function createMigratorParams(
