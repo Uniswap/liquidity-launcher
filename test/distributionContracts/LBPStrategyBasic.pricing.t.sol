@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
-import {LBPTestHelpers} from "./helpers/LBPTestHelpers.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -10,8 +9,6 @@ import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
-    using LBPTestHelpers for *;
-
     function setUp() public override {
         super.setUp();
     }
@@ -29,7 +26,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     function test_onNotify_revertsWithInvalidCurrencyAmount() public {
         // Setup: Send tokens to LBP and create auction
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint128 expectedAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 sentAmount = expectedAmount - 1;
@@ -42,7 +39,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     function test_onNotify_withETH_succeeds() public {
         // Setup: Send tokens to LBP and create auction
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
@@ -70,7 +67,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
 
         // Send tokens to LBP
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Give auction DAI
         deal(DAI, address(lbp.auction()), 1_000e18);
@@ -90,7 +87,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
 
         // Send tokens to LBP
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
@@ -169,7 +166,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         }
 
         // Setup
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Calculate expected price
         uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
@@ -202,7 +199,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = 1;
         uint128 ethAmount = type(uint128).max - 1; // This will create a price below MIN_SQRT_PRICE
 
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
 
@@ -242,7 +239,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     //     // Setup with DAI
     //     setupWithCurrency(DAI);
-    //     LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
     //     // Calculate expected price
     //     uint256 priceX192 = FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount);
