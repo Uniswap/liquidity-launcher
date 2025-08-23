@@ -74,8 +74,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(address(token)),
-            fee: lbp.fee(),
-            tickSpacing: lbp.tickSpacing(),
+            fee: lbp.poolLPFee(),
+            tickSpacing: lbp.poolTickSpacing(),
             hooks: IHooks(address(lbp))
         });
         vm.expectEmit(true, false, false, true);
@@ -98,8 +98,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             nextTokenId,
             address(0), // currency0 (ETH)
             address(token), // currency1
-            500, // fee
-            1, // tickSpacing
+            500, // poolLPFee
+            1, // poolTickSpacing
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
@@ -141,8 +141,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             nextTokenId,
             address(token), // currency0
             DAI, // currency1
-            500, // fee
-            1, // tickSpacing
+            500, // poolLPFee
+            1, // poolTickSpacing
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
@@ -181,8 +181,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             nextTokenId,
             address(0),
             address(token),
-            500,
-            1,
+            500, // poolLPFee
+            1, // poolTickSpacing
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
@@ -193,8 +193,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             nextTokenId + 1,
             address(0),
             address(token),
-            500,
-            1,
+            500, // poolLPFee
+            1, // poolTickSpacing
             TickMath.MIN_TICK,
             TickMath.getTickAtSqrtPrice(lbp.initialSqrtPriceX96())
         );

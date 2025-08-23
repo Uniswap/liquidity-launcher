@@ -38,12 +38,12 @@ contract LBPTestDataBuilder {
     }
 
     function withFee(uint24 fee) external returns (LBPTestDataBuilder) {
-        _params.fee = fee;
+        _params.poolLPFee = fee;
         return this;
     }
 
     function withTickSpacing(int24 tickSpacing) external returns (LBPTestDataBuilder) {
-        _params.tickSpacing = tickSpacing;
+        _params.poolTickSpacing = tickSpacing;
         return this;
     }
 
@@ -71,8 +71,8 @@ contract LBPTestDataBuilder {
     function _resetParams() private {
         _params = MigratorParameters({
             currency: DEFAULT_CURRENCY,
-            fee: DEFAULT_FEE,
-            tickSpacing: DEFAULT_TICK_SPACING,
+            poolLPFee: DEFAULT_FEE,
+            poolTickSpacing: DEFAULT_TICK_SPACING,
             tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
             auctionFactory: _auctionFactory,
             positionRecipient: DEFAULT_POSITION_RECIPIENT,
@@ -87,8 +87,8 @@ contract LBPTestDataBuilder {
         scenarios[0] = TestScenario({
             params: MigratorParameters({
                 currency: DEFAULT_CURRENCY,
-                fee: LPFeeLibrary.MAX_LP_FEE + 1,
-                tickSpacing: DEFAULT_TICK_SPACING,
+                poolLPFee: LPFeeLibrary.MAX_LP_FEE + 1,
+                poolTickSpacing: DEFAULT_TICK_SPACING,
                 tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                 auctionFactory: address(0), // Will be set by test
                 positionRecipient: DEFAULT_POSITION_RECIPIENT,
@@ -110,8 +110,8 @@ contract LBPTestDataBuilder {
         scenarios[0] = TestScenario({
             params: MigratorParameters({
                 currency: DEFAULT_CURRENCY,
-                fee: DEFAULT_FEE,
-                tickSpacing: TickMath.MIN_TICK_SPACING - 1,
+                poolLPFee: DEFAULT_FEE,
+                poolTickSpacing: TickMath.MIN_TICK_SPACING - 1,
                 tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                 auctionFactory: address(0),
                 positionRecipient: DEFAULT_POSITION_RECIPIENT,
@@ -127,8 +127,8 @@ contract LBPTestDataBuilder {
         scenarios[1] = TestScenario({
             params: MigratorParameters({
                 currency: DEFAULT_CURRENCY,
-                fee: DEFAULT_FEE,
-                tickSpacing: TickMath.MAX_TICK_SPACING + 1,
+                poolLPFee: DEFAULT_FEE,
+                poolTickSpacing: TickMath.MAX_TICK_SPACING + 1,
                 tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                 auctionFactory: address(0),
                 positionRecipient: DEFAULT_POSITION_RECIPIENT,
@@ -153,8 +153,8 @@ contract LBPTestDataBuilder {
             scenarios[i] = TestScenario({
                 params: MigratorParameters({
                     currency: DEFAULT_CURRENCY,
-                    fee: DEFAULT_FEE,
-                    tickSpacing: DEFAULT_TICK_SPACING,
+                    poolLPFee: DEFAULT_FEE,
+                    poolTickSpacing: DEFAULT_TICK_SPACING,
                     tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                     auctionFactory: address(0),
                     positionRecipient: invalidRecipients[i],
@@ -178,8 +178,8 @@ contract LBPTestDataBuilder {
         scenarios[0] = TestScenario({
             params: MigratorParameters({
                 currency: DEFAULT_CURRENCY,
-                fee: DEFAULT_FEE,
-                tickSpacing: DEFAULT_TICK_SPACING,
+                poolLPFee: DEFAULT_FEE,
+                poolTickSpacing: DEFAULT_TICK_SPACING,
                 tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                 auctionFactory: address(0),
                 positionRecipient: DEFAULT_POSITION_RECIPIENT,
@@ -196,8 +196,8 @@ contract LBPTestDataBuilder {
         scenarios[1] = TestScenario({
             params: MigratorParameters({
                 currency: DEFAULT_CURRENCY,
-                fee: DEFAULT_FEE,
-                tickSpacing: DEFAULT_TICK_SPACING,
+                poolLPFee: DEFAULT_FEE,
+                poolTickSpacing: DEFAULT_TICK_SPACING,
                 tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                 auctionFactory: address(0),
                 positionRecipient: DEFAULT_POSITION_RECIPIENT,
@@ -214,8 +214,8 @@ contract LBPTestDataBuilder {
         scenarios[2] = TestScenario({
             params: MigratorParameters({
                 currency: address(0x6B175474E89094C44Da98b954EedeAC495271d0F), // DAI
-                fee: DEFAULT_FEE,
-                tickSpacing: 20,
+                poolLPFee: DEFAULT_FEE,
+                poolTickSpacing: 20,
                 tokenSplitToAuction: DEFAULT_TOKEN_SPLIT,
                 auctionFactory: address(0),
                 positionRecipient: DEFAULT_POSITION_RECIPIENT,
