@@ -40,6 +40,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable token;
     address public immutable currency;
 
+    uint24 public immutable fee;
+    int24 public immutable tickSpacing;
+
     uint128 public immutable totalSupply;
     uint128 public immutable reserveSupply;
     address public immutable positionRecipient;
@@ -54,7 +57,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint160 public initialSqrtPriceX96;
     uint128 public initialTokenAmount;
     uint128 public initialCurrencyAmount;
-    PoolKey public key;
     bytes public auctionParameters;
 
     constructor(
@@ -84,13 +86,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auctionFactory = migratorParams.auctionFactory;
         WETH9 = _WETH9;
 
-        key = PoolKey({
-            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
-            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
-            fee: migratorParams.fee,
-            tickSpacing: migratorParams.tickSpacing,
-            hooks: IHooks(address(this))
-        });
+        fee = migratorParams.fee;
+        tickSpacing = migratorParams.tickSpacing;
     }
 
     /// @inheritdoc IDistributionContract
@@ -125,8 +122,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidPrice(priceX192);
         }
 
-        int24 tickSpacing = key.tickSpacing;
-
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
@@ -160,6 +155,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (!currencyIsNative) {
             Currency.wrap(currency).transfer(address(positionManager), initialCurrencyAmount);
         }
+
+        PoolKey memory key = PoolKey({
+            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
+            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(this))
+        });
 
         // Initialize the pool with the starting price determined by the auction
         // Will revert if:
@@ -221,9 +224,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         view
         returns (bytes memory, bytes[] memory, uint128)
     {
-        int24 tickSpacing = key.tickSpacing;
         int24 minTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
         int24 maxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
+
+        PoolKey memory key = PoolKey({
+            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
+            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(this))
+        });
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             initialSqrtPriceX96,
@@ -260,18 +270,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // create something similar where you check if enough liquidity per tick spacing.
         // then mint the position, then settle.
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
-        int24 tickSpacing = key.tickSpacing;
         uint256 tokenAmount = reserveSupply - initialTokenAmount;
-        int24 minTick = TickMath.MIN_TICK;
-        int24 maxTick = TickMath.MAX_TICK;
 
         if (currency < token) {
             // Skip position creation if initial tick is too close to lower boundary
-            if (initialTick - minTick < tickSpacing) {
+            if (initialTick - TickMath.MIN_TICK < tickSpacing) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 lowerTick = minTick / tickSpacing * tickSpacing; // Lower tick rounded to tickSpacing towards 0
+            int24 lowerTick = TickMath.MIN_TICK / tickSpacing * tickSpacing; // Lower tick rounded to tickSpacing towards 0
             int24 upperTick = initialTick.tickFloor(tickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
 
             // get liquidity
@@ -292,7 +299,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // For a one-sided position, we create a range from [MIN_TICK, current tick) (because upper tick is exclusive)
             // The upper tick must be a multiple of tickSpacing and exclusive
             params[3] = abi.encode(
-                key,
+                PoolKey({
+                    currency0: Currency.wrap(currency),
+                    currency1: Currency.wrap(token),
+                    fee: fee,
+                    tickSpacing: tickSpacing,
+                    hooks: IHooks(address(this))
+                }),
                 lowerTick,
                 upperTick,
                 newLiquidity,
@@ -303,12 +316,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             );
         } else {
             // Skip position creation if initial tick is too close to upper boundary
-            if (maxTick - initialTick <= tickSpacing) {
+            if (TickMath.MAX_TICK - initialTick <= tickSpacing) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
             int24 lowerTick = (initialTick / tickSpacing + 1) * tickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
-            int24 upperTick = maxTick / tickSpacing * tickSpacing; // MAX_TICK rounded to tickSpacing towards 0
+            int24 upperTick = TickMath.MAX_TICK / tickSpacing * tickSpacing; // MAX_TICK rounded to tickSpacing towards 0
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -332,7 +345,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // The upper tick must be:
             // - A multiple of tickSpacing
             params[3] = abi.encode(
-                key,
+                PoolKey({
+                    currency0: Currency.wrap(token),
+                    currency1: Currency.wrap(currency),
+                    fee: fee,
+                    tickSpacing: tickSpacing,
+                    hooks: IHooks(address(this))
+                }),
                 lowerTick,
                 upperTick,
                 newLiquidity,

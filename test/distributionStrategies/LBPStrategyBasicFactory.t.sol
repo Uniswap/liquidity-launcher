@@ -51,21 +51,21 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function test_initializeDistribution_succeeds() public {
         // mined a salt that when hashed with address(this), gives a valid hook address with beforeInitialize flag set to true
-        // bytes32 initCodeHash = keccak256(
-        //     abi.encodePacked(
-        //         type(LBPStrategyBasic).creationCode,
-        //         abi.encode(
-        //             address(token),
-        //             TOTAL_SUPPLY,
-        //             migratorParams,
-        //             bytes(""),
-        //             IPositionManager(POSITION_MANAGER),
-        //             IPoolManager(POOL_MANAGER),
-        //             IWETH9(WETH9)
-        //         )
-        //     )
-        // );
-        // console2.logBytes32(initCodeHash);
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(LBPStrategyBasic).creationCode,
+                abi.encode(
+                    address(token),
+                    TOTAL_SUPPLY,
+                    migratorParams,
+                    bytes(""),
+                    IPositionManager(POSITION_MANAGER),
+                    IPoolManager(POOL_MANAGER),
+                    IWETH9(WETH9)
+                )
+            )
+        );
+        console2.logBytes32(initCodeHash);
         LBPStrategyBasic lbp = LBPStrategyBasic(
             address(
                 factory.initializeDistribution(
