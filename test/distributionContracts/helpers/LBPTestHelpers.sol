@@ -135,7 +135,7 @@ library LBPTestHelpers {
         lbp.onTokensReceived();
     }
 
-    function setInitialPriceETH(LBPStrategyBasic lbp, uint128 tokenAmount, uint128 ethAmount) internal {
+    function onNotifyETH(LBPStrategyBasic lbp, uint128 tokenAmount, uint128 ethAmount) internal {
         // Give auction ETH
         _vm().deal(address(lbp.auction()), ethAmount);
 
@@ -143,10 +143,10 @@ library LBPTestHelpers {
         uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
 
         _vm().prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
     }
 
-    function setInitialPriceToken(LBPStrategyBasic lbp, address currency, uint128 tokenAmount, uint128 currencyAmount)
+    function onNotifyToken(LBPStrategyBasic lbp, address currency, uint128 tokenAmount, uint128 currencyAmount)
         internal
     {
         // Note: The calling test should have already given the auction the currency using deal()
@@ -159,7 +159,7 @@ library LBPTestHelpers {
         uint256 priceX192 = FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount);
 
         _vm().prank(address(lbp.auction()));
-        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, currencyAmount));
+        lbp.onNotify(abi.encode(priceX192, tokenAmount, currencyAmount));
     }
 
     function migrateToMigrationBlock(LBPStrategyBasic lbp) internal {

@@ -13,6 +13,10 @@ import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
+import {HookBasic} from "../../src/utils/HookBasic.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     uint128 constant TOTAL_SUPPLY = 1000e18;
@@ -74,7 +78,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                         IPoolManager(POOL_MANAGER),
                         IWETH9(WETH9)
                     ),
-                    0x7fa9385be102ac3eac297483dd6233d62b3e149663eac0adac2fc9f92ae2b299
+                    0x7fa9385be102ac3eac297483dd6233d62b3e14966f61827b394b83cc2aae7e62
                 )
             )
         );
@@ -90,7 +94,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e149663eac0adac2fc9f92ae2b299;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e14966f61827b394b83cc2aae7e62;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,

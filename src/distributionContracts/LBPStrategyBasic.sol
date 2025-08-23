@@ -111,7 +111,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc ISubscriber
-    function setInitialPrice(bytes memory data) external payable {
+    function onNotify(bytes memory data) external payable {
         (uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) = abi.decode(data, (uint256, uint128, uint128));
         if (msg.sender != address(auction)) revert OnlyAuctionCanSetPrice(address(auction), msg.sender);
         if (Currency.wrap(currency).isAddressZero()) {
@@ -148,7 +148,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
 
-        emit InitialPriceSet(priceX192, tokenAmount, currencyAmount);
+        emit Notified(data);
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -182,7 +182,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
-    function _validateMigratorParams(address _token, MigratorParameters memory migratorParams) private view {
+    function _validateMigratorParams(address _token, MigratorParameters memory migratorParams) private pure {
         // Validate that the amount of tokens sent to auction is <= 50% of total supply
         // This ensures at least half of the tokens remain for the initial liquidity position
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {

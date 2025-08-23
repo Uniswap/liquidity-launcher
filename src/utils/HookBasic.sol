@@ -9,7 +9,7 @@ import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
 /// @title HookBasic
 /// @notice Hook contract that only allows itself to initialize the pool
-contract HookBasic is BaseHook {
+abstract contract HookBasic is BaseHook {
     /// @notice Error thrown when the initializer of the pool is not the strategy contract
     error InvalidInitializer(address caller, address strategy);
 

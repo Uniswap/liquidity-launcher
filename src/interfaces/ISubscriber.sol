@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 /// @title ISubscriber
 /// @notice Interface for the Subscriber contract
 interface ISubscriber {
-    /// @notice Emitted when the initial price is set
-    event InitialPriceSet(uint256 priceX192, uint256 tokenAmount, uint256 currencyAmount);
+    /// @notice Emitted when being notified of the final price
+    event Notified(bytes data);
 
     /// @notice Error thrown when caller is not the auction contract
     error OnlyAuctionCanSetPrice(address auction, address caller);
@@ -25,7 +25,7 @@ interface ISubscriber {
     /// @notice Error thrown when the token amount is invalid
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
 
-    /// @notice Sets the initial price of the pool based on the auction results
+    /// @notice Called when being notified of the final price
     /// @param data The data to be passed to the subscriber regarding the initial price
-    function setInitialPrice(bytes memory data) external payable;
+    function onNotify(bytes memory data) external payable;
 }
