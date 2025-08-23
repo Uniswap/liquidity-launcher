@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -6,12 +6,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ITokenFactory} from "./token-factories/uerc20-factory/interfaces/ITokenFactory.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {Multicall} from "./Multicall.sol";
 import {Distribution} from "./types/Distribution.sol";
 import {Permit2Forwarder, IAllowanceTransfer} from "./Permit2Forwarder.sol";
 import {ITokenLauncher} from "./interfaces/ITokenLauncher.sol";
-import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title TokenLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
@@ -26,7 +24,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         string calldata name,
         string calldata symbol,
         uint8 decimals,
-        uint256 initialSupply,
+        uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
     ) external override returns (address tokenAddress) {
@@ -39,7 +37,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     }
 
     /// @inheritdoc ITokenLauncher
-    function distributeToken(address token, Distribution calldata distribution, bool payerIsUser)
+    function distributeToken(address token, Distribution calldata distribution, bool payerIsUser, bytes32 salt)
         external
         override
         returns (IDistributionContract distributionContract)
@@ -47,14 +45,14 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         // Call the strategy: it might do distributions itself or deploy a new instance.
         // If it does distributions itself, distributionContract == dist.strategy
         distributionContract = IDistributionStrategy(distribution.strategy).initializeDistribution(
-            token, distribution.amount, distribution.configData
+            token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
         );
 
         // Now transfer the tokens to the returned address
         _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
 
         // Notify the distribution contract that it has received the tokens
-        distributionContract.onTokensReceived(token, distribution.amount);
+        distributionContract.onTokensReceived();
 
         emit TokenDistributed(token, address(distributionContract), distribution.amount);
     }

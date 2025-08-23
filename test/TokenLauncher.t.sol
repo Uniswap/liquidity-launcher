@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
@@ -51,7 +51,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         });
 
         bytes memory tokenData = abi.encode(metadata);
-        uint256 initialSupply = 1e18; // 1 token with 18 decimals
+        uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         address tokenAddress = tokenLauncher.createToken(
             address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(tokenLauncher), tokenData
@@ -84,7 +84,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     }
 
     function test_distributeToken_strategy_succeeds() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy
@@ -96,7 +96,8 @@ contract TokenLauncherTest is Test, DeployPermit2 {
 
         // Distribute the token
         // payer is the token launcher
-        IDistributionContract distributionContract = tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        IDistributionContract distributionContract =
+            tokenLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
 
         // Verify the distribution was successful
         assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), initialSupply);
@@ -106,7 +107,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     }
 
     function test_distributeToken_strategyAndContract_succeeds() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy and contract
@@ -117,7 +118,8 @@ contract TokenLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
 
         // Distribute the token
-        IDistributionContract distributionContract = tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        IDistributionContract distributionContract =
+            tokenLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
 
         // verify the distribution contract is the same as the strategy
         assertEq(address(distributionContract), address(distributionStrategyAndContract));
@@ -130,7 +132,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     }
 
     function test_payerIsUser_succeeds() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(this), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy and contract
@@ -144,7 +146,8 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         IERC20(tokenAddress).approve(address(tokenLauncher), initialSupply);
 
         // Distribute the token
-        IDistributionContract distributionContract = tokenLauncher.distributeToken(tokenAddress, distribution, true);
+        IDistributionContract distributionContract =
+            tokenLauncher.distributeToken(tokenAddress, distribution, true, bytes32(0));
 
         // verify the distribution contract is the same as the strategy
         assertEq(address(distributionContract), address(distributionStrategyAndContract));
@@ -175,7 +178,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         });
 
         bytes memory tokenData = abi.encode(metadata);
-        uint256 initialSupply = 1e18; // 1 token with 18 decimals
+        uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         tokenLauncher.createToken(
             address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(tokenLauncher), tokenData
@@ -186,7 +189,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     // forge-config: default.isolate = true
     // forge-config: ci.isolate = true
     function test_distributeToken_gas() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(tokenLauncher), initialSupply, "Test Token", "TEST");
 
         // Create a distribution strategy
@@ -197,7 +200,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
 
         // Distribute the token
-        tokenLauncher.distributeToken(tokenAddress, distribution, false);
+        tokenLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
         vm.snapshotGasLastCall("distributeToken");
     }
 }
