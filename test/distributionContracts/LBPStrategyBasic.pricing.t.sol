@@ -18,16 +18,16 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     // ============ Access Control Tests ============
 
-    function test_setInitialPrice_revertsWithOnlyAuctionCanSetPrice() public {
+    function test_onNotify_revertsWithOnlyAuctionCanSetPrice() public {
         vm.expectRevert(
             abi.encodeWithSelector(ISubscriber.OnlyAuctionCanSetPrice.selector, address(lbp.auction()), address(this))
         );
-        lbp.setInitialPrice(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, DEFAULT_TOTAL_SUPPLY));
+        lbp.onNotify(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, DEFAULT_TOTAL_SUPPLY));
     }
 
     // ============ ETH Currency Tests ============
 
-    function test_setInitialPrice_revertsWithInvalidCurrencyAmount() public {
+    function test_onNotify_revertsWithInvalidCurrencyAmount() public {
         // Setup: Send tokens to LBP and create auction
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -37,12 +37,10 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.deal(address(lbp.auction()), sentAmount);
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidCurrencyAmount.selector, sentAmount, expectedAmount));
-        lbp.setInitialPrice{value: sentAmount}(
-            abi.encode(TickMath.getSqrtPriceAtTick(0), expectedAmount, expectedAmount)
-        );
+        lbp.onNotify{value: sentAmount}(abi.encode(TickMath.getSqrtPriceAtTick(0), expectedAmount, expectedAmount));
     }
 
-    function test_setInitialPrice_withETH_succeeds() public {
+    function test_onNotify_withETH_succeeds() public {
         // Setup: Send tokens to LBP and create auction
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -54,11 +52,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
 
-        vm.expectEmit(true, true, true, true);
-        emit InitialPriceSet(priceX192, tokenAmount, ethAmount);
+        vm.expectEmit(true, false, false, true);
+        emit Notified(abi.encode(priceX192, tokenAmount, ethAmount));
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
 
         // Verify state
         assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -67,7 +65,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         assertEq(address(lbp).balance, ethAmount);
     }
 
-    function test_setInitialPrice_revertsWithNonETHCurrencyCannotReceiveETH() public {
+    function test_onNotify_revertsWithNonETHCurrencyCannotReceiveETH() public {
         // Setup with DAI as currency
         setupWithCurrency(DAI);
 
@@ -82,12 +80,12 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ISubscriber.NonETHCurrencyCannotReceiveETH.selector, DAI));
-        lbp.setInitialPrice{value: 1e18}(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, 1e18));
+        lbp.onNotify{value: 1e18}(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, 1e18));
     }
 
     // ============ Non-ETH Currency Tests ============
 
-    function test_setInitialPrice_withNonETHCurrency_succeeds() public {
+    function test_onNotify_withNonETHCurrency_succeeds() public {
         // Setup with DAI as currency
         setupWithCurrency(DAI);
 
@@ -106,11 +104,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, daiAmount);
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
 
-        vm.expectEmit(true, true, true, true);
-        emit InitialPriceSet(priceX192, tokenAmount, daiAmount);
+        vm.expectEmit(true, false, false, true);
+        emit Notified(abi.encode(priceX192, tokenAmount, daiAmount));
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
+        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
 
         // Verify state
         assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -153,11 +151,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     // ============ Fuzzed Tests ============
 
-    /// @notice Tests setInitialPrice with fuzzed inputs, expecting both success and revert cases
+    /// @notice Tests onNotify with fuzzed inputs, expecting both success and revert cases
     /// @dev This test intentionally allows all valid uint128 inputs and checks if the resulting price
     ///      is within Uniswap V4's valid range. If valid, it expects success; if not, it expects
     ///      a revert with InvalidPrice error. This provides better coverage than constraining inputs.
-    function test_fuzz_setInitialPrice_withETH(uint128 tokenAmount, uint128 ethAmount) public {
+    function test_fuzz_onNotify_withETH(uint128 tokenAmount, uint128 ethAmount) public {
         vm.assume(tokenAmount <= DEFAULT_TOTAL_SUPPLY / 2);
 
         // Prevent division by zero
@@ -189,7 +187,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         if (isValidPrice) {
             // Should succeed
-            lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+            lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
 
             // Verify
             assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -199,11 +197,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         } else {
             // Should revert with InvalidPrice
             vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidPrice.selector, priceX192));
-            lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+            lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
         }
     }
 
-    function test_setInitialPrice_withETH_revertsWithPriceTooLow() public {
+    function test_onNotify_withETH_revertsWithPriceTooLow() public {
         // This test verifies the fuzz test is correctly handling the revert case for prices below MIN_SQRT_PRICE
         uint128 tokenAmount = 1;
         uint128 ethAmount = type(uint128).max - 1; // This will create a price below MIN_SQRT_PRICE
@@ -215,7 +213,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.deal(address(lbp.auction()), ethAmount);
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidPrice.selector, priceX192));
-        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
     }
 
     // Note: Testing for prices above MAX_SQRT_PRICE is not feasible with uint128 inputs
@@ -223,7 +221,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     // This is impossible with uint128 values (max ~3.4e38) due to FullMath overflow protection
     // The fuzz test above properly handles all practically achievable price ranges
 
-    // function test_fuzz_setInitialPrice_withToken(uint128 tokenAmount, uint128 currencyAmount) public {
+    // function test_fuzz_onNotify_withToken(uint128 tokenAmount, uint128 currencyAmount) public {
     //     vm.assume(tokenAmount > 0 && currencyAmount > 0);
     //     vm.assume(tokenAmount <= DEFAULT_TOTAL_SUPPLY / 2);
     //     vm.assume(currencyAmount <= type(uint128).max);
@@ -258,7 +256,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     //     deal(DAI, address(lbp.auction()), currencyAmount);
     //     vm.startPrank(address(lbp.auction()));
     //     ERC20(DAI).approve(address(lbp), currencyAmount);
-    //     lbp.setInitialPrice(priceX192, tokenAmount, currencyAmount);
+    //     lbp.onNotify(priceX192, tokenAmount, currencyAmount);
     //     vm.stopPrank();
 
     //     // Verify

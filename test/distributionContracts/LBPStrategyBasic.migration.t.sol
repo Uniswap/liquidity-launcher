@@ -117,7 +117,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Give auction DAI
         deal(DAI, address(lbp.auction()), daiAmount);
 
-        LBPTestHelpers.setInitialPriceToken(lbp, DAI, tokenAmount, daiAmount);
+        LBPTestHelpers.onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
 
         // Take balance snapshot
         LBPTestHelpers.BalanceSnapshot memory before =
@@ -155,7 +155,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Setup
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.setInitialPriceETH(lbp, tokenAmount, ethAmount);
+        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, ethAmount);
 
         // Take balance snapshot
         LBPTestHelpers.BalanceSnapshot memory before = LBPTestHelpers.takeBalanceSnapshot(
@@ -218,7 +218,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
 
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
+        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
 
         // Migrate
         LBPTestHelpers.migrateToMigrationBlock(lbp);
@@ -241,6 +241,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private {
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.setInitialPriceETH(lbp, tokenAmount, currencyAmount);
+        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, currencyAmount);
     }
 }

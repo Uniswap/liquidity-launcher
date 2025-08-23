@@ -35,7 +35,7 @@ abstract contract LBPStrategyBasicTestBase is Test {
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
 
     // Events
-    event InitialPriceSet(uint256 priceX192, uint256 tokenAmount, uint256 currencyAmount);
+    event Notified(bytes data);
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     // State variables
@@ -102,7 +102,7 @@ abstract contract LBPStrategyBasicTestBase is Test {
         HookAddressHelper.updatePoolKeyHook(vm, address(lbp), address(lbp), 5);
     }
 
-    function _verifyInitialState() internal {
+    function _verifyInitialState() internal view {
         assertEq(lbp.token(), address(token));
         assertEq(lbp.currency(), migratorParams.currency);
         assertEq(lbp.totalSupply(), DEFAULT_TOTAL_SUPPLY);

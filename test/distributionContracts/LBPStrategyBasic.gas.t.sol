@@ -25,10 +25,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         vm.snapshotGasLastCall("onTokensReceived");
     }
 
-    /// @notice Test gas consumption for setInitialPrice with ETH
+    /// @notice Test gas consumption for onNotify with ETH
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_setInitialPrice_withETH_gas() public {
+    function test_onNotify_withETH_gas() public {
         // Setup auction
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -43,14 +43,14 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         // Set initial price
         vm.prank(address(lbp.auction()));
-        lbp.setInitialPrice{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
-        vm.snapshotGasLastCall("setInitialPriceWithETH");
+        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+        vm.snapshotGasLastCall("onNotifyWithETH");
     }
 
-    /// @notice Test gas consumption for setInitialPrice with non-ETH currency
+    /// @notice Test gas consumption for onNotify with non-ETH currency
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_setInitialPrice_withNonETHCurrency_gas() public {
+    function test_onNotify_withNonETHCurrency_gas() public {
         // Setup with DAI
         setupWithCurrency(DAI);
 
@@ -69,8 +69,8 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Approve and set price
         vm.startPrank(address(lbp.auction()));
         ERC20(DAI).approve(address(lbp), 1_000e18);
-        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
-        vm.snapshotGasLastCall("setInitialPriceWithNonETHCurrency");
+        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
+        vm.snapshotGasLastCall("onNotifyWithNonETHCurrency");
     }
 
     /// @notice Test gas consumption for migrate with ETH (full range)
@@ -82,7 +82,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = 500e18;
 
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.setInitialPriceETH(lbp, tokenAmount, ethAmount);
+        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, ethAmount);
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -100,7 +100,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = lbp.reserveSupply() / 2;
 
         LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.setInitialPriceETH(lbp, tokenAmount, ethAmount);
+        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, ethAmount);
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -125,7 +125,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Give auction DAI
         deal(DAI, address(lbp.auction()), daiAmount);
 
-        LBPTestHelpers.setInitialPriceToken(lbp, DAI, tokenAmount, daiAmount);
+        LBPTestHelpers.onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -156,7 +156,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
 
-        lbp.setInitialPrice(abi.encode(priceX192, tokenAmount, daiAmount));
+        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
         vm.stopPrank();
 
         // Fast forward and migrate

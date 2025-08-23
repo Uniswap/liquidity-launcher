@@ -9,6 +9,9 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {HookBasic} from "../../src/utils/HookBasic.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
+import "forge-std/console2.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     LBPTestDataBuilder dataBuilder;
@@ -140,6 +143,16 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 10_000;
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY - expectedAuctionAmount);
+    }
+
+    // only the hook can initialize the pool
+    function test_initializeFailsIfNotHook() public {
+        setupWithSupply(DEFAULT_TOTAL_SUPPLY);
+        (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
+        PoolKey memory poolKey =
+            PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: tickSpacing, hooks: hooks});
+        vm.expectRevert();
+        IPoolManager(POOL_MANAGER).initialize(poolKey, 1);
     }
 
     // ============ Fuzzed Tests ============
