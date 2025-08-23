@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
-import "./base/LBPStrategyBasicTestBase.sol";
+import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import "./helpers/LBPTestHelpers.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
@@ -14,8 +14,6 @@ import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
-    using LBPTestHelpers for *;
-
     function setUp() public override {
         super.setUp();
     }
@@ -32,7 +30,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
         _setupForMigration(DEFAULT_TOTAL_SUPPLY / 2, 500e18);
-        LBPTestHelpers.migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp);
 
         // Try to migrate again
         deal(address(token), address(lbp), DEFAULT_TOTAL_SUPPLY);
@@ -42,7 +40,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_revertsWithInvalidSqrtPrice() public {
         // Send tokens but don't set initial price
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         vm.roll(lbp.migrationBlock());
         vm.prank(address(tokenLauncher));
@@ -60,7 +58,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _setupForMigration(tokenAmount, ethAmount);
 
         // Take balance snapshot
-        LBPTestHelpers.BalanceSnapshot memory before = LBPTestHelpers.takeBalanceSnapshot(
+        BalanceSnapshot memory before = takeBalanceSnapshot(
             address(token),
             address(0), // ETH
             POSITION_MANAGER,
@@ -80,12 +78,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         });
         vm.expectEmit(true, false, false, true);
         emit Migrated(poolKey, TickMath.getSqrtPriceAtTick(0));
-        LBPTestHelpers.migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
-        LBPTestHelpers.BalanceSnapshot memory afterMigration = LBPTestHelpers.takeBalanceSnapshot(
-            address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3)
-        );
+        BalanceSnapshot memory afterMigration =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
 
         // Verify pool initialization
         assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
@@ -93,7 +90,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertEq(lbp.initialCurrencyAmount(), ethAmount);
 
         // Verify position
-        LBPTestHelpers.assertPositionCreated(
+        assertPositionCreated(
             IPositionManager(POSITION_MANAGER),
             nextTokenId,
             address(0), // currency0 (ETH)
@@ -105,8 +102,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        LBPTestHelpers.assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
-        LBPTestHelpers.assertBalancesAfterMigration(before, afterMigration, false);
+        assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
+        assertBalancesAfterMigration(before, afterMigration, false);
     }
 
     function test_migrate_fullRange_withNonETHCurrency_succeeds() public {
@@ -117,26 +114,26 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Setup for migration
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Give auction DAI
         deal(DAI, address(lbp.auction()), daiAmount);
 
-        LBPTestHelpers.onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
+        onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
 
         // Take balance snapshot
-        LBPTestHelpers.BalanceSnapshot memory before =
-            LBPTestHelpers.takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+        BalanceSnapshot memory before =
+            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
 
         // Migrate
-        LBPTestHelpers.migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
-        LBPTestHelpers.BalanceSnapshot memory afterMigration =
-            LBPTestHelpers.takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+        BalanceSnapshot memory afterMigration =
+            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
 
         // Verify position
-        LBPTestHelpers.assertPositionCreated(
+        assertPositionCreated(
             IPositionManager(POSITION_MANAGER),
             nextTokenId,
             address(token), // currency0
@@ -148,8 +145,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        LBPTestHelpers.assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
-        LBPTestHelpers.assertBalancesAfterMigration(before, afterMigration, false);
+        assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
+        assertBalancesAfterMigration(before, afterMigration, false);
     }
 
     // ============ One-Sided Position Migration Tests ============
@@ -159,24 +156,22 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, ethAmount);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        onNotifyETH(lbp, tokenAmount, ethAmount);
 
         // Take balance snapshot
-        LBPTestHelpers.BalanceSnapshot memory before = LBPTestHelpers.takeBalanceSnapshot(
-            address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3)
-        );
+        BalanceSnapshot memory before =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
 
         // Migrate
-        LBPTestHelpers.migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
-        LBPTestHelpers.BalanceSnapshot memory afterMigration = LBPTestHelpers.takeBalanceSnapshot(
-            address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3)
-        );
+        BalanceSnapshot memory afterMigration =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
 
         // Verify main position
-        LBPTestHelpers.assertPositionCreated(
+        assertPositionCreated(
             IPositionManager(POSITION_MANAGER),
             nextTokenId,
             address(0),
@@ -188,7 +183,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify one-sided position
-        LBPTestHelpers.assertPositionCreated(
+        assertPositionCreated(
             IPositionManager(POSITION_MANAGER),
             nextTokenId + 1,
             address(0),
@@ -200,8 +195,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        LBPTestHelpers.assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
-        LBPTestHelpers.assertBalancesAfterMigration(before, afterMigration, true);
+        assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
+        assertBalancesAfterMigration(before, afterMigration, true);
     }
 
     function test_migrate_withOneSidedPosition_withNonETHCurrency_succeeds() public {
@@ -213,7 +208,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = lbp.reserveSupply() / 2;
 
         // Setup for migration
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Calculate price (DAI/token)
         deal(DAI, address(lbp.auction()), daiAmount);
@@ -226,26 +221,26 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
 
         // Migrate
-        LBPTestHelpers.migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp);
 
         // Verify main position
-        LBPTestHelpers.assertPositionCreated(
+        assertPositionCreated(
             IPositionManager(POSITION_MANAGER), nextTokenId, address(token), DAI, 500, 20, -887260, 887260
         );
 
         // Verify one-sided position
-        LBPTestHelpers.assertPositionCreated(
+        assertPositionCreated(
             IPositionManager(POSITION_MANAGER), nextTokenId + 1, address(token), DAI, 500, 20, 6940, 887260
         );
 
         // Verify balances
-        LBPTestHelpers.assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
     }
 
     // ============ Helper Functions ============
 
     function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private {
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, currencyAmount);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        onNotifyETH(lbp, tokenAmount, currencyAmount);
     }
 }

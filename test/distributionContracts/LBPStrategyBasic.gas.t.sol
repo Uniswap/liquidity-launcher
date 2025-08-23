@@ -2,15 +2,12 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
-import {LBPTestHelpers} from "./helpers/LBPTestHelpers.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 /// @notice Gas benchmark tests for LBPStrategyBasic
 /// @dev These tests are isolated to ensure accurate gas measurements
 contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
-    using LBPTestHelpers for *;
-
     function setUp() public override {
         super.setUp();
     }
@@ -30,7 +27,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// forge-config: ci.isolate = true
     function test_onNotify_withETH_gas() public {
         // Setup auction
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
@@ -55,7 +52,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
 
         // Setup auction
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
@@ -81,8 +78,8 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 ethAmount = 500e18;
 
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, ethAmount);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        onNotifyETH(lbp, tokenAmount, ethAmount);
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -99,8 +96,8 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = 500e18;
         uint128 tokenAmount = lbp.reserveSupply() / 2;
 
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        LBPTestHelpers.onNotifyETH(lbp, tokenAmount, ethAmount);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        onNotifyETH(lbp, tokenAmount, ethAmount);
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -120,12 +117,12 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Setup for migration
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Give auction DAI
         deal(DAI, address(lbp.auction()), daiAmount);
 
-        LBPTestHelpers.onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
+        onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -145,7 +142,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = lbp.reserveSupply() / 2;
 
         // Setup for migration
-        LBPTestHelpers.sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Give auction DAI
         deal(DAI, address(lbp.auction()), daiAmount);

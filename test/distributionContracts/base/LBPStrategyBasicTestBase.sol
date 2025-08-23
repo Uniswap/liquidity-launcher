@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
+import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
 import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
@@ -17,7 +18,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 
-abstract contract LBPStrategyBasicTestBase is Test {
+abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     // Constants
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
