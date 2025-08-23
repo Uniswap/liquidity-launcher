@@ -37,6 +37,8 @@ abstract contract HookBasic is BaseHook {
 
     /// @inheritdoc BaseHook
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
+        // This check is only hit when another address tries to initialize the pool, since hooks cannot call themselves.
+        // Therefore this will always revert, ensuring only this contract can initialize pools
         if (sender != address(this)) revert InvalidInitializer(sender, address(this));
         return IHooks.beforeInitialize.selector;
     }

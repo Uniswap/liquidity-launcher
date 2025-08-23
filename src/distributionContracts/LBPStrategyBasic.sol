@@ -222,11 +222,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         returns (bytes memory, bytes[] memory, uint128)
     {
         int24 tickSpacing = key.tickSpacing;
+        int24 minTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
+        int24 maxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             initialSqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
+            TickMath.getSqrtPriceAtTick(minTick),
+            TickMath.getSqrtPriceAtTick(maxTick),
             currency < token ? initialCurrencyAmount : initialTokenAmount,
             currency < token ? initialTokenAmount : initialCurrencyAmount
         );
@@ -235,8 +237,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         params[0] = abi.encode(
             key,
-            TickMath.MIN_TICK / tickSpacing * tickSpacing,
-            TickMath.MAX_TICK / tickSpacing * tickSpacing,
+            minTick,
+            maxTick,
             liquidity,
             currency < token ? initialCurrencyAmount : initialTokenAmount,
             currency < token ? initialTokenAmount : initialCurrencyAmount,
