@@ -9,10 +9,6 @@ import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
-    function setUp() public override {
-        super.setUp();
-    }
-
     // ============ Access Control Tests ============
 
     function test_onNotify_revertsWithOnlyAuctionCanSetPrice() public {

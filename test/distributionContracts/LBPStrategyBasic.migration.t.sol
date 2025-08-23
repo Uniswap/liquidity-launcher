@@ -14,10 +14,6 @@ import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
-    function setUp() public override {
-        super.setUp();
-    }
-
     // ============ Migration Timing Tests ============
 
     function test_migrate_revertsWithMigrationNotAllowed() public {

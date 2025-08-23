@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-import "./helpers/LBPTestDataBuilder.sol";
+//import "./helpers/LBPTestDataBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -13,13 +13,6 @@ import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
-    LBPTestDataBuilder dataBuilder;
-
-    function setUp() public override {
-        super.setUp();
-        dataBuilder = new LBPTestDataBuilder(address(mock));
-    }
-
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
