@@ -11,6 +11,7 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Constructor Validation Tests ============
@@ -22,7 +23,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
-            bytes(""),
+            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)
@@ -39,7 +40,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            bytes(""),
+            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)
@@ -54,7 +55,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            bytes(""),
+            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)
@@ -68,7 +69,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            bytes(""),
+            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)
@@ -87,7 +88,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
                 createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
-                bytes(""),
+                createAuctionParams(),
                 IPositionManager(POSITION_MANAGER),
                 IPoolManager(POOL_MANAGER),
                 IWETH9(WETH9)
@@ -102,7 +103,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            bytes(""),
+            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)
@@ -157,6 +158,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) public {
         // Add bounds to fuzz parameters
         vm.assume(tokenSplit <= 5_000);
+        vm.assume(totalSupply > 1);
+        vm.assume(FullMath.mulDiv(totalSupply, tokenSplit, 10_000) > 0);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit);
 
@@ -171,6 +174,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_fuzz_onTokenReceived_succeeds(uint128 totalSupply) public {
+        vm.assume(totalSupply > 1);
         setupWithSupply(totalSupply);
 
         vm.prank(address(tokenLauncher));
@@ -216,7 +220,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
-            bytes(""),
+            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)

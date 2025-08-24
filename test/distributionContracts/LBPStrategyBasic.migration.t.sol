@@ -253,11 +253,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     // Fuzz tests
 
-    function testFuzz_migrate_ensuresTicksAreMultiplesOfTickSpacing_withETH(int24 tickSpacing) public {
+    function test_fuzz_migrate_ensuresTicksAreMultiplesOfTickSpacing_withETH(int24 tickSpacing) public {
         // Bound inputs to reasonable values
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 
-        // Redeploy with fuzzed tick spacing
+        //Redeploy with fuzzed tick spacing
         migratorParams = createMigratorParams(
             address(0), // ETH as currency
             500, // fee
@@ -303,11 +303,16 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // ETH < Token: one-sided position should be [MIN_TICK, initialTick)
         assertEq(oneSidedInfo.tickLower(), expectedMinTick);
-        assertLe(oneSidedInfo.tickUpper(), initialTick / tickSpacing * tickSpacing);
+        // Upper tick should be initialTick floored to tick spacing
+        int24 expectedUpperTick = initialTick / tickSpacing * tickSpacing;
+        if (initialTick < 0 && initialTick % tickSpacing != 0) {
+            expectedUpperTick -= tickSpacing;
+        }
+        assertEq(oneSidedInfo.tickUpper(), expectedUpperTick);
         assertLe(oneSidedInfo.tickUpper(), initialTick);
     }
 
-    function testFuzz_migrate_withNonETHCurrency_ensuresTicksAreMultiplesOfTickSpacing(int24 tickSpacing) public {
+    function test_fuzz_migrate_withNonETHCurrency_ensuresTicksAreMultiplesOfTickSpacing(int24 tickSpacing) public {
         // Bound inputs to reasonable values
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 

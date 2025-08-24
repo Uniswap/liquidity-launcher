@@ -25,6 +25,8 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
+import {Auction} from "twap-auction/src/Auction.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -47,7 +49,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint128 public immutable reserveSupply;
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
-    address public immutable auctionFactory;
     IPositionManager public immutable positionManager;
     IWETH9 public immutable WETH9;
 
@@ -57,18 +58,18 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint160 public initialSqrtPriceX96;
     uint128 public initialTokenAmount;
     uint128 public initialCurrencyAmount;
-    bytes public auctionParameters;
+    AuctionParameters public auctionParameters;
 
     constructor(
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory migratorParams,
-        bytes memory auctionParams,
+        AuctionParameters memory auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IWETH9 _WETH9
     ) HookBasic(_poolManager) {
-        _validateMigratorParams(_token, migratorParams);
+        _validateMigratorParams(_token, _totalSupply, migratorParams);
 
         auctionParameters = auctionParams;
 
@@ -83,7 +84,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
-        auctionFactory = migratorParams.auctionFactory;
         WETH9 = _WETH9;
 
         poolLPFee = migratorParams.poolLPFee;
@@ -96,12 +96,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
-        auction = IDistributionStrategy(auctionFactory).initializeDistribution(
-            token, totalSupply - reserveSupply, auctionParameters, bytes32(0)
-        );
+        uint128 auctionSupply = totalSupply - reserveSupply;
 
-        Currency.wrap(token).transfer(address(auction), totalSupply - reserveSupply);
-        auction.onTokensReceived();
+        auction = IDistributionContract(address(new Auction(token, auctionSupply, auctionParameters)));
+
+        Currency.wrap(token).transfer(address(auction), auctionSupply);
+        Auction(address(auction)).onTokensReceived(token, auctionSupply);
     }
 
     /// @inheritdoc ISubscriber
@@ -182,7 +182,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
-    function _validateMigratorParams(address _token, MigratorParameters memory migratorParams) private pure {
+    function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
+        private
+        pure
+    {
         // Validate that the amount of tokens sent to auction is <= 50% of total supply
         // This ensures at least half of the tokens remain for the initial liquidity position
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
@@ -200,6 +203,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
         if (_token == migratorParams.currency) {
             revert InvalidTokenAndCurrency(_token);
+        }
+        if (FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, TOKEN_SPLIT_DENOMINATOR) == 0) {
+            revert AuctionSupplyIsZero();
         }
     }
 

@@ -29,6 +29,9 @@ interface ILBPStrategyBasic is ISubscriber, IDistributionContract {
     /// @notice Error thrown when the token and currency are the same
     error InvalidTokenAndCurrency(address token);
 
+    /// @notice Error thrown when the auction supply is zero
+    error AuctionSupplyIsZero();
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
 }
