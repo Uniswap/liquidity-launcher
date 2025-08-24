@@ -140,7 +140,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {
-        totalSupply = uint128(bound(totalSupply, 0, type(uint128).max));
         _deployLBPStrategy(totalSupply);
     }
 
@@ -154,5 +153,17 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.positionRecipient
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+    }
+
+    // Helper to setup with custom total supply and token split
+    function setupWithSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) internal {
+        migratorParams = createMigratorParams(
+            address(0), // ETH as currency (same as default)
+            500, // fee (same as default)
+            1, // tick spacing (same as default)
+            tokenSplit, // Use custom tokenSplit
+            address(3) // position recipient (same as default)
+        );
+        _deployLBPStrategy(totalSupply);
     }
 }

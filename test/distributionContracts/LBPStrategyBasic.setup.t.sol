@@ -154,6 +154,22 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     // ============ Fuzzed Tests ============
 
+    function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) public {
+        // Add bounds to fuzz parameters
+        vm.assume(tokenSplit <= 5_000);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit);
+
+        vm.prank(address(tokenLauncher));
+        token.transfer(address(lbp), totalSupply);
+        lbp.onTokensReceived();
+
+        uint256 expectedAuctionAmount = FullMath.mulDiv(totalSupply, tokenSplit, 10_000);
+        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
+        assertGe(token.balanceOf(address(lbp)), token.balanceOf(address(lbp.auction())));
+    }
+
     function test_fuzz_onTokenReceived_succeeds(uint128 totalSupply) public {
         setupWithSupply(totalSupply);
 

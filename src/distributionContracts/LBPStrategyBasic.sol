@@ -122,17 +122,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidPrice(priceX192);
         }
 
-        int24 tickSpacing = poolTickSpacing;
-
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
             currency < token ? currencyAmount : tokenAmount,
             currency < token ? tokenAmount : currencyAmount
         );
 
-        uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
+        uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
 
         if (liquidity > maxLiquidityPerTick) {
             revert InvalidLiquidity(maxLiquidityPerTick, liquidity);
@@ -226,15 +224,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         view
         returns (bytes memory, bytes[] memory, uint128)
     {
-        int24 tickSpacing = poolTickSpacing;
-        int24 minTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
-        int24 maxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
+        int24 minTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing;
+        int24 maxTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing;
 
         PoolKey memory key = PoolKey({
             currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
             currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
             fee: poolLPFee,
-            tickSpacing: tickSpacing,
+            tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
         });
 
@@ -281,9 +278,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 tickSpacing = poolTickSpacing;
-            int24 lowerTick = TickMath.MIN_TICK / tickSpacing * tickSpacing; // Lower tick rounded to tickSpacing towards 0
-            int24 upperTick = initialTick.tickFloor(tickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
+            int24 lowerTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing; // Lower tick rounded to tickSpacing towards 0
+            int24 upperTick = initialTick.tickFloor(poolTickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -294,7 +290,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 tokenAmount
             );
             // check that liquidity is within limits
-            if (liquidity + newLiquidity > tickSpacing.tickSpacingToMaxLiquidityPerTick()) {
+            if (liquidity + newLiquidity > poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
@@ -307,7 +303,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                     currency0: Currency.wrap(currency),
                     currency1: Currency.wrap(token),
                     fee: poolLPFee,
-                    tickSpacing: tickSpacing,
+                    tickSpacing: poolTickSpacing,
                     hooks: IHooks(address(this))
                 }),
                 lowerTick,
@@ -324,9 +320,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 tickSpacing = poolTickSpacing;
-            int24 lowerTick = (initialTick / tickSpacing + 1) * tickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
-            int24 upperTick = TickMath.MAX_TICK / tickSpacing * tickSpacing; // MAX_TICK rounded to tickSpacing towards 0
+            int24 lowerTick = (initialTick / poolTickSpacing + 1) * poolTickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
+            int24 upperTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing; // MAX_TICK rounded to tickSpacing towards 0
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -337,7 +332,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 0
             );
             // check that liquidity is within limits
-            if (liquidity + newLiquidity > tickSpacing.tickSpacingToMaxLiquidityPerTick()) {
+            if (liquidity + newLiquidity > poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
@@ -354,7 +349,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                     currency0: Currency.wrap(token),
                     currency1: Currency.wrap(currency),
                     fee: poolLPFee,
-                    tickSpacing: tickSpacing,
+                    tickSpacing: poolTickSpacing,
                     hooks: IHooks(address(this))
                 }),
                 lowerTick,

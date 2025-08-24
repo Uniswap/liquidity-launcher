@@ -7,6 +7,8 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {MathHelpers} from "../shared/MathHelpers.t.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     // ============ Access Control Tests ============
@@ -76,6 +78,26 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.onNotify{value: 1e18}(abi.encode(TickMath.getSqrtPriceAtTick(0), DEFAULT_TOTAL_SUPPLY, 1e18));
     }
 
+    function test_onNotify_revertsWithInvalidLiquidity() public {
+        setupWithSupply(type(uint128).max);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, type(uint128).max);
+        uint128 tokenAmount = type(uint128).max / 2;
+        uint128 ethAmount = type(uint128).max;
+        vm.deal(address(lbp.auction()), ethAmount);
+        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
+        uint128 maxLiquidity = MathHelpers.tickSpacingToMaxLiquidityPerTick(lbp.poolTickSpacing());
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            uint160(Math.sqrt(priceX192)),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / lbp.poolTickSpacing() * lbp.poolTickSpacing()),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / lbp.poolTickSpacing() * lbp.poolTickSpacing()),
+            ethAmount,
+            tokenAmount
+        );
+        vm.prank(address(lbp.auction()));
+        vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidLiquidity.selector, maxLiquidity, liquidity));
+        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+    }
+
     // ============ Non-ETH Currency Tests ============
 
     function test_onNotify_withNonETHCurrency_succeeds() public {
@@ -140,6 +162,62 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         priceX192 = FullMath.mulDiv(333e18, 2 ** 192, 111e18);
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 137227202865029797602485611888);
+    }
+
+    function test_priceCalculationRoundTrip() public pure {
+        // Example: clearingPrice of 2.0 (2 tokens per ETH) in Q96 format
+        uint256 clearingPriceQ96 = 2 * (1 << 96); // 2 * 2^96
+        uint128 ethAmount = 1e18; // 1 ETH
+
+        // // Convert to Q192 for higher precision
+        // uint256 priceX192 = clearingPriceQ96 << 96;
+
+        // Calculate expected tokens: 2 tokens per ETH * 1 ETH = 2 tokens
+        uint256 tokenAmount = FullMath.mulDiv(clearingPriceQ96, ethAmount, 2 ** 96);
+        assertEq(tokenAmount, 2e18); // Exactly 2 tokens
+
+        // Recover the price (should get back the original)
+        uint256 recoveredPriceQ96 = FullMath.mulDiv(tokenAmount, 2 ** 96, ethAmount);
+        assertEq(recoveredPriceQ96, clearingPriceQ96); // Perfect round trip!
+    }
+
+    function test_morePriceCalculations_fuzz(uint256 clearingPrice, uint128 ethAmount) public pure {
+        vm.assume(ethAmount > 0);
+        vm.assume(clearingPrice > 0 && clearingPrice <= type(uint160).max); // Limit to reasonable Q96 values
+
+        // Convert Q96 to Q192
+        //uint256 priceX192 = clearingPrice << 96;
+
+        // Calculate tokenAmount (no casting yet)
+        uint256 expectedTokenAmount = FullMath.mulDiv(clearingPrice, ethAmount, 2 ** 96);
+
+        // Only proceed if tokenAmount is non-zero and fits in uint128
+        vm.assume(expectedTokenAmount > 0 && expectedTokenAmount <= type(uint128).max);
+
+        // Recover the price
+        uint256 recoveredPriceQ96 = FullMath.mulDiv(expectedTokenAmount, 2 ** 96, ethAmount);
+
+        // The maximum rounding error is proportional to 2^192 / ethAmount
+        // This is because we lose up to 1 unit in the division by ethAmount
+        uint256 maxError = (uint256(1) << 192) / ethAmount + 1;
+
+        // Check that we recover the price within the expected error bound
+        assertApproxEqAbs(recoveredPriceQ96, clearingPrice, maxError);
+    }
+
+    function test_onNotify_revertsWithInvalidTokenAmount() public {
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+
+        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
+        uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
+
+        vm.deal(address(lbp.auction()), ethAmount);
+
+        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
+
+        vm.prank(address(lbp.auction()));
+        vm.expectRevert(abi.encodeWithSelector(ISubscriber.InvalidTokenAmount.selector, tokenAmount + 1, tokenAmount));
+        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount + 1, ethAmount));
     }
 
     // ============ Fuzzed Tests ============
