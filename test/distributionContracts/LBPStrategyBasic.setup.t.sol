@@ -214,7 +214,10 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, positionRecipient)
             );
+        } else if (FullMath.mulDiv(DEFAULT_TOTAL_SUPPLY, tokenSplit, 10_000) == 0) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
         }
+
         // Should succeed with valid params
         new LBPStrategyBasicNoValidation(
             address(token),
