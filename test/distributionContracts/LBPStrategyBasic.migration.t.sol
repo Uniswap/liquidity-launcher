@@ -211,8 +211,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         migratorParams = createMigratorParams(DAI, 500, 20, DEFAULT_TOKEN_SPLIT, address(3));
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
-        uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
-        uint128 tokenAmount = lbp.reserveSupply() / 2;
+        uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2; // 500e18
+        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -305,13 +305,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertEq(oneSidedInfo.tickLower(), expectedMinTick);
         assertLe(oneSidedInfo.tickUpper(), initialTick / tickSpacing * tickSpacing);
         assertLe(oneSidedInfo.tickUpper(), initialTick);
-
-        // } else {
-        //     // Token < Currency: one-sided position should be (initialTick, MAX_TICK]
-        //     assertGe(oneSidedInfo.tickLower(), (initialTick / tickSpacing + 1) * tickSpacing);
-        //     assertEq(oneSidedInfo.tickUpper(), expectedMaxTick);
-        //     assertGt(oneSidedInfo.tickLower(), initialTick);
-        // }
     }
 
     function testFuzz_migrate_withNonETHCurrency_ensuresTicksAreMultiplesOfTickSpacing(int24 tickSpacing) public {

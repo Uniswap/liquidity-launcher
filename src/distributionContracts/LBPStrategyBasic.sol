@@ -208,10 +208,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
-            params = new bytes[](3);
+            params = new bytes[](5);
             (actions, params,) = _createFullRangePositionPlan(actions, params);
         } else {
-            params = new bytes[](5);
+            params = new bytes[](8);
             (actions, params, liquidity) = _createFullRangePositionPlan(actions, params);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         }
@@ -226,6 +226,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     {
         int24 minTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing;
         int24 maxTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing;
+        uint128 tokenAmount = initialTokenAmount;
+        uint128 currencyAmount = initialCurrencyAmount;
 
         PoolKey memory key = PoolKey({
             currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
@@ -239,25 +241,38 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(minTick),
             TickMath.getSqrtPriceAtTick(maxTick),
-            currency < token ? initialCurrencyAmount : initialTokenAmount,
-            currency < token ? initialTokenAmount : initialCurrencyAmount
+            currency < token ? currencyAmount : tokenAmount,
+            currency < token ? tokenAmount : currencyAmount
         );
 
-        actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE));
+        actions = abi.encodePacked(
+            uint8(Actions.SETTLE),
+            uint8(Actions.SETTLE),
+            uint8(Actions.MINT_POSITION_FROM_DELTAS),
+            uint8(Actions.CLEAR_OR_TAKE),
+            uint8(Actions.CLEAR_OR_TAKE)
+        );
 
-        params[0] = abi.encode(
+        if (currency < token) {
+            params[0] = abi.encode(key.currency0, currencyAmount, false);
+            params[1] = abi.encode(key.currency1, tokenAmount, false);
+        } else {
+            params[0] = abi.encode(key.currency0, tokenAmount, false);
+            params[1] = abi.encode(key.currency1, currencyAmount, false);
+        }
+
+        params[2] = abi.encode(
             key,
             minTick,
             maxTick,
-            liquidity,
-            currency < token ? initialCurrencyAmount : initialTokenAmount,
-            currency < token ? initialTokenAmount : initialCurrencyAmount,
+            currency < token ? currencyAmount : tokenAmount,
+            currency < token ? tokenAmount : currencyAmount,
             positionRecipient,
             Constants.ZERO_BYTES
         );
 
-        params[1] = abi.encode(key.currency0, ActionConstants.OPEN_DELTA, false);
-        params[2] = abi.encode(key.currency1, ActionConstants.OPEN_DELTA, false);
+        params[3] = abi.encode(key.currency0, type(uint256).max);
+        params[4] = abi.encode(key.currency1, type(uint256).max);
 
         return (actions, params, liquidity);
     }
@@ -271,6 +286,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // then mint the position, then settle.
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
         uint256 tokenAmount = reserveSupply - initialTokenAmount;
+        params[5] = abi.encode(Currency.wrap(token), tokenAmount, false);
 
         if (currency < token) {
             // Skip position creation if initial tick is too close to lower boundary
@@ -298,7 +314,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // Position is on the left hand side of current tick
             // For a one-sided position, we create a range from [MIN_TICK, current tick) (because upper tick is exclusive)
             // The upper tick must be a multiple of tickSpacing and exclusive
-            params[3] = abi.encode(
+            params[6] = abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(currency),
                     currency1: Currency.wrap(token),
@@ -308,7 +324,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 }),
                 lowerTick,
                 upperTick,
-                newLiquidity,
                 0, // No currency amount (one-sided position)
                 tokenAmount, // Maximum token amount
                 positionRecipient,
@@ -344,7 +359,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // - Greater than current tick
             // The upper tick must be:
             // - A multiple of tickSpacing
-            params[3] = abi.encode(
+            params[6] = abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(token),
                     currency1: Currency.wrap(currency),
@@ -354,24 +369,27 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 }),
                 lowerTick,
                 upperTick,
-                newLiquidity,
                 tokenAmount, // Maximum token amount
                 0, // No currency amount (one-sided position)
                 positionRecipient,
                 Constants.ZERO_BYTES
             );
         }
-        actions = abi.encodePacked(actions, uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE));
-        params[4] = abi.encode(Currency.wrap(token), ActionConstants.OPEN_DELTA, false);
+        params[7] = abi.encode(Currency.wrap(token), type(uint256).max);
+        actions = abi.encodePacked(
+            actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.CLEAR_OR_TAKE)
+        );
 
         return (actions, params);
     }
 
     function _truncate(bytes[] memory params) private pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](3);
+        bytes[] memory truncated = new bytes[](5);
         truncated[0] = params[0];
         truncated[1] = params[1];
         truncated[2] = params[2];
+        truncated[3] = params[3];
+        truncated[4] = params[4];
         return truncated;
     }
 }
