@@ -99,7 +99,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify balances
         assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
-        assertBalancesAfterMigration(before, afterMigration, false);
+        assertBalancesAfterMigration(before, afterMigration);
     }
 
     function test_migrate_fullRange_withNonETHCurrency_succeeds() public {
@@ -142,7 +142,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify balances
         assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
-        assertBalancesAfterMigration(before, afterMigration, false);
+        assertBalancesAfterMigration(before, afterMigration);
     }
 
     // function test_migrate_onlyFullRangeEth_succeeds() public {
@@ -203,7 +203,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify balances
         assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
-        assertBalancesAfterMigration(before, afterMigration, true);
+        assertBalancesAfterMigration(before, afterMigration);
     }
 
     function test_migrate_withOneSidedPosition_withNonETHCurrency_succeeds() public {

@@ -90,23 +90,17 @@ abstract contract LBPTestHelpers is Test {
         }
     }
 
-    function assertBalancesAfterMigration(
-        BalanceSnapshot memory before,
-        BalanceSnapshot memory afterMigration,
-        bool expectOneSidedPosition
-    ) internal pure {
-        // May be leftover dust in position manager
-        vm.assertGe(afterMigration.tokenInPosm, before.tokenInPosm);
-        vm.assertGe(afterMigration.currencyInPosm, before.currencyInPosm);
+    function assertBalancesAfterMigration(BalanceSnapshot memory before, BalanceSnapshot memory afterMigration)
+        internal
+        pure
+    {
+        // should not be any leftover dust in position manager (should all be in pool manager)
+        vm.assertEq(afterMigration.tokenInPosm, before.tokenInPosm);
+        vm.assertEq(afterMigration.currencyInPosm, before.currencyInPosm);
 
         // Pool Manager should have received funds
         vm.assertGt(afterMigration.tokenInPoolm, before.tokenInPoolm);
         vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
-
-        // Position recipient should have WETH
-        if (expectOneSidedPosition) {
-            vm.assertGe(afterMigration.wethInRecipient, before.wethInRecipient);
-        }
     }
 
     function calculateExpectedLiquidity(
