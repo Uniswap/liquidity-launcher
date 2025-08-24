@@ -19,3 +19,6 @@
 [submodule "lib/optimism"]
 	path = lib/optimism
 	url = https://github.com/ethereum-optimism/optimism
+[submodule "lib/twap-auction"]
+	path = lib/twap-auction
+	url = https://github.com/Uniswap/twap-auction
