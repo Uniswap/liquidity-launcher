@@ -8,16 +8,6 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 /// @notice Gas benchmark tests for LBPStrategyBasic
 /// @dev These tests are isolated to ensure accurate gas measurements
 contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
-    /// @notice Test gas consumption for onTokensReceived
-    /// forge-config: default.isolate = true
-    /// forge-config: ci.isolate = true
-    function test_onTokensReceived_gas() public {
-        vm.prank(address(tokenLauncher));
-        token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-        vm.snapshotGasLastCall("onTokensReceived");
-    }
-
     /// @notice Test gas consumption for onNotify with ETH
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true

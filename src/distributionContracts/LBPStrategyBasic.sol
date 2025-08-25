@@ -13,11 +13,9 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
@@ -26,6 +24,7 @@ import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -49,9 +48,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     IPositionManager public immutable positionManager;
-    IWETH9 public immutable WETH9;
 
-    IDistributionContract public auction;
+    IAuction public auction;
     // The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
     // This represents the square root of the ratio of currency1/currency0, where currency0 is the one with the lower address
     uint160 public initialSqrtPriceX96;
@@ -63,14 +61,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory migratorParams,
-        AuctionParameters memory auctionParams,
         IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        IWETH9 _WETH9
+        IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, migratorParams);
-
-        auctionParameters = auctionParams;
 
         token = _token;
         currency = migratorParams.currency;
@@ -83,24 +77,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
-        WETH9 = _WETH9;
 
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
-    }
-
-    /// @inheritdoc IDistributionContract
-    function onTokensReceived() external {
-        if (IERC20(token).balanceOf(address(this)) < totalSupply) {
-            revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
-        }
-
-        uint128 auctionSupply = totalSupply - reserveSupply;
-
-        auction = IDistributionContract(address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters)));
-
-        Currency.wrap(token).transfer(address(auction), auctionSupply);
-        Auction(address(auction)).onTokensReceived(token, auctionSupply);
     }
 
     /// @inheritdoc ISubscriber

@@ -38,8 +38,7 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
-        factory =
-            new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER), IWETH9(WETH9));
+        factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(tokenLauncher));
         mock = new MockDistributionStrategy();
@@ -85,19 +84,11 @@ contract LBPStrategyBasicFactoryTest is Test {
         // );
         // console2.logBytes32(initCodeHash);
         LBPStrategyBasic lbp = LBPStrategyBasic(
-            address(
-                factory.initializeDistribution(
-                    address(token),
-                    TOTAL_SUPPLY,
-                    abi.encode(
-                        migratorParams,
-                        auctionParams,
-                        IPositionManager(POSITION_MANAGER),
-                        IPoolManager(POOL_MANAGER),
-                        IWETH9(WETH9)
-                    ),
-                    0x7fa9385be102ac3eac297483dd6233d62b3e1496f04223c251e9028bcc4733ff
-                )
+            factory.getLBPAddress(
+                address(token),
+                TOTAL_SUPPLY,
+                abi.encode(migratorParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+                0x7fa9385be102ac3eac297483dd6233d62b3e1496f04223c251e9028bcc4733ff
             )
         );
 
@@ -116,26 +107,16 @@ contract LBPStrategyBasicFactoryTest is Test {
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(
-                migratorParams, bytes(""), IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER), IWETH9(WETH9)
-            ),
+            abi.encode(migratorParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
             keccak256(abi.encode(address(this), salt))
         );
         assertEq(
             lbpAddress,
-            address(
-                factory.initializeDistribution(
-                    address(token),
-                    TOTAL_SUPPLY,
-                    abi.encode(
-                        migratorParams,
-                        auctionParams,
-                        IPositionManager(POSITION_MANAGER),
-                        IPoolManager(POOL_MANAGER),
-                        IWETH9(WETH9)
-                    ),
-                    salt
-                )
+            factory.getLBPAddress(
+                address(token),
+                TOTAL_SUPPLY,
+                abi.encode(migratorParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+                salt
             )
         );
     }

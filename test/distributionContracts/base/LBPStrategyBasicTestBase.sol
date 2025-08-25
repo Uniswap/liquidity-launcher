@@ -99,13 +99,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
         // Deploy implementation
         impl = new LBPStrategyBasicNoValidation(
-            address(token),
-            totalSupply,
-            migratorParams,
-            auctionParams,
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            address(token), totalSupply, migratorParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
         );
 
         vm.etch(address(lbp), address(impl).code);

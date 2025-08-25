@@ -5,7 +5,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ITokenFactory} from "./token-factories/uerc20-factory/interfaces/ITokenFactory.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
 import {Multicall} from "./Multicall.sol";
 import {Distribution} from "./types/Distribution.sol";
 import {Permit2Forwarder, IAllowanceTransfer} from "./Permit2Forwarder.sol";
@@ -40,21 +39,22 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     function distributeToken(address token, Distribution calldata distribution, bool payerIsUser, bytes32 salt)
         external
         override
-        returns (IDistributionContract distributionContract)
+        returns (address[2] memory addresses, uint128[2] memory amounts)
     {
-        // Call the strategy: it might do distributions itself or deploy a new instance.
-        // If it does distributions itself, distributionContract == dist.strategy
-        distributionContract = IDistributionStrategy(distribution.strategy).initializeDistribution(
+        (addresses, amounts) = IDistributionStrategy(distribution.strategy).getAddressesAndAmounts(
             token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
         );
 
-        // Now transfer the tokens to the returned address
-        _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
+        for (uint256 i = 0; i < addresses.length; i++) {
+            // Now transfer the tokens to the returned address
+            _transferToken(token, _mapPayer(payerIsUser), addresses[i], amounts[i]);
+        }
 
-        // Notify the distribution contract that it has received the tokens
-        distributionContract.onTokensReceived();
+        IDistributionStrategy(distribution.strategy).initializeDistribution(
+            token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
+        );
 
-        emit TokenDistributed(token, address(distributionContract), distribution.amount);
+        emit TokenDistributed(token, addresses, amounts);
     }
 
     /// @inheritdoc ITokenLauncher

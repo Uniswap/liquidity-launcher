@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IDistributionContract} from "./IDistributionContract.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ISubscriber} from "./ISubscriber.sol";
 
 /// @title ILBPStrategyBasic
 /// @notice Interface for the LBPStrategyBasic contract
-interface ILBPStrategyBasic is ISubscriber, IDistributionContract {
+interface ILBPStrategyBasic is ISubscriber {
     /// @notice Emitted when the pool is initialized
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 

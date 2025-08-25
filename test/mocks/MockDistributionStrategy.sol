@@ -2,15 +2,16 @@
 pragma solidity ^0.8.26;
 
 import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
-import {MockDistributionContract} from "./MockDistributionContract.sol";
 
 contract MockDistributionStrategy is IDistributionStrategy {
-    function initializeDistribution(address, uint128, bytes calldata, bytes32)
+    function initializeDistribution(address, uint128, bytes calldata, bytes32) external {}
+
+    function getAddressesAndAmounts(address, uint128, bytes calldata, bytes32)
         external
+        pure
         override
-        returns (IDistributionContract distributionContract)
+        returns (address[2] memory, uint128[2] memory)
     {
-        return IDistributionContract(address(new MockDistributionContract()));
+        return ([address(0), address(0)], [uint128(0), uint128(0)]);
     }
 }

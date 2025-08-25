@@ -121,7 +121,6 @@ abstract contract LBPTestHelpers is Test {
     function sendTokensToLBP(address tokenLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
         vm.prank(tokenLauncher);
         token.transfer(address(lbp), amount);
-        lbp.onTokensReceived();
     }
 
     function onNotifyETH(LBPStrategyBasic lbp, uint128 tokenAmount, uint128 ethAmount) internal {

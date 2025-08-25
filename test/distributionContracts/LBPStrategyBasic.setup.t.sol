@@ -4,12 +4,10 @@ pragma solidity ^0.8.26;
 import "./base/LBPStrategyBasicTestBase.sol";
 //import "./helpers/LBPTestDataBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
-import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
-import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
@@ -22,10 +20,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
-            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -39,10 +35,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
 
         // Test too high
@@ -54,10 +48,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -68,10 +60,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -87,10 +77,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
                 createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
-                createAuctionParams(),
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER),
-                IWETH9(WETH9)
+                IPoolManager(POOL_MANAGER)
             );
         }
     }
@@ -102,39 +90,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
-    }
-
-    // ============ Token Reception Tests ============
-
-    function test_onTokenReceived_revertsWithInvalidAmountReceived() public {
-        vm.prank(address(tokenLauncher));
-        ERC20(token).transfer(address(lbp), DEFAULT_TOTAL_SUPPLY - 1);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDistributionContract.InvalidAmountReceived.selector, DEFAULT_TOTAL_SUPPLY, DEFAULT_TOTAL_SUPPLY - 1
-            )
-        );
-        lbp.onTokensReceived();
-    }
-
-    function test_onTokenReceived_succeeds() public {
-        vm.prank(address(tokenLauncher));
-        token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
-        lbp.onTokensReceived();
-
-        // Verify auction is created
-        assertNotEq(address(lbp.auction()), address(0));
-
-        // Verify token distribution
-        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 10_000;
-        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
-        assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY - expectedAuctionAmount);
     }
 
     // only the hook can initialize the pool
@@ -164,7 +122,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);
-        lbp.onTokensReceived();
 
         uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
@@ -223,10 +180,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
-            createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 }
