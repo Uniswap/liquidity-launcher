@@ -23,7 +23,6 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
 
 /// @title LBPStrategyBasic
@@ -36,6 +35,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
     uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
+    uint256 public constant Q192 = 2 ** 192;
 
     address public immutable token;
     address public immutable currency;
@@ -104,22 +104,25 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.onTokensReceived();
     }
 
-    /// @inheritdoc ISubscriber
-    function onNotify(bytes memory data) external payable {
-        (uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) = abi.decode(data, (uint256, uint128, uint128));
-        if (msg.sender != address(auction)) revert OnlyAuctionCanSetPrice(address(auction), msg.sender);
-        if (Currency.wrap(currency).isAddressZero()) {
-            if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
-        } else {
-            if (msg.value != 0) revert NonETHCurrencyCannotReceiveETH(currency);
-            IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
-        }
-        if (tokenAmount > reserveSupply) {
-            revert InvalidTokenAmount(tokenAmount, reserveSupply);
-        }
+    /// @inheritdoc ILBPStrategyBasic
+    function fetchPriceAndCurrencyFromAuction() external {
+        if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
+        uint160 price = auction.clearingPrice();
+        uint256 priceX192 = price * Q192;
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
             revert InvalidPrice(priceX192);
+        }
+        
+        uint256 currencyAmount = Currency.wrap(currency).balanceOf(address(this));
+        auction.sweepCurrency();
+        currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)) - currencyAmount);
+
+        // compute token amount
+        uint128 tokenAmount = FullMath.mulDiv(priceX192, currencyAmount, Q192);
+
+        if (tokenAmount > reserveSupply) {
+            revert InvalidTokenAmount(tokenAmount, reserveSupply);
         }
 
         int24 tickSpacing = poolTickSpacing;
@@ -141,8 +144,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialSqrtPriceX96 = sqrtPriceX96;
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
-
-        emit Notified(data);
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -379,4 +380,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         truncated[2] = params[2];
         return truncated;
     }
+
+    receive() external payable {}
 }

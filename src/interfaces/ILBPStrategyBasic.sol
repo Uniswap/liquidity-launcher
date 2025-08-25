@@ -3,11 +3,10 @@ pragma solidity ^0.8.0;
 
 import {IDistributionContract} from "./IDistributionContract.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {ISubscriber} from "./ISubscriber.sol";
 
 /// @title ILBPStrategyBasic
 /// @notice Interface for the LBPStrategyBasic contract
-interface ILBPStrategyBasic is ISubscriber, IDistributionContract {
+interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Emitted when the pool is initialized
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
@@ -29,6 +28,24 @@ interface ILBPStrategyBasic is ISubscriber, IDistributionContract {
     /// @notice Error thrown when the token and currency are the same
     error InvalidTokenAndCurrency(address token);
 
+    /// @notice Error thrown when the price is invalid
+    error InvalidPrice(uint256 price);
+
+    /// @notice Error thrown when the liquidity is invalid
+    error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
+
+    /// @notice Error thrown when the auction is not ended
+    error AuctionNotEnded(uint256 endBlock, uint256 currentBlock);
+
+    /// @notice Error thrown when the sender of native currency is not the auction contract
+    error OnlyAuctionCanSendNativeCurrency(address auction, address caller);
+
+    /// @notice Error thrown when the token amount is invalid
+    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
+
+    /// @notice Fetches the price and currency from the auction
+    function fetchPriceAndCurrencyFromAuction() external;
 }
