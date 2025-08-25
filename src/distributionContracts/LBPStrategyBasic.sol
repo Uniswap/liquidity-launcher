@@ -9,7 +9,6 @@ import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
@@ -80,7 +79,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // e.g. if tokenSplitToAuction = 5000 (50%), then half goes to auction and half is reserved
         // Rounds down so auction always gets less than or equal to half of the total supply
         reserveSupply = _totalSupply
-            - uint128(FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, TOKEN_SPLIT_DENOMINATOR));
+            - uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR);
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
@@ -204,7 +203,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (_token == migratorParams.currency) {
             revert InvalidTokenAndCurrency(_token);
         }
-        if (FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, TOKEN_SPLIT_DENOMINATOR) == 0) {
+        if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR) == 0)
+        {
             revert AuctionSupplyIsZero();
         }
     }
