@@ -27,6 +27,7 @@ import {IMockAuction as IAuction} from "../../test/mocks/MockIAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -99,17 +100,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction = IAuction((address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters))));
 
         Currency.wrap(token).transfer(address(auction), auctionSupply);
-        auction.onTokensReceived(token, auctionSupply);
+        auction.onTokensReceived();
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function fetchPriceAndCurrencyFromAuction() external {
         if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
-        uint160 price = auction.clearingPrice();
-        uint256 priceX192 = price * Q192;
-        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        uint256 price = auction.clearingPrice();
+        uint256 priceX192 = price * FixedPoint96.Q96;
+        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // will overflow if price > type(uint160).max
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(priceX192);
+            revert InvalidPrice(price);
         }
 
         uint128 currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)));

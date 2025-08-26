@@ -13,6 +13,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -120,7 +121,9 @@ abstract contract LBPTestHelpers is Test {
 
     function mockAuctionClearingPrice(LBPStrategyBasic lbp, uint256 price) internal {
         // Mock the auction's clearingPrice function
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSelector(IAuction.clearingPrice.selector), abi.encode(price));
+        vm.mockCall(
+            address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
+        );
     }
 
     function sendCurrencyToLBP(LBPStrategyBasic lbp, address currency, uint256 amount) internal {

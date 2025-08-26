@@ -82,14 +82,19 @@ contract LBPStrategyBasicFactoryTest is Test {
         // );
         // console2.logBytes32(initCodeHash);
         LBPStrategyBasic lbp = LBPStrategyBasic(
-            address(
-                factory.initializeDistribution(
-                    address(token),
-                    TOTAL_SUPPLY,
-                    abi.encode(
-                        migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
-                    ),
-                    0x7fa9385be102ac3eac297483dd6233d62b3e1496f04223c251e9028bcc4733ff
+            payable(
+                address(
+                    factory.initializeDistribution(
+                        address(token),
+                        TOTAL_SUPPLY,
+                        abi.encode(
+                            migratorParams,
+                            auctionParams,
+                            IPositionManager(POSITION_MANAGER),
+                            IPoolManager(POOL_MANAGER)
+                        ),
+                        0x7fa9385be102ac3eac297483dd6233d62b3e1496f04223c251e9028bcc4733ff
+                    )
                 )
             )
         );

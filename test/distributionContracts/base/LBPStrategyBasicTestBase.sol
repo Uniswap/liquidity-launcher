@@ -93,7 +93,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address hookAddress = address(
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
         );
-        lbp = LBPStrategyBasic(hookAddress);
+        lbp = LBPStrategyBasic(payable(hookAddress));
 
         // Deploy implementation
         impl = new LBPStrategyBasicNoValidation(
