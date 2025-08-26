@@ -100,7 +100,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction = IDistributionContract(address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters)));
 
         Currency.wrap(token).transfer(address(auction), auctionSupply);
-        Auction(address(auction)).onTokensReceived(token, auctionSupply);
+        auction.onTokensReceived();
     }
 
     /// @inheritdoc ISubscriber
