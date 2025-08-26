@@ -22,7 +22,8 @@ import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+// TODO: Remove IMockAuction and use IAuction once latest version is pulled
+import {IMockAuction as IAuction} from "../../test/mocks/MockIAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -103,7 +104,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @inheritdoc ILBPStrategyBasic
     function fetchPriceAndCurrencyFromAuction() external {
-        //if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
+        if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
         uint160 price = auction.clearingPrice();
         uint256 priceX192 = price * Q192;
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
@@ -112,7 +113,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         uint128 currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)));
-        //auction.sweepCurrency();
+        auction.sweepCurrency();
         currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)) - currencyAmount);
 
         // compute token amount

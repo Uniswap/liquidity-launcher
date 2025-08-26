@@ -4,13 +4,19 @@ pragma solidity ^0.8.26;
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 
 /// @notice Gas benchmark tests for LBPStrategyBasic
 /// @dev These tests are isolated to ensure accurate gas measurements
 contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
+    // Helper function to mock endBlock
+    function mockEndBlock(uint64 blockNumber) internal {
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
+    }
     /// @notice Test gas consumption for onTokensReceived
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
+
     function test_onTokensReceived_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
@@ -18,52 +24,62 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         vm.snapshotGasLastCall("onTokensReceived");
     }
 
-    /// @notice Test gas consumption for onNotify with ETH
+    /// @notice Test gas consumption for fetchPriceAndCurrencyFromAuction with ETH
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_onNotify_withETH_gas() public {
+    function test_fetchPriceAndCurrencyFromAuction_withETH_gas() public {
         // Setup auction
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
-        // Give auction ETH
+        // Mock auction functions
+        uint256 pricePerToken = 1e18; // 1 ETH per token
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+
+        // Mock sweepCurrency to transfer ETH
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("sweepCurrency()"), "");
+
+        // Set up ETH transfer expectation
         vm.deal(address(lbp.auction()), ethAmount);
-
-        // Calculate price
-        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
-
-        // Set initial price
         vm.prank(address(lbp.auction()));
-        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
-        vm.snapshotGasLastCall("onNotifyWithETH");
+        (bool success,) = address(lbp).call{value: ethAmount}("");
+        require(success, "ETH transfer failed");
+
+        // Call fetchPriceAndCurrencyFromAuction
+        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.snapshotGasLastCall("fetchPriceAndCurrencyFromAuction_withETH");
     }
 
-    /// @notice Test gas consumption for onNotify with non-ETH currency
+    /// @notice Test gas consumption for fetchPriceAndCurrencyFromAuction with non-ETH currency
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_onNotify_withNonETHCurrency_gas() public {
+    function test_fetchPriceAndCurrencyFromAuction_withNonETHCurrency_gas() public {
         // Setup with DAI
         setupWithCurrency(DAI);
 
         // Setup auction
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
-        // Setup DAI
-        deal(DAI, address(lbp.auction()), 1_000e18);
+        // Mock auction functions
+        uint256 pricePerToken = 1e18; // 1 DAI per token
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockEndBlock(uint64(block.number - 1));
 
-        // Calculate price
-        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, daiAmount);
+        // Mock sweepCurrency
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("sweepCurrency()"), "");
 
-        // Approve and set price
-        vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), 1_000e18);
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
-        vm.snapshotGasLastCall("onNotifyWithNonETHCurrency");
+        // Transfer DAI from auction to LBP to simulate sweepCurrency
+        deal(DAI, address(lbp.auction()), daiAmount);
+        vm.prank(address(lbp.auction()));
+        ERC20(DAI).transfer(address(lbp), daiAmount);
+
+        // Call fetchPriceAndCurrencyFromAuction
+        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.snapshotGasLastCall("fetchPriceAndCurrencyFromAuction_withNonETHCurrency");
     }
 
     /// @notice Test gas consumption for migrate with ETH (full range)
@@ -75,7 +91,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = 500e18;
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+
+        // Set up auction with price and currency
+        setupAuctionWithPriceAndCurrency(lbp, 1e18, ethAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -93,7 +112,11 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = lbp.reserveSupply() / 2;
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1e18, tokenAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, ethAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -115,10 +138,9 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Give auction DAI
-        deal(DAI, address(lbp.auction()), daiAmount);
-
-        onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
+        // Set up auction with price and currency
+        setupAuctionWithPriceAndCurrency(lbp, 1e18, daiAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -140,17 +162,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Give auction DAI
-        deal(DAI, address(lbp.auction()), daiAmount);
-
-        // Set initial price
-        vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), daiAmount);
-
-        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
-
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
-        vm.stopPrank();
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1e18, tokenAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, daiAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());

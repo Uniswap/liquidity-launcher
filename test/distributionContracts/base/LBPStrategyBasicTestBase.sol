@@ -16,7 +16,6 @@ import {TokenLauncher} from "../../../src/TokenLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 
@@ -28,7 +27,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
     address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-    address constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // Default values
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
@@ -104,8 +102,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
 
         vm.etch(address(lbp), address(impl).code);

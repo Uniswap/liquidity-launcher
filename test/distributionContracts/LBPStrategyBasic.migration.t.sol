@@ -10,10 +10,14 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
+    // Helper function to mock endBlock
+    function mockEndBlock(uint64 blockNumber) internal {
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
+    }
     // ============ Migration Timing Tests ============
 
     function test_migrate_revertsWithMigrationNotAllowed() public {
@@ -59,7 +63,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(0), // ETH
             POSITION_MANAGER,
             POOL_MANAGER,
-            WETH9,
             address(3)
         );
 
@@ -78,7 +81,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
-            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Verify pool initialization
         assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
@@ -98,7 +101,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), address(0));
         assertBalancesAfterMigration(before, afterMigration);
     }
 
@@ -112,21 +115,20 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Give auction DAI
-        deal(DAI, address(lbp.auction()), daiAmount);
-
-        onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
+        // Set up auction with price and currency
+        setupAuctionWithPriceAndCurrency(lbp, 1e18, daiAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Take balance snapshot
         BalanceSnapshot memory before =
-            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
         migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
-            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Verify position
         assertPositionCreated(
@@ -141,7 +143,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), DAI);
         assertBalancesAfterMigration(before, afterMigration);
     }
 
@@ -164,18 +166,21 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, ethAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Take balance snapshot
         BalanceSnapshot memory before =
-            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
         migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
-            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Verify main position
         assertPositionCreated(
@@ -202,7 +207,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), address(0));
         assertBalancesAfterMigration(before, afterMigration);
     }
 
@@ -217,15 +222,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Calculate price (DAI/token)
-        deal(DAI, address(lbp.auction()), daiAmount);
-        vm.prank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), daiAmount);
-
-        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
-
-        vm.prank(address(lbp.auction()));
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1e18, tokenAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, daiAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -241,14 +241,18 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), DAI);
     }
 
     // ============ Helper Functions ============
 
     function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, currencyAmount);
+
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, currencyAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, currencyAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
     }
 
     // Fuzz tests
@@ -272,7 +276,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, ethAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -326,15 +333,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Calculate price (DAI/token)
-        deal(DAI, address(lbp.auction()), daiAmount);
-        vm.prank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), daiAmount);
-
-        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
-
-        vm.prank(address(lbp.auction()));
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1e18, tokenAmount);
+        setupAuctionWithPriceAndCurrency(lbp, pricePerToken, daiAmount);
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Migrate
         migrateToMigrationBlock(lbp);
