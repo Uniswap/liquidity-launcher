@@ -106,7 +106,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function fetchPriceAndCurrencyFromAuction() external {
         if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
         uint256 price = auction.clearingPrice();
+        if (price == 0) {
+            revert InvalidPrice(price);
+        }
         // inverse if currency is currency0
+        if (currency < token) {
+            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
+        }
         uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {

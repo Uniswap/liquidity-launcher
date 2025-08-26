@@ -95,7 +95,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Mock auction functions
-        uint256 pricePerToken = 13483e18;
+        uint256 pricePerToken = 1 << 96;
         mockClearingPrice(pricePerToken);
         mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
 
@@ -111,6 +111,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.fetchPriceAndCurrencyFromAuction();
 
         // Calculate expected values
+        // inverse price because currency is ETH
+        pricePerToken = FullMath.mulDiv(1 << 96, 1 << 96, pricePerToken);
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, lbp.Q192()));
@@ -123,8 +125,13 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     }
 
     function test_fetchPriceAndCurrencyFromAuction_revertsWithInvalidPrice_tooLow() public {
+        // Setup with DAI as currency
+        setupWithCurrency(DAI);
+
         // Setup: Send tokens to LBP and create auction
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+
+        uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Mock a very low price that will result in sqrtPrice below MIN_SQRT_PRICE
         uint256 veryLowPrice = uint256(TickMath.MIN_SQRT_PRICE - 1) * (uint256(TickMath.MIN_SQRT_PRICE) - 1); // Extremely low price
@@ -132,11 +139,12 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         mockClearingPrice(veryLowPrice);
         mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
 
-        // Set up mock auction with ETH
-        uint128 ethAmount = 1e18;
-        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
-        vm.deal(address(lbp.auction()), ethAmount);
+        // Deploy and etch mock auction that will handle ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount);
         vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // After etching, we need to deal DAI to the auction since vm.etch doesn't preserve balances
+        deal(DAI, address(lbp.auction()), daiAmount);
 
         // Mock the clearingPrice again after etching
         mockClearingPrice(veryLowPrice);
@@ -146,40 +154,38 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.fetchPriceAndCurrencyFromAuction();
     }
 
-    // TODO
-    // function test_fetchPriceAndCurrencyFromAuction_revertsWithInvalidTokenAmount() public {
-    //     // Setup: Send tokens to LBP and create auction
-    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    function test_fetchPriceAndCurrencyFromAuction_revertsWithInvalidTokenAmount() public {
+        // Setup: Send tokens to LBP and create auction
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-    //     uint128 reserveSupply = lbp.reserveSupply();
+        uint128 reserveSupply = lbp.reserveSupply();
 
-    //     // Mock a price that will result in tokenAmount > reserveSupply
-    //     // High price means more tokens needed for the given currency
-    //     uint256 highPrice = 10e18; // 10 ETH per token
-    //     mockClearingPrice(highPrice);
-    //     mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+        // Mock a price that will result in tokenAmount > reserveSupply
+        uint256 highPrice = 1 << 96; // 1 per token
+        mockClearingPrice(highPrice);
+        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
 
-    //     // Send a large amount of ETH that would require more tokens than available
-    //     uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
+        // Send a large amount of ETH that would require more tokens than available
+        uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
 
-    //     // Set up mock auction with large ETH amount
-    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(largeEthAmount);
-    //     vm.deal(address(lbp.auction()), largeEthAmount);
-    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
+        // Set up mock auction with large ETH amount
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(largeEthAmount);
+        vm.deal(address(lbp.auction()), largeEthAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-    //     // Mock the clearingPrice again after etching
-    //     mockClearingPrice(highPrice);
+        // Mock the clearingPrice again after etching
+        mockClearingPrice(highPrice);
 
-    //     // Calculate what the token amount would be
-    //     uint256 priceX192 = highPrice << 96;
-    //     uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, lbp.Q192()));
+        // Calculate what the token amount would be
+        uint256 priceX192 = highPrice << 96;
+        uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, lbp.Q192()));
 
-    //     // Expect revert with InvalidTokenAmount
-    //     vm.expectRevert(
-    //         abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAmount.selector, invalidTokenAmount, reserveSupply)
-    //     );
-    //     lbp.fetchPriceAndCurrencyFromAuction();
-    // }
+        // Expect revert with InvalidTokenAmount
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAmount.selector, invalidTokenAmount, reserveSupply)
+        );
+        lbp.fetchPriceAndCurrencyFromAuction();
+    }
 
     // ============ Non-ETH Currency Tests ============
 
@@ -259,7 +265,6 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     /// @dev This test checks various price and currency amount combinations
     function test_fuzz_fetchPriceAndCurrencyFromAuction_withETH(uint256 pricePerToken, uint128 ethAmount) public {
         vm.assume(pricePerToken > 0 && pricePerToken <= 100e18); // Reasonable price range: 0 to 100 ETH per token
-        vm.assume(ethAmount > 0 && ethAmount <= 1_000e18); // Reasonable ETH amount
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -275,6 +280,10 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Mock the clearingPrice again after etching
         mockClearingPrice(pricePerToken);
+
+        if (pricePerToken != 0) {
+            pricePerToken = FullMath.mulDiv(1 << 96, 1 << 96, pricePerToken);
+        }
 
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
@@ -296,7 +305,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             assertEq(address(lbp).balance, ethAmount);
         } else if (!isValidPrice) {
             // Should revert with InvalidPrice
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, priceX192));
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, pricePerToken));
             lbp.fetchPriceAndCurrencyFromAuction();
         } else {
             // Should revert with InvalidTokenAmount
@@ -309,30 +318,36 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         }
     }
 
-    // TODO
-    // function test_fetchPriceAndCurrencyFromAuction_withETH_revertsWithPriceTooHigh() public {
-    //     // This test verifies the handling of prices above MAX_SQRT_PRICE
-    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    function test_fetchPriceAndCurrencyFromAuction_withETH_revertsWithPriceTooHigh() public {
+        // This test verifies the handling of prices above MAX_SQRT_PRICE
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-    //     // Mock an extremely high price
-    //     uint256 veryHighPrice = uint256(TickMath.MAX_SQRT_PRICE + 1) * (uint256(TickMath.MAX_SQRT_PRICE) + 1); // Extremely high price
-    //     veryHighPrice = veryHighPrice >> 96;
-    //     mockClearingPrice(veryHighPrice);
-    //     mockEndBlock(uint64(block.number - 1));
+        // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
+        // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
+        // clearingPrice = (1 << 96)^2 / actualPrice
+        // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
+        // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
+        // So we need a clearing price close to 0 but not 0
+        uint256 veryLowClearingPrice = 1; // Minimal non-zero price
+        mockClearingPrice(veryLowClearingPrice);
+        mockEndBlock(uint64(block.number - 1));
 
-    //     // Set up mock auction
-    //     uint128 ethAmount = 1e18;
-    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
-    //     vm.deal(address(lbp.auction()), ethAmount);
-    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
+        // Set up mock auction
+        uint128 ethAmount = 1e18;
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-    //     // Mock the clearingPrice again after etching
-    //     mockClearingPrice(veryHighPrice);
+        // Mock the clearingPrice again after etching
+        mockClearingPrice(veryLowClearingPrice);
 
-    //     // Expect revert with InvalidPrice
-    //     vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, veryHighPrice));
-    //     lbp.fetchPriceAndCurrencyFromAuction();
-    // }
+        // Calculate the inverted price that will be used in the contract
+        uint256 invertedPrice = FullMath.mulDiv(1 << 96, 1 << 96, veryLowClearingPrice);
+
+        // Expect revert with InvalidPrice (the error will contain the inverted price)
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, invertedPrice));
+        lbp.fetchPriceAndCurrencyFromAuction();
+    }
 
     function test_fuzz_fetchPriceAndCurrencyFromAuction_withToken(uint256 pricePerToken, uint128 currencyAmount)
         public
