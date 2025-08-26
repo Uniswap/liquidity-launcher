@@ -11,7 +11,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 abstract contract LBPTestHelpers is Test {
@@ -28,7 +27,6 @@ abstract contract LBPTestHelpers is Test {
         address currency,
         address positionManager,
         address poolManager,
-        address weth9,
         address recipient
     ) internal view returns (BalanceSnapshot memory) {
         BalanceSnapshot memory snapshot;
@@ -44,7 +42,6 @@ abstract contract LBPTestHelpers is Test {
         }
 
         snapshot.tokenInPoolm = IERC20(token).balanceOf(poolManager);
-        snapshot.wethInRecipient = IWETH9(weth9).balanceOf(recipient);
 
         return snapshot;
     }
@@ -76,7 +73,6 @@ abstract contract LBPTestHelpers is Test {
         // Assert LBP is empty
         vm.assertEq(address(lbp).balance, 0);
         vm.assertEq(IERC20(token).balanceOf(address(lbp)), 0);
-        vm.assertEq(IWETH9(weth9).balanceOf(address(lbp)), 0);
 
         if (currency != address(0)) {
             vm.assertEq(IERC20(currency).balanceOf(address(lbp)), 0);

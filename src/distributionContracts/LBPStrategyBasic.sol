@@ -104,8 +104,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @inheritdoc ILBPStrategyBasic
     function fetchPriceAndCurrencyFromAuction() external {
         //if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
-        //uint160 price = auction.clearingPrice();
-        uint160 price = 1;
+        uint160 price = auction.clearingPrice();
         uint256 priceX192 = price * Q192;
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
