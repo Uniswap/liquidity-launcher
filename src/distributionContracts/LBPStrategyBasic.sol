@@ -343,7 +343,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 lowerTick = (initialTick / poolTickSpacing + 1) * poolTickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
+            int24 lowerTick = initialTick.tickCeil(poolTickSpacing); // Next tick multiple above current tick
             int24 upperTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing; // MAX_TICK rounded to tickSpacing towards 0
 
             // get liquidity

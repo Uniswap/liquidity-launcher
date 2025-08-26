@@ -3,7 +3,7 @@
   "fetchPriceAndCurrencyFromAuction_withNonETHCurrency": "106810",
   "migrateWithETH": "605147",
   "migrateWithETH_withOneSidedPosition": "605643",
-  "migrateWithNonETHCurrency": "635235",
-  "migrateWithNonETHCurrency_withOneSidedPosition": "633671",
+  "migrateWithNonETHCurrency": "635399",
+  "migrateWithNonETHCurrency_withOneSidedPosition": "633942",
   "onTokensReceived": "3077327"
 }
