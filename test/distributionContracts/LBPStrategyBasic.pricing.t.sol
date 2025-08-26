@@ -11,6 +11,8 @@ import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {InverseHelpers} from "../shared/InverseHelpers.sol";
+import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -112,7 +114,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Calculate expected values
         // inverse price because currency is ETH
-        pricePerToken = FullMath.mulDiv(1 << 96, 1 << 96, pricePerToken);
+        pricePerToken = InverseHelpers.invertPrice(pricePerToken);
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, lbp.Q192()));
@@ -125,7 +127,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     }
 
     function test_fetchPriceAndCurrencyFromAuction_revertsWithInvalidPrice_tooLow() public {
-        // Setup with DAI as currency
+        // Setup with DAI as currency1
         setupWithCurrency(DAI);
 
         // Setup: Send tokens to LBP and create auction
@@ -190,7 +192,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     // ============ Non-ETH Currency Tests ============
 
     function test_fetchPriceAndCurrencyFromAuction_withNonETHCurrency_succeeds() public {
-        // Setup with DAI as currency
+        // Setup with DAI as currency1
         setupWithCurrency(DAI);
 
         // Send tokens to LBP
@@ -280,7 +282,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         mockClearingPrice(pricePerToken);
 
         if (pricePerToken != 0) {
-            pricePerToken = FullMath.mulDiv(1 << 96, 1 << 96, pricePerToken);
+            pricePerToken = InverseHelpers.invertPrice(pricePerToken);
         }
 
         // Calculate expected values
@@ -340,7 +342,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         mockClearingPrice(veryLowClearingPrice);
 
         // Calculate the inverted price that will be used in the contract
-        uint256 invertedPrice = FullMath.mulDiv(1 << 96, 1 << 96, veryLowClearingPrice);
+        uint256 invertedPrice = InverseHelpers.invertPrice(veryLowClearingPrice);
 
         // Expect revert with InvalidPrice (the error will contain the inverted price)
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, invertedPrice));
@@ -350,7 +352,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     function test_fuzz_fetchPriceAndCurrencyFromAuction_withToken(uint256 pricePerToken, uint128 currencyAmount)
         public
     {
-        vm.assume(pricePerToken < type(uint160).max);
+        vm.assume(pricePerToken <= type(uint160).max);
 
         // Setup with DAI
         setupWithCurrency(DAI);
@@ -372,40 +374,41 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Calculate expected values
         // Only invert price if currency < token (matching the implementation)
-        if (DAI < address(token)) {
-            pricePerToken = FullMath.mulDiv(1 << 96, 1 << 96, pricePerToken); // inverse price
-        }
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
 
         // Calculate token amount as uint256 first to check for overflow
         uint256 tokenAmountUint256;
-        if (DAI < address(token)) {
-            tokenAmountUint256 = FullMath.mulDiv(priceX192, currencyAmount, lbp.Q192());
-        } else {
+        bool isValidPrice;
+        if (pricePerToken != 0) {
             tokenAmountUint256 = FullMath.mulDiv(currencyAmount, lbp.Q192(), priceX192);
+        } else {
+            isValidPrice = false;
         }
+
         bool tokenAmountFitsInUint128 = tokenAmountUint256 <= type(uint128).max;
 
         // Check if the price is within valid bounds
-        bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
+        isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
 
         if (!isValidPrice) {
+            console2.log("1");
             // Should revert with InvalidPrice
-            // The error will contain the price used in the contract (which may or may not be inverted)
-            uint256 errorPrice = DAI < address(token) ? pricePerToken : FullMath.mulDiv(1 << 96, 1 << 96, pricePerToken);
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, errorPrice));
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, pricePerToken));
             lbp.fetchPriceAndCurrencyFromAuction();
         } else if (!tokenAmountFitsInUint128) {
+            console2.log("2");
             // Should revert with SafeCastOverflow since the token amount doesn't fit in uint128
             vm.expectRevert();
             lbp.fetchPriceAndCurrencyFromAuction();
         } else {
+            console2.log("3");
             // Token amount fits in uint128, so we can safely cast
             uint128 expectedTokenAmount = uint128(tokenAmountUint256);
             bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
 
             if (isValidTokenAmount) {
+                console2.log("4");
                 // Should succeed
                 lbp.fetchPriceAndCurrencyFromAuction();
 
@@ -415,6 +418,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
                 assertEq(lbp.initialCurrencyAmount(), currencyAmount);
                 assertEq(ERC20(DAI).balanceOf(address(lbp)), currencyAmount);
             } else {
+                console2.log("5");
                 // Should revert with InvalidTokenAmount
                 vm.expectRevert(
                     abi.encodeWithSelector(
