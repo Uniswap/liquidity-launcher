@@ -37,9 +37,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the auction is not ended
     error AuctionNotEnded(uint256 endBlock, uint256 currentBlock);
 
-    /// @notice Error thrown when the sender of native currency is not the auction contract
-    error OnlyAuctionCanSendNativeCurrency(address auction, address caller);
-
     /// @notice Error thrown when the token amount is invalid
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
 

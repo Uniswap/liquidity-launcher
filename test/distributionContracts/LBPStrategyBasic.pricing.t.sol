@@ -170,7 +170,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         mockClearingPrice(highPrice);
 
         // Calculate what the token amount would be
-        uint256 priceX192 = highPrice * lbp.Q192();
+        uint256 priceX192 = highPrice << 96;
         uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, lbp.Q192()));
 
         // Expect revert with InvalidTokenAmount
