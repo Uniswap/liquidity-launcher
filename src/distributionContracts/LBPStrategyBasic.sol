@@ -13,7 +13,6 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -22,10 +21,12 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -37,6 +38,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
     uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
+    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
 
     address public immutable token;
     address public immutable currency;
@@ -49,9 +51,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     IPositionManager public immutable positionManager;
-    IWETH9 public immutable WETH9;
 
-    IDistributionContract public auction;
+    IAuction public auction;
     // The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
     // This represents the square root of the ratio of currency1/currency0, where currency0 is the one with the lower address
     uint160 public initialSqrtPriceX96;
@@ -65,8 +66,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         MigratorParameters memory migratorParams,
         AuctionParameters memory auctionParams,
         IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        IWETH9 _WETH9
+        IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, migratorParams);
 
@@ -83,7 +83,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
-        WETH9 = _WETH9;
 
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
@@ -97,28 +96,32 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        auction = IDistributionContract(address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters)));
+        auction = IAuction((address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters))));
 
         Currency.wrap(token).transfer(address(auction), auctionSupply);
         auction.onTokensReceived();
     }
 
-    /// @inheritdoc ISubscriber
-    function onNotify(bytes memory data) external payable {
-        (uint256 priceX192, uint128 tokenAmount, uint128 currencyAmount) = abi.decode(data, (uint256, uint128, uint128));
-        if (msg.sender != address(auction)) revert OnlyAuctionCanSetPrice(address(auction), msg.sender);
-        if (Currency.wrap(currency).isAddressZero()) {
-            if (msg.value != currencyAmount) revert InvalidCurrencyAmount(msg.value, currencyAmount);
-        } else {
-            if (msg.value != 0) revert NonETHCurrencyCannotReceiveETH(currency);
-            IERC20(currency).safeTransferFrom(msg.sender, address(this), currencyAmount);
+    /// @inheritdoc ILBPStrategyBasic
+    function fetchPriceAndCurrencyFromAuction() external {
+        if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
+        uint256 price = auction.clearingPrice();
+        // inverse if currency is currency0
+        uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
+        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
+        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+            revert InvalidPrice(price);
         }
+
+        uint128 currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)));
+        auction.sweepCurrency();
+        currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)) - currencyAmount);
+
+        // compute token amount
+        uint128 tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
+
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
-        }
-        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(priceX192);
         }
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -138,8 +141,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialSqrtPriceX96 = sqrtPriceX96;
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
-
-        emit Notified(data);
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -341,7 +342,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 lowerTick = (initialTick / poolTickSpacing + 1) * poolTickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
+            int24 lowerTick = initialTick.tickCeil(poolTickSpacing); // Next tick multiple above current tick
             int24 upperTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing; // MAX_TICK rounded to tickSpacing towards 0
 
             // get liquidity
@@ -398,4 +399,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         truncated[4] = params[4];
         return truncated;
     }
+
+    receive() external payable {}
 }

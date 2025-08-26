@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-//import "./helpers/LBPTestDataBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -24,8 +23,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
             createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -41,8 +39,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
             createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
 
         // Test too high
@@ -56,8 +53,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
             createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -70,8 +66,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
             createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -89,8 +84,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
                 createAuctionParams(),
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER),
-                IWETH9(WETH9)
+                IPoolManager(POOL_MANAGER)
             );
         }
     }
@@ -104,8 +98,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
             createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -225,8 +218,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
             createAuctionParams(),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 }

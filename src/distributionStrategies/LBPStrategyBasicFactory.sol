@@ -8,7 +8,6 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
 /// @title LBPStrategyBasicFactory
@@ -16,12 +15,10 @@ import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 contract LBPStrategyBasicFactory is IDistributionStrategy {
     IPositionManager public immutable positionManager;
     IPoolManager public immutable poolManager;
-    IWETH9 public immutable WETH9;
 
-    constructor(IPositionManager _positionManager, IPoolManager _poolManager, IWETH9 _WETH9) {
+    constructor(IPositionManager _positionManager, IPoolManager _poolManager) {
         positionManager = _positionManager;
         poolManager = _poolManager;
-        WETH9 = _WETH9;
     }
 
     /// @inheritdoc IDistributionStrategy
@@ -36,7 +33,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         lbp = IDistributionContract(
             address(
                 new LBPStrategyBasic{salt: _salt}(
-                    token, totalSupply, migratorParams, auctionParams, positionManager, poolManager, WETH9
+                    token, totalSupply, migratorParams, auctionParams, positionManager, poolManager
                 )
             )
         );
@@ -54,7 +51,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
-                abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager, WETH9)
+                abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager)
             )
         );
         return Create2.computeAddress(salt, initCodeHash, address(this));
