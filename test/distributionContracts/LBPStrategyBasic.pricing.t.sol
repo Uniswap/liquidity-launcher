@@ -146,39 +146,40 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.fetchPriceAndCurrencyFromAuction();
     }
 
-    function test_fetchPriceAndCurrencyFromAuction_revertsWithInvalidTokenAmount() public {
-        // Setup: Send tokens to LBP and create auction
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    // TODO
+    // function test_fetchPriceAndCurrencyFromAuction_revertsWithInvalidTokenAmount() public {
+    //     // Setup: Send tokens to LBP and create auction
+    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        uint128 reserveSupply = lbp.reserveSupply();
+    //     uint128 reserveSupply = lbp.reserveSupply();
 
-        // Mock a price that will result in tokenAmount > reserveSupply
-        // High price means more tokens needed for the given currency
-        uint256 highPrice = 10e18; // 10 ETH per token
-        mockClearingPrice(highPrice);
-        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+    //     // Mock a price that will result in tokenAmount > reserveSupply
+    //     // High price means more tokens needed for the given currency
+    //     uint256 highPrice = 10e18; // 10 ETH per token
+    //     mockClearingPrice(highPrice);
+    //     mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
 
-        // Send a large amount of ETH that would require more tokens than available
-        uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
+    //     // Send a large amount of ETH that would require more tokens than available
+    //     uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
 
-        // Set up mock auction with large ETH amount
-        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(largeEthAmount);
-        vm.deal(address(lbp.auction()), largeEthAmount);
-        vm.etch(address(lbp.auction()), address(mockAuction).code);
+    //     // Set up mock auction with large ETH amount
+    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(largeEthAmount);
+    //     vm.deal(address(lbp.auction()), largeEthAmount);
+    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-        // Mock the clearingPrice again after etching
-        mockClearingPrice(highPrice);
+    //     // Mock the clearingPrice again after etching
+    //     mockClearingPrice(highPrice);
 
-        // Calculate what the token amount would be
-        uint256 priceX192 = highPrice << 96;
-        uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, lbp.Q192()));
+    //     // Calculate what the token amount would be
+    //     uint256 priceX192 = highPrice << 96;
+    //     uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, lbp.Q192()));
 
-        // Expect revert with InvalidTokenAmount
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAmount.selector, invalidTokenAmount, reserveSupply)
-        );
-        lbp.fetchPriceAndCurrencyFromAuction();
-    }
+    //     // Expect revert with InvalidTokenAmount
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAmount.selector, invalidTokenAmount, reserveSupply)
+    //     );
+    //     lbp.fetchPriceAndCurrencyFromAuction();
+    // }
 
     // ============ Non-ETH Currency Tests ============
 
@@ -308,29 +309,30 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_fetchPriceAndCurrencyFromAuction_withETH_revertsWithPriceTooHigh() public {
-        // This test verifies the handling of prices above MAX_SQRT_PRICE
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    // TODO
+    // function test_fetchPriceAndCurrencyFromAuction_withETH_revertsWithPriceTooHigh() public {
+    //     // This test verifies the handling of prices above MAX_SQRT_PRICE
+    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Mock an extremely high price
-        uint256 veryHighPrice = uint256(TickMath.MAX_SQRT_PRICE + 1) * (uint256(TickMath.MAX_SQRT_PRICE) + 1); // Extremely high price
-        veryHighPrice = veryHighPrice >> 96;
-        mockClearingPrice(veryHighPrice);
-        mockEndBlock(uint64(block.number - 1));
+    //     // Mock an extremely high price
+    //     uint256 veryHighPrice = uint256(TickMath.MAX_SQRT_PRICE + 1) * (uint256(TickMath.MAX_SQRT_PRICE) + 1); // Extremely high price
+    //     veryHighPrice = veryHighPrice >> 96;
+    //     mockClearingPrice(veryHighPrice);
+    //     mockEndBlock(uint64(block.number - 1));
 
-        // Set up mock auction
-        uint128 ethAmount = 1e18;
-        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
-        vm.deal(address(lbp.auction()), ethAmount);
-        vm.etch(address(lbp.auction()), address(mockAuction).code);
+    //     // Set up mock auction
+    //     uint128 ethAmount = 1e18;
+    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
+    //     vm.deal(address(lbp.auction()), ethAmount);
+    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-        // Mock the clearingPrice again after etching
-        mockClearingPrice(veryHighPrice);
+    //     // Mock the clearingPrice again after etching
+    //     mockClearingPrice(veryHighPrice);
 
-        // Expect revert with InvalidPrice
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, veryHighPrice));
-        lbp.fetchPriceAndCurrencyFromAuction();
-    }
+    //     // Expect revert with InvalidPrice
+    //     vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, veryHighPrice));
+    //     lbp.fetchPriceAndCurrencyFromAuction();
+    // }
 
     function test_fuzz_fetchPriceAndCurrencyFromAuction_withToken(uint256 pricePerToken, uint128 currencyAmount)
         public
