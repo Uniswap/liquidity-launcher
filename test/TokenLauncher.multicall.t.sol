@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {TokenLauncher} from "../src/TokenLauncher.sol";
@@ -9,10 +9,8 @@ import {UERC20Factory} from "../src/token-factories/uerc20-factory/factories/UER
 import {UERC20Metadata} from "../src/token-factories/uerc20-factory/libraries/UERC20MetadataLibrary.sol";
 import {UERC20} from "../src/token-factories/uerc20-factory/tokens/UERC20.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {MockDistributionStrategy} from "./mocks/MockDistributionStrategy.sol";
 import {Distribution} from "../src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {IDistributionContract} from "../src/interfaces/IDistributionContract.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
 import {Permit2Forwarder} from "../src/Permit2Forwarder.sol";
 import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";
@@ -43,7 +41,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             image: "https://test.com/image.png"
         });
 
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
@@ -102,7 +100,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     }
 
     function test_multicall_permit_and_distribute_token() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);
         // Set up permit2 approval
         vm.prank(bob);
@@ -144,7 +142,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             image: "https://test.com/image.png"
         });
 
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
@@ -181,7 +179,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     // forge-config: default.isolate = true
     // forge-config: ci.isolate = true
     function test_multicall_permit_and_distribute_token_gas() public {
-        uint256 initialSupply = 1e18;
+        uint128 initialSupply = 1e18;
         MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);
         // Set up permit2 approval
         vm.prank(bob);

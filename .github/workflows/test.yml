@@ -28,6 +28,7 @@ jobs:
         run: forge build
 
       - name: Run tests
-        run: forge test --isolate
+        run: forge test
         env:
           FORGE_SNAPSHOT_CHECK: true
+          FORK_URL: https://mainnet.infura.io/v3/${{ secrets.INFURA_API_KEY }}

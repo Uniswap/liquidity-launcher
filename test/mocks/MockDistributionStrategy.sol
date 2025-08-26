@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
 import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
@@ -6,7 +6,7 @@ import {IDistributionContract} from "../../src/interfaces/IDistributionContract.
 import {MockDistributionContract} from "./MockDistributionContract.sol";
 
 contract MockDistributionStrategy is IDistributionStrategy {
-    function initializeDistribution(address, uint256, bytes calldata)
+    function initializeDistribution(address, uint128, bytes calldata, bytes32)
         external
         override
         returns (IDistributionContract distributionContract)

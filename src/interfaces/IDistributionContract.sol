@@ -1,11 +1,12 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
 /// @title IDistributionContract
 /// @notice Interface for token distribution contracts.
 interface IDistributionContract {
+    /// @notice Error thrown when the amount received is invalid upon receiving tokens
+    error InvalidAmountReceived(uint256 expected, uint256 received);
+
     /// @notice Notify a distribution contract that it has received the tokens to distribute
-    /// @param token The address of the token to be distributed.
-    /// @param amount The amount of tokens intended for distribution.
-    function onTokensReceived(address token, uint256 amount) external;
+    function onTokensReceived() external;
 }

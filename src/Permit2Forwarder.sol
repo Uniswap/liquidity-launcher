@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
 
 import {IPermit2Forwarder, IAllowanceTransfer} from "./interfaces/IPermit2Forwarder.sol";
 

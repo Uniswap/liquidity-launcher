@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {UERC20Metadata, UERC20MetadataLibrary} from "../libraries/UERC20MetadataLibrary.sol";
 import {ERC20} from "@solady/src/tokens/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {UERC20Metadata, UERC20MetadataLibrary} from "../libraries/UERC20MetadataLibrary.sol";
 
 /// @title BaseUERC20
 /// @notice ERC20 token contract

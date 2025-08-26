@@ -3,16 +3,25 @@
 	url = https://github.com/foundry-rs/forge-std
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
-	url = https://github.com/OpenZeppelin/openzeppelin-contracts
-[submodule "lib/permit2"]
-	path = lib/permit2
-	url = https://github.com/Uniswap/permit2
 [submodule "lib/merkle-distributor.git"]
 	path = lib/merkle-distributor.git
 	url = https://github.com/Uniswap/merkle-distributor.git
+	url = git@github.com:OpenZeppelin/openzeppelin-contracts.git
+[submodule "lib/permit2"]
+	path = lib/permit2
+	url = git@github.com:Uniswap/permit2.git
+[submodule "lib/v4-core"]
+	path = lib/v4-core
+	url = https://github.com/Uniswap/v4-core.git
+[submodule "lib/v4-periphery"]
+	path = lib/v4-periphery
+	url = https://github.com/Uniswap/v4-periphery.git
 [submodule "lib/solady"]
 	path = lib/solady
 	url = https://github.com/Vectorized/solady
 [submodule "lib/optimism"]
 	path = lib/optimism
 	url = https://github.com/ethereum-optimism/optimism
+[submodule "lib/twap-auction"]
+	path = lib/twap-auction
+	url = https://github.com/Uniswap/twap-auction

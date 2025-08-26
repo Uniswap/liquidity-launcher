@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.26;
 
 import {Distribution} from "../types/Distribution.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
@@ -32,7 +32,7 @@ interface ITokenLauncher {
         string calldata name,
         string calldata symbol,
         uint8 decimals,
-        uint256 initialSupply,
+        uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
     ) external returns (address tokenAddress);
@@ -41,8 +41,9 @@ interface ITokenLauncher {
     /// @param tokenAddress The address of the token to distribute
     /// @param distribution Distribution instructions
     /// @param payerIsUser Whether the payer is the user
+    /// @param salt The salt to pass into the distribution strategy contract if needed
     /// @return distributionContract The address of the distribution contract
-    function distributeToken(address tokenAddress, Distribution memory distribution, bool payerIsUser)
+    function distributeToken(address tokenAddress, Distribution memory distribution, bool payerIsUser, bytes32 salt)
         external
         returns (IDistributionContract distributionContract);
 
