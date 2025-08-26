@@ -99,7 +99,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify balances
         assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
-        assertBalancesAfterMigration(before, afterMigration, false);
+        assertBalancesAfterMigration(before, afterMigration);
     }
 
     function test_migrate_fullRange_withNonETHCurrency_succeeds() public {
@@ -142,8 +142,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify balances
         assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
-        assertBalancesAfterMigration(before, afterMigration, false);
+        assertBalancesAfterMigration(before, afterMigration);
     }
+
+    // function test_migrate_onlyFullRangeEth_succeeds() public {
+    //     uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
+    //     uint128 ethAmount = 500e18;
+
+    //     // Setup
+    //     _setupForMigration(tokenAmount, ethAmount);
+
+    //     // Migrate
+    //     migrateToMigrationBlock(lbp);
+    // }
 
     // ============ One-Sided Position Migration Tests ============
 
@@ -192,7 +203,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify balances
         assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
-        assertBalancesAfterMigration(before, afterMigration, true);
+        assertBalancesAfterMigration(before, afterMigration);
     }
 
     function test_migrate_withOneSidedPosition_withNonETHCurrency_succeeds() public {
@@ -200,8 +211,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         migratorParams = createMigratorParams(DAI, 500, 20, DEFAULT_TOKEN_SPLIT, address(3));
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
-        uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
-        uint128 tokenAmount = lbp.reserveSupply() / 2;
+        uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2; // 500e18
+        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -238,5 +249,123 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         onNotifyETH(lbp, tokenAmount, currencyAmount);
+    }
+
+    // Fuzz tests
+
+    function test_fuzz_migrate_ensuresTicksAreMultiplesOfTickSpacing_withETH(int24 tickSpacing) public {
+        // Bound inputs to reasonable values
+        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+
+        //Redeploy with fuzzed tick spacing
+        migratorParams = createMigratorParams(
+            address(0), // ETH as currency
+            500, // fee
+            tickSpacing,
+            DEFAULT_TOKEN_SPLIT,
+            address(3) // position recipient
+        );
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+
+        uint128 ethAmount = 500e18;
+        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
+
+        // Setup
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        onNotifyETH(lbp, tokenAmount, ethAmount);
+
+        // Migrate
+        migrateToMigrationBlock(lbp);
+
+        // Check main position
+        (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+
+        // For full range positions, MIN_TICK and MAX_TICK must be multiples of tick spacing
+        int24 expectedMinTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
+        int24 expectedMaxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
+
+        assertEq(info.tickLower(), expectedMinTick);
+        assertEq(info.tickUpper(), expectedMaxTick);
+
+        // Verify they are actually multiples
+        assertEq(info.tickLower() % tickSpacing, 0);
+        assertEq(info.tickUpper() % tickSpacing, 0);
+
+        // One-sided position should have been created
+        (, PositionInfo oneSidedInfo) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
+
+        // Verify one-sided position ticks are multiples of tick spacing
+        assertEq(oneSidedInfo.tickLower() % tickSpacing, 0);
+        assertEq(oneSidedInfo.tickUpper() % tickSpacing, 0);
+
+        // Additional checks based on currency ordering
+        int24 initialTick = TickMath.getTickAtSqrtPrice(lbp.initialSqrtPriceX96());
+
+        // ETH < Token: one-sided position should be [MIN_TICK, initialTick)
+        assertEq(oneSidedInfo.tickLower(), expectedMinTick);
+        // Upper tick should be initialTick floored to tick spacing
+        int24 expectedUpperTick = initialTick / tickSpacing * tickSpacing;
+        if (initialTick < 0 && initialTick % tickSpacing != 0) {
+            expectedUpperTick -= tickSpacing;
+        }
+        assertEq(oneSidedInfo.tickUpper(), expectedUpperTick);
+        assertLe(oneSidedInfo.tickUpper(), initialTick);
+    }
+
+    function test_fuzz_migrate_withNonETHCurrency_ensuresTicksAreMultiplesOfTickSpacing(int24 tickSpacing) public {
+        // Bound inputs to reasonable values
+        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+
+        // Redeploy with fuzzed tick spacing
+        migratorParams = createMigratorParams(DAI, 500, tickSpacing, DEFAULT_TOKEN_SPLIT, address(3));
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+
+        uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
+        uint128 tokenAmount = lbp.reserveSupply() / 2;
+
+        // Setup for migration
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+
+        // Calculate price (DAI/token)
+        deal(DAI, address(lbp.auction()), daiAmount);
+        vm.prank(address(lbp.auction()));
+        ERC20(DAI).approve(address(lbp), daiAmount);
+
+        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
+
+        // Migrate
+        migrateToMigrationBlock(lbp);
+
+        // Check main position
+        (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+
+        // For full range positions, MIN_TICK and MAX_TICK must be multiples of tick spacing
+        int24 expectedMinTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
+        int24 expectedMaxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
+
+        assertEq(info.tickLower(), expectedMinTick);
+        assertEq(info.tickUpper(), expectedMaxTick);
+
+        // Verify they are actually multiples
+        assertEq(info.tickLower() % tickSpacing, 0);
+        assertEq(info.tickUpper() % tickSpacing, 0);
+
+        // One-sided position should have been created
+        (, PositionInfo oneSidedInfo) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
+
+        // Verify one-sided position ticks are multiples of tick spacing
+        assertEq(oneSidedInfo.tickLower() % tickSpacing, 0);
+        assertEq(oneSidedInfo.tickUpper() % tickSpacing, 0);
+
+        // Additional checks based on currency ordering
+        int24 initialTick = TickMath.getTickAtSqrtPrice(lbp.initialSqrtPriceX96());
+
+        // Token < Currency: one-sided position should be (initialTick, MAX_TICK]
+        assertGe(oneSidedInfo.tickLower(), (initialTick / tickSpacing + 1) * tickSpacing);
+        assertEq(oneSidedInfo.tickUpper(), expectedMaxTick);
+        assertGt(oneSidedInfo.tickLower(), initialTick);
     }
 }

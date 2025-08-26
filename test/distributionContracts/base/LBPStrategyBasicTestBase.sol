@@ -17,8 +17,12 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
+    using AuctionStepsBuilder for bytes;
+
     // Constants
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
@@ -50,11 +54,13 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     MockDistributionStrategy mock;
     MigratorParameters migratorParams;
     uint256 nextTokenId;
+    AuctionParameters auctionParams;
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("FORK_URL"), FORK_BLOCK);
         _setupContracts();
         _setupDefaultMigratorParams();
+        auctionParams = createAuctionParams();
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         _verifyInitialState();
     }
@@ -96,13 +102,19 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(token),
             totalSupply,
             migratorParams,
-            bytes(""),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
             IWETH9(WETH9)
         );
 
         vm.etch(address(lbp), address(impl).code);
+
+        // Copy storage slots
+        for (uint256 i = 0; i < 12; i++) {
+            bytes32 value = vm.load(address(impl), bytes32(i));
+            vm.store(address(lbp), bytes32(i), value);
+        }
     }
 
     function _verifyInitialState() internal view {
@@ -112,7 +124,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
         assertEq(lbp.positionRecipient(), migratorParams.positionRecipient);
         assertEq(lbp.migrationBlock(), uint64(block.number + 1_000));
-        assertEq(lbp.auctionFactory(), address(mock));
         assertEq(address(lbp.auction()), address(0));
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
@@ -132,15 +143,30 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             tokenSplitToAuction: tokenSplitToAuction,
-            auctionFactory: address(mock),
             positionRecipient: positionRecipient,
             migrationBlock: uint64(block.number + 1_000)
         });
     }
 
+    function createAuctionParams() internal returns (AuctionParameters memory) {
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
+
+        return AuctionParameters({
+            currency: address(0), // ETH
+            tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+            fundsRecipient: makeAddr("fundsRecipient"), // Some valid address
+            startBlock: uint64(block.number),
+            endBlock: uint64(block.number + 100),
+            claimBlock: uint64(block.number + 100),
+            tickSpacing: 1e6, // Valid tick spacing for auctions
+            validationHook: address(0), // No validation hook
+            floorPrice: 1e6, // 1 ETH as floor price
+            auctionStepsData: auctionStepsData
+        });
+    }
+
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {
-        totalSupply = uint128(bound(totalSupply, 0, type(uint128).max));
         _deployLBPStrategy(totalSupply);
     }
 
@@ -154,5 +180,17 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.positionRecipient
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+    }
+
+    // Helper to setup with custom total supply and token split
+    function setupWithSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) internal {
+        migratorParams = createMigratorParams(
+            address(0), // ETH as currency (same as default)
+            500, // fee (same as default)
+            1, // tick spacing (same as default)
+            tokenSplit, // Use custom tokenSplit
+            address(3) // position recipient (same as default)
+        );
+        _deployLBPStrategy(totalSupply);
     }
 }

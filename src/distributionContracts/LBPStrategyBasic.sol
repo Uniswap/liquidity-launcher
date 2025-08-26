@@ -9,12 +9,10 @@ import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -24,6 +22,10 @@ import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {Auction} from "twap-auction/src/Auction.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -47,28 +49,25 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint128 public immutable reserveSupply;
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
-    address public immutable auctionFactory;
     IPositionManager public immutable positionManager;
-    IWETH9 public immutable WETH9;
 
-    IDistributionContract public auction;
+    IAuction public auction;
     // The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
     // This represents the square root of the ratio of currency1/currency0, where currency0 is the one with the lower address
     uint160 public initialSqrtPriceX96;
     uint128 public initialTokenAmount;
     uint128 public initialCurrencyAmount;
-    bytes public auctionParameters;
+    AuctionParameters public auctionParameters;
 
     constructor(
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory migratorParams,
-        bytes memory auctionParams,
+        AuctionParameters memory auctionParams,
         IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        IWETH9 _WETH9
+        IPoolManager _poolManager
     ) HookBasic(_poolManager) {
-        _validateMigratorParams(_token, migratorParams);
+        _validateMigratorParams(_token, _totalSupply, migratorParams);
 
         auctionParameters = auctionParams;
 
@@ -79,12 +78,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // e.g. if tokenSplitToAuction = 5000 (50%), then half goes to auction and half is reserved
         // Rounds down so auction always gets less than or equal to half of the total supply
         reserveSupply = _totalSupply
-            - uint128(FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, TOKEN_SPLIT_DENOMINATOR));
+            - uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR);
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
-        auctionFactory = migratorParams.auctionFactory;
-        WETH9 = _WETH9;
 
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
@@ -96,46 +93,45 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
-        auction = IDistributionStrategy(auctionFactory).initializeDistribution(
-            token, totalSupply - reserveSupply, auctionParameters, bytes32(0)
-        );
+        uint128 auctionSupply = totalSupply - reserveSupply;
 
-        Currency.wrap(token).transfer(address(auction), totalSupply - reserveSupply);
-        auction.onTokensReceived();
+        auction = IAuction((address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters))));
+
+        Currency.wrap(token).transfer(address(auction), auctionSupply);
+        auction.onTokensReceived(token, auctionSupply);
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function fetchPriceAndCurrencyFromAuction() external {
-        if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
-        uint160 price = auction.clearingPrice();
+        //if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
+        //uint160 price = auction.clearingPrice();
+        uint160 price = 1;
         uint256 priceX192 = price * Q192;
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
             revert InvalidPrice(priceX192);
         }
-        
-        uint256 currencyAmount = Currency.wrap(currency).balanceOf(address(this));
-        auction.sweepCurrency();
+
+        uint128 currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)));
+        //auction.sweepCurrency();
         currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)) - currencyAmount);
 
         // compute token amount
-        uint128 tokenAmount = FullMath.mulDiv(priceX192, currencyAmount, Q192);
+        uint128 tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
 
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
         }
 
-        int24 tickSpacing = poolTickSpacing;
-
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
             currency < token ? currencyAmount : tokenAmount,
             currency < token ? tokenAmount : currencyAmount
         );
 
-        uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
+        uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
 
         if (liquidity > maxLiquidityPerTick) {
             revert InvalidLiquidity(maxLiquidityPerTick, liquidity);
@@ -185,7 +181,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
-    function _validateMigratorParams(address _token, MigratorParameters memory migratorParams) private pure {
+    function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
+        private
+        pure
+    {
         // Validate that the amount of tokens sent to auction is <= 50% of total supply
         // This ensures at least half of the tokens remain for the initial liquidity position
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
@@ -204,6 +203,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (_token == migratorParams.currency) {
             revert InvalidTokenAndCurrency(_token);
         }
+        if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR) == 0)
+        {
+            revert AuctionSupplyIsZero();
+        }
     }
 
     function _createPlan() private view returns (bytes memory) {
@@ -211,10 +214,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
-            params = new bytes[](3);
+            params = new bytes[](5);
             (actions, params,) = _createFullRangePositionPlan(actions, params);
         } else {
-            params = new bytes[](5);
+            params = new bytes[](8);
             (actions, params, liquidity) = _createFullRangePositionPlan(actions, params);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         }
@@ -227,15 +230,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         view
         returns (bytes memory, bytes[] memory, uint128)
     {
-        int24 tickSpacing = poolTickSpacing;
-        int24 minTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
-        int24 maxTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
+        int24 minTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing;
+        int24 maxTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing;
+        uint128 tokenAmount = initialTokenAmount;
+        uint128 currencyAmount = initialCurrencyAmount;
 
         PoolKey memory key = PoolKey({
             currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
             currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
             fee: poolLPFee,
-            tickSpacing: tickSpacing,
+            tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
         });
 
@@ -243,25 +247,38 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(minTick),
             TickMath.getSqrtPriceAtTick(maxTick),
-            currency < token ? initialCurrencyAmount : initialTokenAmount,
-            currency < token ? initialTokenAmount : initialCurrencyAmount
+            currency < token ? currencyAmount : tokenAmount,
+            currency < token ? tokenAmount : currencyAmount
         );
 
-        actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE));
+        actions = abi.encodePacked(
+            uint8(Actions.SETTLE),
+            uint8(Actions.SETTLE),
+            uint8(Actions.MINT_POSITION_FROM_DELTAS),
+            uint8(Actions.CLEAR_OR_TAKE),
+            uint8(Actions.CLEAR_OR_TAKE)
+        );
 
-        params[0] = abi.encode(
+        if (currency < token) {
+            params[0] = abi.encode(key.currency0, currencyAmount, false);
+            params[1] = abi.encode(key.currency1, tokenAmount, false);
+        } else {
+            params[0] = abi.encode(key.currency0, tokenAmount, false);
+            params[1] = abi.encode(key.currency1, currencyAmount, false);
+        }
+
+        params[2] = abi.encode(
             key,
             minTick,
             maxTick,
-            liquidity,
-            currency < token ? initialCurrencyAmount : initialTokenAmount,
-            currency < token ? initialTokenAmount : initialCurrencyAmount,
+            currency < token ? currencyAmount : tokenAmount,
+            currency < token ? tokenAmount : currencyAmount,
             positionRecipient,
             Constants.ZERO_BYTES
         );
 
-        params[1] = abi.encode(key.currency0, ActionConstants.OPEN_DELTA, false);
-        params[2] = abi.encode(key.currency1, ActionConstants.OPEN_DELTA, false);
+        params[3] = abi.encode(key.currency0, type(uint256).max);
+        params[4] = abi.encode(key.currency1, type(uint256).max);
 
         return (actions, params, liquidity);
     }
@@ -275,6 +292,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // then mint the position, then settle.
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
         uint256 tokenAmount = reserveSupply - initialTokenAmount;
+        params[5] = abi.encode(Currency.wrap(token), tokenAmount, false);
 
         if (currency < token) {
             // Skip position creation if initial tick is too close to lower boundary
@@ -282,9 +300,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 tickSpacing = poolTickSpacing;
-            int24 lowerTick = TickMath.MIN_TICK / tickSpacing * tickSpacing; // Lower tick rounded to tickSpacing towards 0
-            int24 upperTick = initialTick.tickFloor(tickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
+            int24 lowerTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing; // Lower tick rounded to tickSpacing towards 0
+            int24 upperTick = initialTick.tickFloor(poolTickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -295,7 +312,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 tokenAmount
             );
             // check that liquidity is within limits
-            if (liquidity + newLiquidity > tickSpacing.tickSpacingToMaxLiquidityPerTick()) {
+            if (liquidity + newLiquidity > poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
@@ -303,17 +320,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // Position is on the left hand side of current tick
             // For a one-sided position, we create a range from [MIN_TICK, current tick) (because upper tick is exclusive)
             // The upper tick must be a multiple of tickSpacing and exclusive
-            params[3] = abi.encode(
+            params[6] = abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(currency),
                     currency1: Currency.wrap(token),
                     fee: poolLPFee,
-                    tickSpacing: tickSpacing,
+                    tickSpacing: poolTickSpacing,
                     hooks: IHooks(address(this))
                 }),
                 lowerTick,
                 upperTick,
-                newLiquidity,
                 0, // No currency amount (one-sided position)
                 tokenAmount, // Maximum token amount
                 positionRecipient,
@@ -325,9 +341,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
-            int24 tickSpacing = poolTickSpacing;
-            int24 lowerTick = (initialTick / tickSpacing + 1) * tickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
-            int24 upperTick = TickMath.MAX_TICK / tickSpacing * tickSpacing; // MAX_TICK rounded to tickSpacing towards 0
+            int24 lowerTick = (initialTick / poolTickSpacing + 1) * poolTickSpacing; // Next tick multiple after current tick (because lower tick is inclusive)
+            int24 upperTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing; // MAX_TICK rounded to tickSpacing towards 0
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -338,7 +353,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 0
             );
             // check that liquidity is within limits
-            if (liquidity + newLiquidity > tickSpacing.tickSpacingToMaxLiquidityPerTick()) {
+            if (liquidity + newLiquidity > poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
                 // truncate params to length 3
                 return (actions, _truncate(params));
             }
@@ -350,34 +365,37 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // - Greater than current tick
             // The upper tick must be:
             // - A multiple of tickSpacing
-            params[3] = abi.encode(
+            params[6] = abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(token),
                     currency1: Currency.wrap(currency),
                     fee: poolLPFee,
-                    tickSpacing: tickSpacing,
+                    tickSpacing: poolTickSpacing,
                     hooks: IHooks(address(this))
                 }),
                 lowerTick,
                 upperTick,
-                newLiquidity,
                 tokenAmount, // Maximum token amount
                 0, // No currency amount (one-sided position)
                 positionRecipient,
                 Constants.ZERO_BYTES
             );
         }
-        actions = abi.encodePacked(actions, uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE));
-        params[4] = abi.encode(Currency.wrap(token), ActionConstants.OPEN_DELTA, false);
+        params[7] = abi.encode(Currency.wrap(token), type(uint256).max);
+        actions = abi.encodePacked(
+            actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.CLEAR_OR_TAKE)
+        );
 
         return (actions, params);
     }
 
     function _truncate(bytes[] memory params) private pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](3);
+        bytes[] memory truncated = new bytes[](5);
         truncated[0] = params[0];
         truncated[1] = params[1];
         truncated[2] = params[2];
+        truncated[3] = params[3];
+        truncated[4] = params[4];
         return truncated;
     }
 

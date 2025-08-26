@@ -17,9 +17,13 @@ import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 //import "forge-std/console2.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
+    using AuctionStepsBuilder for bytes;
+
     uint128 constant TOTAL_SUPPLY = 1000e18;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
@@ -30,6 +34,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     TokenLauncher tokenLauncher;
     MockDistributionStrategy mock;
     MigratorParameters migratorParams;
+    AuctionParameters auctionParams;
 
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
@@ -45,8 +50,20 @@ contract LBPStrategyBasicFactoryTest is Test {
             poolTickSpacing: 60,
             positionRecipient: address(3),
             migrationBlock: uint64(block.number + 1),
-            auctionFactory: address(mock),
             tokenSplitToAuction: 5000
+        });
+
+        auctionParams = AuctionParameters({
+            currency: address(0), // ETH
+            tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+            fundsRecipient: makeAddr("fundsRecipient"), // Some valid address
+            startBlock: uint64(block.number),
+            endBlock: uint64(block.number + 100),
+            claimBlock: uint64(block.number + 100),
+            tickSpacing: 1e6, // Valid tick spacing for auctions
+            validationHook: address(0), // No validation hook
+            floorPrice: 1e6, // 1 ETH as floor price
+            auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100)
         });
     }
 
@@ -74,7 +91,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                     TOTAL_SUPPLY,
                     abi.encode(
                         migratorParams,
-                        bytes(""),
+                        auctionParams,
                         IPositionManager(POSITION_MANAGER),
                         IPoolManager(POOL_MANAGER),
                         IWETH9(WETH9)
@@ -90,8 +107,6 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(3));
         assertEq(lbp.migrationBlock(), block.number + 1);
-        assertEq(lbp.auctionFactory(), address(mock));
-        assertEq(lbp.auctionParameters(), bytes(""));
         assertEq(lbp.poolLPFee(), 500);
         assertEq(lbp.poolTickSpacing(), 60);
     }
@@ -114,7 +129,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                     TOTAL_SUPPLY,
                     abi.encode(
                         migratorParams,
-                        bytes(""),
+                        auctionParams,
                         IPositionManager(POSITION_MANAGER),
                         IPoolManager(POOL_MANAGER),
                         IWETH9(WETH9)

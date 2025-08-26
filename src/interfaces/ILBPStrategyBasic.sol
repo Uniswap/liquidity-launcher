@@ -43,6 +43,9 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the token amount is invalid
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
 
+    /// @notice Error thrown when the auction supply is zero
+    error AuctionSupplyIsZero();
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
 
