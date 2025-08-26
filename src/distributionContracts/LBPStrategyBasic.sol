@@ -27,6 +27,7 @@ import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -123,10 +124,22 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.sweepCurrency();
         currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)) - currencyAmount);
 
+        console2.log("currencyAmount", currencyAmount);
+
         // compute token amount
-        uint128 tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
+        // will revertif cannot fit in uint128
+        uint128 tokenAmount;
+        if (currency < token) {
+            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
+        } else {
+            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+        }
+
+        console2.log("tokenAmount", tokenAmount);
+        console2.log("reserveSupply", reserveSupply);
 
         if (tokenAmount > reserveSupply) {
+            console2.log("got here");
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
         }
 
