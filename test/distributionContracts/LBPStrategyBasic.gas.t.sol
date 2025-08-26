@@ -73,7 +73,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Mock auction functions
-        uint256 pricePerToken = 1e18 << 96; // 1 ETH per token
+        uint256 pricePerToken = 1 << 96; // 1:1 price
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock
@@ -135,7 +135,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price
-        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount) << 96;
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock
@@ -169,7 +169,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price that will create one-sided position
-        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount) << 96;
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock
