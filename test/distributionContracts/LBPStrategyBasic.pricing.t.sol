@@ -12,7 +12,6 @@ import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
-import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -392,23 +391,19 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
 
         if (!isValidPrice) {
-            console2.log("1");
             // Should revert with InvalidPrice
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, pricePerToken));
             lbp.fetchPriceAndCurrencyFromAuction();
         } else if (!tokenAmountFitsInUint128) {
-            console2.log("2");
             // Should revert with SafeCastOverflow since the token amount doesn't fit in uint128
             vm.expectRevert();
             lbp.fetchPriceAndCurrencyFromAuction();
         } else {
-            console2.log("3");
             // Token amount fits in uint128, so we can safely cast
             uint128 expectedTokenAmount = uint128(tokenAmountUint256);
             bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
 
             if (isValidTokenAmount) {
-                console2.log("4");
                 // Should succeed
                 lbp.fetchPriceAndCurrencyFromAuction();
 
@@ -418,7 +413,6 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
                 assertEq(lbp.initialCurrencyAmount(), currencyAmount);
                 assertEq(ERC20(DAI).balanceOf(address(lbp)), currencyAmount);
             } else {
-                console2.log("5");
                 // Should revert with InvalidTokenAmount
                 vm.expectRevert(
                     abi.encodeWithSelector(
