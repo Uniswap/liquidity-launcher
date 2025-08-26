@@ -1,6 +1,7 @@
 permit2=lib/permit2
 @uniswap/v4-core/=lib/v4-core/
 @uniswap/v4-periphery/=lib/v4-periphery/
+merkle-distributor/=lib/merkle-distributor/contracts/
 @openzeppelin=lib/openzeppelin-contracts/
 @solady/=lib/solady/
 @optimism/=lib/optimism/packages/contracts-bedrock/
