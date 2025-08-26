@@ -4,6 +4,50 @@ pragma solidity ^0.8.26;
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+
+// Mock auction contract that transfers ETH when sweepCurrency is called
+contract MockAuctionWithSweep {
+    uint256 immutable ethToTransfer;
+    uint64 public immutable endBlock;
+
+    constructor(uint256 _ethToTransfer, uint64 _endBlock) {
+        ethToTransfer = _ethToTransfer;
+        endBlock = _endBlock;
+    }
+
+    function sweepCurrency() external {
+        // Transfer ETH to the caller (LBP contract)
+        (bool success,) = msg.sender.call{value: ethToTransfer}("");
+        require(success, "ETH transfer failed");
+    }
+
+    function clearingPrice() external pure returns (uint256) {
+        return 0; // Will be mocked separately
+    }
+}
+
+// Mock auction contract that transfers ERC20 when sweepCurrency is called
+contract MockAuctionWithERC20Sweep {
+    address immutable tokenToTransfer;
+    uint256 immutable amountToTransfer;
+    uint64 public immutable endBlock;
+
+    constructor(address _token, uint256 _amount, uint64 _endBlock) {
+        tokenToTransfer = _token;
+        amountToTransfer = _amount;
+        endBlock = _endBlock;
+    }
+
+    function sweepCurrency() external {
+        // Transfer token to the caller (LBP contract)
+        ERC20(tokenToTransfer).transfer(msg.sender, amountToTransfer);
+    }
+
+    function clearingPrice() external pure returns (uint256) {
+        return 0; // Will be mocked separately
+    }
+}
 
 /// @notice Gas benchmark tests for LBPStrategyBasic
 /// @dev These tests are isolated to ensure accurate gas measurements
@@ -11,6 +55,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// @notice Test gas consumption for onTokensReceived
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
+
     function test_onTokensReceived_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
@@ -18,52 +63,65 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         vm.snapshotGasLastCall("onTokensReceived");
     }
 
-    /// @notice Test gas consumption for onNotify with ETH
+    /// @notice Test gas consumption for fetchPriceAndCurrencyFromAuction with ETH
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_onNotify_withETH_gas() public {
+    function test_fetchPriceAndCurrencyFromAuction_withETH_gas() public {
         // Setup auction
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
-        // Give auction ETH
+        // Mock auction functions
+        uint256 pricePerToken = 1e18; // 1 ETH per token
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
         vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-        // Calculate price
-        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
+        // Mock clearingPrice after etching (need to re-mock after etch)
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        // Set initial price
-        vm.prank(address(lbp.auction()));
-        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
-        vm.snapshotGasLastCall("onNotifyWithETH");
+        // Call fetchPriceAndCurrencyFromAuction
+        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.snapshotGasLastCall("fetchPriceAndCurrencyFromAuction_withETH");
     }
 
-    /// @notice Test gas consumption for onNotify with non-ETH currency
+    /// @notice Test gas consumption for fetchPriceAndCurrencyFromAuction with non-ETH currency
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_onNotify_withNonETHCurrency_gas() public {
+    function test_fetchPriceAndCurrencyFromAuction_withNonETHCurrency_gas() public {
         // Setup with DAI
         setupWithCurrency(DAI);
 
         // Setup auction
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
-        // Setup DAI
-        deal(DAI, address(lbp.auction()), 1_000e18);
+        // Mock auction functions
+        uint256 pricePerToken = 1e18; // 1 DAI per token
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        // Calculate price
-        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, daiAmount);
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
 
-        // Approve and set price
-        vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), 1_000e18);
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
-        vm.snapshotGasLastCall("onNotifyWithNonETHCurrency");
+        // Deploy mock auction that handles ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, pastEndBlock);
+        deal(DAI, address(lbp.auction()), daiAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching (need to re-mock after etch)
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Call fetchPriceAndCurrencyFromAuction
+        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.snapshotGasLastCall("fetchPriceAndCurrencyFromAuction_withNonETHCurrency");
     }
 
     /// @notice Test gas consumption for migrate with ETH (full range)
@@ -75,7 +133,23 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = 500e18;
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+
+        // Set up auction with price
+        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -93,7 +167,23 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = lbp.reserveSupply() / 2;
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -109,16 +199,26 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup with DAI
         setupWithCurrency(DAI);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Give auction DAI
-        deal(DAI, address(lbp.auction()), daiAmount);
+        // Set up auction with price
+        mockAuctionClearingPrice(lbp, 1e18);
 
-        onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, pastEndBlock);
+        deal(DAI, address(lbp.auction()), daiAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, 1e18);
+
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -140,17 +240,22 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Give auction DAI
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1e18, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, pastEndBlock);
         deal(DAI, address(lbp.auction()), daiAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-        // Set initial price
-        vm.startPrank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), daiAmount);
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
-
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
-        vm.stopPrank();
+        lbp.fetchPriceAndCurrencyFromAuction();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
