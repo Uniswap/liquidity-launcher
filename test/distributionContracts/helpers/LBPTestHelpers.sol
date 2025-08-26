@@ -24,13 +24,11 @@ abstract contract LBPTestHelpers is Test {
         uint256 wethInRecipient;
     }
 
-    function takeBalanceSnapshot(
-        address token,
-        address currency,
-        address positionManager,
-        address poolManager,
-        address recipient
-    ) internal view returns (BalanceSnapshot memory) {
+    function takeBalanceSnapshot(address token, address currency, address positionManager, address poolManager, address)
+        internal
+        view
+        returns (BalanceSnapshot memory)
+    {
         BalanceSnapshot memory snapshot;
 
         snapshot.tokenInPosm = IERC20(token).balanceOf(positionManager);

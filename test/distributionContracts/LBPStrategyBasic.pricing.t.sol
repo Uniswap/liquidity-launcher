@@ -56,6 +56,7 @@ contract MockAuctionWithERC20Sweep {
 }
 
 contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
+    uint256 constant Q96 = 2 ** 96;
     // ============ Helper Functions ============
 
     function mockClearingPrice(uint256 price) internal {
@@ -94,7 +95,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Mock auction functions
-        uint256 pricePerToken = 1e18; // 1 ETH per token
+        uint256 pricePerToken = 13483e18;
         mockClearingPrice(pricePerToken);
         mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
 
@@ -110,7 +111,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.fetchPriceAndCurrencyFromAuction();
 
         // Calculate expected values
-        uint256 priceX192 = pricePerToken * lbp.Q192();
+        uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, lbp.Q192()));
 
@@ -126,7 +127,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Mock a very low price that will result in sqrtPrice below MIN_SQRT_PRICE
-        uint256 veryLowPrice = 1; // Extremely low price
+        uint256 veryLowPrice = uint256(TickMath.MIN_SQRT_PRICE - 1) * (uint256(TickMath.MIN_SQRT_PRICE) - 1); // Extremely low price
+        veryLowPrice = veryLowPrice >> 96;
         mockClearingPrice(veryLowPrice);
         mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
 
@@ -139,10 +141,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Mock the clearingPrice again after etching
         mockClearingPrice(veryLowPrice);
 
-        uint256 priceX192 = veryLowPrice * lbp.Q192();
-
         // Expect revert with InvalidPrice
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, priceX192));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, veryLowPrice));
         lbp.fetchPriceAndCurrencyFromAuction();
     }
 
@@ -192,20 +192,16 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Mock auction functions
-        uint256 pricePerToken = 1e18; // 1 DAI per token
+        uint256 pricePerToken = 13533e18;
         mockClearingPrice(pricePerToken);
         mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
-
-        // We need to create a mock that handles ERC20 transfers
-        // For now, we'll use vm.prank to simulate the auction transferring DAI
-        deal(DAI, address(lbp.auction()), daiAmount);
-
-        // Mock sweepCurrency to transfer DAI from auction to LBP
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("sweepCurrency()"), "");
 
         // Deploy and etch mock auction that will handle ERC20 sweepCurrency
         MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount);
         vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // After etching, we need to deal DAI to the auction since vm.etch doesn't preserve balances
+        deal(DAI, address(lbp.auction()), daiAmount);
 
         // Mock the clearingPrice again after etching
         mockClearingPrice(pricePerToken);
@@ -214,7 +210,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.fetchPriceAndCurrencyFromAuction();
 
         // Calculate expected values
-        uint256 priceX192 = pricePerToken * lbp.Q192();
+        uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, daiAmount, lbp.Q192()));
 
@@ -280,7 +276,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         mockClearingPrice(pricePerToken);
 
         // Calculate expected values
-        uint256 priceX192 = pricePerToken * lbp.Q192();
+        uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, lbp.Q192()));
 
@@ -317,7 +313,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Mock an extremely high price
-        uint256 veryHighPrice = type(uint256).max / lbp.Q192(); // This will create a price above MAX_SQRT_PRICE
+        uint256 veryHighPrice = uint256(TickMath.MAX_SQRT_PRICE + 1) * (uint256(TickMath.MAX_SQRT_PRICE) + 1); // Extremely high price
+        veryHighPrice = veryHighPrice >> 96;
         mockClearingPrice(veryHighPrice);
         mockEndBlock(uint64(block.number - 1));
 
@@ -330,10 +327,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Mock the clearingPrice again after etching
         mockClearingPrice(veryHighPrice);
 
-        uint256 priceX192 = veryHighPrice * lbp.Q192();
-
         // Expect revert with InvalidPrice
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, priceX192));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, veryHighPrice));
         lbp.fetchPriceAndCurrencyFromAuction();
     }
 
@@ -351,18 +346,18 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         mockClearingPrice(pricePerToken);
         mockEndBlock(uint64(block.number - 1));
 
-        // Set up auction with DAI
-        deal(DAI, address(lbp.auction()), currencyAmount);
-
         // Deploy and etch mock auction for ERC20
         MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, currencyAmount);
         vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // After etching, we need to deal DAI to the auction since vm.etch doesn't preserve balances
+        deal(DAI, address(lbp.auction()), currencyAmount);
 
         // Mock the clearingPrice again after etching
         mockClearingPrice(pricePerToken);
 
         // Calculate expected values
-        uint256 priceX192 = pricePerToken * lbp.Q192();
+        uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, lbp.Q192()));
 
