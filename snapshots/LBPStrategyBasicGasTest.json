@@ -1,5 +1,9 @@
 {
-  "fetchPriceAndCurrencyFromAuction_withETH": "56617",
-  "fetchPriceAndCurrencyFromAuction_withNonETHCurrency": "62807",
+  "fetchPriceAndCurrencyFromAuction_withETH": "83822",
+  "fetchPriceAndCurrencyFromAuction_withNonETHCurrency": "106810",
+  "migrateWithETH": "605147",
+  "migrateWithETH_withOneSidedPosition": "605643",
+  "migrateWithNonETHCurrency": "635235",
+  "migrateWithNonETHCurrency_withOneSidedPosition": "633671",
   "onTokensReceived": "3077327"
 }
