@@ -38,7 +38,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
     uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
-    uint256 public constant Q192 = 2 ** 192;
+    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
 
     address public immutable token;
     address public immutable currency;
