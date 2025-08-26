@@ -22,8 +22,7 @@ import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
-// TODO: Remove IMockAuction and use IAuction once latest version is pulled
-import {IMockAuction as IAuction} from "../../test/mocks/MockIAuction.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
