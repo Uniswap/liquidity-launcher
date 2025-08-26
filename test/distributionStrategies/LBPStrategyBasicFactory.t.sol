@@ -57,6 +57,7 @@ contract LBPStrategyBasicFactoryTest is Test {
             startBlock: uint64(block.number),
             endBlock: uint64(block.number + 100),
             claimBlock: uint64(block.number + 100),
+            graduationThresholdMps: 1000000, // 100%
             tickSpacing: 1e6, // Valid tick spacing for auctions
             validationHook: address(0), // No validation hook
             floorPrice: 1e6, // 1 ETH as floor price
