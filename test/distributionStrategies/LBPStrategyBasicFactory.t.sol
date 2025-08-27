@@ -18,6 +18,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
+import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 //import "forge-std/console2.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
@@ -61,7 +62,8 @@ contract LBPStrategyBasicFactoryTest is Test {
             tickSpacing: 1e6, // Valid tick spacing for auctions
             validationHook: address(0), // No validation hook
             floorPrice: 1e6, // 1 ETH as floor price
-            auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100)
+            auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100),
+            fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
         });
     }
 

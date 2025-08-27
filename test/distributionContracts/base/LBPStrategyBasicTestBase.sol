@@ -18,6 +18,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
+import {ILBPStrategyBasic} from "../../../src/interfaces/ILBPStrategyBasic.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
@@ -159,7 +160,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             tickSpacing: 1e6, // Valid tick spacing for auctions
             validationHook: address(0), // No validation hook
             floorPrice: 1e6, // 1 ETH as floor price
-            auctionStepsData: auctionStepsData
+            auctionStepsData: auctionStepsData,
+            fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
         });
     }
 

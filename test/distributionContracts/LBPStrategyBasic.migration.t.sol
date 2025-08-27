@@ -23,16 +23,6 @@ contract MockAuctionWithSweep {
         ethToTransfer = _ethToTransfer;
         endBlock = _endBlock;
     }
-
-    function sweepCurrency() external {
-        // Transfer ETH to the caller (LBP contract)
-        (bool success,) = msg.sender.call{value: ethToTransfer}("");
-        require(success, "ETH transfer failed");
-    }
-
-    function clearingPrice() external pure returns (uint256) {
-        return 0; // Will be mocked separately
-    }
 }
 
 // Mock auction contract that transfers ERC20 when sweepCurrency is called
@@ -45,15 +35,6 @@ contract MockAuctionWithERC20Sweep {
         tokenToTransfer = _token;
         amountToTransfer = _amount;
         endBlock = _endBlock;
-    }
-
-    function sweepCurrency() external {
-        // Transfer ERC20 to the caller (LBP contract)
-        IERC20(tokenToTransfer).transfer(msg.sender, amountToTransfer);
-    }
-
-    function clearingPrice() external pure returns (uint256) {
-        return 0; // Will be mocked separately
     }
 }
 
@@ -161,8 +142,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, 1 << 96);
+        mockCurrencyRaised(lbp, daiAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        deal(DAI, address(lbp), daiAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Take balance snapshot
         BalanceSnapshot memory before =
@@ -214,8 +199,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        deal(address(lbp), ethAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Take balance snapshot
         BalanceSnapshot memory before =
@@ -282,8 +271,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, daiAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        deal(DAI, address(lbp), daiAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -331,8 +324,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Mock the clearing price - already in Q96 format
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, currencyAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.deal(address(lbp), currencyAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
     }
 
     // Fuzz tests
@@ -370,8 +367,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -439,8 +439,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, daiAmount);
+        deal(DAI, address(lbp), daiAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
