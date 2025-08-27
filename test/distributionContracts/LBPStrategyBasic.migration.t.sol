@@ -39,10 +39,6 @@ contract MockAuctionWithERC20Sweep {
 }
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
-    // Helper function to mock endBlock
-    function mockEndBlock(uint64 blockNumber) internal {
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
-    }
     // ============ Migration Timing Tests ============
 
     function test_migrate_revertsWithMigrationNotAllowed() public {

@@ -27,7 +27,6 @@ import {Auction} from "twap-auction/src/Auction.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -416,7 +415,5 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return truncated;
     }
 
-    receive() external payable {
-        console2.log("receive");
-    }
+    receive() external payable {}
 }

@@ -36,7 +36,6 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// @notice Test gas consumption for onTokensReceived
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-
     function test_onTokensReceived_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);

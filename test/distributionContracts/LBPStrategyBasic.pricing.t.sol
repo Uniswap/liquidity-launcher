@@ -41,23 +41,6 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     uint256 constant Q96 = 2 ** 96;
     // ============ Helper Functions ============
 
-    function mockClearingPrice(uint256 price) internal {
-        // Mock the auction's clearingPrice function
-        vm.mockCall(
-            address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
-        );
-    }
-
-    function mockEndBlock(uint64 blockNumber) internal {
-        // Mock the auction's endBlock function
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
-    }
-
-    function mockCurrencyRaised(uint256 amount) internal {
-        // Mock the auction's currencyRaised function
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("currencyRaised()"), abi.encode(amount));
-    }
-
     function sendCurrencyToLBP(address currency, uint256 amount) internal {
         if (currency == address(0)) {
             // Send ETH
@@ -78,8 +61,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Mock auction functions
         uint256 pricePerToken = 1 << 96;
-        mockClearingPrice(pricePerToken);
-        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
 
         // Deploy and etch mock auction that will handle sweepCurrency
         MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
@@ -87,9 +70,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.etch(address(lbp.auction()), address(mockAuction).code);
 
         // Mock the clearingPrice again after etching (since we replaced the code)
-        mockClearingPrice(pricePerToken);
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        mockCurrencyRaised(ethAmount);
+        mockCurrencyRaised(lbp, ethAmount);
 
         // mock the auction giving ETH to the LBP
         vm.deal(address(lbp), ethAmount);
@@ -124,8 +107,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Mock a very low price that will result in sqrtPrice below MIN_SQRT_PRICE
         uint256 veryLowPrice = uint256(TickMath.MIN_SQRT_PRICE - 1) * (uint256(TickMath.MIN_SQRT_PRICE) - 1); // Extremely low price
         veryLowPrice = veryLowPrice >> 96;
-        mockClearingPrice(veryLowPrice);
-        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+        mockAuctionClearingPrice(lbp, veryLowPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
 
         // Deploy and etch mock auction that will handle ERC20 sweepCurrency
         MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount);
@@ -135,9 +118,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp.auction()), daiAmount);
 
         // Mock the clearingPrice again after etching
-        mockClearingPrice(veryLowPrice);
+        mockAuctionClearingPrice(lbp, veryLowPrice);
 
-        mockCurrencyRaised(daiAmount);
+        mockCurrencyRaised(lbp, daiAmount);
 
         deal(DAI, address(lbp), daiAmount);
 
@@ -155,8 +138,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Mock a price that will result in tokenAmount > reserveSupply
         uint256 highPrice = 1 << 96; // 1 per token
-        mockClearingPrice(highPrice);
-        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+        mockAuctionClearingPrice(lbp, highPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
 
         // Send a large amount of ETH that would require more tokens than available
         uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
@@ -167,9 +150,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.etch(address(lbp.auction()), address(mockAuction).code);
 
         // Mock the clearingPrice again after etching
-        mockClearingPrice(highPrice);
+        mockAuctionClearingPrice(lbp, highPrice);
 
-        mockCurrencyRaised(largeEthAmount);
+        mockCurrencyRaised(lbp, largeEthAmount);
 
         deal(address(lbp), largeEthAmount);
 
@@ -198,8 +181,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Mock auction functions
         uint256 pricePerToken = 20 << 96;
-        mockClearingPrice(pricePerToken);
-        mockEndBlock(uint64(block.number - 1)); // Mock past block so auction is ended
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
 
         // Deploy and etch mock auction that will handle ERC20 sweepCurrency
         MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount);
@@ -209,9 +192,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp.auction()), daiAmount);
 
         // Mock the clearingPrice again after etching
-        mockClearingPrice(pricePerToken);
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        mockCurrencyRaised(daiAmount);
+        mockCurrencyRaised(lbp, daiAmount);
 
         deal(DAI, address(lbp), daiAmount);
 
@@ -271,8 +254,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Mock auction functions
-        mockClearingPrice(pricePerToken);
-        mockEndBlock(uint64(block.number - 1));
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
         // Deploy and etch mock auction
         MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount);
@@ -280,9 +263,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.etch(address(lbp.auction()), address(mockAuction).code);
 
         // Mock the clearingPrice again after etching
-        mockClearingPrice(pricePerToken);
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        mockCurrencyRaised(ethAmount);
+        mockCurrencyRaised(lbp, ethAmount);
 
         deal(address(lbp), ethAmount);
 
@@ -337,8 +320,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
         // So we need a clearing price close to 0 but not 0
         uint256 veryLowClearingPrice = 1; // Minimal non-zero price
-        mockClearingPrice(veryLowClearingPrice);
-        mockEndBlock(uint64(block.number - 1));
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
         // Set up mock auction
         uint128 ethAmount = 1e18;
@@ -347,9 +330,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.etch(address(lbp.auction()), address(mockAuction).code);
 
         // Mock the clearingPrice again after etching
-        mockClearingPrice(veryLowClearingPrice);
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
 
-        mockCurrencyRaised(ethAmount);
+        mockCurrencyRaised(lbp, ethAmount);
 
         deal(address(lbp), ethAmount);
 
@@ -370,8 +353,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Mock auction functions
-        mockClearingPrice(pricePerToken);
-        mockEndBlock(uint64(block.number - 1));
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
         // Deploy and etch mock auction for ERC20
         MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, currencyAmount);
@@ -381,9 +364,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp.auction()), currencyAmount);
 
         // Mock the clearingPrice again after etching
-        mockClearingPrice(pricePerToken);
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-        mockCurrencyRaised(currencyAmount);
+        mockCurrencyRaised(lbp, currencyAmount);
         deal(DAI, address(lbp), currencyAmount);
 
         // Calculate expected values

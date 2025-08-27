@@ -126,19 +126,10 @@ abstract contract LBPTestHelpers is Test {
         );
     }
 
-    // function mockEndBlock(LBPStrategyBasic lbp, uint64 blockNumber) internal {
-    //     // Mock the auction's endBlock function
-    //     vm.mockCall(
-    //         address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber)
-    //     );
-    // }
-
-    // function mockClearingPrice(LBPStrategyBasic lbp, uint256 price) internal {
-    //     // Mock the auction's clearingPrice function
-    //     vm.mockCall(
-    //         address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
-    //     );
-    // }
+    function mockAuctionEndBlock(LBPStrategyBasic lbp, uint64 blockNumber) internal {
+        // Mock the auction's endBlock function
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
+    }
 
     function sendCurrencyToLBP(LBPStrategyBasic lbp, address currency, uint256 amount) internal {
         if (currency == address(0)) {
