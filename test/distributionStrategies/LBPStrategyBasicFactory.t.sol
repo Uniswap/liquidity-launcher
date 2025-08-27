@@ -8,7 +8,6 @@ import {TokenLauncher} from "../../src/TokenLauncher.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {MigratorParameters} from "../../src/types/MigratorParams.sol";
-import {MockDistributionStrategy} from "../mocks/MockDistributionStrategy.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -19,6 +18,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
+import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -30,7 +30,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     LBPStrategyBasicFactory public factory;
     MockERC20 token;
     TokenLauncher tokenLauncher;
-    MockDistributionStrategy mock;
+    AuctionFactory auctionFactory;
     MigratorParameters migratorParams;
     bytes auctionParams;
 
@@ -39,7 +39,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(tokenLauncher));
-        mock = new MockDistributionStrategy();
+        auctionFactory = new AuctionFactory();
 
         migratorParams = MigratorParameters({
             currency: address(0),
@@ -47,7 +47,7 @@ contract LBPStrategyBasicFactoryTest is Test {
             poolTickSpacing: 60,
             positionRecipient: address(3),
             migrationBlock: uint64(block.number + 1),
-            auctionFactory: address(mock),
+            auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000
         });
 
@@ -55,7 +55,7 @@ contract LBPStrategyBasicFactoryTest is Test {
             AuctionParameters({
                 currency: address(0), // ETH
                 tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
-                fundsRecipient: makeAddr("fundsRecipient"), // Some valid address
+                fundsRecipient: address(1), // Some valid address
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
                 claimBlock: uint64(block.number + 100),
@@ -97,7 +97,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                             IPositionManager(POSITION_MANAGER),
                             IPoolManager(POOL_MANAGER)
                         ),
-                        0x7fa9385be102ac3eac297483dd6233d62b3e149690a4f22eb523c3ffe7a0f5a7
+                        0x7fa9385be102ac3eac297483dd6233d62b3e14960724e03e531e37b1922f47c0
                     )
                 )
             )
@@ -115,12 +115,12 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e149690a4f22eb523c3ffe7a0f5a7;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e14960724e03e531e37b1922f47c0;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
             abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
-            salt
+            keccak256(abi.encode(address(this), salt))
         );
         assertEq(
             lbpAddress,
