@@ -172,15 +172,15 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);
-        // lbp.onTokensReceived();
+        lbp.onTokensReceived();
 
-        // // Verify auction is created
-        // assertNotEq(address(lbp.auction()), address(0));
+        // Verify auction is created
+        assertNotEq(address(lbp.auction()), address(0));
 
-        // // Verify token distribution
-        // uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
-        // assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
-        // assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
+        // Verify token distribution
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
+        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
 
     function test_fuzz_constructor_validation(

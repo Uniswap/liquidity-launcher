@@ -13,7 +13,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
-import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -150,7 +149,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price and currency
-        mockAuctionClearingPrice(lbp, 1e18);
+        mockAuctionClearingPrice(lbp, 1 << 96);
 
         // Use a past block for endBlock
         uint64 pastEndBlock = uint64(block.number - 1);
@@ -161,7 +160,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.etch(address(lbp.auction()), address(mockAuction).code);
 
         // Mock clearingPrice after etching
-        mockAuctionClearingPrice(lbp, 1e18);
+        mockAuctionClearingPrice(lbp, 1 << 96);
 
         lbp.fetchPriceAndCurrencyFromAuction();
 
@@ -193,17 +192,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertBalancesAfterMigration(before, afterMigration);
     }
 
-    // function test_migrate_onlyFullRangeEth_succeeds() public {
-    //     uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
-    //     uint128 ethAmount = 500e18;
-
-    //     // Setup
-    //     _setupForMigration(tokenAmount, ethAmount);
-
-    //     // Migrate
-    //     migrateToMigrationBlock(lbp);
-    // }
-
     // ============ One-Sided Position Migration Tests ============
 
     function test_migrate_withOneSidedPosition_withETH_succeeds() public {
@@ -213,7 +201,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         // Set up auction with price and currency
-        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount);
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock
@@ -281,7 +269,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price that will create one-sided position
-        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1e18, tokenAmount);
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1 << 96, tokenAmount);
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock
@@ -297,9 +285,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         lbp.fetchPriceAndCurrencyFromAuction();
 
-        console2.log("initial sqrt price", lbp.initialSqrtPriceX96());
-        console2.log("tick at sqrt price", TickMath.getTickAtSqrtPrice(lbp.initialSqrtPriceX96()));
-
         // Migrate
         migrateToMigrationBlock(lbp);
 
@@ -310,7 +295,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Verify one-sided position
         assertPositionCreated(
-            IPositionManager(POSITION_MANAGER), nextTokenId + 1, address(token), DAI, 500, 20, -244020, 887260
+            IPositionManager(POSITION_MANAGER), nextTokenId + 1, address(token), DAI, 500, 20, 6940, 887260
         );
 
         // Verify balances
@@ -323,8 +308,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price
-        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, currencyAmount);
-        mockAuctionClearingPrice(lbp, pricePerToken);
+        // The clearing price from the auction is in Q96 format (currencyPerToken * 2^96)
+        // For equal amounts, we want price = currencyAmount/tokenAmount * 2^96
+        uint256 pricePerToken = FullMath.mulDiv(currencyAmount, 1 << 96, tokenAmount);
 
         // Use a past block for endBlock
         uint64 pastEndBlock = uint64(block.number - 1);
@@ -343,7 +329,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             vm.etch(address(lbp.auction()), address(mockAuction).code);
         }
 
-        // Still need to mock clearingPrice after etching since the mock contract returns 0
+        // Mock the clearing price - already in Q96 format
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         lbp.fetchPriceAndCurrencyFromAuction();
@@ -371,7 +357,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         // Set up auction with price and currency
-        uint256 pricePerToken = FullMath.mulDiv(tokenAmount, 1e18, ethAmount);
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock
@@ -440,7 +426,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price that will create one-sided position
-        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1e18, tokenAmount);
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1 << 96, tokenAmount);
         mockAuctionClearingPrice(lbp, pricePerToken);
 
         // Use a past block for endBlock

@@ -107,6 +107,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
 
         uint256 price = auction.clearingPrice();
+        if (price == 0) {
+            revert InvalidPrice(price);
+        }
         uint128 currencyAmount = auction.currencyAmount();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
@@ -114,6 +117,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         // inverse if currency is currency0
+        if (currency < token) {
+            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
+        }
         uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
@@ -121,7 +127,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         // compute token amount
-        uint128 tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
+        // will revert if cannot fit in uint128
+        uint128 tokenAmount;
+        if (currency < token) {
+            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
+        } else {
+            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+        }
 
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
