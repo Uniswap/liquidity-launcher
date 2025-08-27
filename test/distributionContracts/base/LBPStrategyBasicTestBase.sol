@@ -6,7 +6,6 @@ import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
 import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
-import {MockDistributionStrategy} from "../../mocks/MockDistributionStrategy.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -19,6 +18,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../../src/interfaces/ILBPStrategyBasic.sol";
+import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
@@ -50,7 +50,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     LBPStrategyBasicNoValidation impl;
     MockERC20 token;
     MockERC20 implToken;
-    MockDistributionStrategy mock;
+    AuctionFactory auctionFactory;
     MigratorParameters migratorParams;
     uint256 nextTokenId;
     bytes auctionParams;
@@ -65,7 +65,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     }
 
     function _setupContracts() internal {
-        mock = new MockDistributionStrategy();
+        auctionFactory = new AuctionFactory();
         tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
@@ -108,12 +108,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
         vm.etch(address(lbp), address(impl).code);
 
-        // // Copy storage slots
-        // for (uint256 i = 0; i < 12; i++) {
-        //     bytes32 value = vm.load(address(impl), bytes32(i));
-        //     vm.store(address(lbp), bytes32(i), value);
-        // }
-
         LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
     }
 
@@ -144,7 +138,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             tokenSplitToAuction: tokenSplitToAuction,
-            auctionFactory: address(mock),
+            auctionFactory: address(auctionFactory),
             positionRecipient: positionRecipient,
             migrationBlock: uint64(block.number + 1_000)
         });
@@ -157,7 +151,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             AuctionParameters({
                 currency: address(0), // ETH
                 tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
-                fundsRecipient: address(lbp),
+                fundsRecipient: address(1),
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
                 claimBlock: uint64(block.number + 100),
@@ -170,25 +164,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             })
         );
     }
-
-    // function setupAuctionParams() internal returns (bytes memory) {
-    //     bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
-
-    //     return abi.encode(AuctionParameters({
-    //         currency: address(0), // ETH
-    //         tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
-    //         fundsRecipient: makeAddr("fundsRecipient"), // Some valid address
-    //         startBlock: uint64(block.number),
-    //         endBlock: uint64(block.number + 100),
-    //         claimBlock: uint64(block.number + 100),
-    //         graduationThresholdMps: 1000000, // 100%
-    //         tickSpacing: 1e6, // Valid tick spacing for auctions
-    //         validationHook: address(0), // No validation hook
-    //         floorPrice: 1e6, // 1 ETH as floor price
-    //         auctionStepsData: auctionStepsData,
-    //         fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
-    //     }));
-    // }
 
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {

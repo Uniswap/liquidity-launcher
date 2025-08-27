@@ -115,11 +115,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function validate() external {
         if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
 
-        uint256 price = IAuction(auction).clearingPrice();
+        uint256 price = auction.clearingPrice();
         if (price == 0) {
             revert InvalidPrice(price);
         }
-        uint128 currencyAmount = IAuction(auction).currencyRaised();
+        uint128 currencyAmount = auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
