@@ -15,16 +15,6 @@ contract MockAuctionWithSweep {
         ethToTransfer = _ethToTransfer;
         endBlock = _endBlock;
     }
-
-    function sweepCurrency() external {
-        // Transfer ETH to the caller (LBP contract)
-        (bool success,) = msg.sender.call{value: ethToTransfer}("");
-        require(success, "ETH transfer failed");
-    }
-
-    function clearingPrice() external pure returns (uint256) {
-        return 0; // Will be mocked separately
-    }
 }
 
 // Mock auction contract that transfers ERC20 when sweepCurrency is called
@@ -38,15 +28,6 @@ contract MockAuctionWithERC20Sweep {
         amountToTransfer = _amount;
         endBlock = _endBlock;
     }
-
-    function sweepCurrency() external {
-        // Transfer token to the caller (LBP contract)
-        ERC20(tokenToTransfer).transfer(msg.sender, amountToTransfer);
-    }
-
-    function clearingPrice() external pure returns (uint256) {
-        return 0; // Will be mocked separately
-    }
 }
 
 /// @notice Gas benchmark tests for LBPStrategyBasic
@@ -55,7 +36,6 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// @notice Test gas consumption for onTokensReceived
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-
     function test_onTokensReceived_gas() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
@@ -63,10 +43,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         vm.snapshotGasLastCall("onTokensReceived");
     }
 
-    /// @notice Test gas consumption for fetchPriceAndCurrencyFromAuction with ETH
+    /// @notice Test gas consumption for validate with ETH
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_fetchPriceAndCurrencyFromAuction_withETH_gas() public {
+    function test_validate_withETH_gas() public {
         // Setup auction
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -87,15 +67,19 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Mock clearingPrice after etching (need to re-mock after etch)
         mockAuctionClearingPrice(lbp, pricePerToken);
 
-        // Call fetchPriceAndCurrencyFromAuction
-        lbp.fetchPriceAndCurrencyFromAuction();
-        vm.snapshotGasLastCall("fetchPriceAndCurrencyFromAuction_withETH");
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
+
+        // Call validate
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
+        vm.snapshotGasLastCall("validate_withETH");
     }
 
-    /// @notice Test gas consumption for fetchPriceAndCurrencyFromAuction with non-ETH currency
+    /// @notice Test gas consumption for validate with non-ETH currency
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_fetchPriceAndCurrencyFromAuction_withNonETHCurrency_gas() public {
+    function test_validate_withNonETHCurrency_gas() public {
         // Setup with DAI
         setupWithCurrency(DAI);
 
@@ -119,9 +103,13 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Mock clearingPrice after etching (need to re-mock after etch)
         mockAuctionClearingPrice(lbp, pricePerToken);
 
-        // Call fetchPriceAndCurrencyFromAuction
-        lbp.fetchPriceAndCurrencyFromAuction();
-        vm.snapshotGasLastCall("fetchPriceAndCurrencyFromAuction_withNonETHCurrency");
+        mockCurrencyRaised(lbp, daiAmount);
+        deal(DAI, address(lbp), daiAmount);
+
+        // Call validate
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
+        vm.snapshotGasLastCall("validate_withNonETHCurrency");
     }
 
     /// @notice Test gas consumption for migrate with ETH (full range)
@@ -148,8 +136,11 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -182,8 +173,11 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -217,8 +211,11 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, 2 << 96);
+        mockCurrencyRaised(lbp, daiAmount);
+        deal(DAI, address(lbp), daiAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());
@@ -254,8 +251,11 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
 
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, daiAmount);
+        deal(DAI, address(lbp), daiAmount);
 
-        lbp.fetchPriceAndCurrencyFromAuction();
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Fast forward and migrate
         vm.roll(lbp.migrationBlock());

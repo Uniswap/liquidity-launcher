@@ -74,13 +74,6 @@ abstract contract LBPTestHelpers is Test {
         if (currency != address(0)) {
             vm.assertEq(IERC20(currency).balanceOf(address(lbp)), 0);
         }
-
-        // Assert auction is empty of ETH
-        if (currency == address(0)) {
-            vm.assertEq(address(lbp.auction()).balance, 0);
-        } else {
-            vm.assertEq(IERC20(currency).balanceOf(address(lbp.auction())), 0);
-        }
     }
 
     function assertBalancesAfterMigration(BalanceSnapshot memory before, BalanceSnapshot memory afterMigration)
@@ -122,6 +115,20 @@ abstract contract LBPTestHelpers is Test {
         vm.mockCall(
             address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
         );
+    }
+
+    function mockCurrencyRaised(LBPStrategyBasic lbp, uint256 amount) internal {
+        // Mock the auction's currencyRaised function
+        vm.mockCall(
+            address(lbp.auction()),
+            abi.encodeWithSelector(ICheckpointStorage.currencyRaised.selector),
+            abi.encode(amount)
+        );
+    }
+
+    function mockAuctionEndBlock(LBPStrategyBasic lbp, uint64 blockNumber) internal {
+        // Mock the auction's endBlock function
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
     }
 
     function sendCurrencyToLBP(LBPStrategyBasic lbp, address currency, uint256 amount) internal {

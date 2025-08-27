@@ -11,6 +11,6 @@ contract MockDistributionStrategy is IDistributionStrategy {
         override
         returns (IDistributionContract distributionContract)
     {
-        return IDistributionContract(address(new MockDistributionContract()));
+        return MockDistributionContract(address(IDistributionContract(address(new MockDistributionContract()))));
     }
 }

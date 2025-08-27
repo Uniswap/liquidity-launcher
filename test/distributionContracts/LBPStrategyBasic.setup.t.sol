@@ -21,7 +21,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -37,7 +37,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -51,7 +51,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -64,7 +64,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -82,7 +82,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
                 createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
-                createAuctionParams(),
+                auctionParams,
                 IPositionManager(POSITION_MANAGER),
                 IPoolManager(POOL_MANAGER)
             );
@@ -96,7 +96,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -119,6 +119,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_onTokenReceived_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
+        console2.logBytes(auctionParams);
+        console2.logBytes(lbp.auctionParameters());
         lbp.onTokensReceived();
 
         // Verify auction is created
@@ -216,7 +218,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );

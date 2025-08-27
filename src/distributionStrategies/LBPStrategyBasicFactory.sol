@@ -8,7 +8,6 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract
@@ -26,8 +25,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         external
         returns (IDistributionContract lbp)
     {
-        (MigratorParameters memory migratorParams, AuctionParameters memory auctionParams) =
-            abi.decode(configData, (MigratorParameters, AuctionParameters));
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
         lbp = IDistributionContract(
