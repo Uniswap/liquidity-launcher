@@ -103,19 +103,22 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @inheritdoc ILBPStrategyBasic
-    function fetchPriceAndCurrencyFromAuction() external {
-        if (block.number < auction.endBlock()) revert AuctionNotEnded(auction.endBlock(), block.number);
+    function validate() external {
+        if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
+
         uint256 price = auction.clearingPrice();
+        uint128 currencyAmount = auction.currencyAmount();
+
+        if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
+            revert InsufficientCurrency(currencyAmount, Currency.wrap(currency).balanceOf(address(this)));
+        }
+
         // inverse if currency is currency0
         uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
             revert InvalidPrice(price);
         }
-
-        uint128 currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)));
-        auction.sweepCurrency();
-        currencyAmount = uint128(Currency.wrap(currency).balanceOf(address(this)) - currencyAmount);
 
         // compute token amount
         uint128 tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));

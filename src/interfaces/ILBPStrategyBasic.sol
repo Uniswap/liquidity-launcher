@@ -34,8 +34,8 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the liquidity is invalid
     error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
 
-    /// @notice Error thrown when the auction is not ended
-    error AuctionNotEnded(uint256 endBlock, uint256 currentBlock);
+    /// @notice Error thrown when the caller is not the auction
+    error NotAuction(address caller, address auction);
 
     /// @notice Error thrown when the token amount is invalid
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
@@ -43,9 +43,12 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the auction supply is zero
     error AuctionSupplyIsZero();
 
+    /// @notice Error thrown when the currency amount is invalid
+    error InsufficientCurrency(uint128 currencyAmount, uint128 balance);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
 
-    /// @notice Fetches the price and currency from the auction
-    function fetchPriceAndCurrencyFromAuction() external;
+    /// @notice Fetches the price and currency from the auction and validates
+    function validate() external;
 }
