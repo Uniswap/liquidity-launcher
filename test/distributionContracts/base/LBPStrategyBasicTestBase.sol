@@ -53,13 +53,13 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     MockDistributionStrategy mock;
     MigratorParameters migratorParams;
     uint256 nextTokenId;
-    AuctionParameters auctionParams;
+    bytes auctionParams;
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("FORK_URL"), FORK_BLOCK);
         _setupContracts();
         _setupDefaultMigratorParams();
-        auctionParams = createAuctionParams();
+        _setupDefaultAuctionParams();
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         _verifyInitialState();
     }
@@ -108,11 +108,13 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
         vm.etch(address(lbp), address(impl).code);
 
-        // Copy storage slots
-        for (uint256 i = 0; i < 12; i++) {
-            bytes32 value = vm.load(address(impl), bytes32(i));
-            vm.store(address(lbp), bytes32(i), value);
-        }
+        // // Copy storage slots
+        // for (uint256 i = 0; i < 12; i++) {
+        //     bytes32 value = vm.load(address(impl), bytes32(i));
+        //     vm.store(address(lbp), bytes32(i), value);
+        // }
+
+        LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
     }
 
     function _verifyInitialState() internal view {
@@ -126,6 +128,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
         assertEq(lbp.poolTickSpacing(), migratorParams.poolTickSpacing);
+        assertEq(lbp.auctionParameters(), auctionParams);
     }
 
     // Helper function to create migrator params
@@ -141,29 +144,51 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             tokenSplitToAuction: tokenSplitToAuction,
+            auctionFactory: address(mock),
             positionRecipient: positionRecipient,
             migrationBlock: uint64(block.number + 1_000)
         });
     }
 
-    function createAuctionParams() internal returns (AuctionParameters memory) {
+    function _setupDefaultAuctionParams() internal {
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
 
-        return AuctionParameters({
-            currency: address(0), // ETH
-            tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
-            fundsRecipient: makeAddr("fundsRecipient"), // Some valid address
-            startBlock: uint64(block.number),
-            endBlock: uint64(block.number + 100),
-            claimBlock: uint64(block.number + 100),
-            graduationThresholdMps: 1000000, // 100%
-            tickSpacing: 1e6, // Valid tick spacing for auctions
-            validationHook: address(0), // No validation hook
-            floorPrice: 1e6, // 1 ETH as floor price
-            auctionStepsData: auctionStepsData,
-            fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
-        });
+        auctionParams = abi.encode(
+            AuctionParameters({
+                currency: address(0), // ETH
+                tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                fundsRecipient: address(lbp),
+                startBlock: uint64(block.number),
+                endBlock: uint64(block.number + 100),
+                claimBlock: uint64(block.number + 100),
+                graduationThresholdMps: 1000000, // 100%
+                tickSpacing: 1e6, // Valid tick spacing for auctions
+                validationHook: address(0), // No validation hook
+                floorPrice: 1e6, // 1 ETH as floor price
+                auctionStepsData: auctionStepsData,
+                fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
+            })
+        );
     }
+
+    // function setupAuctionParams() internal returns (bytes memory) {
+    //     bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
+
+    //     return abi.encode(AuctionParameters({
+    //         currency: address(0), // ETH
+    //         tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+    //         fundsRecipient: makeAddr("fundsRecipient"), // Some valid address
+    //         startBlock: uint64(block.number),
+    //         endBlock: uint64(block.number + 100),
+    //         claimBlock: uint64(block.number + 100),
+    //         graduationThresholdMps: 1000000, // 100%
+    //         tickSpacing: 1e6, // Valid tick spacing for auctions
+    //         validationHook: address(0), // No validation hook
+    //         floorPrice: 1e6, // 1 ETH as floor price
+    //         auctionStepsData: auctionStepsData,
+    //         fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
+    //     }));
+    // }
 
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {

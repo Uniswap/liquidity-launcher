@@ -24,6 +24,7 @@ import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
+import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
@@ -50,6 +51,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint128 public immutable reserveSupply;
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
+    address public immutable auctionFactory;
     IPositionManager public immutable positionManager;
 
     IAuction public auction;
@@ -58,13 +60,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint160 public initialSqrtPriceX96;
     uint128 public initialTokenAmount;
     uint128 public initialCurrencyAmount;
-    AuctionParameters public auctionParameters;
+    bytes public auctionParameters;
 
     constructor(
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory migratorParams,
-        AuctionParameters memory auctionParams,
+        bytes memory auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
@@ -83,6 +85,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionManager = _positionManager;
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
+        auctionFactory = migratorParams.auctionFactory;
 
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
@@ -96,7 +99,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        auction = IAuction((address(new Auction{salt: bytes32(0)}(token, auctionSupply, auctionParameters))));
+        auction = IAuction(
+            address(
+                IAuctionFactory(auctionFactory).initializeDistribution(
+                    token, auctionSupply, auctionParameters, bytes32(0)
+                )
+            )
+        );
 
         Currency.wrap(token).transfer(address(auction), auctionSupply);
         auction.onTokensReceived();
@@ -106,11 +115,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function validate() external {
         if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
 
-        uint256 price = auction.clearingPrice();
+        uint256 price = IAuction(auction).clearingPrice();
         if (price == 0) {
             revert InvalidPrice(price);
         }
-        uint128 currencyAmount = auction.currencyRaised();
+        uint128 currencyAmount = IAuction(auction).currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128

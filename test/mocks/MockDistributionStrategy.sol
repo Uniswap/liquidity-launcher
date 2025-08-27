@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {MockDistributionContract} from "./MockDistributionContract.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract MockDistributionStrategy is IDistributionStrategy {
     function initializeDistribution(address, uint128, bytes calldata, bytes32)
@@ -11,6 +12,6 @@ contract MockDistributionStrategy is IDistributionStrategy {
         override
         returns (IDistributionContract distributionContract)
     {
-        return IDistributionContract(address(new MockDistributionContract()));
+        return MockDistributionContract(address(IDistributionContract(address(new MockDistributionContract()))));
     }
 }
