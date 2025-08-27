@@ -156,9 +156,9 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
                 endBlock: uint64(block.number + 100),
                 claimBlock: uint64(block.number + 100),
                 graduationThresholdMps: 1000000, // 100%
-                tickSpacing: 1e6, // Valid tick spacing for auctions
+                tickSpacing: 20,
                 validationHook: address(0), // No validation hook
-                floorPrice: 1e6, // 1 ETH as floor price
+                floorPrice: 1,
                 auctionStepsData: auctionStepsData,
                 fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
             })
