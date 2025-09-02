@@ -11,11 +11,9 @@ error ZeroAddress();
 contract MerkleClaimFactory is IDistributionStrategy {
     /// @notice Deploys a new MerkleClaim and funds it with `totalSupply` tokens.
     /// @param token The ERC-20 token to distribute.
-    /// @param totalSupply Amount of `token` intended for distribution.
     /// @param configData ABI-encoded (merkleRoot, owner, endTime) where endTime is optional (0 = no deadline).
-    /// @param salt The salt for deterministic deployment (currently unused)
     /// @return distributionContract The freshly deployed MerkleClaim.
-    function initializeDistribution(address token, uint128 totalSupply, bytes calldata configData, bytes32 salt)
+    function initializeDistribution(address token, uint128, bytes calldata configData, bytes32)
         external
         override
         returns (IDistributionContract distributionContract)
