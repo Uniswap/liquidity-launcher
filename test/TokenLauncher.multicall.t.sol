@@ -8,7 +8,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {UERC20Factory} from "../src/token-factories/uerc20-factory/factories/UERC20Factory.sol";
 import {UERC20Metadata} from "../src/token-factories/uerc20-factory/libraries/UERC20MetadataLibrary.sol";
 import {UERC20} from "../src/token-factories/uerc20-factory/tokens/UERC20.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {Distribution} from "../src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";

@@ -2,12 +2,17 @@
 pragma solidity =0.8.17;
 
 import {IERC20} from "../interfaces/external/IERC20.sol";
-import {MerkleDistributorWithDeadline} from "merkle-distributor/MerkleDistributorWithDeadline.sol";
+import {MerkleDistributorWithDeadline} from "merkle-distributor/contracts/MerkleDistributorWithDeadline.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
 
-contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract, IMerkleClaim {
+contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract {
     error InsufficientTokensReceived(uint256 expected, uint256 actual);
+
+    /// @notice Emitted when tokens are swept by the owner after endTime
+    /// @param owner The address that swept the tokens
+    /// @param amount The amount of tokens swept
+    event TokensSwept(address indexed owner, uint256 amount);
 
     constructor(address _token, bytes32 _merkleRoot, address _owner, uint256 _endTime)
         MerkleDistributorWithDeadline(_token, _merkleRoot, _endTime == 0 ? type(uint256).max : _endTime)
@@ -17,21 +22,16 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract, IM
     }
 
     /// @inheritdoc IDistributionContract
-    function onTokensReceived(address _token, uint256 amount) external {
-        // Verify the contract received at least the expected amount
-        uint256 balance = IERC20(_token).balanceOf(address(this));
-        if (balance < amount) {
-            revert InsufficientTokensReceived(amount, balance);
-        }
-    }
+    function onTokensReceived() external {}
 
-    /// @inheritdoc IMerkleClaim
+    /// @notice Sweep remaining tokens to the owner after endTime  
+    /// @dev Only callable by owner and only after endTime has passed
     function sweep() external {
         // Get the balance before withdrawal
         uint256 balance = IERC20(token).balanceOf(address(this));
 
-        // Use the parent's withdraw function
-        withdraw();
+        // Use the parent's withdraw function via external call
+        this.withdraw();
 
         // Emit event with the actual amount swept
         emit TokensSwept(owner(), balance);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {Base64} from "@openzeppelin-latest/contracts/utils/Base64.sol";
+import {Strings} from "@openzeppelin-latest/contracts/utils/Strings.sol";
 
 struct UERC20Metadata {
     string description;

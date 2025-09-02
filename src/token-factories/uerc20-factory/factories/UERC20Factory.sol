@@ -5,7 +5,7 @@ import {UERC20} from "../tokens/UERC20.sol";
 import {IUERC20Factory} from "../interfaces/IUERC20Factory.sol";
 import {ITokenFactory} from "../interfaces/ITokenFactory.sol";
 import {UERC20Metadata} from "../libraries/UERC20MetadataLibrary.sol";
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 
 /// @title UERC20Factory
 /// @notice Deploys new UERC20 contracts

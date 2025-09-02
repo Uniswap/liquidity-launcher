@@ -5,11 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import {USUPERC20} from "../../../src/token-factories/uerc20-factory/tokens/USUPERC20.sol";
 import {USUPERC20Factory} from "../../../src/token-factories/uerc20-factory/factories/USUPERC20Factory.sol";
 import {UERC20Metadata} from "../../../src/token-factories/uerc20-factory/libraries/UERC20MetadataLibrary.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {IERC7802, IERC165} from "@optimism/interfaces/L2/IERC7802.sol";
 import {Base64} from "./libraries/base64.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {Strings} from "@openzeppelin-latest/contracts/utils/Strings.sol";
+import {IERC20Permit} from "@openzeppelin-latest/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 contract USUPERC20Test is Test {
     using Base64 for string;
