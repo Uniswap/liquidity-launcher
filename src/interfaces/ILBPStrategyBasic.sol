@@ -1,13 +1,12 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {IDistributionContract} from "./IDistributionContract.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {ISubscriber} from "./ISubscriber.sol";
 
 /// @title ILBPStrategyBasic
 /// @notice Interface for the LBPStrategyBasic contract
-interface ILBPStrategyBasic is ISubscriber, IDistributionContract {
+interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Emitted when the pool is initialized
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
@@ -29,9 +28,27 @@ interface ILBPStrategyBasic is ISubscriber, IDistributionContract {
     /// @notice Error thrown when the token and currency are the same
     error InvalidTokenAndCurrency(address token);
 
+    /// @notice Error thrown when the price is invalid
+    error InvalidPrice(uint256 price);
+
+    /// @notice Error thrown when the liquidity is invalid
+    error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
+
+    /// @notice Error thrown when the caller is not the auction
+    error NotAuction(address caller, address auction);
+
+    /// @notice Error thrown when the token amount is invalid
+    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
+
     /// @notice Error thrown when the auction supply is zero
     error AuctionSupplyIsZero();
 
+    /// @notice Error thrown when the currency amount is invalid
+    error InsufficientCurrency(uint128 currencyAmount, uint128 balance);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
+
+    /// @notice Can only be called by the auction and must revert if the price, currency, or corresponding token amount is invalid
+    function validate() external;
 }

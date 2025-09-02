@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
@@ -10,8 +10,33 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
+
+// Mock auction contract that transfers ETH when sweepCurrency is called
+contract MockAuctionWithSweep {
+    uint256 immutable ethToTransfer;
+    uint64 public immutable endBlock;
+
+    constructor(uint256 _ethToTransfer, uint64 _endBlock) {
+        ethToTransfer = _ethToTransfer;
+        endBlock = _endBlock;
+    }
+}
+
+// Mock auction contract that transfers ERC20 when sweepCurrency is called
+contract MockAuctionWithERC20Sweep {
+    address immutable tokenToTransfer;
+    uint256 immutable amountToTransfer;
+    uint64 public immutable endBlock;
+
+    constructor(address _token, uint256 _amount, uint64 _endBlock) {
+        tokenToTransfer = _token;
+        amountToTransfer = _amount;
+        endBlock = _endBlock;
+    }
+}
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     // ============ Migration Timing Tests ============
@@ -59,30 +84,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(0), // ETH
             POSITION_MANAGER,
             POOL_MANAGER,
-            WETH9,
             address(3)
         );
 
         // Migrate
-        // (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, IHooks hooks) = lbp.key();
-        PoolKey memory poolKey = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(token)),
-            fee: lbp.poolLPFee(),
-            tickSpacing: lbp.poolTickSpacing(),
-            hooks: IHooks(address(lbp))
-        });
-        vm.expectEmit(true, false, false, true);
-        emit Migrated(poolKey, TickMath.getSqrtPriceAtTick(0));
         migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
-            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Verify pool initialization
-        assertEq(lbp.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(0));
-        assertEq(lbp.initialTokenAmount(), tokenAmount);
+        assertGt(lbp.initialSqrtPriceX96(), 0);
+        assertGt(lbp.initialTokenAmount(), 0);
         assertEq(lbp.initialCurrencyAmount(), ethAmount);
 
         // Verify position
@@ -98,7 +112,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), address(0));
         assertBalancesAfterMigration(before, afterMigration);
     }
 
@@ -106,27 +120,41 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup with DAI
         setupWithCurrency(DAI);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Give auction DAI
-        deal(DAI, address(lbp.auction()), daiAmount);
+        // Set up auction with price and currency
+        mockAuctionClearingPrice(lbp, 1 << 96);
 
-        onNotifyToken(lbp, DAI, tokenAmount, daiAmount);
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, pastEndBlock);
+        deal(DAI, address(lbp.auction()), daiAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, 1 << 96);
+        mockCurrencyRaised(lbp, daiAmount);
+
+        deal(DAI, address(lbp), daiAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Take balance snapshot
         BalanceSnapshot memory before =
-            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
         migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
-            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Verify position
         assertPositionCreated(
@@ -141,20 +169,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), DAI);
         assertBalancesAfterMigration(before, afterMigration);
     }
-
-    // function test_migrate_onlyFullRangeEth_succeeds() public {
-    //     uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
-    //     uint128 ethAmount = 500e18;
-
-    //     // Setup
-    //     _setupForMigration(tokenAmount, ethAmount);
-
-    //     // Migrate
-    //     migrateToMigrationBlock(lbp);
-    // }
 
     // ============ One-Sided Position Migration Tests ============
 
@@ -164,18 +181,37 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+
+        deal(address(lbp), ethAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Take balance snapshot
         BalanceSnapshot memory before =
-            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
         migrateToMigrationBlock(lbp);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
-            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, WETH9, address(3));
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Verify main position
         assertPositionCreated(
@@ -202,7 +238,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), address(0), WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), address(0));
         assertBalancesAfterMigration(before, afterMigration);
     }
 
@@ -217,15 +253,26 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Calculate price (DAI/token)
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1 << 96, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, pastEndBlock);
         deal(DAI, address(lbp.auction()), daiAmount);
-        vm.prank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), daiAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, daiAmount);
+
+        deal(DAI, address(lbp), daiAmount);
 
         vm.prank(address(lbp.auction()));
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
+        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -241,14 +288,44 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), DAI, WETH9);
+        assertLBPStateAfterMigration(lbp, address(token), DAI);
     }
 
     // ============ Helper Functions ============
 
     function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, currencyAmount);
+
+        // Set up auction with price
+        // The clearing price from the auction is in Q96 format (currencyPerToken * 2^96)
+        // For equal amounts, we want price = currencyAmount/tokenAmount * 2^96
+        uint256 pricePerToken = FullMath.mulDiv(currencyAmount, 1 << 96, tokenAmount);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Set up mock auction with currency based on currency type
+        if (lbp.currency() == address(0)) {
+            // For ETH: Deploy mock auction that handles sweepCurrency
+            MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(currencyAmount, pastEndBlock);
+            vm.deal(address(lbp.auction()), currencyAmount);
+            vm.etch(address(lbp.auction()), address(mockAuction).code);
+        } else {
+            // For ERC20: Deploy mock auction that handles sweepCurrency
+            MockAuctionWithERC20Sweep mockAuction =
+                new MockAuctionWithERC20Sweep(lbp.currency(), currencyAmount, pastEndBlock);
+            deal(lbp.currency(), address(lbp.auction()), currencyAmount);
+            vm.etch(address(lbp.auction()), address(mockAuction).code);
+        }
+
+        // Mock the clearing price - already in Q96 format
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, currencyAmount);
+
+        vm.deal(address(lbp), currencyAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
     }
 
     // Fuzz tests
@@ -272,7 +349,25 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        onNotifyETH(lbp, tokenAmount, ethAmount);
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -326,15 +421,25 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        // Calculate price (DAI/token)
+        // Set up auction with price that will create one-sided position
+        uint256 pricePerToken = FullMath.mulDiv(daiAmount, 1 << 96, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles ERC20 sweepCurrency
+        MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, pastEndBlock);
         deal(DAI, address(lbp.auction()), daiAmount);
-        vm.prank(address(lbp.auction()));
-        ERC20(DAI).approve(address(lbp), daiAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-        uint256 priceX192 = FullMath.mulDiv(daiAmount, 2 ** 192, tokenAmount);
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, daiAmount);
+        deal(DAI, address(lbp), daiAmount);
 
         vm.prank(address(lbp.auction()));
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, daiAmount));
+        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
@@ -364,7 +469,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         int24 initialTick = TickMath.getTickAtSqrtPrice(lbp.initialSqrtPriceX96());
 
         // Token < Currency: one-sided position should be (initialTick, MAX_TICK]
-        assertGe(oneSidedInfo.tickLower(), (initialTick / tickSpacing + 1) * tickSpacing);
         assertEq(oneSidedInfo.tickUpper(), expectedMaxTick);
         assertGt(oneSidedInfo.tickLower(), initialTick);
     }

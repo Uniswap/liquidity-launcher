@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-//import "./helpers/LBPTestDataBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -22,10 +21,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -39,10 +37,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
 
         // Test too high
@@ -54,10 +51,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -68,10 +64,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -87,10 +82,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
                 createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
-                createAuctionParams(),
+                auctionParams,
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER),
-                IWETH9(WETH9)
+                IPoolManager(POOL_MANAGER)
             );
         }
     }
@@ -102,10 +96,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 
@@ -126,6 +119,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_onTokenReceived_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
+        console2.logBytes(auctionParams);
+        console2.logBytes(lbp.auctionParameters());
         lbp.onTokensReceived();
 
         // Verify auction is created
@@ -179,15 +174,15 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);
-        // lbp.onTokensReceived();
+        lbp.onTokensReceived();
 
-        // // Verify auction is created
-        // assertNotEq(address(lbp.auction()), address(0));
+        // Verify auction is created
+        assertNotEq(address(lbp.auction()), address(0));
 
-        // // Verify token distribution
-        // uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
-        // assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
-        // assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
+        // Verify token distribution
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
+        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
 
     function test_fuzz_constructor_validation(
@@ -223,10 +218,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
-            createAuctionParams(),
+            auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            IWETH9(WETH9)
+            IPoolManager(POOL_MANAGER)
         );
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -30,6 +30,23 @@ library TickCalculations {
     function tickFloor(int24 tick, int24 tickSpacing) internal pure returns (int24) {
         int24 compressed = tick / tickSpacing;
         if (tick < 0 && tick % tickSpacing != 0) compressed--;
+        return compressed * tickSpacing;
+    }
+
+    /// @notice Rounds up to the next tick spacing
+    /// @param tick The tick to round up
+    /// @param tickSpacing The tick spacing to round up to
+    /// @return The rounded up tick
+    function tickCeil(int24 tick, int24 tickSpacing) internal pure returns (int24) {
+        int24 compressed = tick / tickSpacing;
+        if (tick % tickSpacing != 0) {
+            if (tick >= 0) {
+                compressed++; // For positive ticks, add 1 to round up
+            }
+            // For negative ticks, integer division already rounds towards zero (up)
+        } else {
+            compressed++; // If already a multiple, go to next one
+        }
         return compressed * tickSpacing;
     }
 }

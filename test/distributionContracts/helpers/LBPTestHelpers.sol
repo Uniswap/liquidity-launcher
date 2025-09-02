@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
@@ -11,8 +11,9 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -23,14 +24,11 @@ abstract contract LBPTestHelpers is Test {
         uint256 wethInRecipient;
     }
 
-    function takeBalanceSnapshot(
-        address token,
-        address currency,
-        address positionManager,
-        address poolManager,
-        address weth9,
-        address recipient
-    ) internal view returns (BalanceSnapshot memory) {
+    function takeBalanceSnapshot(address token, address currency, address positionManager, address poolManager, address)
+        internal
+        view
+        returns (BalanceSnapshot memory)
+    {
         BalanceSnapshot memory snapshot;
 
         snapshot.tokenInPosm = IERC20(token).balanceOf(positionManager);
@@ -44,7 +42,6 @@ abstract contract LBPTestHelpers is Test {
         }
 
         snapshot.tokenInPoolm = IERC20(token).balanceOf(poolManager);
-        snapshot.wethInRecipient = IWETH9(weth9).balanceOf(recipient);
 
         return snapshot;
     }
@@ -69,24 +66,13 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), expectedTickUpper);
     }
 
-    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency, address weth9)
-        internal
-        view
-    {
+    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
         // Assert LBP is empty
         vm.assertEq(address(lbp).balance, 0);
         vm.assertEq(IERC20(token).balanceOf(address(lbp)), 0);
-        vm.assertEq(IWETH9(weth9).balanceOf(address(lbp)), 0);
 
         if (currency != address(0)) {
             vm.assertEq(IERC20(currency).balanceOf(address(lbp)), 0);
-        }
-
-        // Assert auction is empty if ETH
-        if (currency == address(0)) {
-            vm.assertEq(address(lbp.auction()).balance, 0);
-        } else {
-            vm.assertEq(IERC20(currency).balanceOf(address(lbp.auction())), 0);
         }
     }
 
@@ -124,31 +110,42 @@ abstract contract LBPTestHelpers is Test {
         lbp.onTokensReceived();
     }
 
-    function onNotifyETH(LBPStrategyBasic lbp, uint128 tokenAmount, uint128 ethAmount) internal {
-        // Give auction ETH
-        vm.deal(address(lbp.auction()), ethAmount);
-
-        // Calculate price and set it
-        uint256 priceX192 = FullMath.mulDiv(tokenAmount, 2 ** 192, ethAmount);
-
-        vm.prank(address(lbp.auction()));
-        lbp.onNotify{value: ethAmount}(abi.encode(priceX192, tokenAmount, ethAmount));
+    function mockAuctionClearingPrice(LBPStrategyBasic lbp, uint256 price) internal {
+        // Mock the auction's clearingPrice function
+        vm.mockCall(
+            address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
+        );
     }
 
-    function onNotifyToken(LBPStrategyBasic lbp, address currency, uint128 tokenAmount, uint128 currencyAmount)
+    function mockCurrencyRaised(LBPStrategyBasic lbp, uint256 amount) internal {
+        // Mock the auction's currencyRaised function
+        vm.mockCall(
+            address(lbp.auction()),
+            abi.encodeWithSelector(ICheckpointStorage.currencyRaised.selector),
+            abi.encode(amount)
+        );
+    }
+
+    function mockAuctionEndBlock(LBPStrategyBasic lbp, uint64 blockNumber) internal {
+        // Mock the auction's endBlock function
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
+    }
+
+    function sendCurrencyToLBP(LBPStrategyBasic lbp, address currency, uint256 amount) internal {
+        if (currency == address(0)) {
+            // Send ETH
+            vm.deal(address(lbp), amount);
+        } else {
+            // Send ERC20
+            deal(currency, address(lbp), amount);
+        }
+    }
+
+    function setupAuctionWithPriceAndCurrency(LBPStrategyBasic lbp, uint256 pricePerToken, uint128 currencyAmount)
         internal
     {
-        // Note: The calling test should have already given the auction the currency using deal()
-
-        // Approve LBP to spend
-        vm.prank(address(lbp.auction()));
-        ERC20(currency).approve(address(lbp), currencyAmount);
-
-        // Calculate price and set it
-        uint256 priceX192 = FullMath.mulDiv(currencyAmount, 2 ** 192, tokenAmount);
-
-        vm.prank(address(lbp.auction()));
-        lbp.onNotify(abi.encode(priceX192, tokenAmount, currencyAmount));
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        sendCurrencyToLBP(lbp, lbp.currency(), currencyAmount);
     }
 
     function migrateToMigrationBlock(LBPStrategyBasic lbp) internal {
