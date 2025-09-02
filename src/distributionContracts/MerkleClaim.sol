@@ -6,14 +6,7 @@ import {MerkleDistributorWithDeadline} from "merkle-distributor/contracts/Merkle
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
 
-contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract {
-    error InsufficientTokensReceived(uint256 expected, uint256 actual);
-
-    /// @notice Emitted when tokens are swept by the owner after endTime
-    /// @param owner The address that swept the tokens
-    /// @param amount The amount of tokens swept
-    event TokensSwept(address indexed owner, uint256 amount);
-
+contract MerkleClaim is MerkleDistributorWithDeadline, IMerkleClaim {
     constructor(address _token, bytes32 _merkleRoot, address _owner, uint256 _endTime)
         MerkleDistributorWithDeadline(_token, _merkleRoot, _endTime == 0 ? type(uint256).max : _endTime)
     {
