@@ -24,7 +24,7 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract {
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {}
 
-    /// @notice Sweep remaining tokens to the owner after endTime  
+    /// @notice Sweep remaining tokens to the owner after endTime
     /// @dev Only callable by owner and only after endTime has passed
     function sweep() external {
         // Get the balance before withdrawal
