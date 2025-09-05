@@ -5,12 +5,10 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -28,7 +26,12 @@ import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {PositionPlanningLib} from "../libraries/PositionPlanningLib.sol";
+import {
+    PositionPlanningLib,
+    BasePositionParams,
+    FullRangeParams,
+    OneSidedParams
+} from "../libraries/PositionPlanningLib.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -256,7 +259,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         returns (bytes memory, bytes[] memory, uint128)
     {
         // Create base parameters
-        PositionPlanningLib.BasePositionParams memory baseParams = PositionPlanningLib.BasePositionParams({
+        BasePositionParams memory baseParams = BasePositionParams({
             currency: currency,
             token: token,
             poolLPFee: poolLPFee,
@@ -267,10 +270,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         // Create full range specific parameters
-        PositionPlanningLib.FullRangeParams memory fullRangeParams = PositionPlanningLib.FullRangeParams({
-            tokenAmount: initialTokenAmount,
-            currencyAmount: initialCurrencyAmount
-        });
+        FullRangeParams memory fullRangeParams =
+            FullRangeParams({tokenAmount: initialTokenAmount, currencyAmount: initialCurrencyAmount});
 
         // Plan the full range position
         return PositionPlanningLib.planFullRangePosition(baseParams, fullRangeParams, paramsArraySize);
@@ -285,7 +286,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint256 tokenAmount = reserveSupply - initialTokenAmount;
 
         // Create base parameters
-        PositionPlanningLib.BasePositionParams memory baseParams = PositionPlanningLib.BasePositionParams({
+        BasePositionParams memory baseParams = BasePositionParams({
             currency: currency,
             token: token,
             poolLPFee: poolLPFee,
@@ -296,8 +297,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         // Create one-sided specific parameters
-        PositionPlanningLib.OneSidedParams memory oneSidedParams =
-            PositionPlanningLib.OneSidedParams({tokenAmount: tokenAmount, currentLiquidity: liquidity});
+        OneSidedParams memory oneSidedParams = OneSidedParams({tokenAmount: tokenAmount, currentLiquidity: liquidity});
 
         // Plan the one-sided position
         return PositionPlanningLib.planOneSidedPosition(baseParams, oneSidedParams, actions, params);

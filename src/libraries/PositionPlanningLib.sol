@@ -10,6 +10,35 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
 
+/// @notice Base parameters shared by all position types
+struct BasePositionParams {
+    address currency;
+    address token;
+    uint24 poolLPFee;
+    int24 poolTickSpacing;
+    uint160 initialSqrtPriceX96;
+    address positionRecipient;
+    IHooks hooks;
+}
+
+/// @notice Parameters specific to full-range positions
+struct FullRangeParams {
+    uint128 tokenAmount;
+    uint128 currencyAmount;
+}
+
+/// @notice Parameters specific to one-sided positions
+struct OneSidedParams {
+    uint256 tokenAmount;
+    uint128 currentLiquidity;
+}
+
+/// @notice Tick boundaries for a position
+struct TickBounds {
+    int24 lowerTick;
+    int24 upperTick;
+}
+
 /// @title PositionPlanningLib
 /// @notice Library for planning both full-range and one-sided liquidity positions
 library PositionPlanningLib {
@@ -22,35 +51,6 @@ library PositionPlanningLib {
     /// @notice Number of params needed for full-range + one-sided position
     /// 2 settle + 1 mint + 2 clear (full range) + 1 settle + 1 mint + 1 clear (one-sided) = 8 total
     uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
-
-    /// @notice Base parameters shared by all position types
-    struct BasePositionParams {
-        address currency;
-        address token;
-        uint24 poolLPFee;
-        int24 poolTickSpacing;
-        uint160 initialSqrtPriceX96;
-        address positionRecipient;
-        IHooks hooks;
-    }
-
-    /// @notice Parameters specific to full-range positions
-    struct FullRangeParams {
-        uint128 tokenAmount;
-        uint128 currencyAmount;
-    }
-
-    /// @notice Parameters specific to one-sided positions
-    struct OneSidedParams {
-        uint256 tokenAmount;
-        uint128 currentLiquidity;
-    }
-
-    /// @notice Tick boundaries for a position
-    struct TickBounds {
-        int24 lowerTick;
-        int24 upperTick;
-    }
 
     /// @notice Validates liquidity for a full-range position
     /// @param sqrtPriceX96 The current sqrt price
