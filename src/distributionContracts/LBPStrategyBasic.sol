@@ -40,8 +40,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
     uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
-    /// @notice 192 fixed point number used for token amt calculation from priceX192 (exposed for testing)
-    uint256 public constant Q192 = 2 ** 192;
+    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
 
     address public immutable token;
     address public immutable currency;
@@ -241,9 +240,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
-            (actions, params,) = _createFullRangePositionPlan(5);
+            (actions, params,) = _createFullRangePositionPlan(PositionPlanningLib.FULL_RANGE_ONLY_PARAMS);
         } else {
-            (actions, params, liquidity) = _createFullRangePositionPlan(8);
+            (actions, params, liquidity) =
+                _createFullRangePositionPlan(PositionPlanningLib.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         }
 

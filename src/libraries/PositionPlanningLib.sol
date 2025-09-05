@@ -15,6 +15,14 @@ import {TickCalculations} from "./TickCalculations.sol";
 library PositionPlanningLib {
     using TickCalculations for int24;
 
+    /// @notice Number of params needed for a standalone full-range position
+    /// 2 settle + 1 mint position + 2 clear = 5 total
+    uint256 public constant FULL_RANGE_ONLY_PARAMS = 5;
+
+    /// @notice Number of params needed for full-range + one-sided position
+    /// 2 settle + 1 mint + 2 clear (full range) + 1 settle + 1 mint + 1 clear (one-sided) = 8 total
+    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
+
     /// @notice Base parameters shared by all position types
     struct BasePositionParams {
         address currency;
@@ -303,10 +311,10 @@ library PositionPlanningLib {
         return currentLiquidity + newLiquidity <= tickSpacing.tickSpacingToMaxLiquidityPerTick();
     }
 
-    /// @notice Truncates parameters array to length 5
+    /// @notice Truncates parameters array to full-range only size
     function _truncateParams(bytes[] memory params) private pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](5);
-        for (uint256 i = 0; i < 5; i++) {
+        bytes[] memory truncated = new bytes[](FULL_RANGE_ONLY_PARAMS);
+        for (uint256 i = 0; i < FULL_RANGE_ONLY_PARAMS; i++) {
             truncated[i] = params[i];
         }
         return truncated;
