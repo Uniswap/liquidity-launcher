@@ -55,38 +55,6 @@ library PositionPlanningLib {
     /// 2 settle + 1 mint + 2 clear (full range) + 1 settle + 1 mint + 1 clear (one-sided) = 8 total
     uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
 
-    /// @notice Validates liquidity for a full-range position
-    /// @param sqrtPriceX96 The current sqrt price
-    /// @param tickSpacing The tick spacing of the pool
-    /// @param amount0 The amount of token0
-    /// @param amount1 The amount of token1
-    /// @return liquidity The calculated liquidity
-    /// @return isValid Whether the liquidity is within limits
-    function validateFullRangeLiquidity(uint160 sqrtPriceX96, int24 tickSpacing, uint128 amount0, uint128 amount1)
-        internal
-        pure
-        returns (uint128 liquidity, bool isValid)
-    {
-        // Calculate tick bounds for full range
-        int24 lowerTick = TickMath.MIN_TICK / tickSpacing * tickSpacing;
-        int24 upperTick = TickMath.MAX_TICK / tickSpacing * tickSpacing;
-
-        // Calculate liquidity
-        liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(lowerTick),
-            TickMath.getSqrtPriceAtTick(upperTick),
-            amount0,
-            amount1
-        );
-
-        // Check if within limits
-        uint128 maxLiquidityPerTick = tickSpacing.tickSpacingToMaxLiquidityPerTick();
-        isValid = liquidity <= maxLiquidityPerTick;
-
-        return (liquidity, isValid);
-    }
-
     /// @notice Plans a full-range position
     /// @param baseParams Base parameters for the position
     /// @param fullRangeParams Full range specific parameters
