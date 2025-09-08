@@ -30,7 +30,7 @@ struct FullRangeParams {
 /// @notice Parameters specific to one-sided positions
 struct OneSidedParams {
     uint256 tokenAmount;
-    uint128 currentLiquidity;
+    uint128 existingPoolLiquidity; // The current liquidity already in the pool from the full range position
 }
 
 /// @notice Tick boundaries for a position
@@ -97,8 +97,8 @@ library PositionPlanningLib {
         uint256 paramsArraySize
     ) internal pure returns (bytes memory actions, bytes[] memory params, uint128 liquidity) {
         // Create pool key with proper currency ordering
-        bool isCurrencyFirst = baseParams.currency < baseParams.token;
-        PoolKey memory poolKey = _createPoolKey(baseParams, isCurrencyFirst);
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
+        PoolKey memory poolKey = _createPoolKey(baseParams, currencyIsCurrency0);
 
         // Get tick bounds for full range
         TickBounds memory bounds = TickBounds({
@@ -111,8 +111,8 @@ library PositionPlanningLib {
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            isCurrencyFirst ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
-            isCurrencyFirst ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount
+            currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
+            currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount
         );
 
         // Build actions
@@ -127,22 +127,20 @@ library PositionPlanningLib {
         // Build parameters
         params = new bytes[](paramsArraySize);
 
-        // Settlement parameters
-        if (isCurrencyFirst) {
-            params[0] = abi.encode(poolKey.currency0, fullRangeParams.currencyAmount, false);
-            params[1] = abi.encode(poolKey.currency1, fullRangeParams.tokenAmount, false);
-        } else {
-            params[0] = abi.encode(poolKey.currency0, fullRangeParams.tokenAmount, false);
-            params[1] = abi.encode(poolKey.currency1, fullRangeParams.currencyAmount, false);
-        }
+        params[0] = abi.encode(
+            poolKey.currency0, currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount, false
+        );
+        params[1] = abi.encode(
+            poolKey.currency1, currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount, false
+        );
 
         // Position minting parameters
         params[2] = abi.encode(
             poolKey,
             bounds.lowerTick,
             bounds.upperTick,
-            isCurrencyFirst ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
-            isCurrencyFirst ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount,
+            currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
+            currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount,
             baseParams.positionRecipient,
             Constants.ZERO_BYTES
         );
@@ -164,10 +162,10 @@ library PositionPlanningLib {
         bytes[] memory existingParams
     ) internal pure returns (bytes memory actions, bytes[] memory params) {
         // Determine position side based on currency ordering
-        bool isCurrencyFirst = baseParams.currency < baseParams.token;
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
 
         // Calculate tick bounds and check validity
-        (TickBounds memory bounds, bool isValid) = isCurrencyFirst
+        (TickBounds memory bounds, bool isValid) = currencyIsCurrency0
             ? _getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
             : _getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
 
@@ -177,16 +175,16 @@ library PositionPlanningLib {
 
         // Check liquidity limits
         uint128 newLiquidity = _calculateOneSidedLiquidity(
-            baseParams.initialSqrtPriceX96, bounds, oneSidedParams.tokenAmount, isCurrencyFirst
+            baseParams.initialSqrtPriceX96, bounds, oneSidedParams.tokenAmount, currencyIsCurrency0
         );
 
-        if (!_isWithinLiquidityLimit(oneSidedParams.currentLiquidity, newLiquidity, baseParams.poolTickSpacing)) {
+        if (!_isWithinLiquidityLimit(oneSidedParams.existingPoolLiquidity, newLiquidity, baseParams.poolTickSpacing)) {
             return (existingActions, _truncateParams(existingParams));
         }
 
         // Build the position plan
         return _buildOneSidedPlan(
-            baseParams, oneSidedParams.tokenAmount, bounds, existingActions, existingParams, isCurrencyFirst
+            baseParams, oneSidedParams.tokenAmount, bounds, existingActions, existingParams, currencyIsCurrency0
         );
     }
 
@@ -239,20 +237,20 @@ library PositionPlanningLib {
         TickBounds memory bounds,
         bytes memory existingActions,
         bytes[] memory existingParams,
-        bool isCurrencyFirst
+        bool currencyIsCurrency0
     ) private pure returns (bytes memory actions, bytes[] memory params) {
         // Set up settlement parameters for token
         existingParams[5] = abi.encode(Currency.wrap(baseParams.token), tokenAmount, false);
 
         // Create pool key and position parameters
-        PoolKey memory poolKey = _createPoolKey(baseParams, isCurrencyFirst);
+        PoolKey memory poolKey = _createPoolKey(baseParams, currencyIsCurrency0);
 
         existingParams[6] = abi.encode(
             poolKey,
             bounds.lowerTick,
             bounds.upperTick,
-            isCurrencyFirst ? 0 : tokenAmount, // amount0
-            isCurrencyFirst ? tokenAmount : 0, // amount1
+            currencyIsCurrency0 ? 0 : tokenAmount, // amount0
+            currencyIsCurrency0 ? tokenAmount : 0, // amount1
             baseParams.positionRecipient,
             Constants.ZERO_BYTES
         );
@@ -272,14 +270,14 @@ library PositionPlanningLib {
     }
 
     /// @notice Creates a pool key with proper currency ordering
-    function _createPoolKey(BasePositionParams memory baseParams, bool isCurrencyFirst)
+    function _createPoolKey(BasePositionParams memory baseParams, bool currencyIsCurrency0)
         private
         pure
         returns (PoolKey memory)
     {
         return PoolKey({
-            currency0: Currency.wrap(isCurrencyFirst ? baseParams.currency : baseParams.token),
-            currency1: Currency.wrap(isCurrencyFirst ? baseParams.token : baseParams.currency),
+            currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.token),
+            currency1: Currency.wrap(currencyIsCurrency0 ? baseParams.token : baseParams.currency),
             fee: baseParams.poolLPFee,
             tickSpacing: baseParams.poolTickSpacing,
             hooks: baseParams.hooks
@@ -291,24 +289,24 @@ library PositionPlanningLib {
         uint160 currentSqrtPrice,
         TickBounds memory bounds,
         uint256 tokenAmount,
-        bool isCurrencyFirst
+        bool currencyIsCurrency0
     ) private pure returns (uint128) {
         return LiquidityAmounts.getLiquidityForAmounts(
             currentSqrtPrice,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            isCurrencyFirst ? 0 : tokenAmount,
-            isCurrencyFirst ? tokenAmount : 0
+            currencyIsCurrency0 ? 0 : tokenAmount,
+            currencyIsCurrency0 ? tokenAmount : 0
         );
     }
 
     /// @notice Checks if liquidity is within allowed limits
-    function _isWithinLiquidityLimit(uint128 currentLiquidity, uint128 newLiquidity, int24 tickSpacing)
+    function _isWithinLiquidityLimit(uint128 existingPoolLiquidity, uint128 newLiquidity, int24 tickSpacing)
         private
         pure
         returns (bool)
     {
-        return currentLiquidity + newLiquidity <= tickSpacing.tickSpacingToMaxLiquidityPerTick();
+        return existingPoolLiquidity + newLiquidity <= tickSpacing.tickSpacingToMaxLiquidityPerTick();
     }
 
     /// @notice Truncates parameters array to full-range only size

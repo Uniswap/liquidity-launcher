@@ -277,7 +277,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return PositionPlanningLib.planFullRangePosition(baseParams, fullRangeParams, paramsArraySize);
     }
 
-    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 liquidity)
+    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 existingPoolLiquidity)
         private
         view
         returns (bytes memory, bytes[] memory)
@@ -297,7 +297,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         // Create one-sided specific parameters
-        OneSidedParams memory oneSidedParams = OneSidedParams({tokenAmount: tokenAmount, currentLiquidity: liquidity});
+        OneSidedParams memory oneSidedParams =
+            OneSidedParams({tokenAmount: tokenAmount, existingPoolLiquidity: existingPoolLiquidity});
 
         // Plan the one-sided position
         return PositionPlanningLib.planOneSidedPosition(baseParams, oneSidedParams, actions, params);
