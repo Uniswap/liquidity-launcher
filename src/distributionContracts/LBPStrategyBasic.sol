@@ -22,6 +22,7 @@ import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
+import {PricingLib} from "../libraries/PricingLib.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
@@ -39,7 +40,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
     uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
-    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
 
     address public immutable token;
     address public immutable currency;
@@ -116,33 +116,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
 
         uint256 price = auction.clearingPrice();
-        if (price == 0) {
-            revert InvalidPrice(price);
-        }
         uint128 currencyAmount = auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
         }
 
-        // inverse if currency is currency0
-        if (currency < token) {
-            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
-        }
-        uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
-        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
-        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(price);
-        }
+        (uint256 priceX192, uint160 sqrtPriceX96) = PricingLib.convertPrice(price, currency < token);
 
-        // compute token amount
-        // will revert if cannot fit in uint128
-        uint128 tokenAmount;
-        if (currency < token) {
-            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
-        } else {
-            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
-        }
+        uint128 tokenAmount = PricingLib.calculateTokenAmount(priceX192, currencyAmount, currency < token);
 
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
