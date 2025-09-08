@@ -44,6 +44,9 @@ struct TickBounds {
 library PositionPlanningLib {
     using TickCalculations for int24;
 
+    error InvalidActionsLength(uint256 invalidLength);
+    error InvalidParamsLength(uint256 invalidLength);
+
     /// @notice Number of params needed for a standalone full-range position
     /// 2 settle + 1 mint position + 2 clear = 5 total
     uint256 public constant FULL_RANGE_ONLY_PARAMS = 5;
@@ -96,6 +99,10 @@ library PositionPlanningLib {
         FullRangeParams memory fullRangeParams,
         uint256 paramsArraySize
     ) internal pure returns (bytes memory actions, bytes[] memory params, uint128 liquidity) {
+        if (paramsArraySize != FULL_RANGE_ONLY_PARAMS && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_PARAMS) {
+            revert InvalidParamsLength(paramsArraySize);
+        }
+
         // Create pool key with proper currency ordering
         bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
         PoolKey memory poolKey = _createPoolKey(baseParams, currencyIsCurrency0);
@@ -239,13 +246,21 @@ library PositionPlanningLib {
         bytes[] memory existingParams,
         bool currencyIsCurrency0
     ) private pure returns (bytes memory actions, bytes[] memory params) {
+        if (existingActions.length != FULL_RANGE_ONLY_PARAMS) {
+            revert InvalidActionsLength(existingActions.length);
+        }
+
+        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_PARAMS) {
+            revert InvalidParamsLength(existingParams.length);
+        }
+
         // Set up settlement parameters for token
-        existingParams[5] = abi.encode(Currency.wrap(baseParams.token), tokenAmount, false);
+        existingParams[FULL_RANGE_ONLY_PARAMS] = abi.encode(Currency.wrap(baseParams.token), tokenAmount, false);
 
         // Create pool key and position parameters
         PoolKey memory poolKey = _createPoolKey(baseParams, currencyIsCurrency0);
 
-        existingParams[6] = abi.encode(
+        existingParams[FULL_RANGE_ONLY_PARAMS + 1] = abi.encode(
             poolKey,
             bounds.lowerTick,
             bounds.upperTick,
@@ -256,7 +271,7 @@ library PositionPlanningLib {
         );
 
         // Set up clearing parameters
-        existingParams[7] = abi.encode(Currency.wrap(baseParams.token), type(uint256).max);
+        existingParams[FULL_RANGE_ONLY_PARAMS + 2] = abi.encode(Currency.wrap(baseParams.token), type(uint256).max);
 
         // Append actions
         actions = abi.encodePacked(
