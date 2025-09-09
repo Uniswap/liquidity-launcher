@@ -14,6 +14,7 @@ import {TickCalculations} from "./TickCalculations.sol";
 /// @notice Simplified library that orchestrates position planning using helper libraries
 library StrategyPlanner {
     using TickCalculations for int24;
+    using ParamsBuilder for *;
 
     /// @notice Plans a full-range position
     function planFullRangePosition(
@@ -47,8 +48,8 @@ library StrategyPlanner {
         });
 
         actions = ActionsBuilder.buildFullRangeActions();
-        params = ParamsBuilder.buildFullRangeParams(
-            poolKey, bounds, fullRangeParams, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient
+        params = fullRangeParams.buildFullRangeParams(
+            poolKey, bounds, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient
         );
 
         // Build actions
@@ -65,20 +66,20 @@ library StrategyPlanner {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
 
         // Get tick bounds based on position side
-        TickBounds memory bounds = currencyIsCurrency0
+        TickBounds memory bounds = currencyIsCurrency0 == oneSidedParams.inToken
             ? getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
             : getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
 
         if (bounds.lowerTick == 0 && bounds.upperTick == 0) {
-            return (existingActions, ParamsBuilder.truncateParams(existingParams));
+            return (existingActions, existingParams.truncateParams());
         }
 
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            currencyIsCurrency0 ? 0 : oneSidedParams.tokenAmount,
-            currencyIsCurrency0 ? oneSidedParams.tokenAmount : 0
+            currencyIsCurrency0 == oneSidedParams.inToken ? 0 : oneSidedParams.amount,
+            currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
         if (
@@ -97,13 +98,8 @@ library StrategyPlanner {
         });
 
         actions = ActionsBuilder.buildOneSidedActions(existingActions);
-        params = ParamsBuilder.buildOneSidedParams(
-            poolKey,
-            bounds,
-            oneSidedParams.tokenAmount,
-            currencyIsCurrency0,
-            existingParams,
-            baseParams.positionRecipient
+        params = oneSidedParams.buildOneSidedParams(
+            poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient
         );
 
         return (actions, params);

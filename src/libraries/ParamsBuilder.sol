@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FullRangeParams} from "../types/PositionTypes.sol";
+import {FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
 
 /// @title ParamsBuilder
@@ -20,9 +20,9 @@ library ParamsBuilder {
     uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
 
     function buildFullRangeParams(
+        FullRangeParams memory fullRangeParams,
         PoolKey memory poolKey,
         TickBounds memory bounds,
-        FullRangeParams memory fullRangeParams,
         bool currencyIsCurrency0,
         uint256 paramsArraySize,
         address positionRecipient
@@ -53,9 +53,9 @@ library ParamsBuilder {
     }
 
     function buildOneSidedParams(
+        OneSidedParams memory oneSidedParams,
         PoolKey memory poolKey,
         TickBounds memory bounds,
-        uint128 tokenAmount,
         bool currencyIsCurrency0,
         bytes[] memory existingParams,
         address positionRecipient
@@ -65,23 +65,27 @@ library ParamsBuilder {
         }
 
         // Set up settlement for token
-        existingParams[FULL_RANGE_ONLY_PARAMS] =
-            abi.encode(currencyIsCurrency0 ? poolKey.currency1 : poolKey.currency0, tokenAmount, false);
+        existingParams[FULL_RANGE_ONLY_PARAMS] = abi.encode(
+            currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0,
+            oneSidedParams.amount,
+            false
+        );
 
         // Set up mint params directly
         existingParams[FULL_RANGE_ONLY_PARAMS + 1] = abi.encode(
             poolKey,
             bounds.lowerTick,
             bounds.upperTick,
-            currencyIsCurrency0 ? 0 : tokenAmount,
-            currencyIsCurrency0 ? tokenAmount : 0,
+            currencyIsCurrency0 == oneSidedParams.inToken ? 0 : oneSidedParams.amount,
+            currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0,
             positionRecipient,
             ZERO_BYTES
         );
 
         // Set up clear params
-        existingParams[FULL_RANGE_ONLY_PARAMS + 2] =
-            abi.encode(currencyIsCurrency0 ? poolKey.currency1 : poolKey.currency0, type(uint256).max);
+        existingParams[FULL_RANGE_ONLY_PARAMS + 2] = abi.encode(
+            currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0, type(uint256).max
+        );
 
         return existingParams;
     }

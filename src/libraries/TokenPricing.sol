@@ -5,6 +5,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
+import "forge-std/console2.sol";
 
 /// @title TokenPricing
 /// @notice Library for pricing operations including price conversions and token amount calculations
@@ -55,14 +56,30 @@ library TokenPricing {
     /// @param priceX192 The price in Q192 fixed-point format
     /// @param currencyAmount The amount of currency to convert
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
-    /// @return The calculated token amount
-    function calculateTokenAmount(uint256 priceX192, uint128 currencyAmount, bool currencyIsCurrency0)
-        internal
-        pure
-        returns (uint128)
-    {
-        return currencyIsCurrency0
+    /// @param reserveSupply The reserve supply of the token
+    /// @return tokenAmount The calculated token amount
+    /// @return leftoverCurrency The leftover currency amount
+    /// @return correspondingCurrencyAmount The corresponding currency amount
+    function calculateAmounts(
+        uint256 priceX192,
+        uint128 currencyAmount,
+        bool currencyIsCurrency0,
+        uint128 reserveSupply
+    ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
+        tokenAmount = currencyIsCurrency0
             ? uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192))
             : uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+
+        console2.log("tokenAmount", tokenAmount);
+        console2.log("reserveSupply", reserveSupply);
+
+        if (tokenAmount > reserveSupply) {
+            // need to find new currency amount based on reserve supply and price.
+            correspondingCurrencyAmount = uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
+            leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
+            tokenAmount = reserveSupply;
+        }
+
+        return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
     }
 }

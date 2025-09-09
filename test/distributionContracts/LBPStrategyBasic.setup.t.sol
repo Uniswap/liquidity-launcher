@@ -14,19 +14,6 @@ import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Constructor Validation Tests ============
 
-    function test_setUp_revertsWithTokenSplitTooHigh() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1));
-
-        new LBPStrategyBasicNoValidation(
-            address(token),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
-            auctionParams,
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
-        );
-    }
-
     function test_setUp_revertsWithInvalidTickSpacing() public {
         // Test too low
         vm.expectRevert(
@@ -192,7 +179,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address positionRecipient
     ) public {
         // Test token split validation
-        if (tokenSplit > 5_000) {
+        if (tokenSplit > 10_000) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit));
         }
         // Test tick spacing validation

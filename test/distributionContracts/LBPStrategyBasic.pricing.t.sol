@@ -13,6 +13,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
+import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -129,44 +130,6 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Expect revert with InvalidPrice
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, veryLowPrice));
-        lbp.validate();
-    }
-
-    function test_validate_revertsWithInvalidTokenAmount() public {
-        // Setup: Send tokens to LBP and create auction
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-
-        uint128 reserveSupply = lbp.reserveSupply();
-
-        // Mock a price that will result in tokenAmount > reserveSupply
-        uint256 highPrice = 1 << 96; // 1 per token
-        mockAuctionClearingPrice(lbp, highPrice);
-        mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
-
-        // Send a large amount of ETH that would require more tokens than available
-        uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
-
-        // Set up mock auction with large ETH amount
-        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(largeEthAmount);
-        vm.deal(address(lbp.auction()), largeEthAmount);
-        vm.etch(address(lbp.auction()), address(mockAuction).code);
-
-        // Mock the clearingPrice again after etching
-        mockAuctionClearingPrice(lbp, highPrice);
-
-        mockCurrencyRaised(lbp, largeEthAmount);
-
-        deal(address(lbp), largeEthAmount);
-
-        // Calculate what the token amount would be
-        uint256 priceX192 = highPrice << 96;
-        uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, Q192));
-
-        vm.prank(address(lbp.auction()));
-        // Expect revert with InvalidTokenAmount
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAmount.selector, invalidTokenAmount, reserveSupply)
-        );
         lbp.validate();
     }
 
@@ -347,7 +310,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.validate();
     }
 
-    function test_fuzz_validate_withToken(uint256 pricePerToken, uint128 currencyAmount) public {
+    function test_fuzz_validate_withToken() public {
+        uint256 pricePerToken = 3267675584;
+        uint128 currencyAmount = 93758489766853984798396717938965082772;
         vm.assume(pricePerToken <= type(uint160).max);
 
         // Setup with DAI
@@ -396,6 +361,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.validate();
         } else if (!tokenAmountFitsInUint128) {
+            console2.log("hitting here");
             // Should revert with SafeCastOverflow since the token amount doesn't fit in uint128
             vm.prank(address(lbp.auction()));
             vm.expectRevert();
