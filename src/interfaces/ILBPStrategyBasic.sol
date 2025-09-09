@@ -28,9 +28,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the token and currency are the same
     error InvalidTokenAndCurrency(address token);
 
-    /// @notice Error thrown when the price is invalid
-    error InvalidPrice(uint256 price);
-
     /// @notice Error thrown when the liquidity is invalid
     error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
 

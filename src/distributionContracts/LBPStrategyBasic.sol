@@ -3,35 +3,26 @@ pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
-import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {
-    PositionPlanningLib,
-    BasePositionParams,
-    FullRangeParams,
-    OneSidedParams
-} from "../libraries/PositionPlanningLib.sol";
+import {TokenPricing} from "../libraries/TokenPricing.sol";
+import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
+import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
+import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -39,11 +30,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
+    using StrategyPlanner for BasePositionParams;
+    using TokenPricing for *;
 
     /// @notice The token split is measured in bips (10_000 = 100%)
     uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
     uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
-    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
 
     address public immutable token;
     address public immutable currency;
@@ -120,33 +112,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
 
         uint256 price = auction.clearingPrice();
-        if (price == 0) {
-            revert InvalidPrice(price);
-        }
         uint128 currencyAmount = auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
         }
 
-        // inverse if currency is currency0
-        if (currency < token) {
-            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
-        }
-        uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
-        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
-        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(price);
-        }
+        (uint256 priceX192, uint160 sqrtPriceX96) = price.convertPrice(currency < token);
 
-        // compute token amount
-        // will revert if cannot fit in uint128
-        uint128 tokenAmount;
-        if (currency < token) {
-            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
-        } else {
-            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
-        }
+        uint128 tokenAmount = priceX192.calculateTokenAmount(currencyAmount, currency < token);
 
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
@@ -185,8 +159,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         PoolKey memory key = PoolKey({
-            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
-            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
+            currency0: Currency.wrap(currency < token ? currency : token),
+            currency1: Currency.wrap(currency < token ? token : currency),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
@@ -243,10 +217,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
-            (actions, params,) = _createFullRangePositionPlan(PositionPlanningLib.FULL_RANGE_ONLY_PARAMS);
+            (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_ONLY_PARAMS);
         } else {
-            (actions, params, liquidity) =
-                _createFullRangePositionPlan(PositionPlanningLib.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
+            (actions, params, liquidity) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         }
 
@@ -274,7 +247,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             FullRangeParams({tokenAmount: initialTokenAmount, currencyAmount: initialCurrencyAmount});
 
         // Plan the full range position
-        return PositionPlanningLib.planFullRangePosition(baseParams, fullRangeParams, paramsArraySize);
+        return baseParams.planFullRangePosition(fullRangeParams, paramsArraySize);
     }
 
     function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 existingPoolLiquidity)
@@ -283,7 +256,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         returns (bytes memory, bytes[] memory)
     {
         // Calculate leftover token amount
-        uint256 tokenAmount = reserveSupply - initialTokenAmount;
+        uint128 tokenAmount = reserveSupply - initialTokenAmount;
 
         // Create base parameters
         BasePositionParams memory baseParams = BasePositionParams({
@@ -301,7 +274,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             OneSidedParams({tokenAmount: tokenAmount, existingPoolLiquidity: existingPoolLiquidity});
 
         // Plan the one-sided position
-        return PositionPlanningLib.planOneSidedPosition(baseParams, oneSidedParams, actions, params);
+        return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 
     receive() external payable {}
