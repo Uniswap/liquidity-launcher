@@ -40,19 +40,23 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         emit DistributionInitialized(address(lbp), token, totalSupply);
     }
 
-    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
+    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (address)
     {
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
+
+        // Hash the salt with sender to match initializeDistribution logic
+        bytes32 _salt = keccak256(abi.encode(sender, salt));
+
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
                 abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager)
             )
         );
-        return Create2.computeAddress(salt, initCodeHash, address(this));
+        return Create2.computeAddress(_salt, initCodeHash, address(this));
     }
 }
