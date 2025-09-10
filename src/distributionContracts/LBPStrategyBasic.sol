@@ -48,6 +48,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
+    address public immutable operator;
+    uint64 public immutable sweepBlock;
     IPositionManager public immutable positionManager;
 
     IAuction public auction;
@@ -82,7 +84,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
-
+        operator = migratorParams.operator;
+        sweepBlock = migratorParams.sweepBlock;
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
     }
@@ -188,10 +191,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, initialSqrtPriceX96);
     }
 
+    /// @inheritdoc ILBPStrategyBasic
+    function sweep() external {
+        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+        Currency.wrap(token).transfer(operator, Currency.wrap(token).balanceOf(address(this)));
+    }
+
     function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
         private
         pure
     {
+        if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
+            revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
+        }
+
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
         }

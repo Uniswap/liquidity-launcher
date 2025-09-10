@@ -73,9 +73,15 @@ library TokenPricing {
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
+            console2.log("token amount is greater than reserve supply");
             correspondingCurrencyAmount = currencyIsCurrency0
                 ? uint128(FullMath.mulDiv(reserveSupply, Q192, priceX192))
                 : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
+            console2.log("corresponding currency amount", correspondingCurrencyAmount);
+            console2.log(
+                "FullMath.mulDiv(reserveSupply, Q192, priceX192) is less than or equal to type(uint128).max",
+                FullMath.mulDiv(reserveSupply, Q192, priceX192) <= type(uint128).max
+            );
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
         }

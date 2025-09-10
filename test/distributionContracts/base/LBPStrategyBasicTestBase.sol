@@ -79,7 +79,10 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             500, // fee
             1, // tick spacing
             DEFAULT_TOKEN_SPLIT,
-            address(3) // position recipient
+            address(3), // position recipient
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this) // operator
         );
     }
 
@@ -117,7 +120,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         assertEq(lbp.totalSupply(), DEFAULT_TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
         assertEq(lbp.positionRecipient(), migratorParams.positionRecipient);
-        assertEq(lbp.migrationBlock(), uint64(block.number + 1_000));
+        assertEq(lbp.migrationBlock(), uint64(block.number + 500));
         assertEq(address(lbp.auction()), address(0));
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
@@ -131,7 +134,10 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         uint24 poolLPFee,
         int24 poolTickSpacing,
         uint16 tokenSplitToAuction,
-        address positionRecipient
+        address positionRecipient,
+        uint64 migrationBlock,
+        uint64 sweepBlock,
+        address operator
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
@@ -140,7 +146,9 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             tokenSplitToAuction: tokenSplitToAuction,
             auctionFactory: address(auctionFactory),
             positionRecipient: positionRecipient,
-            migrationBlock: uint64(block.number + 1_000)
+            migrationBlock: migrationBlock,
+            sweepBlock: sweepBlock,
+            operator: operator
         });
     }
 
@@ -177,7 +185,10 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.poolLPFee,
             migratorParams.poolTickSpacing,
             migratorParams.tokenSplitToAuction,
-            migratorParams.positionRecipient
+            migratorParams.positionRecipient,
+            migratorParams.migrationBlock,
+            migratorParams.sweepBlock,
+            migratorParams.operator
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
     }
@@ -189,7 +200,10 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             500, // fee (same as default)
             1, // tick spacing (same as default)
             tokenSplit, // Use custom tokenSplit
-            address(3) // position recipient (same as default)
+            address(3), // position recipient (same as default),
+            uint64(block.number + 500), // migration block
+            uint64(block.number + 1_000), // sweep block
+            address(this) // operator
         );
         _deployLBPStrategy(totalSupply);
     }
