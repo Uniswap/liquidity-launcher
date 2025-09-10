@@ -5,7 +5,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
-import "forge-std/console2.sol";
 
 /// @title TokenPricing
 /// @notice Library for pricing operations including price conversions and token amount calculations

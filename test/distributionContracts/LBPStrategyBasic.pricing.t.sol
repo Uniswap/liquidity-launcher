@@ -13,7 +13,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
-import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -218,13 +217,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(
-            address(0),
-            500,
-            20,
-            uint16(tokenSplit),
-            address(3)
-        );
+        migratorParams = createMigratorParams(address(0), 500, 20, uint16(tokenSplit), address(3));
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup
@@ -331,13 +324,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(
-            DAI,
-            500,
-            20,
-            uint16(tokenSplit),
-            address(3)
-        );
+        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3));
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI
