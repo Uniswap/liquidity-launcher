@@ -13,7 +13,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
-import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {

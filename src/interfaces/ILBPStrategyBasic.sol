@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IDistributionContract} from "./IDistributionContract.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IDistributionContract} from "./IDistributionContract.sol";
 
 /// @title ILBPStrategyBasic
 /// @notice Interface for the LBPStrategyBasic contract
@@ -12,6 +12,9 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
+
+    /// @notice Emitted when the tokens are swept
+    event TokensSwept(address indexed operator);
 
     /// @notice Error thrown when the sweep block is before or at the migration block
     error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
