@@ -23,7 +23,6 @@ import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
-import "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
