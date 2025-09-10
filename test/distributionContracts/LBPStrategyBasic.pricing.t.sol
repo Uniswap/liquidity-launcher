@@ -214,7 +214,13 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
-    function test_fuzz_validate_withETH(uint256 pricePerToken, uint128 ethAmount) public {
+    function test_fuzz_validate_withETH(uint256 pricePerToken, uint128 ethAmount, uint16 tokenSplit) public {
+        vm.assume(pricePerToken <= type(uint160).max);
+        tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
+
+        migratorParams = createMigratorParams(address(0), 500, 20, uint16(tokenSplit), address(3));
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -241,11 +247,12 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, Q192));
+        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, ethAmount, Q192);
+        bool tokenAmountFitsInUint128 = expectedTokenAmount <= type(uint128).max;
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
-        // since default split is 50% to auction, we expect the token amount to be <= reserve supply
+
         bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
 
         if (isValidPrice && isValidTokenAmount) {
@@ -263,6 +270,17 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             vm.prank(address(lbp.auction()));
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.validate();
+        } else if (!isValidTokenAmount) {
+            if (!tokenAmountFitsInUint128) {
+                vm.prank(address(lbp.auction()));
+                vm.expectRevert();
+                lbp.validate();
+            } else {
+                vm.prank(address(lbp.auction()));
+                lbp.validate();
+                assertEq(lbp.initialTokenAmount(), lbp.reserveSupply());
+                assertGt(lbp.leftoverCurrency(), 0);
+            }
         }
     }
 
@@ -302,8 +320,12 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         lbp.validate();
     }
 
-    function test_fuzz_validate_withToken(uint256 pricePerToken, uint128 currencyAmount) public {
+    function test_fuzz_validate_withToken(uint256 pricePerToken, uint128 currencyAmount, uint16 tokenSplit) public {
         vm.assume(pricePerToken <= type(uint160).max);
+        tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
+
+        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3));
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI
         setupWithCurrency(DAI);
@@ -332,12 +354,14 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
 
         bool isValidPrice;
-        uint128 expectedTokenAmount;
+        uint256 tokenAmountUint256;
         if (pricePerToken != 0) {
-            expectedTokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+            tokenAmountUint256 = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
         } else {
             isValidPrice = false;
         }
+
+        bool tokenAmountFitsInUint128 = tokenAmountUint256 <= type(uint128).max;
 
         // Check if the price is within valid bounds
         isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
@@ -347,16 +371,33 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             vm.prank(address(lbp.auction()));
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.validate();
-        } else if (expectedTokenAmount <= lbp.reserveSupply()) {
-            // since default split is 50% to auction, we expect the token amount to be <= reserve supply
+        } else if (!tokenAmountFitsInUint128) {
+            // Should revert with InvalidTokenAmount
             vm.prank(address(lbp.auction()));
+            vm.expectRevert();
             lbp.validate();
+        } else {
+            // Token amount fits in uint128, so we can safely cast
+            uint128 expectedTokenAmount = uint128(tokenAmountUint256);
+            bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
 
-            // Verify
-            assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
-            assertEq(lbp.initialTokenAmount(), expectedTokenAmount);
-            assertEq(lbp.initialCurrencyAmount(), currencyAmount);
-            assertEq(ERC20(DAI).balanceOf(address(lbp)), currencyAmount);
+            if (isValidTokenAmount) {
+                // Should succeed
+                vm.prank(address(lbp.auction()));
+                lbp.validate();
+
+                // Verify
+                assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
+                assertEq(lbp.initialTokenAmount(), expectedTokenAmount);
+                assertEq(lbp.initialCurrencyAmount(), currencyAmount);
+                assertEq(ERC20(DAI).balanceOf(address(lbp)), currencyAmount);
+            } else {
+                // Should revert with InvalidTokenAmount
+                vm.startPrank(address(lbp.auction()));
+                lbp.validate();
+                assertEq(lbp.initialTokenAmount(), lbp.reserveSupply());
+                assertGt(lbp.leftoverCurrency(), 0);
+            }
         }
     }
 }

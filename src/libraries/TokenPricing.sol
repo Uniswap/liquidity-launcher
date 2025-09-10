@@ -66,16 +66,16 @@ library TokenPricing {
         bool currencyIsCurrency0,
         uint128 reserveSupply
     ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
+        // calculates corresponding token amount based on currency amount and price
         tokenAmount = currencyIsCurrency0
             ? uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192))
             : uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
 
-        console2.log("tokenAmount", tokenAmount);
-        console2.log("reserveSupply", reserveSupply);
-
+        // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
-            // need to find new currency amount based on reserve supply and price.
-            correspondingCurrencyAmount = uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
+            correspondingCurrencyAmount = currencyIsCurrency0
+                ? uint128(FullMath.mulDiv(reserveSupply, Q192, priceX192))
+                : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
         }
