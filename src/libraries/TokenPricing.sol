@@ -5,13 +5,12 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
-import "forge-std/console2.sol";
 
 /// @title TokenPricing
 /// @notice Library for pricing operations including price conversions and token amount calculations
 /// @dev Handles conversions between different price representations and calculates swap amounts
 library TokenPricing {
-    /// @notice Thrown when price is invalid (0 or out of bounds)
+    /// @notice Thrown when price in currency1/currency0 form is invalid (0 or out of bounds)
     error InvalidPrice(uint256 price);
 
     /// @notice Q192 format: 192-bit fixed-point number representation
@@ -37,7 +36,12 @@ library TokenPricing {
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
         }
 
-        // Convert to X192 format (may overflow if price > type(uint160).max)
+        // Check price bounds after potential inversion
+        if (price > type(uint160).max) {
+            revert InvalidPrice(price);
+        }
+
+        // Convert to X192 format (will not overflow since price is less than or equal to type(uint160).max)
         priceX192 = price << FixedPoint96.RESOLUTION;
 
         // Calculate square root for Uniswap v4's sqrtPriceX96 format
