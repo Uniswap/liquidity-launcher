@@ -218,7 +218,13 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(address(0), 500, 20, uint16(tokenSplit), address(3));
+        migratorParams = createMigratorParams(
+            address(0),
+            500,
+            20,
+            uint16(tokenSplit),
+            address(3)
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup
@@ -253,9 +259,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
 
-        bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
+        bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
-        if (isValidPrice && isValidTokenAmount) {
+        if (isValidPrice && isLeftoverToken) {
             // Should succeed
             vm.prank(address(lbp.auction()));
             lbp.validate();
@@ -270,8 +276,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             vm.prank(address(lbp.auction()));
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.validate();
-        } else if (!isValidTokenAmount) {
-            if (!tokenAmountFitsInUint128) {
+        } else if (isLeftoverToken) {
+            // corresponding token amt greater than allowed
+            if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
                 vm.prank(address(lbp.auction()));
                 vm.expectRevert();
                 lbp.validate();
@@ -324,7 +331,13 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3));
+        migratorParams = createMigratorParams(
+            DAI,
+            500,
+            20,
+            uint16(tokenSplit),
+            address(3)
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI
