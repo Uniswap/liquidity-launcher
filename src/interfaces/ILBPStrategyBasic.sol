@@ -45,7 +45,4 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
-
-    /// @notice Can only be called by the auction and must revert if the price, currency, or corresponding token amount is invalid
-    function validate() external;
 }

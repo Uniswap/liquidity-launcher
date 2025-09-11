@@ -5,6 +5,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
+import "forge-std/console2.sol";
 
 /// @title ParamsBuilder
 /// @notice Library for building position parameters

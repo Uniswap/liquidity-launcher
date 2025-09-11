@@ -28,10 +28,8 @@ library TokenPricing {
         pure
         returns (uint256 priceX192, uint160 sqrtPriceX96)
     {
-        if (price == 0) {
-            revert InvalidPrice(price);
-        }
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
+        // Reverts if price is 0
         if (currencyIsCurrency0) {
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
         }
@@ -77,6 +75,8 @@ library TokenPricing {
                 : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
+        } else {
+            correspondingCurrencyAmount = currencyAmount;
         }
 
         return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
