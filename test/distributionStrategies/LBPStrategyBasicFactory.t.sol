@@ -115,8 +115,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x00000000000000000000000000000000000000000000000000000000000073b7;
-        address sender = address(0x6CA6d1e2D5347Bfab1d91e883F1915560e09129D);
+        bytes32 salt = 0x00000000000000000000000000000000000000000000000000000000000011cf;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
@@ -124,7 +123,6 @@ contract LBPStrategyBasicFactoryTest is Test {
             salt,
             sender
         );
-        vm.prank(sender);
         assertEq(
             lbpAddress,
             address(
