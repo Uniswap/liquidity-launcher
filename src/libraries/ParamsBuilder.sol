@@ -19,6 +19,14 @@ library ParamsBuilder {
     /// @notice Number of params needed for full-range + one-sided position
     uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
 
+    /// @notice Builds the parameters needed to mint a full range position using the position manager
+    /// @param poolKey The pool key
+    /// @param bounds The tick bounds for the full range position
+    /// @param fullRangeParams The amounts of currency and token that will be used to mint the position
+    /// @param currencyIsCurrency0 Whether the currency address is less than the token address
+    /// @param paramsArraySize The size of the parameters array (either 5 or 8)
+    /// @param positionRecipient The recipient of the position
+    /// @return params The parameters needed to mint a full range position using the position manager
     function buildFullRangeParams(
         PoolKey memory poolKey,
         TickBounds memory bounds,
@@ -52,6 +60,14 @@ library ParamsBuilder {
         return params;
     }
 
+    /// @notice Builds the parameters needed to mint a one-sided position using the position manager
+    /// @param poolKey The pool key
+    /// @param bounds The tick bounds for the one-sided position
+    /// @param tokenAmount The amount of token that will be used to mint the position
+    /// @param currencyIsCurrency0 Whether the currency address is less than the token address
+    /// @param existingParams Params to create a full range position (Output of buildFullRangeParams())
+    /// @param positionRecipient The recipient of the position
+    /// @return params The parameters needed to mint a one-sided position using the position manager
     function buildOneSidedParams(
         PoolKey memory poolKey,
         TickBounds memory bounds,
@@ -86,7 +102,9 @@ library ParamsBuilder {
         return existingParams;
     }
 
-    /// @notice Truncates parameters array to full-range only size
+    /// @notice Truncates parameters array to full-range only size (5 params)
+    /// @param params The parameters to truncate
+    /// @return truncated The truncated parameters only (5 params)
     function truncateParams(bytes[] memory params) internal pure returns (bytes[] memory) {
         bytes[] memory truncated = new bytes[](FULL_RANGE_ONLY_PARAMS);
         for (uint256 i = 0; i < FULL_RANGE_ONLY_PARAMS; i++) {
