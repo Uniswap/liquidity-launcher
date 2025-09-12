@@ -210,6 +210,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         private
         pure
     {
+        if (_token == address(0) || _token == migratorParams.currency) {
+            revert InvalidToken(address(_token));
+        }
         // Validate that the amount of tokens sent to auction is <= 50% of total supply
         // This ensures at least half of the tokens remain for the initial liquidity position
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
@@ -225,9 +228,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
                 || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
         ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        if (_token == migratorParams.currency) {
-            revert InvalidTokenAndCurrency(_token);
-        }
         if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR) == 0)
         {
             revert AuctionSupplyIsZero();

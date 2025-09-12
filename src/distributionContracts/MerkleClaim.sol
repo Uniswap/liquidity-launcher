@@ -12,6 +12,9 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IMerkleClaim {
     constructor(address _token, bytes32 _merkleRoot, address _owner, uint256 _endTime)
         MerkleDistributorWithDeadline(_token, _merkleRoot, _endTime == 0 ? type(uint256).max : _endTime)
     {
+        if (_token == address(0)) {
+            revert InvalidToken(address(_token));
+        }
         // Transfer ownership to the specified owner
         _transferOwnership(_owner);
     }

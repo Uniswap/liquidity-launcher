@@ -28,6 +28,9 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         address recipient,
         bytes calldata tokenData
     ) external override returns (address tokenAddress) {
+        if (recipient == address(0)) {
+            revert RecipientCannotBeZeroAddress();
+        }
         // Create token, with this contract as the recipient of the initial supply
         tokenAddress = ITokenFactory(factory).createToken(
             name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender)
