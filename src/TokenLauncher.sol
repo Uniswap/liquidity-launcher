@@ -13,6 +13,7 @@ import {ITokenLauncher} from "./interfaces/ITokenLauncher.sol";
 
 /// @title TokenLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
+/// @custom:security-contact security@uniswap.org
 contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     using SafeERC20 for IERC20;
 

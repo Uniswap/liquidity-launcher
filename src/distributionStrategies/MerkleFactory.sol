@@ -5,6 +5,7 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MerkleClaim} from "../distributionContracts/MerkleClaim.sol";
 
+/// @custom:security-contact security@uniswap.org
 contract MerkleClaimFactory is IDistributionStrategy {
     /// @notice Deploys a new MerkleClaim
     /// @param token The ERC-20 token to distribute
