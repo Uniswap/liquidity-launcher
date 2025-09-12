@@ -12,7 +12,9 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract
 contract LBPStrategyBasicFactory is IDistributionStrategy {
+    /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
+    /// @notice The pool manager that will be used to create the pool
     IPoolManager public immutable poolManager;
 
     constructor(IPositionManager _positionManager, IPoolManager _poolManager) {
@@ -40,6 +42,12 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         emit DistributionInitialized(address(lbp), token, totalSupply);
     }
 
+    /// @notice Gets the address of the LBPStrategyBasic contract
+    /// @param token The token that is being distributed
+    /// @param totalSupply The supply of the token that will be distributed
+    /// @param configData The config data for the LBPStrategyBasic contract
+    /// @param salt The salt to deterministicly deploy the LBPStrategyBasic contract
+    /// @return The address of the LBPStrategyBasic contract
     function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         view
