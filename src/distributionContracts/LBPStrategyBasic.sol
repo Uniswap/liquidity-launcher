@@ -150,8 +150,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function migrate() external {
         if (block.number < migrationBlock) revert MigrationNotAllowed(migrationBlock, block.number);
 
-        // transfer tokens to the position manager
-        Currency.wrap(token).transfer(address(positionManager), reserveSupply);
+        // transfer initial token amount to the position manager for the full range position
+        Currency.wrap(token).transfer(address(positionManager), initialTokenAmount);
 
         bool currencyIsNative = Currency.wrap(currency).isAddressZero();
         // transfer raised currency to the position manager if currency is not native
@@ -176,6 +176,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes memory plan = _createPlan();
 
         // if currency is ETH, we need to send ETH to the position manager
+        // only if wanting to make a currency position AND there isleftover curency AND params length is FULL_RANGE_WITH_ONE_SIDED_PARAMS
         if (currencyIsNative) {
             positionManager.modifyLiquidities{value: initialCurrencyAmount + leftoverCurrency}(
                 plan, block.timestamp + 1
@@ -281,6 +282,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         // Plan the one-sided position
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
+
+        // if not same as before, then transfer over leftover amount or token to posm
     }
 
     receive() external payable {}
