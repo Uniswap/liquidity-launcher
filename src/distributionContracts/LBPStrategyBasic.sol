@@ -136,7 +136,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         // compute token amount
-        // will revert if cannot fit in uint128
         uint128 tokenAmount;
         if (currency < token) {
             tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));

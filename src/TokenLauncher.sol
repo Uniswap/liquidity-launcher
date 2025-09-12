@@ -28,7 +28,8 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         address recipient,
         bytes calldata tokenData
     ) external override returns (address tokenAddress) {
-        // Create token, with this contract as the recipient of the initial supply
+        // Set recipient to address(this) ONLY when distributing tokens in the same transaction via multicall
+        // Otherwise, set recipient to the actual end user to avoid tokens being distributed by another caller
         tokenAddress = ITokenFactory(factory).createToken(
             name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender)
         );
@@ -49,6 +50,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         );
 
         // Now transfer the tokens to the returned address
+        // payerIsUser should be false if the tokens were created in the same call via multicall
         _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
 
         // Notify the distribution contract that it has received the tokens
