@@ -14,10 +14,10 @@ library ParamsBuilder {
     bytes constant ZERO_BYTES = new bytes(0);
 
     /// @notice Number of params needed for a standalone full-range position
-    uint256 public constant FULL_RANGE_ONLY_PARAMS = 5;
+    uint256 public constant FULL_RANGE_SIZE = 5;
 
     /// @notice Number of params needed for full-range + one-sided position
-    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
+    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 8;
 
     /// @notice Builds the parameters needed to mint a full range position using the position manager
     /// @param poolKey The pool key
@@ -35,7 +35,7 @@ library ParamsBuilder {
         uint256 paramsArraySize,
         address positionRecipient
     ) internal pure returns (bytes[] memory params) {
-        if (paramsArraySize != FULL_RANGE_ONLY_PARAMS && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_PARAMS) {
+        if (paramsArraySize != FULL_RANGE_SIZE && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(paramsArraySize);
         }
 
@@ -76,16 +76,16 @@ library ParamsBuilder {
         bytes[] memory existingParams,
         address positionRecipient
     ) internal pure returns (bytes[] memory) {
-        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_PARAMS) {
+        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(existingParams.length);
         }
 
         // Set up settlement for token
-        existingParams[FULL_RANGE_ONLY_PARAMS] =
+        existingParams[FULL_RANGE_SIZE] =
             abi.encode(currencyIsCurrency0 ? poolKey.currency1 : poolKey.currency0, tokenAmount, false);
 
         // Set up mint params directly
-        existingParams[FULL_RANGE_ONLY_PARAMS + 1] = abi.encode(
+        existingParams[FULL_RANGE_SIZE + 1] = abi.encode(
             poolKey,
             bounds.lowerTick,
             bounds.upperTick,
@@ -96,7 +96,7 @@ library ParamsBuilder {
         );
 
         // Set up clear params
-        existingParams[FULL_RANGE_ONLY_PARAMS + 2] =
+        existingParams[FULL_RANGE_SIZE + 2] =
             abi.encode(currencyIsCurrency0 ? poolKey.currency1 : poolKey.currency0, type(uint256).max);
 
         return existingParams;
@@ -106,8 +106,8 @@ library ParamsBuilder {
     /// @param params The parameters to truncate
     /// @return truncated The truncated parameters only (5 params)
     function truncateParams(bytes[] memory params) internal pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](FULL_RANGE_ONLY_PARAMS);
-        for (uint256 i = 0; i < FULL_RANGE_ONLY_PARAMS; i++) {
+        bytes[] memory truncated = new bytes[](FULL_RANGE_SIZE);
+        for (uint256 i = 0; i < FULL_RANGE_SIZE; i++) {
             truncated[i] = params[i];
         }
         return truncated;

@@ -217,9 +217,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
-            (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_ONLY_PARAMS);
+            (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_SIZE);
         } else {
-            (actions, params, liquidity) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
+            (actions, params, liquidity) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         }
 
