@@ -14,7 +14,7 @@ interface ILBPStrategyBasic is IDistributionContract {
     error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
 
     /// @notice Emitted when the tokens are swept
-    event TokensSwept(address indexed operator);
+    event TokensSwept(address indexed operator, uint256 amount);
 
     /// @notice Error thrown when the sweep block is before or at the migration block
     error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
@@ -61,6 +61,7 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Can only be called by the auction and must revert if the price, currency, or corresponding token amount is invalid
     function validate() external;
 
-    /// @notice Allows the operator to sweep currency and tokens from the pool
-    function sweep() external;
+    /// @notice Allows the operator to sweep tokens from the contract
+    /// @dev Can only be called after sweepBlock by the operator
+    function sweepToken() external;
 }

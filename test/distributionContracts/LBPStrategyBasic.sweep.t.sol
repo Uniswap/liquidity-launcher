@@ -6,26 +6,26 @@ import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 
 contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
-    event TokensSwept(address indexed operator);
+    event TokensSwept(address indexed operator, uint256 amount);
 
-    function test_sweep_revertsWithSweepNotAllowed() public {
+    function test_sweepToken_revertsWithSweepNotAllowed() public {
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyBasic.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
         );
         vm.prank(migratorParams.operator);
-        lbp.sweep();
+        lbp.sweepToken();
     }
 
-    function test_sweep_revertsWithNotOperator() public {
+    function test_sweepToken_revertsWithNotOperator() public {
         vm.roll(lbp.sweepBlock());
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(tokenLauncher), lbp.operator())
         );
         vm.prank(address(tokenLauncher));
-        lbp.sweep();
+        lbp.sweepToken();
     }
 
-    function test_sweep_succeeds() public {
+    function test_sweepToken_succeeds() public {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY / 2);
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), lbp.reserveSupply());
@@ -33,8 +33,8 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
         vm.roll(lbp.sweepBlock());
         vm.prank(lbp.operator());
         vm.expectEmit(true, true, true, true);
-        emit TokensSwept(lbp.operator());
-        lbp.sweep();
+        emit TokensSwept(lbp.operator(), lbp.reserveSupply());
+        lbp.sweepToken();
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), 0);
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), lbp.reserveSupply());
     }
