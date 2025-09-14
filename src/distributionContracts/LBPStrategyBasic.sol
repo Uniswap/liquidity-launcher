@@ -202,6 +202,18 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
+    /// @inheritdoc ILBPStrategyBasic
+    function sweepCurrency() external {
+        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+
+        uint256 currencyBalance = Currency.wrap(currency).balanceOf(address(this));
+        if (currencyBalance > 0) {
+            Currency.wrap(currency).transfer(operator, currencyBalance);
+            emit CurrencySwept(operator, currencyBalance);
+        }
+    }
+
     function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
         private
         pure

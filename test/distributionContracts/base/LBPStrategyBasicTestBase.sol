@@ -40,6 +40,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     uint160 constant HOOK_PERMISSION_COUNT = 14;
     uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
 
+    address testOperator = makeAddr("testOperator");
+
     // Events
     event Notified(bytes data);
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
@@ -82,7 +84,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this) // operator
+            testOperator // operator (receive function for checking ETH balance)
         );
     }
 
@@ -203,7 +205,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient (same as default),
             uint64(block.number + 500), // migration block
             uint64(block.number + 1_000), // sweep block
-            address(this) // operator
+            testOperator // operator
         );
         _deployLBPStrategy(totalSupply);
     }

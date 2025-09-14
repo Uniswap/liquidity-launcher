@@ -7,6 +7,7 @@ import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 
 contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     event TokensSwept(address indexed operator, uint256 amount);
+    event CurrencySwept(address indexed operator, uint256 amount);
 
     function test_sweepToken_revertsWithSweepNotAllowed() public {
         vm.expectRevert(
@@ -31,11 +32,41 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), lbp.reserveSupply());
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), 0);
         vm.roll(lbp.sweepBlock());
-        vm.prank(lbp.operator());
         vm.expectEmit(true, true, true, true);
         emit TokensSwept(lbp.operator(), lbp.reserveSupply());
+        vm.prank(lbp.operator());
         lbp.sweepToken();
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), 0);
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), lbp.reserveSupply());
+    }
+
+    function test_sweepCurrency_revertsWithSweepNotAllowed() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
+        );
+        vm.prank(migratorParams.operator);
+        lbp.sweepCurrency();
+    }
+
+    function test_sweepCurrency_revertsWithNotOperator() public {
+        vm.roll(lbp.sweepBlock());
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(tokenLauncher), lbp.operator())
+        );
+        vm.prank(address(tokenLauncher));
+        lbp.sweepCurrency();
+    }
+
+    function test_sweepCurrency_succeeds() public {
+        vm.deal(address(lbp), 1 ether); // give LBP some ETH
+        assertEq(Currency.wrap(address(0)).balanceOf(address(lbp)), 1 ether);
+        assertEq(Currency.wrap(address(0)).balanceOf(lbp.operator()), 0);
+        vm.roll(lbp.sweepBlock());
+        vm.expectEmit(true, true, true, true);
+        emit CurrencySwept(lbp.operator(), 1 ether);
+        vm.prank(lbp.operator());
+        lbp.sweepCurrency();
+        assertEq(Currency.wrap(address(0)).balanceOf(address(lbp)), 0);
+        assertEq(Currency.wrap(address(0)).balanceOf(lbp.operator()), 1 ether);
     }
 }
