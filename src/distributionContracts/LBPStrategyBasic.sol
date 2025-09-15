@@ -255,10 +255,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             createOneSidedPosition && (reserveSupply > initialTokenAmount || leftoverCurrency > 0);
 
         if (shouldCreateOneSided) {
-            (actions, params, liquidity) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
+            (actions, params, liquidity) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
         } else {
-            (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_ONLY_PARAMS);
+            (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_SIZE);
         }
 
         return abi.encode(actions, params);
