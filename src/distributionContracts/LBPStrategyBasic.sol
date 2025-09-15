@@ -47,6 +47,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable positionRecipient;
     uint64 public immutable migrationBlock;
     address public immutable auctionFactory;
+    address public immutable operator;
+    uint64 public immutable sweepBlock;
+    bool public immutable createOneSidedPosition;
     IPositionManager public immutable positionManager;
 
     IAuction public auction;
@@ -75,8 +78,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
+        operator = migratorParams.operator;
+        sweepBlock = migratorParams.sweepBlock;
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
+        createOneSidedPosition = migratorParams.createOneSidedPosition;
     }
 
     /// @inheritdoc IDistributionContract
@@ -154,32 +160,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         bytes memory actions;
         bytes[] memory params;
-        if (reserveSupply == tokenAmount) {
-            if (leftoverCurrency > 0) {
-                (actions, params) = _createFullRangePositionPlan(
-                    liquidity,
-                    sqrtPriceX96,
-                    tokenAmount,
-                    initialCurrencyAmount,
-                    ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS
-                );
-                (actions, params) =
-                    _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96, tokenAmount, leftoverCurrency);
-            } else {
-                (actions, params) = _createFullRangePositionPlan(
-                    liquidity, sqrtPriceX96, tokenAmount, initialCurrencyAmount, ParamsBuilder.FULL_RANGE_ONLY_PARAMS
-                );
-            }
+
+        // Determine if we should create a one-sided position
+        bool shouldCreateOneSided =
+            createOneSidedPosition && (reserveSupply > tokenAmount || leftoverCurrency > 0);
+
+        if (shouldCreateOneSided) {
+            (actions, params) = _createFullRangePositionPlan(liquidity, sqrtPriceX96, tokenAmount, initialCurrencyAmount, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
+            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96, tokenAmount, leftoverCurrency);
         } else {
-            (actions, params) = _createFullRangePositionPlan(
-                liquidity,
-                sqrtPriceX96,
-                tokenAmount,
-                initialCurrencyAmount,
-                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS
-            );
-            (actions, params) =
-                _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96, tokenAmount, leftoverCurrency);
+            (actions, params) = _createFullRangePositionPlan(liquidity, sqrtPriceX96, tokenAmount, initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE);
         }
 
         bytes memory plan = abi.encode(actions, params);
@@ -196,10 +186,38 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, sqrtPriceX96);
     }
 
+    /// @inheritdoc ILBPStrategyBasic
+    function sweepToken() external {
+        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+
+        uint256 tokenBalance = Currency.wrap(token).balanceOf(address(this));
+        if (tokenBalance > 0) {
+            Currency.wrap(token).transfer(operator, tokenBalance);
+            emit TokensSwept(operator, tokenBalance);
+        }
+    }
+
+    /// @inheritdoc ILBPStrategyBasic
+    function sweepCurrency() external {
+        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+
+        uint256 currencyBalance = Currency.wrap(currency).balanceOf(address(this));
+        if (currencyBalance > 0) {
+            Currency.wrap(currency).transfer(operator, currencyBalance);
+            emit CurrencySwept(operator, currencyBalance);
+        }
+    }
+
     function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
         private
         pure
     {
+        if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
+            revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
+        }
+
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
         }

@@ -332,7 +332,17 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_withOneSidedPosition_withNonETHCurrency_succeeds() public {
         // Setup with DAI and larger tick spacing
-        migratorParams = createMigratorParams(DAI, 500, 20, DEFAULT_TOKEN_SPLIT, address(3));
+        migratorParams = createMigratorParams(
+            DAI,
+            500,
+            20,
+            DEFAULT_TOKEN_SPLIT,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2; // 500e18
@@ -422,7 +432,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             500, // fee
             tickSpacing,
             DEFAULT_TOKEN_SPLIT,
-            address(3) // position recipient
+            address(3), // position recipient
+            uint64(block.number + 500),
+            uint64(block.number + 1_000), // sweep block
+            address(this), // operator
+            true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
@@ -494,7 +508,17 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 
         // Redeploy with fuzzed tick spacing
-        migratorParams = createMigratorParams(DAI, 500, tickSpacing, DEFAULT_TOKEN_SPLIT, address(3));
+        migratorParams = createMigratorParams(
+            DAI,
+            500,
+            tickSpacing,
+            DEFAULT_TOKEN_SPLIT,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
@@ -561,7 +585,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(address(0), 500, 20, uint16(tokenSplit), address(3));
+        migratorParams = createMigratorParams(address(0), 500, 20, tokenSplit, address(3), uint64(block.number + 500), uint64(block.number + 1_000), address(this), true);
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup
@@ -662,7 +686,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3));
+        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3), uint64(block.number + 500), uint64(block.number + 1_000), address(this), true);
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI

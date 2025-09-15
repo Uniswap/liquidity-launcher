@@ -2,14 +2,12 @@
 pragma solidity ^0.8.0;
 
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {ParamsBuilder} from "./ParamsBuilder.sol";
 
 /// @title ActionsBuilder
 /// @notice Library for building position actions and parameters
 library ActionsBuilder {
     error InvalidActionsLength(uint256 invalidLength);
-
-    /// @notice Number of actions needed for a standalone full-range position
-    uint256 public constant ACTIONS_LENGTH = 5;
 
     /// @notice Builds full range position actions
     function buildFullRangeActions() internal pure returns (bytes memory) {
@@ -24,7 +22,7 @@ library ActionsBuilder {
 
     /// @notice Builds one-sided position actions to append
     function buildOneSidedActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        if (existingActions.length != ACTIONS_LENGTH) {
+        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE) {
             revert InvalidActionsLength(existingActions.length);
         }
 

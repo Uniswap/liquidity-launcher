@@ -15,11 +15,19 @@ library ParamsBuilder {
     bytes constant ZERO_BYTES = new bytes(0);
 
     /// @notice Number of params needed for a standalone full-range position
-    uint256 public constant FULL_RANGE_ONLY_PARAMS = 5;
+    uint256 public constant FULL_RANGE_SIZE = 5;
 
     /// @notice Number of params needed for full-range + one-sided position
-    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_PARAMS = 8;
+    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 8;
 
+    /// @notice Builds the parameters needed to mint a full range position using the position manager
+    /// @param fullRangeParams The amounts of currency and token that will be used to mint the position
+    /// @param poolKey The pool key
+    /// @param bounds The tick bounds for the full range position
+    /// @param currencyIsCurrency0 Whether the currency address is less than the token address
+    /// @param paramsArraySize The size of the parameters array (either 5 or 8)
+    /// @param positionRecipient The recipient of the position
+    /// @return params The parameters needed to mint a full range position using the position manager
     function buildFullRangeParams(
         FullRangeParams memory fullRangeParams,
         PoolKey memory poolKey,
@@ -28,7 +36,7 @@ library ParamsBuilder {
         uint256 paramsArraySize,
         address positionRecipient
     ) internal pure returns (bytes[] memory params) {
-        if (paramsArraySize != FULL_RANGE_ONLY_PARAMS && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_PARAMS) {
+        if (paramsArraySize != FULL_RANGE_SIZE && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(paramsArraySize);
         }
 
@@ -53,6 +61,16 @@ library ParamsBuilder {
         return params;
     }
 
+    /// @notice Builds the parameters needed to mint a one-sided position using the position manager
+    /// @param oneSidedParams The data specific to creating the one-sided position
+    /// @param poolKey The pool key
+    /// @param bounds The tick bounds for the one-sided position
+    /// @param currencyIsCurrency0 Whether the currency address is less than the token address
+    /// @param existingParams Params to create a full range position (Output of buildFullRangeParams())
+    /// @param currencyIsCurrency0 Whether the currency address is less than the token address
+    /// @param existingParams Params to create a full range position (Output of buildFullRangeParams())
+    /// @param positionRecipient The recipient of the position
+    /// @return params The parameters needed to mint a one-sided position using the position manager
     function buildOneSidedParams(
         OneSidedParams memory oneSidedParams,
         PoolKey memory poolKey,
@@ -61,19 +79,19 @@ library ParamsBuilder {
         bytes[] memory existingParams,
         address positionRecipient
     ) internal pure returns (bytes[] memory) {
-        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_PARAMS) {
+        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(existingParams.length);
         }
 
         // Set up settlement for token
-        existingParams[FULL_RANGE_ONLY_PARAMS] = abi.encode(
+        existingParams[FULL_RANGE_SIZE] = abi.encode(
             currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0,
             oneSidedParams.amount,
             false
         );
 
         // Set up mint params directly
-        existingParams[FULL_RANGE_ONLY_PARAMS + 1] = abi.encode(
+        existingParams[FULL_RANGE_SIZE + 1] = abi.encode(
             poolKey,
             bounds.lowerTick,
             bounds.upperTick,
@@ -84,17 +102,19 @@ library ParamsBuilder {
         );
 
         // Set up clear params
-        existingParams[FULL_RANGE_ONLY_PARAMS + 2] = abi.encode(
+        existingParams[FULL_RANGE_SIZE + 2] = abi.encode(
             currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0, type(uint256).max
         );
 
         return existingParams;
     }
 
-    /// @notice Truncates parameters array to full-range only size
+    /// @notice Truncates parameters array to full-range only size (5 params)
+    /// @param params The parameters to truncate
+    /// @return truncated The truncated parameters only (5 params)
     function truncateParams(bytes[] memory params) internal pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](FULL_RANGE_ONLY_PARAMS);
-        for (uint256 i = 0; i < FULL_RANGE_ONLY_PARAMS; i++) {
+        bytes[] memory truncated = new bytes[](FULL_RANGE_SIZE);
+        for (uint256 i = 0; i < FULL_RANGE_SIZE; i++) {
             truncated[i] = params[i];
         }
         return truncated;
