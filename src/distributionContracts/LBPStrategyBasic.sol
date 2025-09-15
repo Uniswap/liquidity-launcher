@@ -99,7 +99,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        IAuction auctionCreated = IAuction(
+        IAuction _auction = IAuction(
             address(
                 IAuctionFactory(auctionFactory).initializeDistribution(
                     token, auctionSupply, auctionParameters, bytes32(0)
@@ -107,10 +107,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             )
         );
 
-        Currency.wrap(token).transfer(address(auctionCreated), auctionSupply);
-        auctionCreated.onTokensReceived();
+        Currency.wrap(token).transfer(address(_auction), auctionSupply);
+        _auction.onTokensReceived();
 
-        auction = auctionCreated;
+        auction = _auction;
     }
 
     /// @inheritdoc ILBPStrategyBasic
