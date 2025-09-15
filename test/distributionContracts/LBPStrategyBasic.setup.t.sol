@@ -31,7 +31,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                true
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -54,7 +55,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                true
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -76,7 +78,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                true
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -103,7 +106,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                     invalidRecipients[i],
                     uint64(block.number + 500),
                     uint64(block.number + 1_000),
-                    address(this)
+                    address(this),
+                    true
                 ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
@@ -126,7 +130,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                true
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -224,7 +229,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address positionRecipient,
         uint64 sweepBlock,
         uint64 migrationBlock,
-        address operator
+        address operator,
+        bool createOneSidedPosition
     ) public {
         if (sweepBlock <= migrationBlock) {
             vm.expectRevert(
@@ -265,7 +271,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 positionRecipient,
                 migrationBlock,
                 sweepBlock,
-                operator
+                operator,
+                true
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),

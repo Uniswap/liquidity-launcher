@@ -84,7 +84,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator // operator (receive function for checking ETH balance)
+            testOperator, // operator (receive function for checking ETH balance)
+            true // createOneSidedPosition
         );
     }
 
@@ -139,7 +140,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address positionRecipient,
         uint64 migrationBlock,
         uint64 sweepBlock,
-        address operator
+        address operator,
+        bool createOneSidedPosition
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
@@ -150,7 +152,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             positionRecipient: positionRecipient,
             migrationBlock: migrationBlock,
             sweepBlock: sweepBlock,
-            operator: operator
+            operator: operator,
+            createOneSidedPosition: createOneSidedPosition
         });
     }
 
@@ -190,7 +193,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.positionRecipient,
             migratorParams.migrationBlock,
             migratorParams.sweepBlock,
-            migratorParams.operator
+            migratorParams.operator,
+            migratorParams.createOneSidedPosition
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
     }
@@ -205,7 +209,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient (same as default),
             uint64(block.number + 500), // migration block
             uint64(block.number + 1_000), // sweep block
-            testOperator // operator
+            testOperator, // operator
+            true // createOneSidedPosition
         );
         _deployLBPStrategy(totalSupply);
     }

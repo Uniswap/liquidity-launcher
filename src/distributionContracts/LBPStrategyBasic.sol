@@ -49,6 +49,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable auctionFactory;
     address public immutable operator;
     uint64 public immutable sweepBlock;
+    bool public immutable createOneSidedPosition;
     IPositionManager public immutable positionManager;
 
     IAuction public auction;
@@ -87,6 +88,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         sweepBlock = migratorParams.sweepBlock;
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
+        createOneSidedPosition = migratorParams.createOneSidedPosition;
     }
 
     /// @inheritdoc IDistributionContract
@@ -247,17 +249,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes memory actions;
         bytes[] memory params;
         uint128 liquidity;
-        if (reserveSupply == initialTokenAmount) {
-            if (leftoverCurrency > 0) {
-                (actions, params, liquidity) =
-                    _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
-                (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
-            } else {
-                (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_ONLY_PARAMS);
-            }
-        } else {
+
+        // Determine if we should create a one-sided position
+        bool shouldCreateOneSided =
+            createOneSidedPosition && (reserveSupply > initialTokenAmount || leftoverCurrency > 0);
+
+        if (shouldCreateOneSided) {
             (actions, params, liquidity) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_PARAMS);
             (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
+        } else {
+            (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_ONLY_PARAMS);
         }
 
         return abi.encode(actions, params);

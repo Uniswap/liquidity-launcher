@@ -225,7 +225,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this)
+            address(this),
+            true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
@@ -341,7 +342,8 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this)
+            address(this),
+            true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 

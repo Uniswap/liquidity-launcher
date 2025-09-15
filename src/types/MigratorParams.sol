@@ -13,4 +13,5 @@ struct MigratorParameters {
     int24 poolTickSpacing; // the tick spacing that the v4 pool will use
     uint64 sweepBlock; // the block number when the operator can sweep currency and tokens from the pool
     address operator; // the address that is able to sweep currency and tokens from the pool
+    bool createOneSidedPosition; // whether to create a one-sided position after the full range position or not
 }
