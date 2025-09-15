@@ -17,9 +17,9 @@ library TokenPricing {
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
 
-    /// @notice Converts a regular price to Uniswap V4 price formats
-    /// @dev Converts price to both X192 and sqrtX96 formats
-    /// @param price The price as a regular uint256
+    /// @notice Converts a Q96 price to Uniswap v4 price formats
+    /// @dev Converts price from Q96 to both X192 and sqrtX96 formats
+    /// @param price The price in Q96 fixed-point format (96 bits of fractional precision)
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
     /// @return priceX192 The price in Q192 fixed-point format
     /// @return sqrtPriceX96 The square root price in Q96 fixed-point format
@@ -28,15 +28,14 @@ library TokenPricing {
         pure
         returns (uint256 priceX192, uint160 sqrtPriceX96)
     {
-        if (price == 0) {
-            revert InvalidPrice(price);
-        }
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
+        // Reverts if price is 0
         if (currencyIsCurrency0) {
+            // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
         }
 
-        // Convert to X192 format (may overflow if price > type(uint160).max)
+        // Convert from Q96 to X192 format by shifting left 96 bits (overflows if price > type(uint160).max)
         priceX192 = price << FixedPoint96.RESOLUTION;
 
         // Calculate square root for Uniswap v4's sqrtPriceX96 format
@@ -77,6 +76,8 @@ library TokenPricing {
                 : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
+        } else {
+            correspondingCurrencyAmount = currencyAmount;
         }
 
         return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);

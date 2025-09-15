@@ -48,7 +48,10 @@ contract LBPStrategyBasicFactoryTest is Test {
             positionRecipient: address(3),
             migrationBlock: uint64(block.number + 1),
             auctionFactory: address(auctionFactory),
-            tokenSplitToAuction: 5000
+            tokenSplitToAuction: 5000,
+            sweepBlock: uint64(block.number + 2),
+            operator: address(this),
+            createOneSidedPosition: true
         });
 
         auctionParams = abi.encode(
@@ -63,8 +66,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                 tickSpacing: 1e6, // Valid tick spacing for auctions
                 validationHook: address(0), // No validation hook
                 floorPrice: 1e6, // 1 ETH as floor price
-                auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100),
-                fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
+                auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100)
             })
         );
     }

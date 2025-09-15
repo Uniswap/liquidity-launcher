@@ -10,6 +10,7 @@ struct BasePositionParams {
     uint24 poolLPFee;
     int24 poolTickSpacing;
     uint160 initialSqrtPriceX96;
+    uint128 liquidity;
     address positionRecipient;
     IHooks hooks;
 }
@@ -23,7 +24,6 @@ struct FullRangeParams {
 /// @notice Parameters specific to one-sided positions
 struct OneSidedParams {
     uint128 amount;
-    uint128 existingPoolLiquidity; // The current liquidity already in the pool from the full range position
     bool inToken;
 }
 
