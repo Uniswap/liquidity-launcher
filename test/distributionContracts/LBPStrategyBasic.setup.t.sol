@@ -127,7 +127,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertNotEq(address(lbp.auction()), address(0));
 
         // Verify token distribution
-        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 10_000;
+        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 1e7;
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY - expectedAuctionAmount);
     }
@@ -153,7 +153,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         // Add bounds to fuzz parameters
         vm.assume(tokenSplit <= 5_000);
         vm.assume(totalSupply > 1);
-        vm.assume(uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000) > 0);
+        vm.assume(uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7) > 0);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit);
 
@@ -161,7 +161,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         token.transfer(address(lbp), totalSupply);
         lbp.onTokensReceived();
 
-        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000);
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
         assertGe(token.balanceOf(address(lbp)), token.balanceOf(address(lbp.auction())));
@@ -180,7 +180,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertNotEq(address(lbp.auction()), address(0));
 
         // Verify token distribution
-        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
@@ -188,11 +188,11 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_fuzz_constructor_validation(
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        uint16 tokenSplit,
+        uint24 tokenSplit,
         address positionRecipient
     ) public {
         // Test token split validation
-        if (tokenSplit > 5_000) {
+        if (tokenSplit > 5e6) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit));
         }
         // Test tick spacing validation
@@ -209,7 +209,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, positionRecipient)
             );
-        } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 10_000) == 0) {
+        } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 1e7) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
         }
 

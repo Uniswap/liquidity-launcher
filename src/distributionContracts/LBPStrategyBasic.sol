@@ -36,10 +36,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
 
-    /// @notice The token split is measured in bips (10_000 = 100%)
-    uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
-    /// @notice The maximum token split to auction in bips
-    uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
+    /// @notice The token split is measured in mps (10_000_000 = 100%)
+    uint24 public constant TOKEN_SPLIT_DENOMINATOR = 1e7;
+    /// @notice The maximum token split to auction in mps (5_000_000 = 50%)
+    uint24 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5e6;
     /// @notice The Q192 fixed point number used for token amount calculation from priceX192
     uint256 public constant Q192 = 2 ** 192;
 
