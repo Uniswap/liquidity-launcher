@@ -4,6 +4,9 @@ pragma solidity ^0.8.0;
 /// @title IDistributionContract
 /// @notice Interface for token distribution contracts.
 interface IDistributionContract {
+    /// @notice Error thrown when the token address is invalid
+    error InvalidToken(address token);
+
     /// @notice Error thrown when the amount received is invalid upon receiving tokens
     /// @param expected The expected amount
     /// @param received The received amount

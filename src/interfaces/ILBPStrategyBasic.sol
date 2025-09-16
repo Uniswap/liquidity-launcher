@@ -33,10 +33,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param positionRecipient The invalid position recipient
     error InvalidPositionRecipient(address positionRecipient);
 
-    /// @notice Error thrown when the token and currency are the same
-    /// @param token The invalid token
-    error InvalidTokenAndCurrency(address token);
-
     /// @notice Error thrown when the price is invalid
     /// @param price The invalid price
     error InvalidPrice(uint256 price);

@@ -10,7 +10,7 @@ interface IDistributionStrategy {
     /// @param distributionContract The contract that was created that will handle or manage the distribution.
     /// @param token The token that is being distributed.
     /// @param totalSupply The supply of the token that is being distributed.
-    event DistributionInitialized(address distributionContract, address token, uint128 totalSupply);
+    event DistributionInitialized(address indexed distributionContract, address indexed token, uint128 totalSupply);
 
     /// @notice Initialize a distribution of tokens under this strategy.
     /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
