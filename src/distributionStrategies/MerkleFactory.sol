@@ -6,6 +6,9 @@ import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MerkleClaim} from "../distributionContracts/MerkleClaim.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
+/// @title MerkleClaimFactory
+/// @notice Factory for the MerkleClaim contract
+/// @custom:security-contact security@uniswap.org
 contract MerkleClaimFactory is IDistributionStrategy {
     /// @notice Deploys a new MerkleClaim
     /// @param token The ERC-20 token to distribute

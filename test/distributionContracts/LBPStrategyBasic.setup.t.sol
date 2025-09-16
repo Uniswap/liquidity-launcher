@@ -11,11 +11,17 @@ import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
+import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1, lbp.MAX_TOKEN_SPLIT_TO_AUCTION()
+            )
+        );
 
         new LBPStrategyBasicNoValidation(
             address(token),
@@ -30,7 +36,12 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_setUp_revertsWithInvalidTickSpacing() public {
         // Test too low
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MIN_TICK_SPACING - 1)
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                TickMath.MIN_TICK_SPACING - 1,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
         );
 
         new LBPStrategyBasicNoValidation(
@@ -44,7 +55,12 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         // Test too high
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MAX_TICK_SPACING + 1)
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                TickMath.MAX_TICK_SPACING + 1,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
         );
 
         new LBPStrategyBasicNoValidation(
@@ -58,7 +74,11 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_setUp_revertsWithInvalidFee() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1, LPFeeLibrary.MAX_LP_FEE
+            )
+        );
 
         new LBPStrategyBasicNoValidation(
             address(token),
@@ -89,11 +109,22 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_setUp_revertsWithInvalidTokenAndCurrency() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAndCurrency.selector, address(token)));
+    function test_setUp_revertsWithInvalidToken() public {
+        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(token)));
 
         new LBPStrategyBasicNoValidation(
             address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(0)));
+
+        new LBPStrategyBasicNoValidation(
+            address(0),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
             auctionParams,
@@ -127,7 +158,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertNotEq(address(lbp.auction()), address(0));
 
         // Verify token distribution
-        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 10_000;
+        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 1e7;
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY - expectedAuctionAmount);
     }
@@ -153,7 +184,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         // Add bounds to fuzz parameters
         vm.assume(tokenSplit <= 5_000);
         vm.assume(totalSupply > 1);
-        vm.assume(uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000) > 0);
+        vm.assume(uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7) > 0);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit);
 
@@ -161,7 +192,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         token.transfer(address(lbp), totalSupply);
         lbp.onTokensReceived();
 
-        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000);
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
         assertGe(token.balanceOf(address(lbp)), token.balanceOf(address(lbp.auction())));
@@ -180,7 +211,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertNotEq(address(lbp.auction()), address(0));
 
         // Verify token distribution
-        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
@@ -188,20 +219,33 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_fuzz_constructor_validation(
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        uint16 tokenSplit,
+        uint24 tokenSplit,
         address positionRecipient
     ) public {
         // Test token split validation
-        if (tokenSplit > 5_000) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit));
+        if (tokenSplit > lbp.MAX_TOKEN_SPLIT_TO_AUCTION()) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, lbp.MAX_TOKEN_SPLIT_TO_AUCTION()
+                )
+            );
         }
         // Test tick spacing validation
         else if (poolTickSpacing < TickMath.MIN_TICK_SPACING || poolTickSpacing > TickMath.MAX_TICK_SPACING) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, poolTickSpacing));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.InvalidTickSpacing.selector,
+                    poolTickSpacing,
+                    TickMath.MIN_TICK_SPACING,
+                    TickMath.MAX_TICK_SPACING
+                )
+            );
         }
         // Test fee validation
         else if (poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee));
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee, LPFeeLibrary.MAX_LP_FEE)
+            );
         }
         // Test position recipient validation
         else if (positionRecipient == address(0) || positionRecipient == address(1) || positionRecipient == address(2))
@@ -209,7 +253,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, positionRecipient)
             );
-        } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 10_000) == 0) {
+        } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 1e7) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
         }
 

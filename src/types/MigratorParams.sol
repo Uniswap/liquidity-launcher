@@ -8,7 +8,7 @@ struct MigratorParameters {
     address currency; // the currency that the token will be paired with in the v4 pool (currency that the auction raised funds in)
     uint24 poolLPFee; // the LP fee that the v4 pool will use
     int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-    uint16 tokenSplitToAuction; // the percentage of the total supply of the token that will be sent to the auction
+    uint24 tokenSplitToAuction; // the percentage of the total supply of the token that will be sent to the auction
     address auctionFactory; // the Auction factory that will be used to create the auction
     address positionRecipient; // the address that will receive the position
 }
