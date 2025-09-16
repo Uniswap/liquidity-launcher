@@ -11,11 +11,17 @@ import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
+import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1, lbp.MAX_TOKEN_SPLIT_TO_AUCTION()
+            )
+        );
 
         new LBPStrategyBasicNoValidation(
             address(token),
@@ -30,7 +36,12 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_setUp_revertsWithInvalidTickSpacing() public {
         // Test too low
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MIN_TICK_SPACING - 1)
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                TickMath.MIN_TICK_SPACING - 1,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
         );
 
         new LBPStrategyBasicNoValidation(
@@ -44,7 +55,12 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         // Test too high
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MAX_TICK_SPACING + 1)
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                TickMath.MAX_TICK_SPACING + 1,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
         );
 
         new LBPStrategyBasicNoValidation(
@@ -58,7 +74,11 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_setUp_revertsWithInvalidFee() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1, LPFeeLibrary.MAX_LP_FEE
+            )
+        );
 
         new LBPStrategyBasicNoValidation(
             address(token),
@@ -203,16 +223,29 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address positionRecipient
     ) public {
         // Test token split validation
-        if (tokenSplit > 5e6) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit));
+        if (tokenSplit > lbp.MAX_TOKEN_SPLIT_TO_AUCTION()) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, lbp.MAX_TOKEN_SPLIT_TO_AUCTION()
+                )
+            );
         }
         // Test tick spacing validation
         else if (poolTickSpacing < TickMath.MIN_TICK_SPACING || poolTickSpacing > TickMath.MAX_TICK_SPACING) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, poolTickSpacing));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.InvalidTickSpacing.selector,
+                    poolTickSpacing,
+                    TickMath.MIN_TICK_SPACING,
+                    TickMath.MAX_TICK_SPACING
+                )
+            );
         }
         // Test fee validation
         else if (poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee));
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee, LPFeeLibrary.MAX_LP_FEE)
+            );
         }
         // Test position recipient validation
         else if (positionRecipient == address(0) || positionRecipient == address(1) || positionRecipient == address(2))
