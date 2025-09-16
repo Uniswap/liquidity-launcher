@@ -15,7 +15,6 @@ import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
-import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -136,33 +135,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(address(lbp.auction()));
         vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, veryLowPrice));
         lbp.migrate();
-    }
-
-    function test_priceCalculations() public pure {
-        // Test 1:1 price
-        uint256 priceX192 = FullMath.mulDiv(1e18, Q192, 1e18);
-        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        assertEq(sqrtPriceX96, 79228162514264337593543950336);
-
-        // Test 100:1 price
-        priceX192 = FullMath.mulDiv(100e18, Q192, 1e18);
-        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        assertEq(sqrtPriceX96, 792281625142643375935439503360);
-
-        // Test 1:100 price
-        priceX192 = FullMath.mulDiv(1e18, Q192, 100e18);
-        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        assertEq(sqrtPriceX96, 7922816251426433759354395033);
-
-        // Test arbitrary price (111:333)
-        priceX192 = FullMath.mulDiv(111e18, Q192, 333e18);
-        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        assertEq(sqrtPriceX96, 45742400955009932534161870629);
-
-        // Test inverse (333:111)
-        priceX192 = FullMath.mulDiv(333e18, Q192, 111e18);
-        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-        assertEq(sqrtPriceX96, 137227202865029797602485611888);
     }
 
     // ============ Full Range Migration Tests ============
@@ -618,7 +590,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(address(lbp), ethAmount);
 
         if (pricePerToken != 0) {
-            pricePerToken = InverseHelpers.invertPrice(pricePerToken);
+            pricePerToken = InverseHelpers.inverseQ96(pricePerToken);
         }
 
         // Calculate expected values
@@ -637,7 +609,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         if (!isValidPrice && pricePerToken != 0) {
             // Should revert with InvalidPrice
             vm.prank(address(lbp.auction()));
-            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken << 96));
             lbp.migrate();
         } else if (isLeftoverToken) {
             if (pricePerToken == 0) {
@@ -654,7 +626,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_migrate_withETH_revertsWithPriceTooHigh() public {
+    function test_migrate_withETH_revertsWithInvalidPrice() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -682,13 +654,13 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(address(lbp), ethAmount);
 
         // Calculate the inverted price that will be used in the contract
-        uint256 invertedPrice = InverseHelpers.invertPrice(veryLowClearingPrice);
+        uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
 
         vm.roll(lbp.migrationBlock());
 
         vm.prank(address(lbp.auction()));
         // Expect revert with InvalidPrice (the error will contain the inverted price)
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice << 96));
         lbp.migrate();
     }
 
@@ -757,7 +729,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.migrate();
         } else if (!tokenAmountFitsInUint128) {
-            // Should revert with InvalidTokenAmount
+            // Should revert
             vm.prank(address(lbp.auction()));
             vm.expectRevert();
             lbp.migrate();

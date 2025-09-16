@@ -17,36 +17,37 @@ library TokenPricing {
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
 
-    /// @notice Converts a Q96 price to Uniswap v4 price formats
-    /// @dev Converts price from Q96 to both X192 and sqrtX96 formats
+    /// @notice Converts a Q96 price to Uniswap v4 X192 format
+    /// @dev Converts price from Q96 to X192 format
     /// @param price The price in Q96 fixed-point format (96 bits of fractional precision)
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
     /// @return priceX192 The price in Q192 fixed-point format
-    /// @return sqrtPriceX96 The square root price in Q96 fixed-point format
-    function convertPrice(uint256 price, bool currencyIsCurrency0)
-        internal
-        pure
-        returns (uint256 priceX192, uint160 sqrtPriceX96)
-    {
+    function convertToPriceX192(uint256 price, bool currencyIsCurrency0) internal pure returns (uint256 priceX192) {
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
         // Reverts if price is 0
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
         }
-
         // Convert from Q96 to X192 format by shifting left 96 bits (overflows if price > type(uint160).max)
         priceX192 = price << FixedPoint96.RESOLUTION;
+        return priceX192;
+    }
 
+    /// @notice Converts a Q192 price to Uniswap v4 sqrtPriceX96 format
+    /// @dev Converts price from Q192 to sqrtPriceX96 format
+    /// @param priceX192 The price in Q192 fixed-point format
+    /// @return sqrtPriceX96 The square root price in Q96 fixed-point format
+    function convertToSqrtPriceX96(uint256 priceX192) internal pure returns (uint160 sqrtPriceX96) {
         // Calculate square root for Uniswap v4's sqrtPriceX96 format
         // Note: This will lose some precision and be rounded down
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(price);
+            revert InvalidPrice(priceX192);
         }
 
-        return (priceX192, sqrtPriceX96);
+        return sqrtPriceX96;
     }
 
     /// @notice Calculates token amount based on currency amount and price
@@ -65,12 +66,14 @@ library TokenPricing {
         uint128 reserveSupply
     ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
+        // reverts if result overflows uint128
         tokenAmount = currencyIsCurrency0
             ? uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192))
             : uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
+            // reverts if result overflows uint128
             correspondingCurrencyAmount = currencyIsCurrency0
                 ? uint128(FullMath.mulDiv(reserveSupply, Q192, priceX192))
                 : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));

@@ -192,7 +192,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function _prepareMigrationData() private view returns (MigrationData memory data) {
         data.currencyAmount = auction.currencyRaised();
 
-        (data.priceX192, data.sqrtPriceX96) = auction.clearingPrice().convertPrice(currency < token);
+        data.priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
+        data.sqrtPriceX96 = data.priceX192.convertToSqrtPriceX96();
 
         (data.tokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
             data.priceX192.calculateAmounts(data.currencyAmount, currency < token, reserveSupply);
