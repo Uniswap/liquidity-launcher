@@ -7,6 +7,9 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 /// @title ITokenLauncher
 /// @notice Interface for the TokenLauncher contract
 interface ITokenLauncher {
+    /// @notice Thrown when the recipient is the zero address
+    error RecipientCannotBeZeroAddress();
+
     /// @notice Emitted when a token is created
     /// @param tokenAddress The address of the token that was created
     event TokenCreated(address indexed tokenAddress);
@@ -25,6 +28,9 @@ interface ITokenLauncher {
     ///  @param symbol Token symbol
     ///  @param decimals Token decimals
     ///  @param initialSupply Total tokens to be minted (to this contract)
+    ///  @param recipient The address that will receive the newly minted tokens. Should only be set to address(this) when
+    ///                   distributing tokens in the same transaction via multicall. For all other cases, use a different
+    ///                   recipient address to avoid tokens being distributed by another caller
     ///  @param tokenData Extra data needed by the factory
     ///  @return tokenAddress The address of the token that was created
     function createToken(

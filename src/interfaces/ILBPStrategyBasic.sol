@@ -14,7 +14,7 @@ interface ILBPStrategyBasic is IDistributionContract {
     error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
 
     /// @notice Error thrown when the token split is too high
-    error TokenSplitTooHigh(uint16 tokenSplit);
+    error TokenSplitTooHigh(uint24 tokenSplit);
 
     /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
     error InvalidTickSpacing(int24 tickSpacing);
@@ -24,9 +24,6 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Error thrown when the position recipient is the zero address, address(1), or address(2)
     error InvalidPositionRecipient(address positionRecipient);
-
-    /// @notice Error thrown when the token and currency are the same
-    error InvalidTokenAndCurrency(address token);
 
     /// @notice Error thrown when the price is invalid
     error InvalidPrice(uint256 price);
