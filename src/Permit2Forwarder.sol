@@ -16,7 +16,6 @@ contract Permit2Forwarder is IPermit2Forwarder {
     /// @inheritdoc IPermit2Forwarder
     function permit(address owner, IAllowanceTransfer.PermitSingle calldata permitSingle, bytes calldata signature)
         external
-        payable
         returns (bytes memory err)
     {
         // use try/catch in case an actor front-runs the permit, which would DOS multicalls
