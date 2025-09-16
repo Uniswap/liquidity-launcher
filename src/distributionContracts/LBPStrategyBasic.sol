@@ -30,6 +30,7 @@ import {TickCalculations} from "../libraries/TickCalculations.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
