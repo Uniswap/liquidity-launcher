@@ -22,20 +22,20 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
 
     // Constants
-    address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address internal constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+    address internal constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    address internal constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     // Default values
-    uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
-    uint24 constant DEFAULT_TOKEN_SPLIT = 5e6;
-    uint256 constant FORK_BLOCK = 23097193;
+    uint128 internal constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
+    uint24 internal constant DEFAULT_TOKEN_SPLIT = 5e6;
+    uint256 internal constant FORK_BLOCK = 23097193;
 
     // Test token address (make it > address(0) but < DAI)
-    address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
+    address internal constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
 
-    uint160 constant HOOK_PERMISSION_COUNT = 14;
+    uint160 internal constant HOOK_PERMISSION_COUNT = 14;
     uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
 
     // Events
@@ -43,15 +43,15 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     // State variables
-    LBPStrategyBasic lbp;
-    TokenLauncher tokenLauncher;
-    LBPStrategyBasicNoValidation impl;
-    MockERC20 token;
-    MockERC20 implToken;
-    AuctionFactory auctionFactory;
-    MigratorParameters migratorParams;
-    uint256 nextTokenId;
-    bytes auctionParams;
+    LBPStrategyBasic internal lbp;
+    TokenLauncher internal tokenLauncher;
+    LBPStrategyBasicNoValidation internal impl;
+    MockERC20 internal token;
+    MockERC20 internal implToken;
+    AuctionFactory internal auctionFactory;
+    MigratorParameters internal migratorParams;
+    uint256 internal nextTokenId;
+    bytes internal auctionParams;
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("FORK_URL"), FORK_BLOCK);

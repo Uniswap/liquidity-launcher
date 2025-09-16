@@ -19,16 +19,16 @@ import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
 
-    uint128 constant TOTAL_SUPPLY = 1000e18;
-    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-    address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    uint128 internal constant TOTAL_SUPPLY = 1000e18;
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address internal constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+    address internal constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
     LBPStrategyBasicFactory public factory;
-    MockERC20 token;
-    TokenLauncher tokenLauncher;
-    AuctionFactory auctionFactory;
-    MigratorParameters migratorParams;
-    bytes auctionParams;
+    MockERC20 internal token;
+    TokenLauncher internal tokenLauncher;
+    AuctionFactory internal auctionFactory;
+    MigratorParameters internal migratorParams;
+    bytes internal auctionParams;
 
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);

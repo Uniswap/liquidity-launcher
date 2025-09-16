@@ -10,7 +10,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
-    uint256 immutable ethToTransfer;
+    uint256 public immutable ethToTransfer;
     uint64 public immutable endBlock;
 
     constructor(uint256 _ethToTransfer, uint64 _endBlock) {
