@@ -125,8 +125,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         Currency.wrap(token).transfer(address(_auction), auctionSupply);
         _auction.onTokensReceived();
-
         auction = _auction;
+
+        emit AuctionCreated(address(_auction));
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -183,6 +184,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialSqrtPriceX96 = sqrtPriceX96;
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
+
+        emit Validated(sqrtPriceX96, tokenAmount, currencyAmount);
     }
 
     /// @inheritdoc ILBPStrategyBasic
