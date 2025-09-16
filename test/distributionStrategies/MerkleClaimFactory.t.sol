@@ -2,7 +2,7 @@
 pragma solidity =0.8.17;
 
 import "forge-std/Test.sol";
-import {MerkleClaimFactory} from "../../src/distributionStrategies/MerkleFactory.sol";
+import {MerkleClaimFactory} from "../../src/distributionStrategies/MerkleClaimFactory.sol";
 import {MerkleClaim} from "../../src/distributionContracts/MerkleClaim.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 
@@ -45,7 +45,7 @@ contract MerkleClaimFactoryTest is Test {
 
         // Get the predicted address
         address predictedAddress =
-            factory.getMerkleClaimAddress(token, configData, keccak256(abi.encode(address(this), salt)));
+            factory.getMerkleClaimAddress(token, configData, salt, address(this));
 
         // Deploy the actual contract
         IDistributionContract deployedContract = factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt);

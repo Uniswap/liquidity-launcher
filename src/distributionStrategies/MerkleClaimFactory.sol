@@ -34,9 +34,10 @@ contract MerkleClaimFactory is IDistributionStrategy {
     /// @notice Get the address that a MerkleClaim contract would be deployed to
     /// @param token The address of the ERC-20 token to distribute
     /// @param configData ABI-encoded (merkleRoot, owner, endTime) where endTime is optional (0 = no deadline)
-    /// @param salt The salt for deterministic deployment, after hashing with msg.sender
+    /// @param salt The salt for deterministic deployment
+    /// @param sender The address that will be used for salt hashing
     /// @return merkleClaimAddress The address where the MerkleClaim would be deployed
-    function getMerkleClaimAddress(address token, bytes calldata configData, bytes32 salt)
+    function getMerkleClaimAddress(address token, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (address merkleClaimAddress)
@@ -44,8 +45,11 @@ contract MerkleClaimFactory is IDistributionStrategy {
         // Decode the merkle root, owner, and endTime from configData
         (bytes32 merkleRoot, address owner, uint256 endTime) = abi.decode(configData, (bytes32, address, uint256));
 
+        // Hash the salt with sender to match initializeDistribution logic
+        bytes32 _salt = keccak256(abi.encode(sender, salt));
+
         bytes32 initCodeHash =
             keccak256(abi.encodePacked(type(MerkleClaim).creationCode, abi.encode(token, merkleRoot, owner, endTime)));
-        return Create2.computeAddress(salt, initCodeHash, address(this));
+        return Create2.computeAddress(_salt, initCodeHash, address(this));
     }
 }
