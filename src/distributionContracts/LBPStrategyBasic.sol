@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {Auction} from "twap-auction/src/Auction.sol";
+import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -26,6 +32,7 @@ import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
@@ -194,6 +201,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
         }
+        if (_token == address(0) || _token == migratorParams.currency) {
+            revert InvalidToken(address(_token));
+        }
         if (
             migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
                 || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
@@ -204,9 +214,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
                 || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
         ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        if (_token == migratorParams.currency) {
-            revert InvalidTokenAndCurrency(_token);
-        }
+
         if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0) {
             revert AuctionSupplyIsZero();
         }

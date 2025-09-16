@@ -25,9 +25,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the position recipient is the zero address, address(1), or address(2)
     error InvalidPositionRecipient(address positionRecipient);
 
-    /// @notice Error thrown when the token and currency are the same
-    error InvalidTokenAndCurrency(address token);
-
     /// @notice Error thrown when the liquidity is invalid
     error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
 
