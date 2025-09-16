@@ -165,7 +165,7 @@ library StrategyPlanner {
         }
 
         bounds = TickBounds({
-            lowerTick: initialTick.tickCeil(poolTickSpacing), // Rounds toward +infinity to the nearest multiple of tick spacing
+            lowerTick: initialTick.tickStrictCeil(poolTickSpacing), // Rounds toward +infinity to the nearest multiple of tick spacing
             upperTick: TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing // Rounds to the nearest multiple of tick spacing (rounds toward 0 since MAX_TICK is positive)
         });
 
