@@ -32,7 +32,6 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         if (recipient == address(0)) {
             revert RecipientCannotBeZeroAddress();
         }
-        // Create token, with this contract as the recipient of the initial supply
         tokenAddress = ITokenFactory(factory).createToken(
             name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender)
         );
@@ -53,6 +52,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         );
 
         // Now transfer the tokens to the returned address
+        // payerIsUser should be false if the tokens were created in the same call via multicall
         _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
 
         // Notify the distribution contract that it has received the tokens

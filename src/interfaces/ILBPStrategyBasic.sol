@@ -19,7 +19,7 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
-    error TokenSplitTooHigh(uint16 tokenSplit, uint16 maxTokenSplit);
+    error TokenSplitTooHigh(uint24 tokenSplit, uint24 maxTokenSplit);
 
     /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
     /// @param tickSpacing The invalid tick spacing

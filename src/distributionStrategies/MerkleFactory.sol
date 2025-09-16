@@ -5,6 +5,8 @@ import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MerkleClaim} from "../distributionContracts/MerkleClaim.sol";
 
+/// @title MerkleClaimFactory
+/// @notice Factory for the MerkleClaim contract
 /// @custom:security-contact security@uniswap.org
 contract MerkleClaimFactory is IDistributionStrategy {
     /// @notice Deploys a new MerkleClaim
