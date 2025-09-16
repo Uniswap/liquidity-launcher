@@ -8,6 +8,8 @@ interface IDistributionContract {
     error InvalidToken(address token);
 
     /// @notice Error thrown when the amount received is invalid upon receiving tokens
+    /// @param expected The expected amount
+    /// @param received The received amount
     error InvalidAmountReceived(uint256 expected, uint256 received);
 
     /// @notice Notify a distribution contract that it has received the tokens to distribute
