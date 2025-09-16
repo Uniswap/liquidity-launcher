@@ -28,6 +28,9 @@ interface ITokenLauncher {
     ///  @param symbol Token symbol
     ///  @param decimals Token decimals
     ///  @param initialSupply Total tokens to be minted (to this contract)
+    ///  @param recipient The address that will receive the newly minted tokens. Should only be set to address(this) when
+    ///                   distributing tokens in the same transaction via multicall. For all other cases, use a different
+    ///                   recipient address to avoid tokens being distributed by another caller
     ///  @param tokenData Extra data needed by the factory
     ///  @return tokenAddress The address of the token that was created
     function createToken(
