@@ -110,6 +110,41 @@ contract ParamsBuilderTest is Test {
         assertEq(params[4], abi.encode(Currency.wrap(address(1)), type(uint256).max));
     }
 
+    function test_fuzz_buildFullRangeParams_succeeds(
+        PoolKey memory poolKey,
+        TickBounds memory bounds,
+        bool currencyIsCurrency0,
+        uint128 tokenAmount,
+        uint128 currencyAmount
+    ) public view {
+        bytes[] memory params = testHelper.buildFullRangeParams(
+            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
+            poolKey,
+            bounds,
+            currencyIsCurrency0,
+            ParamsBuilder.FULL_RANGE_SIZE,
+            address(3)
+        );
+
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_SIZE);
+        assertEq(params[0], abi.encode(poolKey.currency0, currencyIsCurrency0 ? currencyAmount : tokenAmount, false));
+        assertEq(params[1], abi.encode(poolKey.currency1, currencyIsCurrency0 ? tokenAmount : currencyAmount, false));
+        assertEq(
+            params[2],
+            abi.encode(
+                poolKey,
+                bounds.lowerTick,
+                bounds.upperTick,
+                currencyIsCurrency0 ? currencyAmount : tokenAmount,
+                currencyIsCurrency0 ? tokenAmount : currencyAmount,
+                address(3),
+                ParamsBuilder.ZERO_BYTES
+            )
+        );
+        assertEq(params[3], abi.encode(poolKey.currency0, type(uint256).max));
+        assertEq(params[4], abi.encode(poolKey.currency1, type(uint256).max));
+    }
+
     function test_buildOneSidedParams_revertsWithInvalidParamsLength() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -280,6 +315,70 @@ contract ParamsBuilderTest is Test {
             )
         );
         assertEq(params[7], abi.encode(Currency.wrap(address(0)), type(uint256).max));
+    }
+
+    function test_fuzz_buildOneSidedParams_succeeds(
+        PoolKey memory poolKey,
+        TickBounds memory bounds,
+        bool currencyIsCurrency0,
+        uint128 amount,
+        uint128 tokenAmount,
+        uint128 currencyAmount,
+        bool inToken
+    ) public view {
+        bytes[] memory fullRangeParams = testHelper.buildFullRangeParams(
+            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
+            poolKey,
+            bounds,
+            currencyIsCurrency0,
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
+            address(3)
+        );
+        bytes[] memory params = testHelper.buildOneSidedParams(
+            OneSidedParams({amount: amount, existingPoolLiquidity: 100e18, inToken: inToken}),
+            poolKey,
+            bounds,
+            currencyIsCurrency0,
+            fullRangeParams,
+            address(3)
+        );
+
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
+        assertEq(params[0], abi.encode(poolKey.currency0, currencyIsCurrency0 ? currencyAmount : tokenAmount, false));
+        assertEq(params[1], abi.encode(poolKey.currency1, currencyIsCurrency0 ? tokenAmount : currencyAmount, false));
+        assertEq(
+            params[2],
+            abi.encode(
+                poolKey,
+                bounds.lowerTick,
+                bounds.upperTick,
+                currencyIsCurrency0 ? currencyAmount : tokenAmount,
+                currencyIsCurrency0 ? tokenAmount : currencyAmount,
+                address(3),
+                ParamsBuilder.ZERO_BYTES
+            )
+        );
+        assertEq(params[3], abi.encode(poolKey.currency0, type(uint256).max));
+        assertEq(params[4], abi.encode(poolKey.currency1, type(uint256).max));
+        assertEq(
+            params[5], abi.encode(currencyIsCurrency0 == inToken ? poolKey.currency1 : poolKey.currency0, amount, false)
+        );
+        assertEq(
+            params[6],
+            abi.encode(
+                poolKey,
+                bounds.lowerTick,
+                bounds.upperTick,
+                currencyIsCurrency0 == inToken ? 0 : amount,
+                currencyIsCurrency0 == inToken ? amount : 0,
+                address(3),
+                ParamsBuilder.ZERO_BYTES
+            )
+        );
+        assertEq(
+            params[7],
+            abi.encode(currencyIsCurrency0 == inToken ? poolKey.currency1 : poolKey.currency0, type(uint256).max)
+        );
     }
 
     function test_truncateParams_succeeds() public view {
