@@ -11,6 +11,7 @@ import {MigratorParameters} from "../types/MigratorParams.sol";
 
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract
+/// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasicFactory is IDistributionStrategy {
     IPositionManager public immutable positionManager;
     IPoolManager public immutable poolManager;
@@ -47,6 +48,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
+
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
