@@ -7,7 +7,7 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 /// @notice Interface for token distribution strategies.
 interface IDistributionStrategy {
     /// @notice Emitted when a distribution is initialized
-    event DistributionInitialized(address distributionContract, address token, uint128 totalSupply);
+    event DistributionInitialized(address indexed distributionContract, address indexed token, uint128 totalSupply);
 
     /// @notice Initialize a distribution of tokens under this strategy.
     /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
