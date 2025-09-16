@@ -7,6 +7,9 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 /// @title ITokenLauncher
 /// @notice Interface for the TokenLauncher contract
 interface ITokenLauncher {
+    /// @notice Thrown when the recipient is the zero address
+    error RecipientCannotBeZeroAddress();
+
     /// @notice Emitted when a token is created
     /// @param tokenAddress The address of the token that was created
     event TokenCreated(address indexed tokenAddress);

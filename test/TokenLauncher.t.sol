@@ -14,6 +14,7 @@ import {Distribution} from "../src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {IDistributionContract} from "../src/interfaces/IDistributionContract.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
+import {ITokenLauncher} from "../src/interfaces/ITokenLauncher.sol";
 
 contract TokenLauncherTest is Test, DeployPermit2 {
     TokenLauncher public tokenLauncher;
@@ -81,6 +82,25 @@ contract TokenLauncherTest is Test, DeployPermit2 {
         assertEq(description, "Test token for launcher");
         assertEq(website, "https://test.com");
         assertEq(image, "https://test.com/image.png");
+    }
+
+    function test_createToken_revertsWithRecipientCannotBeZeroAddress() public {
+        vm.expectRevert(abi.encodeWithSelector(ITokenLauncher.RecipientCannotBeZeroAddress.selector));
+        tokenLauncher.createToken(
+            address(uerc20Factory),
+            "Test Token",
+            "TEST",
+            18,
+            1e18,
+            address(0),
+            abi.encode(
+                UERC20Metadata({
+                    description: "Test token for launcher",
+                    website: "https://test.com",
+                    image: "https://test.com/image.png"
+                })
+            )
+        );
     }
 
     function test_distributeToken_strategy_succeeds() public {
