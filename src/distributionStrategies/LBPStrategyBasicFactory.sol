@@ -48,8 +48,9 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     /// @param totalSupply The supply of the token that will be distributed
     /// @param configData The config data for the LBPStrategyBasic contract
     /// @param salt The salt to deterministicly deploy the LBPStrategyBasic contract
+    /// @param sender The address to be concatenated with the salt parameter before being hashed
     /// @return The address of the LBPStrategyBasic contract
-    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
+    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (address)
@@ -57,12 +58,14 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
+        bytes32 _salt = keccak256(abi.encode(sender, salt));
+
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
                 abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager)
             )
         );
-        return Create2.computeAddress(salt, initCodeHash, address(this));
+        return Create2.computeAddress(_salt, initCodeHash, address(this));
     }
 }
