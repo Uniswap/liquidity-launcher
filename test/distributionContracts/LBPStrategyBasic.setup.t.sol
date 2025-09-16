@@ -89,11 +89,22 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_setUp_revertsWithInvalidTokenAndCurrency() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAndCurrency.selector, address(token)));
+    function test_setUp_revertsWithInvalidToken() public {
+        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(token)));
 
         new LBPStrategyBasicNoValidation(
             address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(0)));
+
+        new LBPStrategyBasicNoValidation(
+            address(0),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
             auctionParams,
