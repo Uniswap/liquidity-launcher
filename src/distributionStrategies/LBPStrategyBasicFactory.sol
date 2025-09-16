@@ -48,6 +48,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
+
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
