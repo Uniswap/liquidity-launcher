@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.17;
 
-import {IERC20} from "../interfaces/external/IERC20.sol";
 import {MerkleDistributorWithDeadline} from "merkle-distributor/contracts/MerkleDistributorWithDeadline.sol";
+import {IERC20} from "../interfaces/external/IERC20.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IMerkleClaim} from "../interfaces/IMerkleClaim.sol";
 
