@@ -3,8 +3,6 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {

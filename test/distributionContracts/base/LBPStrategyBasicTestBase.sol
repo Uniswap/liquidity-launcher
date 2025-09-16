@@ -7,8 +7,6 @@ import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBa
 import {MigratorParameters} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LBPStrategyBasicNoValidation} from "../../mocks/LBPStrategyBasicNoValidation.sol";
 import {TokenLauncher} from "../../../src/TokenLauncher.sol";

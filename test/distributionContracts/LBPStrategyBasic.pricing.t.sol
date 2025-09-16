@@ -7,10 +7,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called

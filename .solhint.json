@@ -1,0 +1,27 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "compiler-version": ["error", "^0.8.0"],
+    "func-name-mixedcase": "error",
+    "modifier-name-mixedcase": "error",
+    "var-name-mixedcase": "error",
+    "const-name-snakecase": "error",
+    "func-param-name-mixedcase": "error",
+    "imports-on-top": "error",
+    "no-console": "error",
+    "no-global-import": "error",
+    "no-unused-vars": "error",
+    "quotes": ["error", "double"],
+    "visibility-modifier-order": "error",
+    "avoid-tx-origin": "error",
+    "explicit-types": "error",
+    "use-forbidden-name": "error",
+    "no-empty-blocks": "error",
+    "no-inline-assembly": "warn",
+    "reason-string": ["warn", {"maxLength": 64}],
+    "payable-fallback": "error",
+    "not-rely-on-time": "warn",
+    "not-rely-on-block-hash": "warn",
+    "func-visibility": "error"
+  }
+}

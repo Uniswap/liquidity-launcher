@@ -7,11 +7,8 @@ import {IDistributionContract} from "../../src/interfaces/IDistributionContract.
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
-import {HookBasic} from "../../src/utils/HookBasic.sol";
-import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Constructor Validation Tests ============
@@ -150,8 +147,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_onTokenReceived_succeeds() public {
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
-        console2.logBytes(auctionParams);
-        console2.logBytes(lbp.auctionParameters());
         lbp.onTokensReceived();
 
         // Verify auction is created
