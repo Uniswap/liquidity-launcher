@@ -256,31 +256,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes memory actions;
         bytes[] memory params;
         uint128 liquidity;
-        if (reserveSupply == initialTokenAmount) {
-            if (leftoverCurrency > 0) {
-                (actions, params, liquidity) =
-                    _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE, sqrtPriceX96);
-                (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96);
-            } else {
-                (actions, params,) = _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_SIZE, sqrtPriceX96);
-            }
-        } else {
-            (actions, params, liquidity) =
-                _createFullRangePositionPlan(ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE, sqrtPriceX96);
-            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96);
-        }
 
-        return abi.encode(actions, params);
-    }
-
-    /// @notice Creates the plan for creating a full range v4 position using the position manager
-    /// @param sqrtPriceX96 The initial sqrt price of the pool
-    /// @return The actions and parameters for the position
-    function _createFullRangePositionPlan(uint256 paramsArraySize, uint160 sqrtPriceX96)
-        private
-        view
-        returns (bytes memory, bytes[] memory, uint128)
-    {
         // Create base parameters
         BasePositionParams memory baseParams = BasePositionParams({
             currency: currency,
@@ -292,6 +268,32 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             hooks: IHooks(address(this))
         });
 
+        if (reserveSupply == initialTokenAmount) {
+            if (leftoverCurrency > 0) {
+                (actions, params, liquidity) =
+                    _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
+                (actions, params) = _createOneSidedPositionPlan(baseParams, actions, params, liquidity);
+            } else {
+                (actions, params,) = _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_SIZE);
+            }
+        } else {
+            (actions, params, liquidity) =
+                _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
+            (actions, params) = _createOneSidedPositionPlan(baseParams, actions, params, liquidity);
+        }
+
+        return abi.encode(actions, params);
+    }
+
+    /// @notice Creates the plan for creating a full range v4 position using the position manager
+    /// @param baseParams The base parameters for the position
+    /// @param paramsArraySize The size of the parameters array (either 5 or 8)
+    /// @return The actions and parameters for the position
+    function _createFullRangePositionPlan(BasePositionParams memory baseParams, uint256 paramsArraySize)
+        private
+        view
+        returns (bytes memory, bytes[] memory, uint128)
+    {
         // Create full range specific parameters
         FullRangeParams memory fullRangeParams =
             FullRangeParams({tokenAmount: initialTokenAmount, currencyAmount: initialCurrencyAmount});
@@ -301,30 +303,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Creates the plan for creating a one sided v4 position using the position manager along with the full range position
+    /// @param baseParams The base parameters for the position
     /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
     /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
     /// @param existingPoolLiquidity The existing liquidity from the full range position
-    /// @param sqrtPriceX96 The initial sqrt price of the pool
     /// @return The actions and parameters needed to create the full range position and the one sided position
     function _createOneSidedPositionPlan(
+        BasePositionParams memory baseParams,
         bytes memory actions,
         bytes[] memory params,
-        uint128 existingPoolLiquidity,
-        uint160 sqrtPriceX96
+        uint128 existingPoolLiquidity
     ) private view returns (bytes memory, bytes[] memory) {
         uint128 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - initialTokenAmount;
         bool inToken = leftoverCurrency == 0;
-
-        // Create base parameters
-        BasePositionParams memory baseParams = BasePositionParams({
-            currency: currency,
-            token: token,
-            poolLPFee: poolLPFee,
-            poolTickSpacing: poolTickSpacing,
-            initialSqrtPriceX96: sqrtPriceX96,
-            positionRecipient: positionRecipient,
-            hooks: IHooks(address(this))
-        });
 
         // Create one-sided specific parameters
         OneSidedParams memory oneSidedParams =
