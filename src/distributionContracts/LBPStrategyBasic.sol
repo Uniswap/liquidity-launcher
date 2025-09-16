@@ -115,7 +115,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        auction = IAuction(
+        IAuction _auction = IAuction(
             address(
                 IAuctionFactory(auctionFactory).initializeDistribution(
                     token, auctionSupply, auctionParameters, bytes32(0)
@@ -123,21 +123,23 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             )
         );
 
-        Currency.wrap(token).transfer(address(auction), auctionSupply);
-        auction.onTokensReceived();
+        Currency.wrap(token).transfer(address(_auction), auctionSupply);
+        _auction.onTokensReceived();
+        auction = _auction;
 
-        emit AuctionCreated(address(auction));
+        emit AuctionCreated(address(_auction));
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function validate() external {
-        if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
+        IAuction _auction = auction;
+        if (msg.sender != address(_auction)) revert NotAuction(msg.sender, address(_auction));
 
-        uint256 price = auction.clearingPrice();
+        uint256 price = _auction.clearingPrice();
         if (price == 0) {
             revert InvalidPrice(price);
         }
-        uint128 currencyAmount = auction.currencyRaised();
+        uint128 currencyAmount = _auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
@@ -207,13 +209,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             hooks: IHooks(address(this))
         });
 
+        uint160 sqrtPriceX96 = initialSqrtPriceX96;
+
         // Initialize the pool with the starting price determined by the auction
         // Will revert if:
         //      - Pool is already initialized
         //      - Initial price is not set (sqrtPriceX96 = 0)
-        poolManager.initialize(key, initialSqrtPriceX96);
+        poolManager.initialize(key, sqrtPriceX96);
 
-        bytes memory plan = _createPlan();
+        bytes memory plan = _createPlan(sqrtPriceX96);
 
         // if currency is ETH, we need to send ETH to the position manager
         if (currencyIsNative) {
@@ -222,7 +226,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             positionManager.modifyLiquidities(plan, block.timestamp + 1);
         }
 
-        emit Migrated(key, initialSqrtPriceX96);
+        emit Migrated(key, sqrtPriceX96);
     }
 
     /// @notice Validates the migrator parameters
@@ -258,18 +262,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Creates the plan for creating a full range and/or one sided v4 position using the position manager
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
     /// @return The actions and parameters for the position
-    function _createPlan() private view returns (bytes memory) {
+    function _createPlan(uint160 sqrtPriceX96) private view returns (bytes memory) {
         bytes memory actions;
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
             params = new bytes[](5);
-            (actions, params,) = _createFullRangePositionPlan(actions, params);
+            (actions, params,) = _createFullRangePositionPlan(actions, params, sqrtPriceX96);
         } else {
             params = new bytes[](8);
-            (actions, params, liquidity) = _createFullRangePositionPlan(actions, params);
-            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
+            (actions, params, liquidity) = _createFullRangePositionPlan(actions, params, sqrtPriceX96);
+            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96);
         }
 
         return abi.encode(actions, params);
@@ -278,8 +283,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Creates the plan for creating a full range v4 position using the position manager
     /// @param actions The actions for the position
     /// @param params The parameters for the position
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
     /// @return The actions and parameters for the position
-    function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params)
+    function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params, uint160 sqrtPriceX96)
         private
         view
         returns (bytes memory, bytes[] memory, uint128)
@@ -298,7 +304,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            initialSqrtPriceX96,
+            sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(minTick),
             TickMath.getSqrtPriceAtTick(maxTick),
             currency < token ? currencyAmount : tokenAmount,
@@ -341,15 +347,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
     /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
     /// @param liquidity The existing liquidity from the full range position
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
     /// @return The actions and parameters needed to create the full range position and the one sided position
-    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 liquidity)
-        private
-        view
-        returns (bytes memory, bytes[] memory)
-    {
+    function _createOneSidedPositionPlan(
+        bytes memory actions,
+        bytes[] memory params,
+        uint128 liquidity,
+        uint160 sqrtPriceX96
+    ) private view returns (bytes memory, bytes[] memory) {
         // create something similar where you check if enough liquidity per tick spacing.
         // then mint the position, then settle.
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
+        int24 initialTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
         uint256 tokenAmount = reserveSupply - initialTokenAmount;
         params[5] = abi.encode(Currency.wrap(token), tokenAmount, false);
 
@@ -364,7 +372,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-                initialSqrtPriceX96,
+                sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(lowerTick),
                 TickMath.getSqrtPriceAtTick(upperTick),
                 0,
@@ -405,7 +413,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-                initialSqrtPriceX96,
+                sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(lowerTick),
                 TickMath.getSqrtPriceAtTick(upperTick),
                 tokenAmount,
