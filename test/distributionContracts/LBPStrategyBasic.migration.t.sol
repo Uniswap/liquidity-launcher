@@ -15,7 +15,6 @@ import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
-import "forge-std/console2.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -585,7 +584,17 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(address(0), 500, 20, tokenSplit, address(3), uint64(block.number + 500), uint64(block.number + 1_000), address(this), true);
+        migratorParams = createMigratorParams(
+            address(0),
+            500,
+            20,
+            tokenSplit,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup
@@ -686,7 +695,17 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3), uint64(block.number + 500), uint64(block.number + 1_000), address(this), true);
+        migratorParams = createMigratorParams(
+            DAI,
+            500,
+            20,
+            uint16(tokenSplit),
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI

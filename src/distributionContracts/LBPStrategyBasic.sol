@@ -162,14 +162,22 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params;
 
         // Determine if we should create a one-sided position
-        bool shouldCreateOneSided =
-            createOneSidedPosition && (reserveSupply > tokenAmount || leftoverCurrency > 0);
+        bool shouldCreateOneSided = createOneSidedPosition && (reserveSupply > tokenAmount || leftoverCurrency > 0);
 
         if (shouldCreateOneSided) {
-            (actions, params) = _createFullRangePositionPlan(liquidity, sqrtPriceX96, tokenAmount, initialCurrencyAmount, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
-            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96, tokenAmount, leftoverCurrency);
+            (actions, params) = _createFullRangePositionPlan(
+                liquidity,
+                sqrtPriceX96,
+                tokenAmount,
+                initialCurrencyAmount,
+                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
+            );
+            (actions, params) =
+                _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96, tokenAmount, leftoverCurrency);
         } else {
-            (actions, params) = _createFullRangePositionPlan(liquidity, sqrtPriceX96, tokenAmount, initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE);
+            (actions, params) = _createFullRangePositionPlan(
+                liquidity, sqrtPriceX96, tokenAmount, initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
+            );
         }
 
         bytes memory plan = abi.encode(actions, params);
