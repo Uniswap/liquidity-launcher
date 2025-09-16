@@ -31,7 +31,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Default values
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
-    uint16 constant DEFAULT_TOKEN_SPLIT = 5_000;
+    uint24 constant DEFAULT_TOKEN_SPLIT = 5e6;
     uint256 constant FORK_BLOCK = 23097193;
 
     // Test token address (make it > address(0) but < DAI)
@@ -136,7 +136,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address currency,
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        uint16 tokenSplitToAuction,
+        uint24 tokenSplitToAuction,
         address positionRecipient,
         uint64 migrationBlock,
         uint64 sweepBlock,

@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {Auction} from "twap-auction/src/Auction.sol";
+import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -26,6 +32,7 @@ import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
@@ -33,25 +40,39 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using StrategyPlanner for BasePositionParams;
     using TokenPricing for *;
 
-    /// @notice The token split is measured in bips (10_000 = 100%)
-    uint16 public constant MAX_TOKEN_SPLIT = 10_000;
+    /// @notice The token split is measured in mps (10_000_000 = 100%)
+    uint24 public constant MAX_TOKEN_SPLIT = 1e7;
 
+    /// @notice The token that is being distributed
     address public immutable token;
+    /// @notice The currency that the auction raised funds in
     address public immutable currency;
 
+    /// @notice The LP fee that the v4 pool will use
     uint24 public immutable poolLPFee;
+    /// @notice The tick spacing that the v4 pool will use
     int24 public immutable poolTickSpacing;
 
+    /// @notice The supply of the token that was sent to this contract to be distributed
     uint128 public immutable totalSupply;
+    /// @notice The remaining supply of the token that was not sent to the auction
     uint128 public immutable reserveSupply;
+    /// @notice The address that will receive the position
     address public immutable positionRecipient;
+    /// @notice The block number at which migration is allowed
     uint64 public immutable migrationBlock;
+    /// @notice The auction factory that will be used to create the auction
     address public immutable auctionFactory;
+    /// @notice The operator that can sweep currency and tokens from the pool after sweepBlock
     address public immutable operator;
+    /// @notice The block number at which the operator can sweep currency and tokens from the pool
     uint64 public immutable sweepBlock;
+    /// @notice Whether to create a one sided position after the full range position
     bool public immutable createOneSidedPosition;
+    /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
+    /// @notice The auction that will be used to create the auction
     IAuction public auction;
     bytes public auctionParameters;
 
@@ -71,7 +92,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         currency = migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
-        // e.g. if tokenSplitToAuction = 5000 (50%), then half goes to auction and half is reserved
+        // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
         reserveSupply = _totalSupply
             - uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT);
         positionManager = _positionManager;
@@ -93,7 +114,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        auction = IAuction(
+        IAuction _auction = IAuction(
             address(
                 IAuctionFactory(auctionFactory).initializeDistribution(
                     token, auctionSupply, auctionParameters, bytes32(0)
@@ -101,8 +122,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             )
         );
 
-        Currency.wrap(token).transfer(address(auction), auctionSupply);
-        auction.onTokensReceived();
+        Currency.wrap(token).transfer(address(_auction), auctionSupply);
+        _auction.onTokensReceived();
+        auction = _auction;
+
+        emit AuctionCreated(address(_auction));
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -218,35 +242,44 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
+    /// @notice Validates the migrator parameters
+    /// @param _token The token that is being distributed
+    /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
+    /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
         private
         pure
     {
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
-        }
-
-        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
-        }
-        if (
+        } else if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
+        } else if (_token == address(0) || _token == migratorParams.currency) {
+            revert InvalidToken(address(_token));
+        } else if (
             migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
                 || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
-        ) revert InvalidTickSpacing(migratorParams.poolTickSpacing);
-        if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.poolLPFee);
-        if (
+        ) {
+            revert InvalidTickSpacing(
+                migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
+            );
+        } else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+            revert InvalidFee(migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
+        } else if (
             migratorParams.positionRecipient == address(0)
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
                 || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
-        ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        if (_token == migratorParams.currency) {
-            revert InvalidTokenAndCurrency(_token);
-        }
-        if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0) {
+        ) {
+            revert InvalidPositionRecipient(migratorParams.positionRecipient);
+        } else if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0)
+        {
             revert AuctionSupplyIsZero();
         }
     }
 
+    /// @notice Creates the plan for creating a full range v4 position using the position manager
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
+    /// @return The actions and parameters for the position
     function _createFullRangePositionPlan(
         uint128 liquidity,
         uint160 sqrtPriceX96,
@@ -274,6 +307,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return baseParams.planFullRangePosition(fullRangeParams, paramsArraySize);
     }
 
+    /// @notice Creates the plan for creating a one sided v4 position using the position manager along with the full range position
+    /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
+    /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
+    /// @param existingPoolLiquidity The existing liquidity from the full range position
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
+    /// @return The actions and parameters needed to create the full range position and the one sided position
     function _createOneSidedPositionPlan(
         bytes memory actions,
         bytes[] memory params,
@@ -304,6 +343,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 
+    /// @notice Receives native currency only from the auction
     receive() external payable {
         if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
     }
