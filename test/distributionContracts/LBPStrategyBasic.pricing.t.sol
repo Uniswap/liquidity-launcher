@@ -41,6 +41,8 @@ contract MockAuctionWithERC20Sweep {
 contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     uint256 constant Q96 = 2 ** 96;
     uint256 constant Q192 = 2 ** 192;
+
+    event Validated(uint160 sqrtPriceX96, uint128 tokenAmount, uint128 currencyAmount);
     // ============ Helper Functions ============
 
     function sendCurrencyToLBP(address currency, uint256 amount) internal {
@@ -79,16 +81,19 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // mock the auction giving ETH to the LBP
         vm.deal(address(lbp), ethAmount);
 
-        // Call validate
-        vm.prank(address(lbp.auction()));
-        lbp.validate();
-
         // Calculate expected values
         // inverse price because currency is ETH
         pricePerToken = InverseHelpers.invertPrice(pricePerToken);
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, Q192));
+
+        vm.expectEmit(true, true, true, true);
+        emit Validated(expectedSqrtPrice, expectedTokenAmount, ethAmount);
+
+        // Call validate
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Verify state
         assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
@@ -162,14 +167,17 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         deal(DAI, address(lbp), daiAmount);
 
-        // Call validate
-        vm.prank(address(lbp.auction()));
-        lbp.validate();
-
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
         uint128 expectedTokenAmount = uint128(FullMath.mulDiv(daiAmount, Q192, priceX192));
+
+        vm.expectEmit(true, true, true, true);
+        emit Validated(expectedSqrtPrice, expectedTokenAmount, daiAmount);
+
+        // Call validate
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
 
         // Verify state
         assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
