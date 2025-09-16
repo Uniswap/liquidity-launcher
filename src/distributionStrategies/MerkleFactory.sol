@@ -7,6 +7,7 @@ import {MerkleClaim} from "../distributionContracts/MerkleClaim.sol";
 
 /// @title MerkleClaimFactory
 /// @notice Factory for the MerkleClaim contract
+/// @custom:security-contact security@uniswap.org
 contract MerkleClaimFactory is IDistributionStrategy {
     /// @notice Deploys a new MerkleClaim
     /// @param token The ERC-20 token to distribute
@@ -22,7 +23,9 @@ contract MerkleClaimFactory is IDistributionStrategy {
         // Decode the merkle root, owner, and endTime from configData
         (bytes32 merkleRoot, address owner, uint256 endTime) = abi.decode(configData, (bytes32, address, uint256));
 
-        distributionContract = IDistributionContract(new MerkleClaim{salt: salt}(token, merkleRoot, owner, endTime));
+        // Hash the salt with msg.sender to prevent front-running
+        bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
+        distributionContract = IDistributionContract(new MerkleClaim{salt: _salt}(token, merkleRoot, owner, endTime));
 
         emit DistributionInitialized(address(distributionContract), token, totalSupply);
     }
