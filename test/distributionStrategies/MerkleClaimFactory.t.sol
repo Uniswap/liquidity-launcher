@@ -44,8 +44,7 @@ contract MerkleClaimFactoryTest is Test {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
 
         // Get the predicted address
-        address predictedAddress =
-            factory.getMerkleClaimAddress(token, configData, salt, address(this));
+        address predictedAddress = factory.getMerkleClaimAddress(token, configData, salt, address(this));
 
         // Deploy the actual contract
         IDistributionContract deployedContract = factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt);
