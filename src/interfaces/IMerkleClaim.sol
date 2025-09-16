@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import {IDistributionContract} from "./IDistributionContract.sol";
 
+/// @title IMerkleClaim
+/// @notice Interface for the MerkleClaim contract
 interface IMerkleClaim is IDistributionContract {
     /// @notice Emitted when tokens are swept by the owner after endTime
     /// @param owner The address that swept the tokens

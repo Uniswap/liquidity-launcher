@@ -110,7 +110,7 @@ contract TickCalculationsTest is Test {
         assertEq(tick, 4);
     }
 
-    function test_fuzz_tickStrictCeil(int24 tick, int24 tickSpacing) public {
+    function test_fuzz_tickStrictCeil(int24 tick, int24 tickSpacing) public view {
         tick = int24(bound(int24(tick), int24(TickMath.MIN_TICK), int24(TickMath.MAX_TICK)));
         tickSpacing =
             int24(bound(int24(tickSpacing), int24(TickMath.MIN_TICK_SPACING), int24(TickMath.MAX_TICK_SPACING)));
