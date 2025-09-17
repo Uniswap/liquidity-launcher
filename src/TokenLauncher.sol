@@ -13,6 +13,7 @@ import {ITokenLauncher} from "./interfaces/ITokenLauncher.sol";
 
 /// @title TokenLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
+/// @custom:security-contact security@uniswap.org
 contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     using SafeERC20 for IERC20;
 
@@ -28,7 +29,9 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         address recipient,
         bytes calldata tokenData
     ) external override returns (address tokenAddress) {
-        // Create token, with this contract as the recipient of the initial supply
+        if (recipient == address(0)) {
+            revert RecipientCannotBeZeroAddress();
+        }
         tokenAddress = ITokenFactory(factory).createToken(
             name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender)
         );
@@ -49,6 +52,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         );
 
         // Now transfer the tokens to the returned address
+        // payerIsUser should be false if the tokens were created in the same call via multicall
         _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
 
         // Notify the distribution contract that it has received the tokens

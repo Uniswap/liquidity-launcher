@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {Auction} from "twap-auction/src/Auction.sol";
+import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -19,47 +25,57 @@ import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
-import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
 
-    /// @notice The token split is measured in bips (10_000 = 100%)
-    uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
-    uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
-    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
+    /// @notice The token split is measured in mps (10_000_000 = 100%)
+    uint24 public constant TOKEN_SPLIT_DENOMINATOR = 1e7;
+    /// @notice The maximum token split to auction in mps (5_000_000 = 50%)
+    uint24 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5e6;
+    /// @notice The Q192 fixed point number used for token amount calculation from priceX192
+    uint256 public constant Q192 = 2 ** 192;
 
+    /// @notice The token that is being distributed
     address public immutable token;
+    /// @notice The currency that the auction raised funds in
     address public immutable currency;
 
+    /// @notice The LP fee that the v4 pool will use
     uint24 public immutable poolLPFee;
+    /// @notice The tick spacing that the v4 pool will use
     int24 public immutable poolTickSpacing;
 
+    /// @notice The supply of the token that was sent to this contract to be distributed
     uint128 public immutable totalSupply;
+    /// @notice The remaining supply of the token that was not sent to the auction
     uint128 public immutable reserveSupply;
+    /// @notice The address that will receive the position
     address public immutable positionRecipient;
+    /// @notice The block number at which migration is allowed
     uint64 public immutable migrationBlock;
+    /// @notice The auction factory that will be used to create the auction
     address public immutable auctionFactory;
+    /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
+    /// @notice The auction that will be used to create the auction
     IAuction public auction;
-    // The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
+    /// @notice The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
     // This represents the square root of the ratio of currency1/currency0, where currency0 is the one with the lower address
     uint160 public initialSqrtPriceX96;
+    /// @notice The initial token amount for the pool which will be used to mint liquidity for the full range position
     uint128 public initialTokenAmount;
+    /// @notice The initial currency amount for the pool which will be used to mint liquidity for the full range position
     uint128 public initialCurrencyAmount;
+    /// @notice The auction parameters that will be used to create the auction
     bytes public auctionParameters;
 
     constructor(
@@ -78,7 +94,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         currency = migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
-        // e.g. if tokenSplitToAuction = 5000 (50%), then half goes to auction and half is reserved
+        // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
         // Rounds down so auction always gets less than or equal to half of the total supply
         reserveSupply = _totalSupply
             - uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR);
@@ -99,7 +115,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        auction = IAuction(
+        IAuction _auction = IAuction(
             address(
                 IAuctionFactory(auctionFactory).initializeDistribution(
                     token, auctionSupply, auctionParameters, bytes32(0)
@@ -107,19 +123,23 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             )
         );
 
-        Currency.wrap(token).transfer(address(auction), auctionSupply);
-        auction.onTokensReceived();
+        Currency.wrap(token).transfer(address(_auction), auctionSupply);
+        _auction.onTokensReceived();
+        auction = _auction;
+
+        emit AuctionCreated(address(_auction));
     }
 
     /// @inheritdoc ILBPStrategyBasic
     function validate() external {
-        if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
+        IAuction _auction = auction;
+        if (msg.sender != address(_auction)) revert NotAuction(msg.sender, address(_auction));
 
-        uint256 price = auction.clearingPrice();
+        uint256 price = _auction.clearingPrice();
         if (price == 0) {
             revert InvalidPrice(price);
         }
-        uint128 currencyAmount = auction.currencyRaised();
+        uint128 currencyAmount = _auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
@@ -136,7 +156,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         // compute token amount
-        // will revert if cannot fit in uint128
         uint128 tokenAmount;
         if (currency < token) {
             tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
@@ -165,6 +184,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         initialSqrtPriceX96 = sqrtPriceX96;
         initialTokenAmount = tokenAmount;
         initialCurrencyAmount = currencyAmount;
+
+        emit Validated(sqrtPriceX96, tokenAmount, currencyAmount);
     }
 
     /// @inheritdoc ILBPStrategyBasic
@@ -188,13 +209,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             hooks: IHooks(address(this))
         });
 
+        uint160 sqrtPriceX96 = initialSqrtPriceX96;
+
         // Initialize the pool with the starting price determined by the auction
         // Will revert if:
         //      - Pool is already initialized
         //      - Initial price is not set (sqrtPriceX96 = 0)
-        poolManager.initialize(key, initialSqrtPriceX96);
+        poolManager.initialize(key, sqrtPriceX96);
 
-        bytes memory plan = _createPlan();
+        bytes memory plan = _createPlan(sqrtPriceX96);
 
         // if currency is ETH, we need to send ETH to the position manager
         if (currencyIsNative) {
@@ -203,54 +226,70 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             positionManager.modifyLiquidities(plan, block.timestamp + 1);
         }
 
-        emit Migrated(key, initialSqrtPriceX96);
+        emit Migrated(key, sqrtPriceX96);
     }
 
+    /// @notice Validates the migrator parameters
+    /// @param _token The token that is being distributed
+    /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
+    /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
         private
         pure
     {
-        // Validate that the amount of tokens sent to auction is <= 50% of total supply
-        // This ensures at least half of the tokens remain for the initial liquidity position
+        if (_token == address(0) || _token == migratorParams.currency) {
+            revert InvalidToken(address(_token));
+        }
         if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT_TO_AUCTION);
         }
         if (
             migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
                 || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
-        ) revert InvalidTickSpacing(migratorParams.poolTickSpacing);
-        if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.poolLPFee);
+        ) {
+            revert InvalidTickSpacing(
+                migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
+            );
+        }
+        if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+            revert InvalidFee(migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
+        }
         if (
             migratorParams.positionRecipient == address(0)
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
                 || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
         ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        if (_token == migratorParams.currency) {
-            revert InvalidTokenAndCurrency(_token);
-        }
         if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR) == 0)
         {
             revert AuctionSupplyIsZero();
         }
     }
 
-    function _createPlan() private view returns (bytes memory) {
+    /// @notice Creates the plan for creating a full range and/or one sided v4 position using the position manager
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
+    /// @return The actions and parameters for the position
+    function _createPlan(uint160 sqrtPriceX96) private view returns (bytes memory) {
         bytes memory actions;
         bytes[] memory params;
         uint128 liquidity;
         if (reserveSupply == initialTokenAmount) {
             params = new bytes[](5);
-            (actions, params,) = _createFullRangePositionPlan(actions, params);
+            (actions, params,) = _createFullRangePositionPlan(actions, params, sqrtPriceX96);
         } else {
             params = new bytes[](8);
-            (actions, params, liquidity) = _createFullRangePositionPlan(actions, params);
-            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
+            (actions, params, liquidity) = _createFullRangePositionPlan(actions, params, sqrtPriceX96);
+            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity, sqrtPriceX96);
         }
 
         return abi.encode(actions, params);
     }
 
-    function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params)
+    /// @notice Creates the plan for creating a full range v4 position using the position manager
+    /// @param actions The actions for the position
+    /// @param params The parameters for the position
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
+    /// @return The actions and parameters for the position
+    function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params, uint160 sqrtPriceX96)
         private
         view
         returns (bytes memory, bytes[] memory, uint128)
@@ -269,7 +308,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            initialSqrtPriceX96,
+            sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(minTick),
             TickMath.getSqrtPriceAtTick(maxTick),
             currency < token ? currencyAmount : tokenAmount,
@@ -308,14 +347,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return (actions, params, liquidity);
     }
 
-    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 liquidity)
-        private
-        view
-        returns (bytes memory, bytes[] memory)
-    {
+    /// @notice Creates the plan for creating a one sided v4 position using the position manager along with the full range position
+    /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
+    /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
+    /// @param liquidity The existing liquidity from the full range position
+    /// @param sqrtPriceX96 The initial sqrt price of the pool
+    /// @return The actions and parameters needed to create the full range position and the one sided position
+    function _createOneSidedPositionPlan(
+        bytes memory actions,
+        bytes[] memory params,
+        uint128 liquidity,
+        uint160 sqrtPriceX96
+    ) private view returns (bytes memory, bytes[] memory) {
         // create something similar where you check if enough liquidity per tick spacing.
         // then mint the position, then settle.
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
+        int24 initialTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
         uint256 tokenAmount = reserveSupply - initialTokenAmount;
         params[5] = abi.encode(Currency.wrap(token), tokenAmount, false);
 
@@ -330,7 +376,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-                initialSqrtPriceX96,
+                sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(lowerTick),
                 TickMath.getSqrtPriceAtTick(upperTick),
                 0,
@@ -371,7 +417,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
             // get liquidity
             uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-                initialSqrtPriceX96,
+                sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(lowerTick),
                 TickMath.getSqrtPriceAtTick(upperTick),
                 tokenAmount,
@@ -414,6 +460,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return (actions, params);
     }
 
+    /// @notice Truncates the parameters to the length 5
+    /// @param params The parameters to truncate
+    /// @return The truncated parameters
     function _truncate(bytes[] memory params) private pure returns (bytes[] memory) {
         bytes[] memory truncated = new bytes[](5);
         truncated[0] = params[0];
@@ -424,5 +473,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return truncated;
     }
 
+    /// @notice Receives native currency
     receive() external payable {}
 }
