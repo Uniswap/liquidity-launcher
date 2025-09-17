@@ -284,7 +284,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, lbp.Q192()));
+        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, ethAmount, lbp.Q192());
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;

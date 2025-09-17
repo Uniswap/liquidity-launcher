@@ -4,6 +4,6 @@
   "migrateWithNonETHCurrency": "633299",
   "migrateWithNonETHCurrency_withOneSidedPosition": "633651",
   "onTokensReceived": "4891131",
-  "validate_withETH": "75247",
-  "validate_withNonETHCurrency": "80727"
+  "validate_withETH": "75269",
+  "validate_withNonETHCurrency": "80749"
 }

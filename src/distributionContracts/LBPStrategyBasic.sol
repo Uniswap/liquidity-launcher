@@ -142,6 +142,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
         }
 
+        if (price == 0) {
+            revert InvalidPrice(price);
+        }
+
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
         // Reverts if price is 0
         if (currency < token) {
