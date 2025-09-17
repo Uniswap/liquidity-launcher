@@ -286,7 +286,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param actions The actions for the position
     /// @param params The parameters for the position
     /// @param sqrtPriceX96 The initial sqrt price of the pool
-    /// @return The actions and parameters for the position
+    /// @return The actions needed to mint a full range position on the position manager
+    /// @return The parameters needed to mint a full range position on the position manager
+    /// @return The liquidity that will be minted for the full range position on the position manager
     function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params, uint160 sqrtPriceX96)
         private
         view
@@ -350,7 +352,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
     /// @param liquidity The existing liquidity from the full range position
     /// @param sqrtPriceX96 The initial sqrt price of the pool
-    /// @return The actions and parameters needed to create the full range position and the one sided position
+    /// @return The actions needed to mint a one sided position on the position manager
+    /// @return The parameters needed to mint a one sided position on the position manager
     function _createOneSidedPositionPlan(
         bytes memory actions,
         bytes[] memory params,
