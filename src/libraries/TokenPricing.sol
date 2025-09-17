@@ -13,6 +13,9 @@ library TokenPricing {
     /// @notice Thrown when price is invalid (0 or out of bounds)
     error InvalidPrice(uint256 price);
 
+    /// @notice Thrown when amount overflows
+    error AmountOverflow();
+
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
@@ -34,14 +37,19 @@ library TokenPricing {
         // If currency is currency0, we need to invert the price to get currency1/currency0 format
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
-            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
+            price = (1 << (FixedPoint96.RESOLUTION) * 2) / price;
         }
 
-        // Convert from Q96 to X192 format by shifting left 96 bits (overflows if price > type(uint160).max)
+        // Check price bounds after potential inversion
+        if (price > type(uint160).max) {
+            revert InvalidPrice(price);
+        }
+
+        // Convert from Q96 to X192 format by shifting left 96 bits (will not overflow since price is less than or equal to type(uint160).max)
         priceX192 = price << FixedPoint96.RESOLUTION;
 
         // Calculate square root for Uniswap v4's sqrtPriceX96 format
-        // Note: This will lose some precision and be rounded down
+        // This will lose some precision and be rounded down
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
@@ -65,21 +73,30 @@ library TokenPricing {
         uint128 currencyAmount,
         bool currencyIsCurrency0,
         uint128 reserveSupply
-    ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
+    ) internal pure returns (uint128, uint128, uint128) {
+        uint128 leftoverCurrency;
+        uint128 correspondingCurrencyAmount;
+
         // calculates corresponding token amount based on currency amount and price
-        tokenAmount = currencyIsCurrency0
-            ? uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192))
-            : uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+        uint256 tokenAmount = currencyIsCurrency0
+            ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
+            : FullMath.mulDiv(currencyAmount, Q192, priceX192);
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
-            correspondingCurrencyAmount = currencyIsCurrency0
-                ? uint128(FullMath.mulDiv(reserveSupply, Q192, priceX192))
-                : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
+            uint256 correspondingCurrencyAmountUint256 = currencyIsCurrency0
+                ? FullMath.mulDiv(reserveSupply, Q192, priceX192)
+                : FullMath.mulDiv(priceX192, reserveSupply, Q192);
+
+            if (correspondingCurrencyAmountUint256 > type(uint128).max) {
+                revert AmountOverflow();
+            }
+
+            correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
         }
 
-        return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
+        return (uint128(tokenAmount), leftoverCurrency, correspondingCurrencyAmount);
     }
 }
