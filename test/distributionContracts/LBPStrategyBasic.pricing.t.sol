@@ -288,9 +288,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
+        bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
         bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
+        bool tokenAmountFitsInUint128 = expectedTokenAmount <= type(uint128).max;
 
-        if (isValidPrice && isValidTokenAmount) {
+        if (isValidPrice && isValidTokenAmount && priceFitsInUint160 && tokenAmountFitsInUint128) {
             // Should succeed
             vm.prank(address(lbp.auction()));
             lbp.validate();
@@ -300,12 +302,12 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             assertEq(lbp.initialTokenAmount(), expectedTokenAmount);
             assertEq(lbp.initialCurrencyAmount(), ethAmount);
             assertEq(address(lbp).balance, ethAmount);
-        } else if (!isValidPrice) {
+        } else if (!isValidPrice || !priceFitsInUint160) {
             // Should revert with InvalidPrice
             vm.prank(address(lbp.auction()));
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, pricePerToken));
             lbp.validate();
-        } else {
+        } else if (tokenAmountFitsInUint128) {
             // Should revert with InvalidTokenAmount
             vm.startPrank(address(lbp.auction()));
             vm.expectRevert(
@@ -313,6 +315,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
                     ILBPStrategyBasic.InvalidTokenAmount.selector, expectedTokenAmount, lbp.reserveSupply()
                 )
             );
+            lbp.validate();
+        } else {
+            // Should revert from overflow
+            vm.prank(address(lbp.auction()));
+            vm.expectRevert();
             lbp.validate();
         }
     }

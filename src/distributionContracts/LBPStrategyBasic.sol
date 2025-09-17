@@ -136,20 +136,24 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (msg.sender != address(_auction)) revert NotAuction(msg.sender, address(_auction));
 
         uint256 price = _auction.clearingPrice();
-        if (price == 0) {
-            revert InvalidPrice(price);
-        }
         uint128 currencyAmount = _auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
         }
 
-        // inverse if currency is currency0
+        // If currency is currency0, we need to invert the price (price = currency1/currency0)
+        // Reverts if price is 0
         if (currency < token) {
+            // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
         }
-        uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
+        // Check price bounds after potential inversion
+        if (price > type(uint160).max) {
+            revert InvalidPrice(price);
+        }
+        // Convert to X192 format (will not overflow since price is less than or equal to type(uint160).max)
+        uint256 priceX192 = price << FixedPoint96.RESOLUTION;
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
             revert InvalidPrice(price);

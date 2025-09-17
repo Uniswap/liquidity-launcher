@@ -2,7 +2,6 @@
 pragma solidity =0.8.17;
 
 import {MerkleDistributorWithDeadline} from "merkle-distributor/contracts/MerkleDistributorWithDeadline.sol";
-import {IERC20} from "../interfaces/external/IERC20.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 
 /// @title MerkleClaim
