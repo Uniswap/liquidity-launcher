@@ -81,6 +81,10 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param balance The balance of the currency
     error InsufficientCurrency(uint128 currencyAmount, uint128 balance);
 
+    /// @notice Error thrown when the token amount is too high
+    /// @param tokenAmount The invalid token amount
+    error AmountOverflow(uint256 tokenAmount);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     function migrate() external;
 
