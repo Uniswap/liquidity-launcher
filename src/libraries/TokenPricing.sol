@@ -66,14 +66,14 @@ library TokenPricing {
         uint128 reserveSupply
     ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
-        // reverts if result overflows uint128
+        // reverts if FullMath result overflows uint256
         tokenAmount = currencyIsCurrency0
             ? uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192))
             : uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
-            // reverts if result overflows uint128
+            // reverts if FullMathresult overflows uint256
             correspondingCurrencyAmount = currencyIsCurrency0
                 ? uint128(FullMath.mulDiv(reserveSupply, Q192, priceX192))
                 : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
