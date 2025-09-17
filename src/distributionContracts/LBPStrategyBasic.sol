@@ -136,32 +136,42 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (msg.sender != address(_auction)) revert NotAuction(msg.sender, address(_auction));
 
         uint256 price = _auction.clearingPrice();
-        if (price == 0) {
-            revert InvalidPrice(price);
-        }
         uint128 currencyAmount = _auction.currencyRaised();
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
         }
 
-        // inverse if currency is currency0
+        if (price == 0) {
+            revert InvalidPrice(price);
+        }
+
+        // If currency is currency0, we need to invert the price (price = currency1/currency0)
         if (currency < token) {
+            // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
         }
-        uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
+        // Check price bounds after potential inversion
+        if (price > type(uint160).max) {
+            revert InvalidPrice(price);
+        }
+        // Convert to X192 format (will not overflow since price is less than or equal to type(uint160).max)
+        uint256 priceX192 = price << FixedPoint96.RESOLUTION;
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
             revert InvalidPrice(price);
         }
 
         // compute token amount
-        uint128 tokenAmount;
-        if (currency < token) {
-            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
-        } else {
-            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+        uint256 tokenAmountUint256 = currency < token
+            ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
+            : FullMath.mulDiv(currencyAmount, Q192, priceX192);
+
+        if (tokenAmountUint256 > type(uint128).max) {
+            revert AmountOverflow(tokenAmountUint256);
         }
+
+        uint128 tokenAmount = uint128(tokenAmountUint256);
 
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);
