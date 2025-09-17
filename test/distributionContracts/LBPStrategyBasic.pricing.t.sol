@@ -221,11 +221,11 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
-    function test_fuzz_validate_withETH(uint256 pricePerToken, uint128 ethAmount, uint16 tokenSplit) public {
+    function test_fuzz_validate_withETH(uint256 pricePerToken, uint128 ethAmount, uint24 tokenSplit) public {
         vm.assume(pricePerToken <= type(uint160).max);
-        tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
 
-        migratorParams = createMigratorParams(address(0), 500, 20, uint16(tokenSplit), address(3));
+        migratorParams = createMigratorParams(address(0), 500, 20, uint24(tokenSplit), address(3));
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup

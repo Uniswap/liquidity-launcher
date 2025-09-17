@@ -34,7 +34,7 @@ library TokenPricing {
         // If currency is currency0, we need to invert the price to get currency1/currency0 format
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
-            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
+            price = (1 << (FixedPoint96.RESOLUTION) * 2) / price;
         }
 
         // Convert from Q96 to X192 format by shifting left 96 bits (overflows if price > type(uint160).max)
