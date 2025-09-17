@@ -279,14 +279,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         });
 
         if (reserveSupply == initialTokenAmount) {
+            // There is leftover currency and no leftover tokens. Full reserve supply is used for the full range position
             if (leftoverCurrency > 0) {
                 (actions, params, liquidity) =
                     _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
                 (actions, params) = _createOneSidedPositionPlan(baseParams, actions, params, liquidity);
             } else {
+                // Currency raised is equally paired with the reserve supply and only full range position is needed
                 (actions, params,) = _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_SIZE);
             }
         } else {
+            // There is leftover tokens and no leftover currency. One sided position is created with the leftover tokens
             (actions, params, liquidity) =
                 _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
             (actions, params) = _createOneSidedPositionPlan(baseParams, actions, params, liquidity);
