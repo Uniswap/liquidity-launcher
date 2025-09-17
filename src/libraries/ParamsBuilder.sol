@@ -80,6 +80,7 @@ library ParamsBuilder {
         address positionRecipient
     ) internal pure returns (bytes[] memory) {
         if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
+            console2.log("hittng here");
             revert InvalidParamsLength(existingParams.length);
         }
 

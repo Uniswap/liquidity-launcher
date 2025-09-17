@@ -41,7 +41,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using StrategyPlanner for BasePositionParams;
     using TokenPricing for *;
 
-    /// @notice The token split is measured in mps (10_000_000 = 100%)
+    /// @notice The maximum percentage of the supply for distribution that can be sent to the auction, expressed in mps (1e7 = 100%)
     uint24 public constant MAX_TOKEN_SPLIT = 1e7;
 
     /// @notice The token that is being distributed
@@ -177,29 +177,41 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         private
         pure
     {
+        // sweep block validation (cannot be before or equal to the migration block)
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
-        } else if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
+        }
+        // token split validation (cannot be greater than 100%)
+        else if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
-        } else if (_token == address(0) || _token == migratorParams.currency) {
+        }
+        // token validation (cannot be zero address or the same as the currency)
+        else if (_token == address(0) || _token == migratorParams.currency) {
             revert InvalidToken(address(_token));
-        } else if (
+        }
+        // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
+        else if (
             migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
                 || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
         ) {
             revert InvalidTickSpacing(
                 migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
             );
-        } else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+        }
+        // fee validation (cannot be greater than the v4 max fee)
+        else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
             revert InvalidFee(migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
-        } else if (
+        }
+        // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
+        else if (
             migratorParams.positionRecipient == address(0)
                 || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
                 || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
         ) {
             revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        } else if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0)
-        {
+        }
+        // auction supply validation (cannot be zero)
+        else if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0) {
             revert AuctionSupplyIsZero();
         }
     }

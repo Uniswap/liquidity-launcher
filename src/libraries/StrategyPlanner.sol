@@ -11,6 +11,7 @@ import {BasePositionParams, FullRangeParams, OneSidedParams, TickBounds} from ".
 import {ParamsBuilder} from "./ParamsBuilder.sol";
 import {ActionsBuilder} from "./ActionsBuilder.sol";
 import {TickCalculations} from "./TickCalculations.sol";
+import "forge-std/console2.sol";
 
 /// @title PositionPlanner
 /// @notice Simplified library that orchestrates position planning using helper libraries
@@ -119,6 +120,7 @@ library StrategyPlanner {
         bytes memory existingActions,
         bytes[] memory existingParams
     ) internal pure returns (bytes memory actions, bytes[] memory params) {
+        console2.log("hittng here 1");
         bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
 
         // Get tick bounds based on position side
@@ -129,8 +131,11 @@ library StrategyPlanner {
         // If the tick bounds are 0,0 (which means the current tick is too close to MIN_TICK or MAX_TICK), return the existing actions and parameters
         // that will build a full range position
         if (bounds.lowerTick == 0 && bounds.upperTick == 0) {
+            console2.log("hittng here 2");
             return (existingActions, existingParams.truncateParams());
         }
+
+        console2.log("hittng here 2.5");
 
         // Use safe helper to check for overflow
         (uint256 liquidityUint256, bool wouldOverflow) = _getLiquidityForAmountsSafe(
@@ -141,12 +146,16 @@ library StrategyPlanner {
             currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
+        console2.log("hittng here 3");
         if (
             wouldOverflow || uint128(liquidityUint256) > type(uint128).max - baseParams.liquidity
                 || baseParams.liquidity + liquidityUint256 > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
         ) {
+            console2.log("hittng here 4");
             return (existingActions, ParamsBuilder.truncateParams(existingParams));
         }
+
+        console2.log("hittng here 5");
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.token),
@@ -156,6 +165,7 @@ library StrategyPlanner {
             hooks: baseParams.hooks
         });
 
+        console2.log("hittng here 6");
         actions = ActionsBuilder.buildOneSidedActions(existingActions);
         params = oneSidedParams.buildOneSidedParams(
             poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient
@@ -173,6 +183,7 @@ library StrategyPlanner {
         pure
         returns (TickBounds memory bounds)
     {
+        console2.log("hittng here 7");
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         // Check if position is too close to MIN_TICK. If so, return a lower tick and upper tick of 0
@@ -197,10 +208,12 @@ library StrategyPlanner {
         pure
         returns (TickBounds memory bounds)
     {
+        console2.log("hittng here 8");
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         // Check if position is too close to MAX_TICK. If so, return a lower tick and upper tick of 0
         if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
+            console2.log("hittng here 9");
             return bounds;
         }
 
@@ -208,6 +221,8 @@ library StrategyPlanner {
             lowerTick: initialTick.tickStrictCeil(poolTickSpacing), // Rounds toward +infinity to the nearest multiple of tick spacing
             upperTick: TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing // Rounds to the nearest multiple of tick spacing (rounds toward 0 since MAX_TICK is positive)
         });
+
+        console2.log("hittng here 10");
 
         return bounds;
     }
