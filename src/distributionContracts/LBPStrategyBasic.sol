@@ -160,12 +160,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         // compute token amount
-        uint128 tokenAmount;
-        if (currency < token) {
-            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
-        } else {
-            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+        uint256 tokenAmount256 = currency < token
+            ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
+            : FullMath.mulDiv(currencyAmount, Q192, priceX192);
+
+        if (tokenAmount256 > type(uint128).max) {
+            revert AmountOverflow(tokenAmount256);
         }
+
+        uint128 tokenAmount = uint128(tokenAmount256);
 
         if (tokenAmount > reserveSupply) {
             revert InvalidTokenAmount(tokenAmount, reserveSupply);

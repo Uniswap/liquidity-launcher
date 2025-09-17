@@ -317,9 +317,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             );
             lbp.validate();
         } else {
-            // Should revert from overflow
+            // Should revert with AmountOverflow
             vm.prank(address(lbp.auction()));
-            vm.expectRevert();
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AmountOverflow.selector, expectedTokenAmount));
             lbp.validate();
         }
     }
