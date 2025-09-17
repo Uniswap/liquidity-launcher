@@ -147,7 +147,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
 
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
-        // Reverts if price is 0
         if (currency < token) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
