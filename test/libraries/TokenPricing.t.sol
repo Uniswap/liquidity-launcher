@@ -101,4 +101,33 @@ contract TokenPricingTest is Test {
         sqrtPriceX96 = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
         assertEq(sqrtPriceX96, 137227202865029797602485611888);
     }
+
+    function test_calculateAmounts_revertsOnOverflow() public {
+        // Using maximum values that will cause overflow
+        uint256 priceX192 = type(uint256).max; // Maximum price
+        uint128 currencyAmount = type(uint128).max; // Maximum currency amount
+        bool currencyIsCurrency0 = true;
+        uint128 reserveSupply = type(uint128).max;
+
+        // Calculate the actual overflow value that FullMath.mulDiv will return
+        uint256 expectedOverflow = FullMath.mulDiv(priceX192, currencyAmount, Q192);
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.AmountOverflow.selector, expectedOverflow));
+        tokenPricingHelper.calculateAmounts(priceX192, currencyAmount, currencyIsCurrency0, reserveSupply);
+    }
+
+    function test_calculateAmounts_worksWithMaxSafeValues() public view {
+        // Test that max uint128 values work when calculations don't overflow
+        uint256 priceX192 = Q192; // Price of 1:1 (neutral price)
+        uint128 currencyAmount = type(uint128).max;
+        bool currencyIsCurrency0 = true;
+        uint128 reserveSupply = type(uint128).max;
+
+        // With 1:1 price, token amount should equal currency amount (no overflow)
+        (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) =
+            tokenPricingHelper.calculateAmounts(priceX192, currencyAmount, currencyIsCurrency0, reserveSupply);
+
+        assertEq(tokenAmount, currencyAmount);
+        assertEq(leftoverCurrency, 0);
+        assertEq(correspondingCurrencyAmount, currencyAmount);
+    }
 }

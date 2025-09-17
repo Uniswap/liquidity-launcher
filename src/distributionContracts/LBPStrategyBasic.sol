@@ -363,7 +363,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint128 tokenAmount,
         uint128 currencyAmount,
         uint256 paramsArraySize
-    ) private view returns (bytes memory, bytes[] memory) {
+    ) private pure returns (bytes memory, bytes[] memory) {
         // Create full range specific parameters
         FullRangeParams memory fullRangeParams =
             FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount});

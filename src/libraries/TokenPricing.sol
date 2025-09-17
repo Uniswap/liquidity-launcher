@@ -13,6 +13,9 @@ library TokenPricing {
     /// @notice Thrown when price is invalid (0 or out of bounds)
     error InvalidPrice(uint256 price);
 
+    /// @notice Thrown when calculated amount exceeds uint128 max value
+    error AmountOverflow(uint256 calculatedAmount);
+
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
@@ -67,16 +70,28 @@ library TokenPricing {
     ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
         // reverts if FullMath result overflows uint256
-        tokenAmount = currencyIsCurrency0
-            ? uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192))
-            : uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
+        uint256 calculatedTokenAmount = currencyIsCurrency0
+            ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
+            : FullMath.mulDiv(currencyAmount, Q192, priceX192);
+
+        // Check for overflow before casting to uint128
+        if (calculatedTokenAmount > type(uint128).max) {
+            revert AmountOverflow(calculatedTokenAmount);
+        }
+        tokenAmount = uint128(calculatedTokenAmount);
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
-            // reverts if FullMathresult overflows uint256
-            correspondingCurrencyAmount = currencyIsCurrency0
-                ? uint128(FullMath.mulDiv(reserveSupply, Q192, priceX192))
-                : uint128(FullMath.mulDiv(priceX192, reserveSupply, Q192));
+            // reverts if FullMath result overflows uint256
+            uint256 calculatedCurrencyAmount = currencyIsCurrency0
+                ? FullMath.mulDiv(reserveSupply, Q192, priceX192)
+                : FullMath.mulDiv(priceX192, reserveSupply, Q192);
+
+            // Check for overflow before casting to uint128
+            if (calculatedCurrencyAmount > type(uint128).max) {
+                revert AmountOverflow(calculatedCurrencyAmount);
+            }
+            correspondingCurrencyAmount = uint128(calculatedCurrencyAmount);
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
         } else {

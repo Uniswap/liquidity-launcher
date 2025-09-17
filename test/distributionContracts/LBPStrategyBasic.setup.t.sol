@@ -296,8 +296,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address positionRecipient,
         uint64 sweepBlock,
         uint64 migrationBlock,
-        address operator,
-        bool createOneSidedPosition
+        address operator
     ) public {
         uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
         if (sweepBlock <= migrationBlock) {
