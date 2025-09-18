@@ -51,7 +51,8 @@ contract LBPStrategyBasicFactoryTest is Test {
             tokenSplitToAuction: 5000,
             sweepBlock: uint64(block.number + 2),
             operator: address(this),
-            createOneSidedPosition: true
+            createOneSidedTokenPosition: true,
+            createOneSidedCurrencyPosition: true
         });
 
         auctionParams = abi.encode(

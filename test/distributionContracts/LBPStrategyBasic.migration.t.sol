@@ -253,6 +253,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -354,6 +355,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000), // sweep block
             address(this), // operator
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -435,6 +437,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);

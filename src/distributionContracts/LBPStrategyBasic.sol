@@ -67,8 +67,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable operator;
     /// @notice The block number at which the operator can sweep currency and tokens from the pool
     uint64 public immutable sweepBlock;
-    /// @notice Whether to create a one sided position after the full range position
-    bool public immutable createOneSidedPosition;
+    /// @notice Whether to create a one sided position in the token after the full range position
+    bool public immutable createOneSidedTokenPosition;
+    /// @notice Whether to create a one sided position in the currency after the full range position
+    bool public immutable createOneSidedCurrencyPosition;
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
@@ -113,7 +115,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         sweepBlock = migratorParams.sweepBlock;
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
-        createOneSidedPosition = migratorParams.createOneSidedPosition;
+        createOneSidedTokenPosition = migratorParams.createOneSidedTokenPosition;
+        createOneSidedCurrencyPosition = migratorParams.createOneSidedCurrencyPosition;
     }
 
     /// @inheritdoc IDistributionContract
@@ -315,9 +318,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             hooks: IHooks(address(this))
         });
 
-        // Determine if we should create a one-sided position if createOneSidedPosition is set AND there is leftover currency or leftover tokens
-        bool shouldCreateOneSided =
-            createOneSidedPosition && (reserveSupply > initialTokenAmount || leftoverCurrency > 0);
+        // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
+        // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
+        bool shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > initialTokenAmount
+            || createOneSidedCurrencyPosition && leftoverCurrency > 0;
 
         if (shouldCreateOneSided) {
             (actions, params, liquidity) =

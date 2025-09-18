@@ -85,7 +85,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             testOperator, // operator (receive function for checking ETH balance)
-            true // createOneSidedPosition
+            true, // createOneSidedTokenPosition,
+            true // createOneSidedCurrencyPosition
         );
     }
 
@@ -141,7 +142,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         uint64 migrationBlock,
         uint64 sweepBlock,
         address operator,
-        bool createOneSidedPosition
+        bool createOneSidedTokenPosition,
+        bool createOneSidedCurrencyPosition
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
@@ -153,7 +155,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migrationBlock: migrationBlock,
             sweepBlock: sweepBlock,
             operator: operator,
-            createOneSidedPosition: createOneSidedPosition
+            createOneSidedTokenPosition: createOneSidedTokenPosition,
+            createOneSidedCurrencyPosition: createOneSidedCurrencyPosition
         });
     }
 
@@ -194,7 +197,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.migrationBlock,
             migratorParams.sweepBlock,
             migratorParams.operator,
-            migratorParams.createOneSidedPosition
+            migratorParams.createOneSidedTokenPosition,
+            migratorParams.createOneSidedCurrencyPosition
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
     }
@@ -210,7 +214,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             uint64(block.number + 500), // migration block
             uint64(block.number + 1_000), // sweep block
             testOperator, // operator
-            true // createOneSidedPosition
+            true, // createOneSidedTokenPosition
+            true // createOneSidedCurrencyPosition
         );
         _deployLBPStrategy(totalSupply);
     }
