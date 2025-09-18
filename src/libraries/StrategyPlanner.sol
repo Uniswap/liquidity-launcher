@@ -82,7 +82,7 @@ library StrategyPlanner {
         }
 
         // Use safe helper to check for overflow
-        (uint256 liquidityUint256, bool wouldOverflow) = _getLiquidityForAmountsSafe(
+        uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
@@ -91,8 +91,7 @@ library StrategyPlanner {
         );
 
         if (
-            wouldOverflow || uint128(liquidityUint256) > type(uint128).max - baseParams.liquidity
-                || baseParams.liquidity + liquidityUint256 > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
+            baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
         ) {
             return (existingActions, ParamsBuilder.truncateParams(existingParams));
         }
@@ -159,56 +158,5 @@ library StrategyPlanner {
         });
 
         return bounds;
-    }
-
-    /// @dev Helper function to calculate liquidity without reverting on overflow
-    /// @return liquidity The calculated liquidity as uint256
-    /// @return wouldOverflow True if the result would overflow uint128
-    function _getLiquidityForAmountsSafe(
-        uint160 sqrtPriceX96,
-        uint160 sqrtPriceAX96,
-        uint160 sqrtPriceBX96,
-        uint256 amount0,
-        uint256 amount1
-    ) private pure returns (uint256 liquidity, bool wouldOverflow) {
-        if (sqrtPriceAX96 > sqrtPriceBX96) {
-            (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
-        }
-
-        if (sqrtPriceX96 <= sqrtPriceAX96) {
-            // Use amount0 only
-            liquidity = _getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
-        } else if (sqrtPriceX96 < sqrtPriceBX96) {
-            // Use both amounts, take minimum
-            uint256 liquidity0 = _getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
-            uint256 liquidity1 = _getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
-            liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
-        } else {
-            // Use amount1 only
-            liquidity = _getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
-        }
-
-        wouldOverflow = liquidity > type(uint128).max;
-    }
-
-    /// @dev Calculate liquidity for amount0 (returns uint256 to avoid overflow)
-    function _getLiquidityForAmount0(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount0)
-        private
-        pure
-        returns (uint256)
-    {
-        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
-        uint256 intermediate = FullMath.mulDiv(sqrtPriceAX96, sqrtPriceBX96, FixedPoint96.Q96);
-        return FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96);
-    }
-
-    /// @dev Calculate liquidity for amount1 (returns uint256 to avoid overflow)
-    function _getLiquidityForAmount1(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount1)
-        private
-        pure
-        returns (uint256)
-    {
-        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
-        return FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96);
     }
 }
