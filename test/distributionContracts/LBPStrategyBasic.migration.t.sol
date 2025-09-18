@@ -627,26 +627,27 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
-
+        bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
         bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
         vm.roll(lbp.migrationBlock());
 
-        if (!isValidPrice && pricePerToken != 0) {
+        // case 1. price is 0
+        // case 2. price is > type(uint160).max
+        // case 3. sqrt price is not in valid range
+        // case 4. token amt > reserve supply
+        // case 5. corresponding currency amt > type(uint128).max
+
+        if (!isValidPrice || !priceFitsInUint160) {
             // Should revert with InvalidPrice
             vm.prank(address(lbp.auction()));
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.migrate();
-        } else if (isLeftoverToken) {
-            if (pricePerToken == 0) {
-                vm.expectRevert();
-                lbp.migrate();
-            }
-        } else {
-            // corresponding token amt greater than allowed
+        } else if (!isLeftoverToken) {
             if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
+                // Should revert with AmountOverflow
                 vm.prank(address(lbp.auction()));
-                vm.expectRevert();
+                vm.expectRevert(abi.encodeWithSelector(TokenPricing.AmountOverflow.selector, expectedTokenAmount));
                 lbp.migrate();
             }
         }
