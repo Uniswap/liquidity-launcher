@@ -709,78 +709,78 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
-    // function test_fuzz_migrate_withETH(uint256 pricePerToken, uint128 ethAmount, uint16 tokenSplit) public {
-    //     vm.assume(pricePerToken <= type(uint160).max);
-    //     tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
+    function test_fuzz_migrate_withETH(uint256 pricePerToken, uint128 ethAmount, uint16 tokenSplit) public {
+        vm.assume(pricePerToken <= type(uint160).max);
+        tokenSplit = uint16(bound(tokenSplit, 1, 1e7));
 
-    //     migratorParams = createMigratorParams(
-    //         address(0),
-    //         500,
-    //         20,
-    //         tokenSplit,
-    //         address(3),
-    //         uint64(block.number + 500),
-    //         uint64(block.number + 1_000),
-    //         address(this),
-    //         true
-    //     );
-    //     _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        migratorParams = createMigratorParams(
+            address(0),
+            500,
+            20,
+            tokenSplit,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true
+        );
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
-    //     // Setup
-    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        // Setup
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-    //     // Mock auction functions
-    //     mockAuctionClearingPrice(lbp, pricePerToken);
-    //     mockAuctionEndBlock(lbp, uint64(block.number - 1));
+        // Mock auction functions
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
-    //     // Deploy and etch mock auction
-    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
-    //     vm.deal(address(lbp.auction()), ethAmount);
-    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
+        // Deploy and etch mock auction
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-    //     // Mock the clearingPrice again after etching
-    //     mockAuctionClearingPrice(lbp, pricePerToken);
+        // Mock the clearingPrice again after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
 
-    //     mockCurrencyRaised(lbp, ethAmount);
+        mockCurrencyRaised(lbp, ethAmount);
 
-    //     deal(address(lbp), ethAmount);
+        deal(address(lbp), ethAmount);
 
-    //     if (pricePerToken != 0) {
-    //         pricePerToken = InverseHelpers.invertPrice(pricePerToken);
-    //     }
+        if (pricePerToken != 0) {
+            pricePerToken = InverseHelpers.invertPrice(pricePerToken);
+        }
 
-    //     // Calculate expected values
-    //     uint256 priceX192 = pricePerToken << 96;
-    //     uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-    //     uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, ethAmount, Q192);
-    //     bool tokenAmountFitsInUint128 = expectedTokenAmount <= type(uint128).max;
+        // Calculate expected values
+        uint256 priceX192 = pricePerToken << 96;
+        uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
+        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, ethAmount, Q192);
 
-    //     // Check if the price is within valid bounds
-    //     bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
+        // Check if the price is within valid bounds
+        bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
+        bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
+        bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
-    //     bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
+        vm.roll(lbp.migrationBlock());
 
-    //     vm.roll(lbp.migrationBlock());
+        // case 1. price is 0
+        // case 2. price is > type(uint160).max
+        // case 3. sqrt price is not in valid range
+        // case 4. token amt > reserve supply
+        // case 5. corresponding currency amt > type(uint128).max
 
-    //     if (!isValidPrice && pricePerToken != 0) {
-    //         // Should revert with InvalidPrice
-    //         vm.prank(address(lbp.auction()));
-    //         vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
-    //         lbp.migrate();
-    //     } else if (isLeftoverToken) {
-    //         if (pricePerToken == 0) {
-    //             vm.expectRevert();
-    //             lbp.migrate();
-    //         } else {
-    //             // corresponding token amt greater than allowed
-    //             if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
-    //                 vm.prank(address(lbp.auction()));
-    //                 vm.expectRevert();
-    //                 lbp.migrate();
-    //             }
-    //         }
-    //     }
-    // }
+        if (!isValidPrice || !priceFitsInUint160) {
+            // Should revert with InvalidPrice
+            vm.prank(address(lbp.auction()));
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
+            lbp.migrate();
+        } else if (!isLeftoverToken) {
+            if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
+                // Should revert with AmountOverflow
+                vm.prank(address(lbp.auction()));
+                vm.expectRevert(abi.encodeWithSelector(TokenPricing.AmountOverflow.selector, expectedTokenAmount));
+                lbp.migrate();
+            }
+        }
+    }
 
     // function test_migrate_withETH_revertsWithInvalidPrice() public {
     //     // This test verifies the handling of prices above MAX_SQRT_PRICE
