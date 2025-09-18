@@ -63,7 +63,8 @@ contract LBPStrategyBasicFactoryTest is Test {
                 tickSpacing: 1e6, // Valid tick spacing for auctions
                 validationHook: address(0), // No validation hook
                 floorPrice: 1e6, // 1 ETH as floor price
-                auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100)
+                auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100),
+                fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
             })
         );
     }

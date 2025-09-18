@@ -159,7 +159,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
                 tickSpacing: 20,
                 validationHook: address(0), // No validation hook
                 floorPrice: 1,
-                auctionStepsData: auctionStepsData
+                auctionStepsData: auctionStepsData,
+                fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
             })
         );
     }
