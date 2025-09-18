@@ -327,6 +327,8 @@ contract StrategyPlannerTest is Test {
         fullRangeParams.tokenAmount = uint128(bound(fullRangeParams.tokenAmount, 0, type(uint128).max));
         fullRangeParams.currencyAmount = uint128(bound(fullRangeParams.currencyAmount, 0, type(uint128).max));
 
+        oneSidedParams.amount = oneSidedParams.inToken ? uint128(bound(oneSidedParams.amount, 1, type(uint128).max - fullRangeParams.tokenAmount)) : uint128(bound(oneSidedParams.amount, 1, type(uint128).max - fullRangeParams.currencyAmount));
+
         uint256 arraySize = 8;
         (bytes memory fullActions, bytes[] memory fullParams) =
             testHelper.planFullRangePosition(baseParams, fullRangeParams, arraySize);
