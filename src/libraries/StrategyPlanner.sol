@@ -81,7 +81,6 @@ library StrategyPlanner {
             return (existingActions, existingParams.truncateParams());
         }
 
-        // Use safe helper to check for overflow
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
