@@ -4,7 +4,6 @@ pragma solidity 0.8.26;
 import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
-import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
