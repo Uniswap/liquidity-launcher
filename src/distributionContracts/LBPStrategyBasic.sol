@@ -63,14 +63,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint64 public immutable migrationBlock;
     /// @notice The auction factory that will be used to create the auction
     address public immutable auctionFactory;
-    /// @notice The operator that can sweep currency and tokens from the pool after sweepBlock
-    address public immutable operator;
-    /// @notice The block number at which the operator can sweep currency and tokens from the pool
-    uint64 public immutable sweepBlock;
-    /// @notice Whether to create a one sided position in the token after the full range position
-    bool public immutable createOneSidedTokenPosition;
-    /// @notice Whether to create a one sided position in the currency after the full range position
-    bool public immutable createOneSidedCurrencyPosition;
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
@@ -83,7 +75,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint128 public initialTokenAmount;
     /// @notice The initial currency amount for the pool which will be used to mint liquidity for the full range position
     uint128 public initialCurrencyAmount;
-    /// @notice The leftover currency that can be used to mint a one sided position
     uint128 public leftoverCurrency;
     /// @notice The auction parameters that will be used to create the auction
     bytes public auctionParameters;
@@ -111,12 +102,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         positionRecipient = migratorParams.positionRecipient;
         migrationBlock = migratorParams.migrationBlock;
         auctionFactory = migratorParams.auctionFactory;
-        operator = migratorParams.operator;
-        sweepBlock = migratorParams.sweepBlock;
+
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
-        createOneSidedTokenPosition = migratorParams.createOneSidedTokenPosition;
-        createOneSidedCurrencyPosition = migratorParams.createOneSidedCurrencyPosition;
     }
 
     /// @inheritdoc IDistributionContract
@@ -228,30 +216,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, sqrtPriceX96);
     }
 
-    /// @inheritdoc ILBPStrategyBasic
-    function sweepToken() external {
-        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
-        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
-
-        uint256 tokenBalance = Currency.wrap(token).balanceOf(address(this));
-        if (tokenBalance > 0) {
-            Currency.wrap(token).transfer(operator, tokenBalance);
-            emit TokensSwept(operator, tokenBalance);
-        }
-    }
-
-    /// @inheritdoc ILBPStrategyBasic
-    function sweepCurrency() external {
-        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
-        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
-
-        uint256 currencyBalance = Currency.wrap(currency).balanceOf(address(this));
-        if (currencyBalance > 0) {
-            Currency.wrap(currency).transfer(operator, currencyBalance);
-            emit CurrencySwept(operator, currencyBalance);
-        }
-    }
-
     /// @notice Validates the migrator parameters
     /// @param _token The token that is being distributed
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
@@ -260,12 +224,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         private
         pure
     {
-        // sweep block validation (cannot be before or equal to the migration block)
-        if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
-            revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
-        }
         // token split validation (cannot be greater than 100%)
-        else if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
+        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
         }
         // token validation (cannot be zero address or the same as the currency)
@@ -318,17 +278,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             hooks: IHooks(address(this))
         });
 
-        // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
-        // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
-        bool shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > initialTokenAmount
-            || createOneSidedCurrencyPosition && leftoverCurrency > 0;
-
-        if (shouldCreateOneSided) {
+        if (reserveSupply == initialTokenAmount) {
+            // There is leftover currency and no leftover tokens. Full reserve supply is used for the full range position
+            if (leftoverCurrency > 0) {
+                (actions, params, liquidity) =
+                    _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
+                (actions, params) = _createOneSidedPositionPlan(baseParams, actions, params, liquidity);
+            } else {
+                // Currency raised is equally paired with the reserve supply and only full range position is needed
+                (actions, params,) = _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_SIZE);
+            }
+        } else {
+            // There is leftover tokens and no leftover currency. One sided position is created with the leftover tokens
             (actions, params, liquidity) =
                 _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
             (actions, params) = _createOneSidedPositionPlan(baseParams, actions, params, liquidity);
-        } else {
-            (actions, params,) = _createFullRangePositionPlan(baseParams, ParamsBuilder.FULL_RANGE_SIZE);
         }
 
         return abi.encode(actions, params);
