@@ -29,6 +29,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
 
@@ -69,6 +70,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
                 address(this),
+                true,
                 true
             ),
             auctionParams,
@@ -98,6 +100,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
                 address(this),
+                true,
                 true
             ),
             auctionParams,
@@ -125,6 +128,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
                 address(this),
+                true,
                 true
             ),
             auctionParams,
@@ -153,6 +157,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                     uint64(block.number + 500),
                     uint64(block.number + 1_000),
                     address(this),
+                    true,
                     true
                 ),
                 auctionParams,
@@ -177,6 +182,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
                 address(this),
+                true,
                 true
             ),
             auctionParams,
@@ -198,6 +204,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
                 address(this),
+                true,
                 true
             ),
             auctionParams,
@@ -350,6 +357,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 migrationBlock,
                 sweepBlock,
                 operator,
+                true,
                 true
             ),
             auctionParams,

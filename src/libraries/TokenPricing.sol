@@ -31,8 +31,10 @@ library TokenPricing {
         pure
         returns (uint256 priceX192, uint160 sqrtPriceX96)
     {
+        if (price == 0) {
+            revert InvalidPrice(price);
+        }
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
-        // Reverts if price is 0
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = (1 << (FixedPoint96.RESOLUTION) * 2) / price;

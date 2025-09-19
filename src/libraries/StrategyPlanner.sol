@@ -90,9 +90,7 @@ library StrategyPlanner {
             currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
-        if (
-            baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
-        ) {
+        if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
             return (existingActions, ParamsBuilder.truncateParams(existingParams));
         }
 

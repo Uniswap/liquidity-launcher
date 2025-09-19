@@ -340,6 +340,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -435,6 +436,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000), // sweep block
             address(this), // operator
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -516,6 +518,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -580,9 +583,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
-    function test_fuzz_migrate_withETH(uint256 pricePerToken, uint128 ethAmount, uint16 tokenSplit) public {
+    function test_fuzz_migrate_withETH(uint256 pricePerToken, uint128 ethAmount, uint24 tokenSplit) public {
         vm.assume(pricePerToken <= type(uint160).max);
-        tokenSplit = uint16(bound(tokenSplit, 1, 1e7));
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
 
         migratorParams = createMigratorParams(
             address(0),
@@ -593,6 +596,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -704,6 +708,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 500),
             uint64(block.number + 1_000),
             address(this),
+            true,
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
