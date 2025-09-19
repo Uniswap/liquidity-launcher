@@ -95,6 +95,8 @@ library TokenPricing {
             correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
+        } else {
+            correspondingCurrencyAmount = currencyAmount;
         }
 
         return (uint128(tokenAmount), leftoverCurrency, correspondingCurrencyAmount);

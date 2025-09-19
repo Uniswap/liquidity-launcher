@@ -23,12 +23,11 @@ library StrategyPlanner {
     ///                        or 8 if it's a full range position with one sided position)
     /// @return actions The actions needed to mint a full range position on the position manager
     /// @return params The parameters needed to mint a full range position on the position manager
-    /// @return liquidity The liquidity that will be minted for the full range position on the position manager
     function planFullRangePosition(
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams,
         uint256 paramsArraySize
-    ) internal pure returns (bytes memory actions, bytes[] memory params, uint128 liquidity) {
+    ) internal pure returns (bytes memory actions, bytes[] memory params) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
 
         // Get tick bounds for full range
@@ -36,15 +35,6 @@ library StrategyPlanner {
             lowerTick: TickMath.MIN_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing,
             upperTick: TickMath.MAX_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing
         });
-
-        // Calculate liquidity (already validated in validate() function)
-        liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            baseParams.initialSqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(bounds.lowerTick),
-            TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
-            currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount
-        );
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.token),
@@ -60,7 +50,7 @@ library StrategyPlanner {
         );
 
         // Build actions
-        return (actions, params, liquidity);
+        return (actions, params);
     }
 
     /// @notice Creates the actions and parameters needed to mint a one-sided position on the position manager
@@ -97,10 +87,7 @@ library StrategyPlanner {
             currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
-        if (
-            oneSidedParams.existingPoolLiquidity + newLiquidity
-                > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
-        ) {
+        if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
             return (existingActions, ParamsBuilder.truncateParams(existingParams));
         }
 

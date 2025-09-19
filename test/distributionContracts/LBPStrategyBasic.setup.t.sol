@@ -247,8 +247,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                     tickSpacing: 20,
                     validationHook: address(0), // No validation hook
                     floorPrice: 1,
-                    auctionStepsData: auctionStepsData,
-                    fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
+                    auctionStepsData: auctionStepsData
                 })
             ),
             IPositionManager(POSITION_MANAGER),

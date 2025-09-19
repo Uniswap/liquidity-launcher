@@ -152,7 +152,7 @@ contract ParamsBuilderTest is Test {
             )
         );
         testHelper.buildOneSidedParams(
-            OneSidedParams({amount: 10e18, existingPoolLiquidity: 100e18, inToken: true}),
+            OneSidedParams({amount: 10e18, inToken: true}),
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -184,7 +184,7 @@ contract ParamsBuilderTest is Test {
         );
 
         bytes[] memory params = testHelper.buildOneSidedParams(
-            OneSidedParams({amount: 10e18, existingPoolLiquidity: 100e18, inToken: true}),
+            OneSidedParams({amount: 10e18, inToken: true}),
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -259,7 +259,7 @@ contract ParamsBuilderTest is Test {
         );
 
         bytes[] memory params = testHelper.buildOneSidedParams(
-            OneSidedParams({amount: 10e18, existingPoolLiquidity: 100e18, inToken: false}),
+            OneSidedParams({amount: 10e18, inToken: false}),
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -335,7 +335,7 @@ contract ParamsBuilderTest is Test {
             address(3)
         );
         bytes[] memory params = testHelper.buildOneSidedParams(
-            OneSidedParams({amount: amount, existingPoolLiquidity: 100e18, inToken: inToken}),
+            OneSidedParams({amount: amount, inToken: inToken}),
             poolKey,
             bounds,
             currencyIsCurrency0,
