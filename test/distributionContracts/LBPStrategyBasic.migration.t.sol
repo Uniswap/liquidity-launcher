@@ -137,6 +137,33 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.migrate();
     }
 
+    function test_priceCalculations() public pure {
+        // Test 1:1 price
+        uint256 priceX192 = FullMath.mulDiv(1e18, Q192, 1e18);
+        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        assertEq(sqrtPriceX96, 79228162514264337593543950336);
+
+        // Test 100:1 price
+        priceX192 = FullMath.mulDiv(100e18, Q192, 1e18);
+        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        assertEq(sqrtPriceX96, 792281625142643375935439503360);
+
+        // Test 1:100 price
+        priceX192 = FullMath.mulDiv(1e18, Q192, 100e18);
+        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        assertEq(sqrtPriceX96, 7922816251426433759354395033);
+
+        // Test arbitrary price (111:333)
+        priceX192 = FullMath.mulDiv(111e18, Q192, 333e18);
+        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        assertEq(sqrtPriceX96, 45742400955009932534161870629);
+
+        // Test inverse (333:111)
+        priceX192 = FullMath.mulDiv(333e18, Q192, 111e18);
+        sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        assertEq(sqrtPriceX96, 137227202865029797602485611888);
+    }
+
     // ============ Full Range Migration Tests ============
 
     function test_migrate_fullRange_withETH_succeeds() public {
@@ -825,6 +852,43 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     //     vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice << 96));
     //     lbp.migrate();
     // }
+    function test_migrate_withETH_revertsWithPriceTooHigh() public {
+        // This test verifies the handling of prices above MAX_SQRT_PRICE
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+
+        // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
+        // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
+        // clearingPrice = (1 << 96)^2 / actualPrice
+        // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
+        // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
+        // So we need a clearing price close to 0 but not 0
+        uint256 veryLowClearingPrice = 1; // Minimal non-zero price
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
+
+        // Set up mock auction
+        uint128 ethAmount = 1e18;
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock the clearingPrice again after etching
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+
+        mockCurrencyRaised(lbp, ethAmount);
+
+        deal(address(lbp), ethAmount);
+
+        // Calculate the inverted price that will be used in the contract
+        uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
+
+        vm.roll(lbp.migrationBlock());
+
+        vm.prank(address(lbp.auction()));
+        // Expect revert with InvalidPrice (the error will contain the inverted price)
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
+        lbp.migrate();
+    }
 
     function test_fuzz_validate_withToken(uint256 pricePerToken, uint128 currencyAmount, uint16 tokenSplit) public {
         vm.assume(pricePerToken <= type(uint160).max);
