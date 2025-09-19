@@ -3,7 +3,6 @@ pragma solidity 0.8.26;
 
 import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
-import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
@@ -86,7 +85,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
-        _validateAuctionParams(_auctionParams, _migratorParams.auctionFactory);
+        _validateAuctionParams(_auctionParams);
 
         auctionParameters = _auctionParams;
 
@@ -258,15 +257,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
-    /// @notice Validates that the funds recipient in the auction parameters is set to USE_MSG_SENDER (address(1)),
+    /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
     ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    /// @param _auctionFactory The auction factory that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams, address _auctionFactory) private view {
+    function _validateAuctionParams(bytes memory auctionParams) private pure {
         AuctionParameters memory parameters = abi.decode(auctionParams, (AuctionParameters));
-        if (parameters.fundsRecipient != AuctionFactory(_auctionFactory).USE_MSG_SENDER()) {
-            revert InvalidFundsRecipient(parameters.fundsRecipient, AuctionFactory(_auctionFactory).USE_MSG_SENDER());
+        if (parameters.fundsRecipient != ActionConstants.MSG_SENDER) {
+            revert InvalidFundsRecipient(parameters.fundsRecipient, ActionConstants.MSG_SENDER);
         }
     }
 
