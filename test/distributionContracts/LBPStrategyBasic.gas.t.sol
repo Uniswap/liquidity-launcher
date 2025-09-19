@@ -228,7 +228,18 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// forge-config: ci.isolate = true
     function test_migrate_withNonETHCurrency_withOneSidedPosition_gas() public {
         // Setup with DAI and larger tick spacing
-        migratorParams = createMigratorParams(DAI, 500, 20, DEFAULT_TOKEN_SPLIT, address(3));
+        migratorParams = createMigratorParams(
+            DAI,
+            500,
+            20,
+            DEFAULT_TOKEN_SPLIT,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true,
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
