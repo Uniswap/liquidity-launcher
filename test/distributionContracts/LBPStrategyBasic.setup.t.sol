@@ -18,16 +18,19 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
+        uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        uint24 tokenSplitValue = maxTokenSplit + 1;
+
+        MigratorParameters memory params = createMigratorParams(address(0), 500, 100, tokenSplitValue, address(3));
+
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1, lbp.MAX_TOKEN_SPLIT_TO_AUCTION()
-            )
+            abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplitValue, maxTokenSplit)
         );
 
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
+            params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -255,11 +258,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address positionRecipient
     ) public {
         // Test token split validation
-        if (tokenSplit > lbp.MAX_TOKEN_SPLIT_TO_AUCTION()) {
+        if (tokenSplit > lbp.MAX_TOKEN_SPLIT()) {
             vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, lbp.MAX_TOKEN_SPLIT_TO_AUCTION()
-                )
+                abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, lbp.MAX_TOKEN_SPLIT())
             );
         }
         // Test tick spacing validation

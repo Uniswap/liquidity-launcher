@@ -48,10 +48,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param validFundsRecipient The valid funds recipient (address(1))
     error InvalidFundsRecipient(address invalidFundsRecipient, address validFundsRecipient);
 
-    /// @notice Error thrown when the price is invalid
-    /// @param price The invalid price
-    error InvalidPrice(uint256 price);
-
     /// @notice Error thrown when the liquidity is invalid
     /// @param maxLiquidityPerTick The max liquidity per tick
     /// @param liquidity The invalid liquidity

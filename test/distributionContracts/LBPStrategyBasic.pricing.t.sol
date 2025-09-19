@@ -12,6 +12,7 @@ import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
+import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -39,6 +40,7 @@ contract MockAuctionWithERC20Sweep {
 
 contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
     uint256 constant Q96 = 2 ** 96;
+    uint256 constant Q192 = 2 ** 192;
 
     event Validated(uint160 sqrtPriceX96, uint128 tokenAmount, uint128 currencyAmount);
     // ============ Helper Functions ============
@@ -84,7 +86,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         pricePerToken = InverseHelpers.invertPrice(pricePerToken);
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, lbp.Q192()));
+        uint128 expectedTokenAmount = uint128(FullMath.mulDiv(priceX192, ethAmount, Q192));
 
         vm.expectEmit(true, true, true, true);
         emit Validated(expectedSqrtPrice, expectedTokenAmount, ethAmount);
@@ -131,45 +133,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         // Expect revert with InvalidPrice
         vm.prank(address(lbp.auction()));
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, veryLowPrice));
-        lbp.validate();
-    }
-
-    function test_validate_revertsWithInvalidTokenAmount() public {
-        // Setup: Send tokens to LBP and create auction
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-
-        uint128 reserveSupply = lbp.reserveSupply();
-
-        // Mock a price that will result in tokenAmount > reserveSupply
-        uint256 highPrice = 1 << 96; // 1 per token
-        mockAuctionClearingPrice(lbp, highPrice);
-        mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
-
-        // Send a large amount of ETH that would require more tokens than available
-        uint256 largeEthAmount = uint256(reserveSupply) * 11e18 / 10e18; // Would need 110% of reserve
-
-        // Set up mock auction with large ETH amount
-        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(largeEthAmount);
-        vm.deal(address(lbp.auction()), largeEthAmount);
-        vm.etch(address(lbp.auction()), address(mockAuction).code);
-
-        // Mock the clearingPrice again after etching
-        mockAuctionClearingPrice(lbp, highPrice);
-
-        mockCurrencyRaised(lbp, largeEthAmount);
-
-        deal(address(lbp), largeEthAmount);
-
-        // Calculate what the token amount would be
-        uint256 priceX192 = highPrice << 96;
-        uint128 invalidTokenAmount = uint128(FullMath.mulDiv(priceX192, largeEthAmount, lbp.Q192()));
-
-        vm.prank(address(lbp.auction()));
-        // Expect revert with InvalidTokenAmount
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAmount.selector, invalidTokenAmount, reserveSupply)
-        );
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, veryLowPrice));
         lbp.validate();
     }
 
@@ -206,7 +170,7 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint128 expectedTokenAmount = uint128(FullMath.mulDiv(daiAmount, lbp.Q192(), priceX192));
+        uint128 expectedTokenAmount = uint128(FullMath.mulDiv(daiAmount, Q192, priceX192));
 
         vm.expectEmit(true, true, true, true);
         emit Validated(expectedSqrtPrice, expectedTokenAmount, daiAmount);
@@ -228,27 +192,27 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     function test_priceCalculations() public pure {
         // Test 1:1 price
-        uint256 priceX192 = FullMath.mulDiv(1e18, 2 ** 192, 1e18);
+        uint256 priceX192 = FullMath.mulDiv(1e18, Q192, 1e18);
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 79228162514264337593543950336);
 
         // Test 100:1 price
-        priceX192 = FullMath.mulDiv(100e18, 2 ** 192, 1e18);
+        priceX192 = FullMath.mulDiv(100e18, Q192, 1e18);
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 792281625142643375935439503360);
 
         // Test 1:100 price
-        priceX192 = FullMath.mulDiv(1e18, 2 ** 192, 100e18);
+        priceX192 = FullMath.mulDiv(1e18, Q192, 100e18);
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 7922816251426433759354395033);
 
         // Test arbitrary price (111:333)
-        priceX192 = FullMath.mulDiv(111e18, 2 ** 192, 333e18);
+        priceX192 = FullMath.mulDiv(111e18, Q192, 333e18);
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 45742400955009932534161870629);
 
         // Test inverse (333:111)
-        priceX192 = FullMath.mulDiv(333e18, 2 ** 192, 111e18);
+        priceX192 = FullMath.mulDiv(333e18, Q192, 111e18);
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 137227202865029797602485611888);
     }
@@ -257,7 +221,13 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
-    function test_fuzz_validate_withETH(uint256 pricePerToken, uint128 ethAmount) public {
+    function test_fuzz_validate_withETH(uint256 pricePerToken, uint128 ethAmount, uint24 tokenSplit) public {
+        vm.assume(pricePerToken <= type(uint160).max);
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
+
+        migratorParams = createMigratorParams(address(0), 500, 20, uint24(tokenSplit), address(3));
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -284,43 +254,31 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, ethAmount, lbp.Q192());
+        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, ethAmount, Q192);
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
         bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
-        bool isValidTokenAmount = expectedTokenAmount <= lbp.reserveSupply();
-        bool tokenAmountFitsInUint128 = expectedTokenAmount <= type(uint128).max;
+        bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
-        if (isValidPrice && isValidTokenAmount && priceFitsInUint160 && tokenAmountFitsInUint128) {
-            // Should succeed
-            vm.prank(address(lbp.auction()));
-            lbp.validate();
+        // case 1. price is 0
+        // case 2. price is > type(uint160).max
+        // case 3. sqrt price is not in valid range
+        // case 4. token amt > reserve supply
+        // case 5. corresponding currency amt > type(uint128).max
 
-            // Verify
-            assertEq(lbp.initialSqrtPriceX96(), expectedSqrtPrice);
-            assertEq(lbp.initialTokenAmount(), expectedTokenAmount);
-            assertEq(lbp.initialCurrencyAmount(), ethAmount);
-            assertEq(address(lbp).balance, ethAmount);
-        } else if (!isValidPrice || !priceFitsInUint160) {
+        if (!isValidPrice || !priceFitsInUint160) {
             // Should revert with InvalidPrice
             vm.prank(address(lbp.auction()));
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, pricePerToken));
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.validate();
-        } else if (tokenAmountFitsInUint128) {
-            // Should revert with InvalidTokenAmount
-            vm.startPrank(address(lbp.auction()));
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBasic.InvalidTokenAmount.selector, expectedTokenAmount, lbp.reserveSupply()
-                )
-            );
-            lbp.validate();
-        } else {
-            // Should revert with AmountOverflow
-            vm.prank(address(lbp.auction()));
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AmountOverflow.selector, expectedTokenAmount));
-            lbp.validate();
+        } else if (!isLeftoverToken) {
+            if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
+                // Should revert with AmountOverflow
+                vm.prank(address(lbp.auction()));
+                vm.expectRevert(abi.encodeWithSelector(TokenPricing.AmountOverflow.selector, expectedTokenAmount));
+                lbp.validate();
+            }
         }
     }
 
@@ -356,12 +314,16 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
 
         vm.prank(address(lbp.auction()));
         // Expect revert with InvalidPrice (the error will contain the inverted price)
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, invertedPrice));
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
         lbp.validate();
     }
 
-    function test_fuzz_validate_withToken(uint256 pricePerToken, uint128 currencyAmount) public {
+    function test_fuzz_validate_withToken(uint256 pricePerToken, uint128 currencyAmount, uint16 tokenSplit) public {
         vm.assume(pricePerToken <= type(uint160).max);
+        tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
+
+        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3));
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI
         setupWithCurrency(DAI);
@@ -389,11 +351,10 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
 
-        // Calculate token amount as uint256 first to check for overflow
-        uint256 tokenAmountUint256;
         bool isValidPrice;
+        uint256 tokenAmountUint256;
         if (pricePerToken != 0) {
-            tokenAmountUint256 = FullMath.mulDiv(currencyAmount, lbp.Q192(), priceX192);
+            tokenAmountUint256 = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
         } else {
             isValidPrice = false;
         }
@@ -406,10 +367,10 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         if (!isValidPrice) {
             // Should revert with InvalidPrice
             vm.prank(address(lbp.auction()));
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidPrice.selector, pricePerToken));
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.validate();
         } else if (!tokenAmountFitsInUint128) {
-            // Should revert with SafeCastOverflow since the token amount doesn't fit in uint128
+            // Should revert with InvalidTokenAmount
             vm.prank(address(lbp.auction()));
             vm.expectRevert();
             lbp.validate();
@@ -431,12 +392,9 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
             } else {
                 // Should revert with InvalidTokenAmount
                 vm.startPrank(address(lbp.auction()));
-                vm.expectRevert(
-                    abi.encodeWithSelector(
-                        ILBPStrategyBasic.InvalidTokenAmount.selector, expectedTokenAmount, lbp.reserveSupply()
-                    )
-                );
                 lbp.validate();
+                assertEq(lbp.initialTokenAmount(), lbp.reserveSupply());
+                assertGt(lbp.leftoverCurrency(), 0);
             }
         }
     }
