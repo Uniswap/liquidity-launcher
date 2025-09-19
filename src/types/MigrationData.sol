@@ -2,7 +2,6 @@
 pragma solidity 0.8.26;
 
 struct MigrationData {
-    uint256 priceX192;
     uint160 sqrtPriceX96;
     uint128 initialTokenAmount;
     uint128 leftoverCurrency;
