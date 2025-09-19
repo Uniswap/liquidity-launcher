@@ -20,7 +20,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
         uint24 tokenSplitValue = maxTokenSplit + 1;
 
-        MigratorParameters memory params = createMigratorParams(address(0), 500, 100, tokenSplitValue, address(3));
+        MigratorParameters memory params = createMigratorParams(
+            address(0),
+            500,
+            100,
+            tokenSplitValue,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true,
+            true
+        );
 
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplitValue, maxTokenSplit)
@@ -50,7 +61,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(0),
+                500,
+                TickMath.MIN_TICK_SPACING - 1,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -69,7 +91,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(0),
+                500,
+                TickMath.MAX_TICK_SPACING + 1,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -86,7 +119,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(0),
+                LPFeeLibrary.MAX_LP_FEE + 1,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -104,7 +148,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             new LBPStrategyBasicNoValidation(
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
-                createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
+                createMigratorParams(
+                    address(0),
+                    500,
+                    100,
+                    DEFAULT_TOKEN_SPLIT,
+                    invalidRecipients[i],
+                    uint64(block.number + 500),
+                    uint64(block.number + 1_000),
+                    address(this),
+                    true,
+                    true
+                ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
                 IPoolManager(POOL_MANAGER)
@@ -118,7 +173,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(token),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -129,7 +195,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(0),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(token),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -223,12 +300,21 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         uint24 poolLPFee,
         int24 poolTickSpacing,
         uint24 tokenSplit,
-        address positionRecipient
+        address positionRecipient,
+        uint64 sweepBlock,
+        uint64 migrationBlock,
+        address operator
     ) public {
-        // Test token split validation
-        if (tokenSplit > lbp.MAX_TOKEN_SPLIT()) {
+        uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        if (sweepBlock <= migrationBlock) {
             vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, lbp.MAX_TOKEN_SPLIT())
+                abi.encodeWithSelector(ILBPStrategyBasic.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
+            );
+        }
+        // Test token split validation
+        else if (tokenSplit > maxTokenSplit) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, maxTokenSplit)
             );
         }
         // Test tick spacing validation
@@ -262,7 +348,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
+            createMigratorParams(
+                address(0),
+                poolLPFee,
+                poolTickSpacing,
+                tokenSplit,
+                positionRecipient,
+                migrationBlock,
+                sweepBlock,
+                operator,
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)

@@ -225,7 +225,18 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
 
-        migratorParams = createMigratorParams(address(0), 500, 20, uint24(tokenSplit), address(3));
+        migratorParams = createMigratorParams(
+            address(0),
+            500,
+            20,
+            uint24(tokenSplit),
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true,
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup
@@ -322,7 +333,18 @@ contract LBPStrategyBasicPricingTest is LBPStrategyBasicTestBase {
         vm.assume(pricePerToken <= type(uint160).max);
         tokenSplit = uint16(bound(tokenSplit, 1, 10_000));
 
-        migratorParams = createMigratorParams(DAI, 500, 20, uint16(tokenSplit), address(3));
+        migratorParams = createMigratorParams(
+            DAI,
+            500,
+            20,
+            uint16(tokenSplit),
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true,
+            true
+        );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup with DAI
