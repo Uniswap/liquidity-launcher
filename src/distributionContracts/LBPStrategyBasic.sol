@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -42,6 +42,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     uint24 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5e6;
     /// @notice The Q192 fixed point number used for token amount calculation from priceX192
     uint256 public constant Q192 = 2 ** 192;
+    /// @notice The placeholder address that gets replaced with this contract's address in the AuctionFactory (matches AuctionFactory.USE_MSG_SENDER)
+    address public constant USE_MSG_SENDER = address(1);
 
     /// @notice The token that is being distributed
     address public immutable token;
@@ -87,6 +89,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, migratorParams);
+        _validateAuctionParams(auctionParams);
 
         auctionParameters = auctionParams;
 
@@ -272,6 +275,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR) == 0)
         {
             revert AuctionSupplyIsZero();
+        }
+    }
+
+    /// @notice Validates that the funds recipient in the auction parameters is set to USE_MSG_SENDER (address(1)),
+    ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
+    /// @param auctionParams The auction parameters that will be used to create the auction
+    function _validateAuctionParams(bytes memory auctionParams) private pure {
+        AuctionParameters memory parameters = abi.decode(auctionParams, (AuctionParameters));
+        if (parameters.fundsRecipient != USE_MSG_SENDER) {
+            revert InvalidFundsRecipient(parameters.fundsRecipient, USE_MSG_SENDER);
         }
     }
 

@@ -10,10 +10,11 @@ import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-
+import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
+    using AuctionStepsBuilder for bytes;
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
@@ -128,6 +129,37 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
             auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidFundsRecipient() public {
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.InvalidFundsRecipient.selector, address(2), address(1))
+        );
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            abi.encode(
+                AuctionParameters({
+                    currency: address(0), // ETH
+                    tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                    fundsRecipient: address(2),
+                    startBlock: uint64(block.number),
+                    endBlock: uint64(block.number + 100),
+                    claimBlock: uint64(block.number + 100),
+                    graduationThresholdMps: 1000000, // 100%
+                    tickSpacing: 20,
+                    validationHook: address(0), // No validation hook
+                    floorPrice: 1,
+                    auctionStepsData: auctionStepsData,
+                    fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
+                })
+            ),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );

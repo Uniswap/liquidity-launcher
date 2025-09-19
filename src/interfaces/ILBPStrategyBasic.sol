@@ -43,6 +43,11 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param positionRecipient The invalid position recipient
     error InvalidPositionRecipient(address positionRecipient);
 
+    /// @notice Error thrown when the funds recipient is not set to address(1)
+    /// @param invalidFundsRecipient The invalid funds recipient
+    /// @param validFundsRecipient The valid funds recipient (address(1))
+    error InvalidFundsRecipient(address invalidFundsRecipient, address validFundsRecipient);
+
     /// @notice Error thrown when the price is invalid
     /// @param price The invalid price
     error InvalidPrice(uint256 price);
