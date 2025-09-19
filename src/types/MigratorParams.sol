@@ -11,4 +11,8 @@ struct MigratorParameters {
     uint24 tokenSplitToAuction; // the percentage of the total supply of the token that will be sent to the auction
     address auctionFactory; // the Auction factory that will be used to create the auction
     address positionRecipient; // the address that will receive the position
+    uint64 sweepBlock; // the block number when the operator can sweep currency and tokens from the pool
+    address operator; // the address that is able to sweep currency and tokens from the pool
+    bool createOneSidedTokenPosition; // whether to try to create a one-sided position in the token after the full range position or not
+    bool createOneSidedCurrencyPosition; // whether to try to create a one-sided position in the currency after the full range position or not
 }
