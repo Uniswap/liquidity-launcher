@@ -746,7 +746,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(address(lbp), ethAmount);
 
         if (pricePerToken != 0) {
-            pricePerToken = InverseHelpers.invertPrice(pricePerToken);
+            pricePerToken = InverseHelpers.inverseQ96(pricePerToken);
         }
 
         // Calculate expected values
