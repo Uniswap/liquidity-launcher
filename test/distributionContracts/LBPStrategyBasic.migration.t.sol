@@ -260,6 +260,128 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertBalancesAfterMigration(before, afterMigration);
     }
 
+    function test_migrate_leftover_oneSidedPositionNotSet_succeeds() public {
+        //Redeploy with fuzzed tick spacing
+        migratorParams = createMigratorParams(
+            address(0), // ETH as currency
+            500, // fee
+            1,
+            DEFAULT_TOKEN_SPLIT,
+            address(3), // position recipient
+            uint64(block.number + 500),
+            uint64(block.number + 1_000), // sweep block
+            address(this), // operator
+            false, // createOneSidedTokenPosition
+            true // createOneSidedCurrencyPosition
+        );
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+
+        uint128 ethAmount = 500e18;
+        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
+
+        // Setup
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
+
+        // Migrate
+        migrateToMigrationBlock(lbp);
+
+        // Check main position
+        (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+
+        // For full range positions, MIN_TICK and MAX_TICK must be multiples of tick spacing
+        int24 expectedMinTick = TickMath.MIN_TICK;
+        int24 expectedMaxTick = TickMath.MAX_TICK;
+
+        assertEq(info.tickLower(), expectedMinTick);
+        assertEq(info.tickUpper(), expectedMaxTick);
+
+        // One-sided position should not have been created
+        (, PositionInfo oneSidedInfo) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
+        assertEq(oneSidedInfo.tickLower(), 0);
+        assertEq(oneSidedInfo.tickUpper(), 0);
+        assertEq(oneSidedInfo.poolId(), bytes25(0));
+    }
+
+    function test_migrate_noLeftover_OneSidedPositionSet_succeeds() public {
+        //Redeploy with fuzzed tick spacing
+        migratorParams = createMigratorParams(
+            address(0), // ETH as currency
+            500, // fee
+            1,
+            DEFAULT_TOKEN_SPLIT,
+            address(3), // position recipient
+            uint64(block.number + 500),
+            uint64(block.number + 1_000), // sweep block
+            address(this), // operator
+            true,
+            true
+        );
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+
+        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
+        uint128 ethAmount = 500e18;
+
+        // Setup
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        // Set up auction with price and currency
+        uint256 pricePerToken = FullMath.mulDiv(ethAmount, 1 << 96, tokenAmount);
+        mockAuctionClearingPrice(lbp, pricePerToken);
+
+        // Use a past block for endBlock
+        uint64 pastEndBlock = uint64(block.number - 1);
+
+        // Deploy mock auction that handles sweepCurrency
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, pastEndBlock);
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock clearingPrice after etching
+        mockAuctionClearingPrice(lbp, pricePerToken);
+        mockCurrencyRaised(lbp, ethAmount);
+        deal(address(lbp), ethAmount);
+
+        vm.prank(address(lbp.auction()));
+        lbp.validate();
+
+        // Migrate
+        migrateToMigrationBlock(lbp);
+
+        // Check main position
+        (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+
+        // For full range positions, MIN_TICK and MAX_TICK must be multiples of tick spacing
+        int24 expectedMinTick = TickMath.MIN_TICK;
+        int24 expectedMaxTick = TickMath.MAX_TICK;
+
+        assertEq(info.tickLower(), expectedMinTick);
+        assertEq(info.tickUpper(), expectedMaxTick);
+
+        // One-sided position should not have been created since no tokens or currency are leftover
+        (, PositionInfo oneSidedInfo) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
+        assertEq(oneSidedInfo.tickLower(), 0);
+        assertEq(oneSidedInfo.tickUpper(), 0);
+        assertEq(oneSidedInfo.poolId(), bytes25(0));
+    }
+
     // ============ One-Sided Position Migration Tests ============
 
     function test_migrate_withOneSidedPosition_withETH_succeeds() public {
