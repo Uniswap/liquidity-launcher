@@ -168,6 +168,19 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         );
     }
 
+    function test_setUp_reverts_auctionParametersEncodedImproperly() public {
+        console2.log("here");
+        vm.expectRevert();
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            "",
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
     // ============ Token Reception Tests ============
 
     function test_onTokenReceived_revertsWithInvalidAmountReceived() public {

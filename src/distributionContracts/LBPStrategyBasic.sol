@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
+import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
 import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
@@ -17,8 +18,6 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
@@ -83,30 +82,30 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     constructor(
         address _token,
         uint128 _totalSupply,
-        MigratorParameters memory migratorParams,
-        bytes memory auctionParams,
+        MigratorParameters memory _migratorParams,
+        bytes memory _auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
-        _validateMigratorParams(_token, _totalSupply, migratorParams);
-        _validateAuctionParams(auctionParams);
+        _validateMigratorParams(_token, _totalSupply, _migratorParams);
+        _validateAuctionParams(_auctionParams, _migratorParams.auctionFactory);
 
-        auctionParameters = auctionParams;
+        auctionParameters = _auctionParams;
 
         token = _token;
-        currency = migratorParams.currency;
+        currency = _migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
         reserveSupply = _totalSupply
-            - uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT);
+            - uint128(uint256(_totalSupply) * uint256(_migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT);
         positionManager = _positionManager;
-        positionRecipient = migratorParams.positionRecipient;
-        migrationBlock = migratorParams.migrationBlock;
-        auctionFactory = migratorParams.auctionFactory;
+        positionRecipient = _migratorParams.positionRecipient;
+        migrationBlock = _migratorParams.migrationBlock;
+        auctionFactory = _migratorParams.auctionFactory;
 
-        poolLPFee = migratorParams.poolLPFee;
-        poolTickSpacing = migratorParams.poolTickSpacing;
+        poolLPFee = _migratorParams.poolLPFee;
+        poolTickSpacing = _migratorParams.poolTickSpacing;
     }
 
     /// @inheritdoc IDistributionContract
@@ -263,11 +262,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Validates that the funds recipient in the auction parameters is set to USE_MSG_SENDER (address(1)),
     ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
+    /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams) private pure {
+    /// @param _auctionFactory The auction factory that will be used to create the auction
+    function _validateAuctionParams(bytes memory auctionParams, address _auctionFactory) private view {
         AuctionParameters memory parameters = abi.decode(auctionParams, (AuctionParameters));
-        if (parameters.fundsRecipient != USE_MSG_SENDER) {
-            revert InvalidFundsRecipient(parameters.fundsRecipient, USE_MSG_SENDER);
+        if (parameters.fundsRecipient != AuctionFactory(_auctionFactory).USE_MSG_SENDER()) {
+            revert InvalidFundsRecipient(parameters.fundsRecipient, AuctionFactory(_auctionFactory).USE_MSG_SENDER());
         }
     }
 

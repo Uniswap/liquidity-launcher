@@ -45,8 +45,8 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Error thrown when the funds recipient is not set to address(1)
     /// @param invalidFundsRecipient The invalid funds recipient
-    /// @param validFundsRecipient The valid funds recipient (address(1))
-    error InvalidFundsRecipient(address invalidFundsRecipient, address validFundsRecipient);
+    /// @param expectedFundsRecipient The expected funds recipient (address(1))
+    error InvalidFundsRecipient(address invalidFundsRecipient, address expectedFundsRecipient);
 
     /// @notice Error thrown when the liquidity is invalid
     /// @param maxLiquidityPerTick The max liquidity per tick
