@@ -5,7 +5,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
-import "forge-std/console2.sol";
 
 /// @title ParamsBuilder
 /// @notice Library for building position parameters
@@ -80,7 +79,6 @@ library ParamsBuilder {
         address positionRecipient
     ) internal pure returns (bytes[] memory) {
         if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
-            console2.log("hittng here");
             revert InvalidParamsLength(existingParams.length);
         }
 

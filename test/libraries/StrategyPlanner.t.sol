@@ -318,16 +318,33 @@ contract StrategyPlannerTest is Test {
     //     OneSidedParams memory oneSidedParams,
     //     FullRangeParams memory fullRangeParams
     // ) public view {
+    //     BasePositionParams memory baseParams = BasePositionParams({
+    //         currency: 0xb9D0BE50283AEd95fa1337044a4DCb836e2CE8b8,
+    //         token: 0x3B1a90C244EA5a2c0077ABB07735440fA47e43A4,
+    //         poolLPFee: 2103468,
+    //         poolTickSpacing: -2,
+    //         initialSqrtPriceX96: 24983978271,
+    //         liquidity: 2057,
+    //         positionRecipient: 0x049d127d70263bde3170e1f5D1cbB0bd9301693E,
+    //         hooks: IHooks(0x620337ce04ffA7E5045820eaB367f244Aee4CbA7)
+    //     });
+    //     OneSidedParams memory oneSidedParams =
+    //         OneSidedParams({amount: 31383509264231970847219468858475, inToken: false});
+    //     FullRangeParams memory fullRangeParams =
+    //         FullRangeParams({tokenAmount: 67365933143695282322, currencyAmount: 6916253897181463439141});
+
     //     baseParams.poolTickSpacing =
     //         int24(bound(baseParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
     //     baseParams.poolLPFee = uint24(bound(baseParams.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
     //     baseParams.liquidity = uint128(bound(baseParams.liquidity, 0, type(uint128).max));
     //     baseParams.initialSqrtPriceX96 =
     //         uint160(bound(baseParams.initialSqrtPriceX96, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
-    //     fullRangeParams.tokenAmount = uint128(bound(fullRangeParams.tokenAmount, 0, type(uint128).max));
-    //     fullRangeParams.currencyAmount = uint128(bound(fullRangeParams.currencyAmount, 0, type(uint128).max));
+    //     fullRangeParams.tokenAmount = uint128(bound(fullRangeParams.tokenAmount, 0, type(uint128).max - 1));
+    //     fullRangeParams.currencyAmount = uint128(bound(fullRangeParams.currencyAmount, 0, type(uint128).max - 1));
 
-    //     oneSidedParams.amount = oneSidedParams.inToken ? uint128(bound(oneSidedParams.amount, 1, type(uint128).max - fullRangeParams.tokenAmount)) : uint128(bound(oneSidedParams.amount, 1, type(uint128).max - fullRangeParams.currencyAmount));
+    //     oneSidedParams.amount = oneSidedParams.inToken
+    //         ? uint128(bound(oneSidedParams.amount, 1, type(uint128).max - fullRangeParams.tokenAmount))
+    //         : uint128(bound(oneSidedParams.amount, 1, type(uint128).max - fullRangeParams.currencyAmount));
 
     //     uint256 arraySize = 8;
     //     (bytes memory fullActions, bytes[] memory fullParams) =

@@ -30,6 +30,7 @@ import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
+import "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -68,8 +69,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable operator;
     /// @notice The block number at which the operator can sweep currency and tokens from the pool
     uint64 public immutable sweepBlock;
-    /// @notice Whether to create a one sided position after the full range position
-    bool public immutable createOneSidedPosition;
+    /// @notice Whether to create a one sided position in the token after the full range position
+    bool public immutable createOneSidedTokenPosition;
+    /// @notice Whether to create a one sided position in the currency after the full range position
+    bool public immutable createOneSidedCurrencyPosition;
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
@@ -104,7 +107,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         sweepBlock = migratorParams.sweepBlock;
         poolLPFee = migratorParams.poolLPFee;
         poolTickSpacing = migratorParams.poolTickSpacing;
-        createOneSidedPosition = migratorParams.createOneSidedPosition;
+        createOneSidedTokenPosition = migratorParams.createOneSidedTokenPosition;
+        createOneSidedCurrencyPosition = migratorParams.createOneSidedCurrencyPosition;
     }
 
     /// @inheritdoc IDistributionContract
@@ -232,26 +236,30 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
-        data.currencyAmount = auction.currencyRaised();
+        uint128 currencyRaised = auction.currencyRaised();
 
         data.priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
         data.sqrtPriceX96 = data.priceX192.convertToSqrtPriceX96();
 
-        (data.tokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            data.priceX192.calculateAmounts(data.currencyAmount, currency < token, reserveSupply);
+        (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
+            data.priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
 
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
             TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
-            currency < token ? data.currencyAmount : data.tokenAmount,
-            currency < token ? data.tokenAmount : data.currencyAmount
+            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         _validateLiquidity(data.liquidity);
 
-        data.shouldCreateOneSided =
-            createOneSidedPosition && (reserveSupply > data.tokenAmount || data.leftoverCurrency > 0);
+        // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
+        // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
+        data.shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount
+            || createOneSidedCurrencyPosition && data.leftoverCurrency > 0;
+
+        console2.log("data.shouldCreateOneSided", data.shouldCreateOneSided);
 
         return data;
     }
@@ -308,14 +316,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         if (data.shouldCreateOneSided) {
             (actions, params) = _createFullRangePositionPlan(
-                baseParams, data.tokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
+                baseParams,
+                data.initialTokenAmount,
+                data.initialCurrencyAmount,
+                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
             );
             (actions, params) =
-                _createOneSidedPositionPlan(baseParams, actions, params, data.tokenAmount, data.leftoverCurrency);
+                _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
             data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
         } else {
             (actions, params) = _createFullRangePositionPlan(
-                baseParams, data.tokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
+                baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
             );
             data.hasOneSidedParams = false;
         }
@@ -350,9 +361,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param data Migration data
     /// @return The amount of tokens to transfer
     function _getTokenTransferAmount(MigrationData memory data) private view returns (uint128) {
-        return (data.shouldCreateOneSided && reserveSupply > data.tokenAmount && data.hasOneSidedParams)
+        console2.log("Here");
+        console2.log("reserveSupply", reserveSupply);
+        console2.log("data.initialTokenAmount", data.initialTokenAmount);
+        console2.log("data.hasOneSidedParams", data.hasOneSidedParams);
+        return (data.shouldCreateOneSided && reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
             ? reserveSupply
-            : data.tokenAmount;
+            : data.initialTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer

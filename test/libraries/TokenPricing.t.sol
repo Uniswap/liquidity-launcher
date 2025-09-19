@@ -50,8 +50,8 @@ contract TokenPricingTest is Test {
     }
 
     function test_fuzz_convertToPriceX192_succeeds(uint256 price, bool currencyIsCurrency0) public {
-        if (price == 0 && currencyIsCurrency0) {
-            vm.expectRevert();
+        if (price == 0) {
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, price));
             tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
         } else {
             if (currencyIsCurrency0) {
@@ -62,7 +62,6 @@ contract TokenPricingTest is Test {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                     assertEq(priceX192, InverseHelpers.inverseQ96(price) << 96);
                 }
-
             } else {
                 if (price > type(uint160).max) {
                     vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, price));
