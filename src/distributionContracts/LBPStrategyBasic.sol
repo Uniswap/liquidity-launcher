@@ -38,8 +38,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using StrategyPlanner for BasePositionParams;
     using TokenPricing for *;
 
-    /// @notice The placeholder address that gets replaced with this contract's address in the AuctionFactory (matches AuctionFactory.USE_MSG_SENDER)
-    address public constant USE_MSG_SENDER = address(1);
     /// @notice The maximum percentage of the supply for distribution that can be sent to the auction, expressed in mps (1e7 = 100%)
     uint24 public constant MAX_TOKEN_SPLIT = 1e7;
 
