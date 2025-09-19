@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title ILBPStrategyBasic
 /// @notice Interface for the LBPStrategyBasic contract
@@ -26,15 +26,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param migrationBlock The block number at which migration is allowed
     /// @param currentBlock The current block number
     error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
-
-    /// @notice Emitted when the tokens are swept
-    event TokensSwept(address indexed operator, uint256 amount);
-
-    /// @notice Emitted when the currency is swept
-    event CurrencySwept(address indexed operator, uint256 amount);
-
-    /// @notice Error thrown when the sweep block is before or at the migration block
-    error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
 
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
@@ -62,12 +53,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param auction The auction that is not the caller
     error NotAuction(address caller, address auction);
 
-    /// @notice Error thrown when the caller is not the operator
-    error NotOperator(address caller, address operator);
-
-    /// @notice Error thrown when the sweep is not allowed yet
-    error SweepNotAllowed(uint256 sweepBlock, uint256 currentBlock);
-
     /// @notice Error thrown when the token amount is invalid
     /// @param tokenAmount The invalid token amount
     /// @param reserveSupply The reserve supply
@@ -90,12 +75,4 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Can only be called by the auction and must revert if the price, currency, or corresponding token amount is invalid
     function validate() external;
-
-    /// @notice Allows the operator to sweep tokens from the contract
-    /// @dev Can only be called after sweepBlock by the operator
-    function sweepToken() external;
-
-    /// @notice Allows the operator to sweep currency from the contract
-    /// @dev Can only be called after sweepBlock by the operator
-    function sweepCurrency() external;
 }
