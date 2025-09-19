@@ -298,9 +298,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         mockCurrencyRaised(lbp, ethAmount);
         deal(address(lbp), ethAmount);
 
-        vm.prank(address(lbp.auction()));
-        lbp.validate();
-
         // Migrate
         migrateToMigrationBlock(lbp);
 
@@ -358,9 +355,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         mockAuctionClearingPrice(lbp, pricePerToken);
         mockCurrencyRaised(lbp, ethAmount);
         deal(address(lbp), ethAmount);
-
-        vm.prank(address(lbp.auction()));
-        lbp.validate();
 
         // Migrate
         migrateToMigrationBlock(lbp);
