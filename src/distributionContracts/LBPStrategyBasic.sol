@@ -333,6 +333,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             );
             (actions, params) =
                 _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
+            // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
             data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
         } else {
             (actions, params) = _createFullRangePositionPlan(
@@ -370,7 +371,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param data Migration data
     /// @return The amount of tokens to transfer
     function _getTokenTransferAmount(MigrationData memory data) private view returns (uint128) {
-        return (data.shouldCreateOneSided && reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
+        // hasOneSidedParams can only be true if shouldCreateOneSided is true
+        return (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
             ? reserveSupply
             : data.initialTokenAmount;
     }
@@ -379,7 +381,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param data Migration data
     /// @return The amount of currency to transfer
     function _getCurrencyTransferAmount(MigrationData memory data) private pure returns (uint128) {
-        return (data.shouldCreateOneSided && data.leftoverCurrency > 0 && data.hasOneSidedParams)
+        // hasOneSidedParams can only be true if shouldCreateOneSided is true
+        return (data.leftoverCurrency > 0 && data.hasOneSidedParams)
             ? data.initialCurrencyAmount + data.leftoverCurrency
             : data.initialCurrencyAmount;
     }

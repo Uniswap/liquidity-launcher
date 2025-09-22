@@ -100,7 +100,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                             IPositionManager(POSITION_MANAGER),
                             IPoolManager(POOL_MANAGER)
                         ),
-                        0x7fa9385be102ac3eac297483dd6233d62b3e1496dd773461aaa2a6cdc44d322b
+                        0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f
                     )
                 )
             )
@@ -118,7 +118,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496dd773461aaa2a6cdc44d322b;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
@@ -142,7 +142,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_deterministicSender() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496dd773461aaa2a6cdc44d322b;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
         address sender1 = address(1);
         address sender2 = address(2);
         vm.prank(sender1);
