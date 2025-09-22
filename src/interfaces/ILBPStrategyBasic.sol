@@ -81,10 +81,15 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the auction supply is zero
     error AuctionSupplyIsZero();
 
-    /// @notice Error thrown when the currency amount is invalid
+    /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount
-    /// @param balance The balance of the currency
-    error InsufficientCurrency(uint128 currencyAmount, uint128 balance);
+    /// @param maxCurrencyAmount The maximum currency amount (type(uint128).max)
+    error CurrencyAmountTooHigh(uint256 currencyAmount, uint256 maxCurrencyAmount);
+
+    /// @notice Error thrown when the currency amount is invalid
+    /// @param amountNeeded The currency amount needed
+    /// @param amountAvailable The balance of the currency in the contract
+    error InsufficientCurrency(uint256 amountNeeded, uint256 amountAvailable);
 
     /// @notice Error thrown when the token amount is too high
     /// @param tokenAmount The invalid token amount

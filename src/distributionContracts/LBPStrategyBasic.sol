@@ -234,17 +234,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
 
-        uint128 currencyAmount = auction.currencyRaised();
+        uint256 currencyAmount = auction.currencyRaised();
+
+        if (currencyAmount > type(uint128).max) {
+            revert CurrencyAmountTooHigh(currencyAmount, type(uint128).max);
+        }
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
-            revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this))));
+            revert InsufficientCurrency(currencyAmount, Currency.wrap(currency).balanceOf(address(this)));
         }
     }
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
-        uint128 currencyRaised = auction.currencyRaised();
+        uint128 currencyRaised = uint128(auction.currencyRaised());
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
@@ -355,11 +359,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
-            positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp + 1);
+            positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp);
         } else {
             // Non-native currency: transfer first, then call modifyLiquidities
             Currency.wrap(currency).transfer(address(positionManager), currencyTransferAmount);
-            positionManager.modifyLiquidities(plan, block.timestamp + 1);
+            positionManager.modifyLiquidities(plan, block.timestamp);
         }
     }
 
