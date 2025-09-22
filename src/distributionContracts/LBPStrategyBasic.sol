@@ -248,7 +248,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
-        uint128 currencyRaised = uint128(auction.currencyRaised());
+        uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
@@ -338,7 +338,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             (actions, params) = _createFullRangePositionPlan(
                 baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
             );
-            data.hasOneSidedParams = false;
         }
 
         return abi.encode(actions, params);
