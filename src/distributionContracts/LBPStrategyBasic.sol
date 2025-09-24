@@ -85,7 +85,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
-        _validateAuctionParams(_auctionParams);
+        _validateAuctionParams(_auctionParams, _migratorParams);
 
         auctionParameters = _auctionParams;
 
@@ -221,10 +221,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams) private pure {
-        AuctionParameters memory parameters = abi.decode(auctionParams, (AuctionParameters));
-        if (parameters.fundsRecipient != ActionConstants.MSG_SENDER) {
-            revert InvalidFundsRecipient(parameters.fundsRecipient, ActionConstants.MSG_SENDER);
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
+        AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
+        if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
+            revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
+        } else if (_auctionParams.endBlock >= migratorParams.migrationBlock) {
+            revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
         }
     }
 

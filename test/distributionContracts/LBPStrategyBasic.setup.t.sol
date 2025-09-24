@@ -12,6 +12,7 @@ import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
@@ -372,6 +373,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address operator
     ) public {
         uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
         if (sweepBlock <= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
@@ -408,6 +410,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             );
         } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 1e7) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
+        } else if (auctionParameters.endBlock >= migrationBlock) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock));
         }
 
         // Should succeed with valid params

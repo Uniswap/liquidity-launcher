@@ -36,6 +36,11 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the sweep block is before or at the migration block
     error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
 
+    /// @notice Error thrown when the end block is at orafter the migration block
+    /// @param endBlock The invalid end block
+    /// @param migrationBlock The migration block
+    error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
+
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
     error TokenSplitTooHigh(uint24 tokenSplit, uint24 maxTokenSplit);
