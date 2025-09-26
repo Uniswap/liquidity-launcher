@@ -13,28 +13,23 @@ library TokenPricing {
     /// @notice Thrown when price is invalid (0 or out of bounds)
     error InvalidPrice(uint256 price);
 
-    /// @notice Thrown when amount overflows
+    /// @notice Thrown when calculated amount exceeds uint128 max value
     error AmountOverflow();
 
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
 
-    /// @notice Converts a Q96 price to Uniswap v4 price formats
-    /// @dev Converts price from Q96 to both X192 and sqrtX96 formats
+    /// @notice Converts a Q96 price to Uniswap v4 X192 format in terms of currency1/currency0
+    /// @dev Converts price from Q96 to X192 format
     /// @param price The price in Q96 fixed-point format (96 bits of fractional precision)
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
     /// @return priceX192 The price in Q192 fixed-point format
-    /// @return sqrtPriceX96 The square root price in Q96 fixed-point format
-    function convertPrice(uint256 price, bool currencyIsCurrency0)
-        internal
-        pure
-        returns (uint256 priceX192, uint160 sqrtPriceX96)
-    {
+    function convertToPriceX192(uint256 price, bool currencyIsCurrency0) internal pure returns (uint256 priceX192) {
         if (price == 0) {
             revert InvalidPrice(price);
         }
-        // If currency is currency0, we need to invert the price to get currency1/currency0 format
+        // If currency is currency0, we need to invert the price (price = currency1/currency0)
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
             price = (1 << (FixedPoint96.RESOLUTION) * 2) / price;
@@ -47,16 +42,23 @@ library TokenPricing {
 
         // Convert from Q96 to X192 format by shifting left 96 bits (will not overflow since price is less than or equal to type(uint160).max)
         priceX192 = price << FixedPoint96.RESOLUTION;
+        return priceX192;
+    }
 
+    /// @notice Converts a Q192 price to Uniswap v4 sqrtPriceX96 format
+    /// @dev Converts price from Q192 to sqrtPriceX96 format
+    /// @param priceX192 The price in Q192 fixed-point format
+    /// @return sqrtPriceX96 The square root price in Q96 fixed-point format
+    function convertToSqrtPriceX96(uint256 priceX192) internal pure returns (uint160 sqrtPriceX96) {
         // Calculate square root for Uniswap v4's sqrtPriceX96 format
         // This will lose some precision and be rounded down
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(price);
+            revert InvalidPrice(priceX192);
         }
 
-        return (priceX192, sqrtPriceX96);
+        return sqrtPriceX96;
     }
 
     /// @notice Calculates token amount based on currency amount and price

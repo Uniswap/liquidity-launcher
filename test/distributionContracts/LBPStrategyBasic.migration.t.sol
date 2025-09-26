@@ -260,19 +260,18 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertBalancesAfterMigration(before, afterMigration);
     }
 
-    function test_migrate_leftover_oneSidedPositionNotSet_succeeds() public {
-        //Redeploy with fuzzed tick spacing
+    function test_migrate_noOneSidedPosition_leftoverToken_succeeds() public {
         migratorParams = createMigratorParams(
-            address(0), // ETH as currency
-            500, // fee
-            1,
+            address(0),
+            500,
+            20,
             DEFAULT_TOKEN_SPLIT,
-            address(3), // position recipient
+            address(3),
             uint64(block.number + 500),
-            uint64(block.number + 1_000), // sweep block
-            address(this), // operator
-            false, // createOneSidedTokenPosition
-            true // createOneSidedCurrencyPosition
+            uint64(block.number + 1_000),
+            testOperator,
+            false,
+            false
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
@@ -296,46 +295,67 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
         mockCurrencyRaised(lbp, ethAmount);
+
         deal(address(lbp), ethAmount);
+
+        // Take balance snapshot
+        BalanceSnapshot memory before =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
         migrateToMigrationBlock(lbp);
 
-        // Check main position
-        (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+        // Take balance snapshot after
+        BalanceSnapshot memory afterMigration =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
-        // For full range positions, MIN_TICK and MAX_TICK must be multiples of tick spacing
-        int24 expectedMinTick = TickMath.MIN_TICK;
-        int24 expectedMaxTick = TickMath.MAX_TICK;
+        // Verify main position
+        assertPositionCreated(
+            IPositionManager(POSITION_MANAGER),
+            nextTokenId,
+            address(0),
+            address(token),
+            500, // poolLPFee
+            20, // poolTickSpacing
+            TickMath.MIN_TICK / 20 * 20,
+            TickMath.MAX_TICK / 20 * 20
+        );
 
-        assertEq(info.tickLower(), expectedMinTick);
-        assertEq(info.tickUpper(), expectedMaxTick);
+        // Verify one-sided position is not created
+        assertPositionNotCreated(IPositionManager(POSITION_MANAGER), nextTokenId + 1);
 
-        // One-sided position should not have been created
-        (, PositionInfo oneSidedInfo) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
-        assertEq(oneSidedInfo.tickLower(), 0);
-        assertEq(oneSidedInfo.tickUpper(), 0);
-        assertEq(oneSidedInfo.poolId(), bytes25(0));
+        // Verify balances
+        assertBalancesAfterMigration(before, afterMigration);
+        // leftover tokens, no leftover currency
+        assertGt(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
+        assertEq(Currency.wrap(address(0)).balanceOf(address(lbp)), 0);
+
+        uint256 operatorBalanceBefore = Currency.wrap(address(token)).balanceOf(lbp.operator());
+
+        vm.roll(lbp.sweepBlock());
+        vm.prank(lbp.operator());
+        lbp.sweepToken();
+        assertEq(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
+        assertGt(Currency.wrap(address(token)).balanceOf(lbp.operator()), operatorBalanceBefore);
     }
 
-    function test_migrate_noLeftover_OneSidedPositionSet_succeeds() public {
-        //Redeploy with fuzzed tick spacing
+    function test_migrate_noOneSidedPosition_leftoverCurrency_succeeds() public {
         migratorParams = createMigratorParams(
-            address(0), // ETH as currency
-            500, // fee
-            1,
-            DEFAULT_TOKEN_SPLIT,
-            address(3), // position recipient
+            address(0),
+            500,
+            20,
+            9e6,
+            address(3),
             uint64(block.number + 500),
-            uint64(block.number + 1_000), // sweep block
-            address(this), // operator
-            true,
-            true
+            uint64(block.number + 1_000),
+            testOperator,
+            false,
+            false
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
-        uint128 tokenAmount = DEFAULT_TOTAL_SUPPLY / 2;
-        uint128 ethAmount = 500e18;
+        uint128 ethAmount = 1000e18;
+        uint128 tokenAmount = 2000e18;
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -354,26 +374,48 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Mock clearingPrice after etching
         mockAuctionClearingPrice(lbp, pricePerToken);
         mockCurrencyRaised(lbp, ethAmount);
+
         deal(address(lbp), ethAmount);
+
+        // Take balance snapshot
+        BalanceSnapshot memory before =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
         migrateToMigrationBlock(lbp);
 
-        // Check main position
-        (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
+        // Take balance snapshot after
+        BalanceSnapshot memory afterMigration =
+            takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
-        // For full range positions, MIN_TICK and MAX_TICK must be multiples of tick spacing
-        int24 expectedMinTick = TickMath.MIN_TICK;
-        int24 expectedMaxTick = TickMath.MAX_TICK;
+        // Verify main position
+        assertPositionCreated(
+            IPositionManager(POSITION_MANAGER),
+            nextTokenId,
+            address(0),
+            address(token),
+            500, // poolLPFee
+            20, // poolTickSpacing
+            TickMath.MIN_TICK / 20 * 20,
+            TickMath.MAX_TICK / 20 * 20
+        );
 
-        assertEq(info.tickLower(), expectedMinTick);
-        assertEq(info.tickUpper(), expectedMaxTick);
+        // Verify one-sided position is not created
+        assertPositionNotCreated(IPositionManager(POSITION_MANAGER), nextTokenId + 1);
 
-        // One-sided position should not have been created since no tokens or currency are leftover
-        (, PositionInfo oneSidedInfo) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId + 1);
-        assertEq(oneSidedInfo.tickLower(), 0);
-        assertEq(oneSidedInfo.tickUpper(), 0);
-        assertEq(oneSidedInfo.poolId(), bytes25(0));
+        // Verify balances
+        assertBalancesAfterMigration(before, afterMigration);
+        // leftover tokens, no leftover currency
+        assertEq(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
+        assertGt(Currency.wrap(address(0)).balanceOf(address(lbp)), 0);
+
+        uint256 operatorBalanceBefore = Currency.wrap(address(0)).balanceOf(lbp.operator());
+
+        vm.roll(lbp.sweepBlock());
+        vm.prank(lbp.operator());
+        lbp.sweepCurrency();
+        assertEq(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
+        assertGt(Currency.wrap(address(0)).balanceOf(lbp.operator()), operatorBalanceBefore);
     }
 
     // ============ One-Sided Position Migration Tests ============
@@ -737,7 +779,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(address(lbp), ethAmount);
 
         if (pricePerToken != 0) {
-            pricePerToken = InverseHelpers.invertPrice(pricePerToken);
+            pricePerToken = InverseHelpers.inverseQ96(pricePerToken);
         }
 
         // Calculate expected values
@@ -773,6 +815,43 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         }
     }
 
+    // function test_migrate_withETH_revertsWithInvalidPrice() public {
+    //     // This test verifies the handling of prices above MAX_SQRT_PRICE
+    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+
+    //     // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
+    //     // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
+    //     // clearingPrice = (1 << 96)^2 / actualPrice
+    //     // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
+    //     // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
+    //     // So we need a clearing price close to 0 but not 0
+    //     uint256 veryLowClearingPrice = 1; // Minimal non-zero price
+    //     mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+    //     mockAuctionEndBlock(lbp, uint64(block.number - 1));
+
+    //     // Set up mock auction
+    //     uint128 ethAmount = 1e18;
+    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
+    //     vm.deal(address(lbp.auction()), ethAmount);
+    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+    //     // Mock the clearingPrice again after etching
+    //     mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+
+    //     mockCurrencyRaised(lbp, ethAmount);
+
+    //     deal(address(lbp), ethAmount);
+
+    //     // Calculate the inverted price that will be used in the contract
+    //     uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
+
+    //     vm.roll(lbp.migrationBlock());
+
+    //     vm.prank(address(lbp.auction()));
+    //     // Expect revert with InvalidPrice (the error will contain the inverted price)
+    //     vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice << 96));
+    //     lbp.migrate();
+    // }
     function test_migrate_withETH_revertsWithPriceTooHigh() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -801,7 +880,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(address(lbp), ethAmount);
 
         // Calculate the inverted price that will be used in the contract
-        uint256 invertedPrice = InverseHelpers.invertPrice(veryLowClearingPrice);
+        uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
 
         vm.roll(lbp.migrationBlock());
 
@@ -877,7 +956,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.migrate();
         } else if (!tokenAmountFitsInUint128) {
-            // Should revert with InvalidTokenAmount
+            // Should revert
             vm.prank(address(lbp.auction()));
             vm.expectRevert();
             lbp.migrate();

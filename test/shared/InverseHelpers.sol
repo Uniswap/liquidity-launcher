@@ -18,12 +18,4 @@ library InverseHelpers {
         require(value > 0, "InverseHelpers: cannot invert zero");
         return FullMath.mulDiv(Q96, Q96, value);
     }
-
-    /// @notice Calculate the inverse of a price in Q96 format
-    /// @param priceQ96 The price in Q96 format to invert
-    /// @return The inverted price in Q96 format
-    /// @dev Alias for inverseQ96, used for clarity when dealing with prices
-    function invertPrice(uint256 priceQ96) internal pure returns (uint256) {
-        return inverseQ96(priceQ96);
-    }
 }

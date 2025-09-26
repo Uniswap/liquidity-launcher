@@ -66,6 +66,17 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), expectedTickUpper);
     }
 
+    function assertPositionNotCreated(IPositionManager positionManager, uint256 tokenId) internal view {
+        (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
+
+        vm.assertEq(Currency.unwrap(poolKey.currency0), address(0));
+        vm.assertEq(Currency.unwrap(poolKey.currency1), address(0));
+        vm.assertEq(poolKey.fee, 0);
+        vm.assertEq(poolKey.tickSpacing, 0);
+        vm.assertEq(info.tickLower(), 0);
+        vm.assertEq(info.tickUpper(), 0);
+    }
+
     function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
         // Assert LBP is empty
         vm.assertEq(address(lbp).balance, 0);
