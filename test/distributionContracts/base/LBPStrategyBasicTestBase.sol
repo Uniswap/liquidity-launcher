@@ -172,9 +172,9 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
                 endBlock: uint64(block.number + 100),
                 claimBlock: uint64(block.number + 100),
                 graduationThresholdMps: 1000000, // 100%
-                tickSpacing: 20,
+                tickSpacing: 100,
                 validationHook: address(0), // No validation hook
-                floorPrice: 1,
+                floorPrice: 100e6,
                 auctionStepsData: auctionStepsData
             })
         );

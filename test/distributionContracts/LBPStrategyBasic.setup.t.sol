@@ -411,7 +411,11 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 1e7) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
         } else if (auctionParameters.endBlock >= migrationBlock) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock
+                )
+            );
         }
 
         // Should succeed with valid params

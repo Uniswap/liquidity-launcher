@@ -221,7 +221,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
+        private
+        pure
+    {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
