@@ -42,8 +42,8 @@ library ParamsBuilder {
         // Build parameters - direct encoding to avoid stack issues
         params = new bytes[](paramsArraySize);
 
-        uint128 amount0 = currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount;
-        uint128 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
+        uint256 amount0 = currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount;
+        uint256 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
 
         // Settlement params
         params[0] = abi.encode(poolKey.currency0, amount0, false);

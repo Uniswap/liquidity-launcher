@@ -16,7 +16,7 @@ contract MerkleClaimFactory is IDistributionStrategy {
     /// @param configData ABI-encoded (merkleRoot, owner, endTime) where endTime is optional (0 = no deadline).
     /// @param salt The salt for deterministic deployment
     /// @return distributionContract The freshly deployed MerkleClaim.
-    function initializeDistribution(address token, uint128 totalSupply, bytes calldata configData, bytes32 salt)
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         override
         returns (IDistributionContract distributionContract)

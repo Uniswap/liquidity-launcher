@@ -82,8 +82,8 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// forge-config: ci.isolate = true
     function test_migrate_withETH_withOneSidedPosition_gas() public {
         // Setup
-        uint128 ethAmount = 500e18;
-        uint128 tokenAmount = lbp.reserveSupply() / 2;
+        uint256 ethAmount = 500e18;
+        uint256 tokenAmount = lbp.reserveSupply() / 2;
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -165,7 +165,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
-        uint128 tokenAmount = lbp.reserveSupply() / 2;
+        uint256 tokenAmount = lbp.reserveSupply() / 2;
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);

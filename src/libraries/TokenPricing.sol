@@ -72,35 +72,28 @@ library TokenPricing {
     /// @return correspondingCurrencyAmount The corresponding currency amount
     function calculateAmounts(
         uint256 priceX192,
-        uint128 currencyAmount,
+        uint256 currencyAmount,
         bool currencyIsCurrency0,
-        uint128 reserveSupply
-    ) internal pure returns (uint128, uint128, uint128) {
-        uint128 leftoverCurrency;
-        uint128 correspondingCurrencyAmount;
-
+        uint256 reserveSupply
+    ) internal pure returns (uint256 tokenAmount, uint256 leftoverCurrency, uint256 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
-        uint256 tokenAmount = currencyIsCurrency0
+        tokenAmount = currencyIsCurrency0
             ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
             : FullMath.mulDiv(currencyAmount, Q192, priceX192);
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
         if (tokenAmount > reserveSupply) {
-            uint256 correspondingCurrencyAmountUint256 = currencyIsCurrency0
+            correspondingCurrencyAmount = currencyIsCurrency0
                 ? FullMath.mulDiv(reserveSupply, Q192, priceX192)
                 : FullMath.mulDiv(priceX192, reserveSupply, Q192);
 
-            if (correspondingCurrencyAmountUint256 > type(uint128).max) {
-                revert AmountOverflow();
-            }
-
-            correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
+            // currencyAmount is already validated to be less than or equal to type(uint128).max so leftoverCurrency is also less than or equal to type(uint128).max
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply;
         } else {
             correspondingCurrencyAmount = currencyAmount;
         }
 
-        return (uint128(tokenAmount), leftoverCurrency, correspondingCurrencyAmount);
+        return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
     }
 }

@@ -62,6 +62,11 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param expectedFundsRecipient The expected funds recipient (address(1))
     error InvalidFundsRecipient(address invalidFundsRecipient, address expectedFundsRecipient);
 
+    /// @notice Error thrown when the reserve supply is too high
+    /// @param reserveSupply The invalid reserve supply
+    /// @param maxReserveSupply The maximum reserve supply (type(uint128).max)
+    error ReserveSupplyIsTooHigh(uint256 reserveSupply, uint256 maxReserveSupply);
+
     /// @notice Error thrown when the liquidity is invalid
     /// @param maxLiquidityPerTick The max liquidity per tick
     /// @param liquidity The invalid liquidity

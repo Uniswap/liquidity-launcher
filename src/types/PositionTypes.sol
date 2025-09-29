@@ -17,13 +17,13 @@ struct BasePositionParams {
 
 /// @notice Parameters specific to full-range positions
 struct FullRangeParams {
-    uint128 tokenAmount;
-    uint128 currencyAmount;
+    uint256 tokenAmount;
+    uint256 currencyAmount;
 }
 
 /// @notice Parameters specific to one-sided positions
 struct OneSidedParams {
-    uint128 amount;
+    uint256 amount;
     bool inToken;
 }
 

@@ -276,7 +276,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 ethAmount = 500e18;
-        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
+        uint256 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -422,7 +422,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_withOneSidedPosition_withETH_succeeds() public {
         uint128 ethAmount = 500e18;
-        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
+        uint256 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -504,7 +504,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2; // 500e18
-        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
+        uint256 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -600,7 +600,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 ethAmount = 500e18;
-        uint128 tokenAmount = lbp.reserveSupply() / 2; // 250e18
+        uint256 tokenAmount = lbp.reserveSupply() / 2; // 250e18
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -682,7 +682,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
-        uint128 tokenAmount = lbp.reserveSupply() / 2;
+        uint256 tokenAmount = lbp.reserveSupply() / 2;
 
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);

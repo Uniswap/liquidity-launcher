@@ -24,7 +24,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     }
 
     /// @inheritdoc IDistributionStrategy
-    function initializeDistribution(address token, uint128 totalSupply, bytes calldata configData, bytes32 salt)
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         returns (IDistributionContract lbp)
     {
@@ -50,7 +50,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     /// @param salt The salt to deterministicly deploy the LBPStrategyBasic contract
     /// @param sender The address to be concatenated with the salt parameter before being hashed
     /// @return The address of the LBPStrategyBasic contract
-    function getLBPAddress(address token, uint128 totalSupply, bytes calldata configData, bytes32 salt, address sender)
+    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (address)
