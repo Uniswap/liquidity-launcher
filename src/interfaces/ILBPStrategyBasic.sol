@@ -75,7 +75,7 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Error thrown when the caller is not the auction
     /// @param caller The caller that is not the auction
     /// @param auction The auction that is not the caller
-    error NotAuction(address caller, address auction);
+    error NativeCurrencyTransferNotFromAuction(address caller, address auction);
 
     /// @notice Error thrown when the caller is not the operator
     error NotOperator(address caller, address operator);

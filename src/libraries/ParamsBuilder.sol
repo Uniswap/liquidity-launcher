@@ -11,6 +11,7 @@ import {TickBounds} from "../types/PositionTypes.sol";
 library ParamsBuilder {
     error InvalidParamsLength(uint256 invalidLength);
 
+    /// @notice Empty bytes used as hook data when minting positions since no hook data is needed
     bytes constant ZERO_BYTES = new bytes(0);
 
     /// @notice Number of params needed for a standalone full-range position
@@ -46,8 +47,8 @@ library ParamsBuilder {
         uint256 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
 
         // Settlement params
-        params[0] = abi.encode(poolKey.currency0, amount0, false);
-        params[1] = abi.encode(poolKey.currency1, amount1, false);
+        params[0] = abi.encode(poolKey.currency0, amount0, false); // payerIsUser is false because position manager will be the payer
+        params[1] = abi.encode(poolKey.currency1, amount1, false); // payerIsUser is false because position manager will be the payer
 
         // Mint from deltas params
         params[2] =
@@ -86,7 +87,7 @@ library ParamsBuilder {
         existingParams[FULL_RANGE_SIZE] = abi.encode(
             currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0,
             oneSidedParams.amount,
-            false
+            false // payerIsUser is false because position manager will be the payer
         );
 
         // Set up mint params directly

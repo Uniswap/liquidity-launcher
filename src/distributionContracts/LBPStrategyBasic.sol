@@ -378,7 +378,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Calculates the amount of tokens to transfer
     /// @param data Migration data
-    /// @return The amount of tokens to transfer
+    /// @return The amount of tokens to transfer to the position manager
     function _getTokenTransferAmount(MigrationData memory data) private view returns (uint256) {
         // hasOneSidedParams can only be true if shouldCreateOneSided is true
         return (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
@@ -388,7 +388,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Calculates the amount of currency to transfer
     /// @param data Migration data
-    /// @return The amount of currency to transfer
+    /// @return The amount of currency to transfer to the position manager
     function _getCurrencyTransferAmount(MigrationData memory data) private pure returns (uint256) {
         // hasOneSidedParams can only be true if shouldCreateOneSided is true
         return (data.leftoverCurrency > 0 && data.hasOneSidedParams)
@@ -442,6 +442,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Receives native currency only from the auction
     receive() external payable {
-        if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
+        if (msg.sender != address(auction)) revert NativeCurrencyTransferNotFromAuction(msg.sender, address(auction));
     }
 }
