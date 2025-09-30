@@ -32,7 +32,7 @@ library TokenPricing {
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
-            price = (1 << (FixedPoint96.RESOLUTION) * 2) / price;
+            price = (1 << (FixedPoint96.RESOLUTION * 2)) / price;
         }
 
         // Check price bounds after potential inversion
@@ -89,7 +89,7 @@ library TokenPricing {
 
             // currencyAmount is already validated to be less than or equal to type(uint128).max so leftoverCurrency is also less than or equal to type(uint128).max
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
-            tokenAmount = reserveSupply;
+            tokenAmount = reserveSupply; // tokenAmount will never be greater than reserveSupply
         } else {
             correspondingCurrencyAmount = currencyAmount;
         }

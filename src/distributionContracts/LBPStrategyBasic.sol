@@ -169,7 +169,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
-    /// @notice Validates the migrator parameters
+    /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _token The token that is being distributed
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
@@ -430,6 +430,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint256 tokenAmount,
         uint256 leftoverCurrency
     ) private view returns (bytes memory, bytes[] memory) {
+        // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
         uint256 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
         bool inToken = leftoverCurrency == 0;
 
