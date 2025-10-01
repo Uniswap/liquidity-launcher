@@ -285,7 +285,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Validates that liquidity doesn't exceed maximum allowed per tick
     /// @param liquidity The liquidity to validate
-    function _validateLiquidity(uint128 liquidity) private view {
+    function _validateLiquidity(uint128 liquidity) internal view {
         uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
 
         if (liquidity > maxLiquidityPerTick) {
