@@ -250,7 +250,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     function _prepareMigrationData() private returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
         // call checkpoint to get the final clearing price
-        uint256 priceX192 = auction.checkpoint().clearingPrice().convertToPriceX192(currency < token);
+        uint256 priceX192 = auction.checkpoint().clearingPrice.convertToPriceX192(currency < token);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =

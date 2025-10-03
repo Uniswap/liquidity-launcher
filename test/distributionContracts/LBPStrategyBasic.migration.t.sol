@@ -15,7 +15,7 @@ import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7X7} from "twap-auction/src/libraries/CheckpointLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -56,7 +56,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
         _setupForMigration(DEFAULT_TOTAL_SUPPLY / 2, 500e18);
-        migrateToMigrationBlock(lbp, 0);
+        migrateToMigrationBlock(lbp, 1 << 96);
 
         // Try to migrate again
         deal(address(token), address(lbp), DEFAULT_TOTAL_SUPPLY);
@@ -101,12 +101,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: 0,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
@@ -151,12 +149,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: veryLowPrice,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
@@ -810,6 +806,21 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         deal(address(lbp), ethAmount);
 
+        vm.roll(lbp.migrationBlock());
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: pricePerToken,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
+
         if (pricePerToken != 0) {
             pricePerToken = InverseHelpers.inverseQ96(pricePerToken);
         }
@@ -823,23 +834,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
         bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
         bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
-
-        vm.roll(lbp.migrationBlock());
-
-        mockAuctionCheckpoint(
-            lbp,
-            Checkpoint({
-                clearingPrice: pricePerToken,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
-                cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
-                cumulativeMps: 0,
-                mps: 0,
-                prev: 0,
-                next: type(uint64).max
-            })
-        );
 
         // case 1. price is 0
         // case 2. price is > type(uint160).max
@@ -934,13 +928,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         mockAuctionCheckpoint(
             lbp,
             Checkpoint({
-                clearingPrice: invertedPrice,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                clearingPrice: veryLowClearingPrice,
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
@@ -998,12 +990,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: pricePerToken,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })

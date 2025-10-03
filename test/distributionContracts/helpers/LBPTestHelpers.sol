@@ -14,7 +14,7 @@ import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7X7} from "twap-auction/src/libraries/CheckpointLib.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -172,12 +172,10 @@ abstract contract LBPTestHelpers is Test {
             lbp,
             Checkpoint({
                 clearingPrice: pricePerToken,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })

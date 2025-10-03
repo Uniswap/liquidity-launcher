@@ -5,7 +5,7 @@ import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7X7} from "twap-auction/src/libraries/CheckpointLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -78,12 +78,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: pricePerToken,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
@@ -128,12 +126,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: pricePerToken,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
@@ -178,12 +174,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: 2 << 96,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
@@ -241,12 +235,10 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: pricePerToken,
-                totalCleared: ValueX7.wrap(0),
-                resolvedDemandAboveClearingPrice: ValueX7.wrap(0),
+                totalClearedX7X7: ValueX7X7.wrap(0),
                 cumulativeMpsPerPrice: 0,
-                cumulativeSupplySoldToClearingPriceX7: ValueX7.wrap(0),
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
                 cumulativeMps: 0,
-                mps: 0,
                 prev: 0,
                 next: type(uint64).max
             })
