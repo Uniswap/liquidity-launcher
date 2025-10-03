@@ -856,43 +856,57 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         }
     }
 
-    // function test_migrate_withETH_revertsWithInvalidPrice() public {
-    //     // This test verifies the handling of prices above MAX_SQRT_PRICE
-    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    function test_migrate_withETH_revertsWithInvalidPrice() public {
+        // This test verifies the handling of prices above MAX_SQRT_PRICE
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-    //     // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
-    //     // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
-    //     // clearingPrice = (1 << 96)^2 / actualPrice
-    //     // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
-    //     // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
-    //     // So we need a clearing price close to 0 but not 0
-    //     uint256 veryLowClearingPrice = 1; // Minimal non-zero price
-    //     mockAuctionClearingPrice(lbp, veryLowClearingPrice);
-    //     mockAuctionEndBlock(lbp, uint64(block.number - 1));
+        // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
+        // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
+        // clearingPrice = (1 << 96)^2 / actualPrice
+        // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
+        // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
+        // So we need a clearing price close to 0 but not 0
+        uint256 veryLowClearingPrice = 1; // Minimal non-zero price
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
-    //     // Set up mock auction
-    //     uint128 ethAmount = 1e18;
-    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
-    //     vm.deal(address(lbp.auction()), ethAmount);
-    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
+        // Set up mock auction
+        uint128 ethAmount = 1e18;
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-    //     // Mock the clearingPrice again after etching
-    //     mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+        // Mock the clearingPrice again after etching
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
 
-    //     mockCurrencyRaised(lbp, ethAmount);
+        mockCurrencyRaised(lbp, ethAmount);
 
-    //     deal(address(lbp), ethAmount);
+        deal(address(lbp), ethAmount);
 
-    //     // Calculate the inverted price that will be used in the contract
-    //     uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
+        // Calculate the inverted price that will be used in the contract
+        uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
 
-    //     vm.roll(lbp.migrationBlock());
+        vm.roll(lbp.migrationBlock());
 
-    //     vm.prank(address(lbp.auction()));
-    //     // Expect revert with InvalidPrice (the error will contain the inverted price)
-    //     vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice << 96));
-    //     lbp.migrate();
-    // }
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: veryLowClearingPrice,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
+
+        vm.prank(address(lbp.auction()));
+        // Expect revert with InvalidPrice (the error will contain the inverted price)
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
+        lbp.migrate();
+    }
+
     function test_migrate_withETH_revertsWithPriceTooHigh() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
