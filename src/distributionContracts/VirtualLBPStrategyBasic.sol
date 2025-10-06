@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {LBPStrategyBasic} from "./LBPStrategyBasic.sol";
+import {LBPStrategyBasicImpl} from "./LBPStrategyBasicImpl.sol";
 import {IVirtualERC20} from "../interfaces/external/VirtualERC20.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -18,13 +18,12 @@ import {Auction} from "twap-auction/src/Auction.sol";
 import {GovernanceHook} from "../utils/GovernanceHook.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 
-
 /// @title VirtualLBPStrategyBasic
 /// @notice Strategy for distributing virtual tokens to a v4 pool
 /// Virtual tokens are ERC20 tokens that wrap an underlying token. 
 
 // TODO(md): make sure that the governance hook is inherited from, NOT overidden by hook basic
-contract VirtualLBPStrategyBasic is LBPStrategyBasic, GovernanceHook {
+contract VirtualLBPStrategyBasic is LBPStrategyBasicImpl, GovernanceHook {
     using TokenPricing for *;
 
     constructor(
@@ -35,9 +34,14 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic, GovernanceHook {
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         address _governance
-    ) LBPStrategyBasic(_token, _totalSupply, migratorParams, auctionParams, _positionManager, _poolManager) GovernanceHook(_poolManager, _governance) {}
+    ) 
+    // Underlying strategy
+    LBPStrategyBasicImpl(_token, _totalSupply, migratorParams, auctionParams, _positionManager) 
+    // Governance hook implementation
+    GovernanceHook(_poolManager, _governance) 
+    {}
 
-    function _initializePool(MigrationData memory data) private override(LBPStrategyBasic) returns (PoolKey memory key) {
+    function _initializePool(MigrationData memory data) internal override(LBPStrategyBasicImpl) returns (PoolKey memory key) {
         address underlyingToken = IVirtualERC20(token).UNDERLYING_TOKEN_ADDRESS();
 
         key = PoolKey({
@@ -53,7 +57,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic, GovernanceHook {
         return key;
     }
 
-    function _prepareMigrationData() private view override(LBPStrategyBasic) returns (MigrationData memory data) {
+    function _prepareMigrationData() internal view override(LBPStrategyBasicImpl) returns (MigrationData memory data) {
         uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
         address underlyingToken = IVirtualERC20(token).UNDERLYING_TOKEN_ADDRESS();
 

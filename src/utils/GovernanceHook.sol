@@ -6,15 +6,15 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-import {BaseHook} from "./HookBasic.sol";
+import {HookBasic} from "./HookBasic.sol";
 
-contract GovernanceHook is BaseHook {
+contract GovernanceHook is HookBasic {
     /// @notice Emitted when migration is approved by governance
     event MigrationApproved();
     /// @notice Emitted when the governance contract is set
     event GovernanceSet(address governance);
-    /// @notice Error thrown when the initializer of the pool is not the strategy contract
-    error InvalidInitializer(address caller, address strategy);
+    // /// @notice Error thrown when the initializer of the pool is not the strategy contract
+    // error InvalidInitializer(address caller, address strategy);
 
     /// @notice Error thrown when migration is not approved by governance
     error MigrationNotApproved();
@@ -27,7 +27,7 @@ contract GovernanceHook is BaseHook {
     /// @notice Whether migration is approved by governance
     bool public isMigrationApproved;
 
-    constructor(IPoolManager _poolManager, address _governance) BaseHook(_poolManager) {
+    constructor(IPoolManager _poolManager, address _governance) HookBasic(_poolManager) {
         governance = _governance;
         emit GovernanceSet(governance);
     }
@@ -40,8 +40,8 @@ contract GovernanceHook is BaseHook {
         emit MigrationApproved();
     }
 
-    /// @inheritdoc BaseHook
-    function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
+    /// @inheritdoc HookBasic
+    function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override(HookBasic) returns (bytes4) {
         // This check is only hit when another address tries to initialize the pool, since hooks cannot call themselves.
         // Therefore this will always revert, ensuring only this contract can initialize pools
         if (sender != address(this)) revert InvalidInitializer(sender, address(this));
