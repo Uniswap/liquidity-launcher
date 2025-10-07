@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.26;
 
 import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
@@ -86,7 +86,7 @@ abstract contract LBPStrategyBasicImpl is ILBPStrategyBasic, ImmutableState {
     ) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
         _validateAuctionParams(_auctionParams, _migratorParams);
-
+        
         auctionParameters = _auctionParams;
 
         token = _token;

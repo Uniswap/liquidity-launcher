@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicImpl} from "./LBPStrategyBasicImpl.sol";
 import {IVirtualERC20} from "../interfaces/external/VirtualERC20.sol";

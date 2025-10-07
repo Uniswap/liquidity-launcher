@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -28,8 +28,8 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
         external
         returns (IDistributionContract virtualLBP)
     {
-        (MigratorParameters memory migratorParams, bytes memory auctionParams, address governanceAddress) =
-            abi.decode(configData, (MigratorParameters, bytes, address));
+        (address governanceAddress, MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (address, MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
         virtualLBP = IDistributionContract(
@@ -50,20 +50,20 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
     /// @param salt The salt to deterministicly deploy the LBPStrategyBasic contract
     /// @param sender The address to be concatenated with the salt parameter before being hashed
     /// @return The address of the LBPStrategyBasic contract
-    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, address governanceAddress, bytes32 salt, address sender)
+    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (address)
     {
-        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
-            abi.decode(configData, (MigratorParameters, bytes));
+        (address governanceAddress, MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (address, MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(sender, salt));
 
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(VirtualLBPStrategyBasic).creationCode,
-                abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager, governanceAddress)
+                abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager, governanceAddress)
             )
         );
         return Create2.computeAddress(_salt, initCodeHash, address(this));
