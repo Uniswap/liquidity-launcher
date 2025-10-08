@@ -32,7 +32,7 @@ import {MigrationData} from "../types/MigrationData.sol";
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
-abstract contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
+contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
