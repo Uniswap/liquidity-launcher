@@ -15,6 +15,7 @@ import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
+import {Checkpoint, ValueX7X7} from "twap-auction/src/libraries/CheckpointLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -55,7 +56,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
         _setupForMigration(DEFAULT_TOTAL_SUPPLY / 2, 500e18);
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, 1 << 96);
 
         // Try to migrate again
         deal(address(token), address(lbp), DEFAULT_TOTAL_SUPPLY);
@@ -95,6 +96,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         mockCurrencyRaised(lbp, 0);
 
         vm.roll(lbp.migrationBlock());
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: 0,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
         vm.prank(address(tokenLauncher));
         vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, 0));
         lbp.migrate();
@@ -130,6 +144,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp), daiAmount);
 
         vm.roll(lbp.migrationBlock());
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: veryLowPrice,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
 
         // Expect revert with InvalidPrice
         vm.prank(address(lbp.auction()));
@@ -171,7 +198,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 ethAmount = 500e18;
 
         // Setup
-        _setupForMigration(tokenAmount, ethAmount);
+        uint256 pricePerToken = _setupForMigration(tokenAmount, ethAmount);
 
         // Take balance snapshot
         BalanceSnapshot memory before = takeBalanceSnapshot(
@@ -183,7 +210,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -237,7 +264,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             takeBalanceSnapshot(address(token), DAI, POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, 1 << 96);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -303,7 +330,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -382,7 +409,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -449,7 +476,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             takeBalanceSnapshot(address(token), address(0), POSITION_MANAGER, POOL_MANAGER, address(3));
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -528,7 +555,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp), daiAmount);
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Verify main position
         assertPositionCreated(
@@ -546,7 +573,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     // ============ Helper Functions ============
 
-    function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private {
+    function _setupForMigration(uint128 tokenAmount, uint128 currencyAmount) private returns (uint256) {
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // Set up auction with price
@@ -576,6 +603,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         mockCurrencyRaised(lbp, currencyAmount);
 
         vm.deal(address(lbp), currencyAmount);
+        return pricePerToken;
     }
 
     // Fuzz tests
@@ -622,7 +650,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(address(lbp), ethAmount);
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Check main position
         (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
@@ -705,7 +733,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp), daiAmount);
 
         // Migrate
-        migrateToMigrationBlock(lbp);
+        migrateToMigrationBlock(lbp, pricePerToken);
 
         // Check main position
         (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
@@ -778,6 +806,21 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         deal(address(lbp), ethAmount);
 
+        vm.roll(lbp.migrationBlock());
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: pricePerToken,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
+
         if (pricePerToken != 0) {
             pricePerToken = InverseHelpers.inverseQ96(pricePerToken);
         }
@@ -791,8 +834,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
         bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
         bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
-
-        vm.roll(lbp.migrationBlock());
 
         // case 1. price is 0
         // case 2. price is > type(uint160).max
@@ -815,43 +856,57 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         }
     }
 
-    // function test_migrate_withETH_revertsWithInvalidPrice() public {
-    //     // This test verifies the handling of prices above MAX_SQRT_PRICE
-    //     sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+    function test_migrate_withETH_revertsWithInvalidPrice() public {
+        // This test verifies the handling of prices above MAX_SQRT_PRICE
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-    //     // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
-    //     // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
-    //     // clearingPrice = (1 << 96)^2 / actualPrice
-    //     // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
-    //     // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
-    //     // So we need a clearing price close to 0 but not 0
-    //     uint256 veryLowClearingPrice = 1; // Minimal non-zero price
-    //     mockAuctionClearingPrice(lbp, veryLowClearingPrice);
-    //     mockAuctionEndBlock(lbp, uint64(block.number - 1));
+        // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
+        // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
+        // clearingPrice = (1 << 96)^2 / actualPrice
+        // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
+        // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
+        // So we need a clearing price close to 0 but not 0
+        uint256 veryLowClearingPrice = 1; // Minimal non-zero price
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
-    //     // Set up mock auction
-    //     uint128 ethAmount = 1e18;
-    //     MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
-    //     vm.deal(address(lbp.auction()), ethAmount);
-    //     vm.etch(address(lbp.auction()), address(mockAuction).code);
+        // Set up mock auction
+        uint128 ethAmount = 1e18;
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
+        vm.deal(address(lbp.auction()), ethAmount);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
 
-    //     // Mock the clearingPrice again after etching
-    //     mockAuctionClearingPrice(lbp, veryLowClearingPrice);
+        // Mock the clearingPrice again after etching
+        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
 
-    //     mockCurrencyRaised(lbp, ethAmount);
+        mockCurrencyRaised(lbp, ethAmount);
 
-    //     deal(address(lbp), ethAmount);
+        deal(address(lbp), ethAmount);
 
-    //     // Calculate the inverted price that will be used in the contract
-    //     uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
+        // Calculate the inverted price that will be used in the contract
+        uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
 
-    //     vm.roll(lbp.migrationBlock());
+        vm.roll(lbp.migrationBlock());
 
-    //     vm.prank(address(lbp.auction()));
-    //     // Expect revert with InvalidPrice (the error will contain the inverted price)
-    //     vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice << 96));
-    //     lbp.migrate();
-    // }
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: veryLowClearingPrice,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
+
+        vm.prank(address(lbp.auction()));
+        // Expect revert with InvalidPrice (the error will contain the inverted price)
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
+        lbp.migrate();
+    }
+
     function test_migrate_withETH_revertsWithPriceTooHigh() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -883,6 +938,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 invertedPrice = InverseHelpers.inverseQ96(veryLowClearingPrice);
 
         vm.roll(lbp.migrationBlock());
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: veryLowClearingPrice,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
 
         vm.prank(address(lbp.auction()));
         // Expect revert with InvalidPrice (the error will contain the inverted price)
@@ -931,6 +999,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         deal(DAI, address(lbp), currencyAmount);
 
         vm.roll(lbp.migrationBlock());
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: pricePerToken,
+                totalClearedX7X7: ValueX7X7.wrap(0),
+                cumulativeMpsPerPrice: 0,
+                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
 
         // Calculate expected values
         // Only invert price if currency < token (matching the implementation)
