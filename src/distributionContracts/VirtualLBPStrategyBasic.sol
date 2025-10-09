@@ -62,7 +62,21 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
       emit MigrationApproved();
     }
 
-    function getPoolToken() internal override view returns (address) {
+    function _validateMigration() internal override(LBPStrategyBasic) view {
+        if (block.number < migrationBlock) {
+            revert MigrationNotAllowed(migrationBlock, block.number);
+        }
+
+        if (!isMigrationApproved) revert MigrationNotApproved();
+
+        uint256 currencyAmount = auction.currencyRaised();
+
+        if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
+            revert InsufficientCurrency(currencyAmount, Currency.wrap(currency).balanceOf(address(this)));
+        }
+    }
+
+    function getPoolToken() internal override(LBPStrategyBasic) view returns (address) {
         return UNDERLYING_TOKENN;
     }
 

@@ -240,7 +240,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() private view {
+    function _validateMigration() internal virtual view {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
