@@ -23,8 +23,6 @@ import {MigrationData} from "../types/MigrationData.sol";
 /// @title VirtualLBPStrategyBasic
 /// @notice Strategy for distributing virtual tokens to a v4 pool
 /// Virtual tokens are ERC20 tokens that wrap an underlying token. 
-
-// TODO(md): make sure that the governance hook is inherited from, NOT overidden by hook basic
 contract VirtualLBPStrategyBasic is LBPStrategyBasic {
     using TokenPricing for *;
 
@@ -36,6 +34,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
 
     /// @notice The address of Aztec Governance
     address immutable GOVERNANCE;
+    address immutable UNDERLYING_TOKENN;
 
     /// @notice Whether migration is approved by Governance
     bool public isMigrationApproved = false;
@@ -52,6 +51,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
     // Underlying strategy
     LBPStrategyBasic(_token, _totalSupply, migratorParams, auctionParams, _positionManager, _poolManager) 
     {
+      UNDERLYING_TOKENN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
       GOVERNANCE = _governance;
       emit GovernanceSet(_governance);
     }
@@ -62,87 +62,8 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
       emit MigrationApproved();
     }
 
-    function _initializePool(MigrationData memory data) internal override(LBPStrategyBasic) returns (PoolKey memory key) {
-        if (!isMigrationApproved) revert MigrationNotApproved();
-        
-        address underlyingToken = IVirtualERC20(token).UNDERLYING_TOKEN_ADDRESS();
-
-        key = PoolKey({
-            currency0: Currency.wrap(currency < underlyingToken ? currency : underlyingToken),
-            currency1: Currency.wrap(currency < underlyingToken ? underlyingToken : currency),
-            fee: poolLPFee,
-            tickSpacing: poolTickSpacing,
-            hooks: IHooks(address(this))
-        });
-
-        poolManager.initialize(key, data.sqrtPriceX96);
-
-        return key;
+    function getPoolToken() internal override view returns (address) {
+        return UNDERLYING_TOKENN;
     }
 
-    function _prepareMigrationData() internal view override(LBPStrategyBasic) returns (MigrationData memory data) {
-        uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
-        address underlyingToken = IVirtualERC20(token).UNDERLYING_TOKEN_ADDRESS();
-
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < underlyingToken);
-        data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
-
-        (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < underlyingToken, reserveSupply);
-
-        data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            data.sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
-            currency < underlyingToken ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < underlyingToken ? data.initialTokenAmount : data.initialCurrencyAmount
-        );
-
-        _validateLiquidity(data.liquidity);
-
-        // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
-        // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
-        data.shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount
-            || createOneSidedCurrencyPosition && data.leftoverCurrency > 0;
-
-        return data;
-    }
-    
-    function _createPositionPlan(MigrationData memory data) internal override(LBPStrategyBasic) view returns (bytes memory plan) {
-        bytes memory actions;
-        bytes[] memory params;
-        
-        address underlyingToken = IVirtualERC20(token).UNDERLYING_TOKEN_ADDRESS();
-
-        // Create base parameters
-        BasePositionParams memory baseParams = BasePositionParams({
-            currency: currency,
-            token: underlyingToken,
-            poolLPFee: poolLPFee,
-            poolTickSpacing: poolTickSpacing,
-            initialSqrtPriceX96: data.sqrtPriceX96,
-            liquidity: data.liquidity,
-            positionRecipient: positionRecipient,
-            hooks: IHooks(address(this))
-        });
-
-        if (data.shouldCreateOneSided) {
-            (actions, params) = _createFullRangePositionPlan(
-                baseParams,
-                data.initialTokenAmount,
-                data.initialCurrencyAmount,
-                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
-            );
-            (actions, params) =
-                _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
-            // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
-            data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
-        } else {
-            (actions, params) = _createFullRangePositionPlan(
-                baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
-            );
-        }
-
-        return abi.encode(actions, params);
-    }
 }

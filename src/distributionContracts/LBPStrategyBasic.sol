@@ -108,6 +108,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         createOneSidedCurrencyPosition = _migratorParams.createOneSidedCurrencyPosition;
     }
 
+    /// @notice Gets the address of the token that will be used to create the pool
+    /// @return The address of the token that will be used to create the pool
+    function getPoolToken() internal virtual view returns (address) {
+        return token;
+    }
+
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {
         if (IERC20(token).balanceOf(address(this)) < totalSupply) {
@@ -249,14 +255,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     // md: removed view as checkpoint can modify state
-    function _prepareMigrationData() internal virtual /*view*/ returns (MigrationData memory data) {
+    function _prepareMigrationData() private /*view*/ returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
+        address poolToken =  getPoolToken();
+
         // call checkpoint to get the final clearing price
-        uint256 priceX192 = auction.checkpoint().clearingPrice.convertToPriceX192(currency < token);
+        uint256 priceX192 = auction.checkpoint().clearingPrice.convertToPriceX192(currency < poolToken);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
+            priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
 
         // validate that all amounts are less than or equal to type(uint128).max
         if (
@@ -271,8 +279,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
             TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
-            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
+            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         _validateLiquidity(data.liquidity);
@@ -287,7 +295,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Validates that liquidity doesn't exceed maximum allowed per tick
     /// @param liquidity The liquidity to validate
-    function _validateLiquidity(uint128 liquidity) internal view {
+    function _validateLiquidity(uint128 liquidity) private view {
         uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
 
         if (liquidity > maxLiquidityPerTick) {
@@ -298,10 +306,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Initializes the pool with the calculated price
     /// @param data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
-    function _initializePool(MigrationData memory data) internal virtual returns (PoolKey memory key) {
+    function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
+        address poolToken = getPoolToken();
+
         key = PoolKey({
-            currency0: Currency.wrap(currency < token ? currency : token),
-            currency1: Currency.wrap(currency < token ? token : currency),
+            currency0: Currency.wrap(currency < poolToken ? currency : poolToken),
+            currency1: Currency.wrap(currency < poolToken ? poolToken : currency),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
@@ -319,14 +329,16 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal virtual view returns (bytes memory plan) {
+    function _createPositionPlan(MigrationData memory data) private view returns (bytes memory plan) {
         bytes memory actions;
         bytes[] memory params;
+
+        address poolToken = getPoolToken();
 
         // Create base parameters
         BasePositionParams memory baseParams = BasePositionParams({
             currency: currency,
-            token: token,
+            token: poolToken,
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             initialSqrtPriceX96: data.sqrtPriceX96,
@@ -409,7 +421,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint256 tokenAmount,
         uint256 currencyAmount,
         uint256 paramsArraySize
-    ) internal pure returns (bytes memory, bytes[] memory) {
+    ) private pure returns (bytes memory, bytes[] memory) {
         // Create full range specific parameters
         FullRangeParams memory fullRangeParams =
             FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount});
@@ -431,7 +443,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes[] memory params,
         uint256 tokenAmount,
         uint256 leftoverCurrency
-    ) internal view returns (bytes memory, bytes[] memory) {
+    ) private view returns (bytes memory, bytes[] memory) {
         // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
         uint256 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
         bool inToken = leftoverCurrency == 0;
