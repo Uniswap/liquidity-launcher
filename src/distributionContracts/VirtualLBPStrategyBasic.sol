@@ -34,7 +34,9 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
 
     /// @notice The address of Aztec Governance
     address immutable GOVERNANCE;
-    address immutable UNDERLYING_TOKENN;
+    
+    /// @notice The address of the underlying token that is being distributed - used in the migrated pool
+    address immutable UNDERLYING_TOKEN;
 
     /// @notice Whether migration is approved by Governance
     bool public isMigrationApproved = false;
@@ -51,7 +53,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
     // Underlying strategy
     LBPStrategyBasic(_token, _totalSupply, migratorParams, auctionParams, _positionManager, _poolManager) 
     {
-      UNDERLYING_TOKENN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
+      UNDERLYING_TOKEN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
       GOVERNANCE = _governance;
       emit GovernanceSet(_governance);
     }
@@ -76,8 +78,8 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
         }
     }
 
-    function getPoolToken() internal override(LBPStrategyBasic) view returns (address) {
-        return UNDERLYING_TOKENN;
+    function getPoolToken() internal override view returns (address) {
+        return UNDERLYING_TOKEN;
     }
 
 }
