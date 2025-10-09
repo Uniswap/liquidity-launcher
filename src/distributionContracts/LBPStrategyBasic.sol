@@ -248,7 +248,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() internal virtual view returns (MigrationData memory data) {
+    // md: removed view as checkpoint can modify state
+    function _prepareMigrationData() internal virtual /*view*/ returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
         // call checkpoint to get the final clearing price
         uint256 priceX192 = auction.checkpoint().clearingPrice.convertToPriceX192(currency < token);
