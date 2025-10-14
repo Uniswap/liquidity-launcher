@@ -33,8 +33,15 @@ git submodule update --init --recursive
 curl -L https://foundry.paradigm.xyz | bash
 foundryup
 
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup
+
 # Build the project
 forge build
+
+# Build rust project
+./scripts/build_rust.sh
 
 # Run tests
 forge test --isolate -vvv
