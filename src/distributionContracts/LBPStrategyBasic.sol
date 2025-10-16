@@ -247,6 +247,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint256 currencyAmount = auction.currencyRaised();
 
+        if (currencyAmount == 0) {
+            revert NoCurrencyRaised();
+        }
+
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
             revert InsufficientCurrency(currencyAmount, Currency.wrap(currency).balanceOf(address(this)));
         }
@@ -277,10 +281,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
-            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
+            TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
+            TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
+            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         _validateLiquidity(data.liquidity);

@@ -101,6 +101,9 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param amountAvailable The balance of the currency in the contract
     error InsufficientCurrency(uint256 amountNeeded, uint256 amountAvailable);
 
+    /// @notice Error thrown when no currency was raised
+    error NoCurrencyRaised();
+
     /// @notice Error thrown when the token amount is too high
     /// @param tokenAmount The invalid token amount
     error AmountOverflow(uint256 tokenAmount);
