@@ -13,6 +13,7 @@ import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
@@ -363,6 +364,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_fuzz_constructor_validation(
+        uint256 totalSupply,
         uint24 poolLPFee,
         int24 poolTickSpacing,
         uint24 tokenSplit,
@@ -407,7 +409,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, positionRecipient)
             );
-        } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 1e7) == 0) {
+        } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
         } else if (auctionParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
@@ -420,7 +422,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         // Should succeed with valid params
         new LBPStrategyBasicNoValidation(
             address(token),
-            DEFAULT_TOTAL_SUPPLY,
+            totalSupply,
             createMigratorParams(
                 address(0),
                 poolLPFee,
