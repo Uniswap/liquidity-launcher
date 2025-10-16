@@ -16,12 +16,6 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param auction The address of the auction contract
     event AuctionCreated(address indexed auction);
 
-    /// @notice Emitted when the pool is validated
-    /// @param sqrtPriceX96 The sqrt price of the pool which will be used to initialize the pool
-    /// @param tokenAmount The token amount which will be used to mint liquidity for the full range position
-    /// @param currencyAmount The currency amount which will be used to mint liquidity for the full range position
-    event Validated(uint160 sqrtPriceX96, uint128 tokenAmount, uint128 currencyAmount);
-
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
     /// @param currentBlock The current block number

@@ -218,6 +218,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
     ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
+    ///         Also validates that the migration block is after the end block of the auction.
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
     function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
@@ -233,11 +234,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() private view {
+    function _validateMigration() private {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
 
+        // call checkpoint to get the final currency raised and clearing price
+        auction.checkpoint();
         uint256 currencyAmount = auction.currencyRaised();
 
         if (currencyAmount == 0) {
@@ -251,10 +254,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() private returns (MigrationData memory data) {
+    function _prepareMigrationData() private view returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
-        // call checkpoint to get the final clearing price
-        uint256 priceX192 = auction.checkpoint().clearingPrice.convertToPriceX192(currency < token);
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
