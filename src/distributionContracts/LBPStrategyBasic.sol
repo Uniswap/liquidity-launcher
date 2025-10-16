@@ -448,8 +448,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 
-    /// @notice Receives native currency only from the auction
-    receive() external payable {
-        if (msg.sender != address(auction)) revert NativeCurrencyTransferNotFromAuction(msg.sender, address(auction));
-    }
+    /// @notice Receives native currency
+    receive() external payable {}
 }
