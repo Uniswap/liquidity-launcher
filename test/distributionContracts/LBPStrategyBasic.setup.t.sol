@@ -327,8 +327,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Fuzzed Tests ============
 
     function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit) public {
-        tokenSplit = uint24(bound(tokenSplit, 1, 99_999));
-        totalSupply = uint128(bound(totalSupply, 1, type(uint128).max)); // At least 1 token
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
 
         // Skip if auction amount would be 0
         uint256 auctionAmount = uint256(totalSupply) * uint256(tokenSplit) / 1e7;
@@ -343,7 +342,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
-        assertGe(token.balanceOf(address(lbp)), token.balanceOf(address(lbp.auction())));
     }
 
     function test_fuzz_onTokenReceived_succeeds() public {
@@ -381,7 +379,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             );
         }
         // Test token split validation
-        else if (tokenSplit > maxTokenSplit) {
+        else if (tokenSplit >= maxTokenSplit) {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, maxTokenSplit)
             );

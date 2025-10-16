@@ -181,8 +181,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
         }
-        // token split validation (cannot be greater than 100%)
-        else if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
+        // token split validation (cannot be greater than or equal to 100%)
+        else if (migratorParams.tokenSplitToAuction >= MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
         }
         // token validation (cannot be zero address or the same as the currency)

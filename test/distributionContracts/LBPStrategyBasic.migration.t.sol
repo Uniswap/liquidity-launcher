@@ -845,7 +845,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
     function test_fuzz_migrate_withETH(uint128 totalSupply, uint24 tokenSplit) public {
-        tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 1e7);
