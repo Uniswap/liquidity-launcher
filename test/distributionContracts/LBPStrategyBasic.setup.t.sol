@@ -244,10 +244,10 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                     startBlock: uint64(block.number),
                     endBlock: uint64(block.number + 100),
                     claimBlock: uint64(block.number + 100),
-                    graduationThresholdMps: 1000000, // 100%
                     tickSpacing: 20,
                     validationHook: address(0), // No validation hook
                     floorPrice: 1,
+                    requiredCurrencyRaised: 0,
                     auctionStepsData: auctionStepsData
                 })
             ),
@@ -257,7 +257,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_setUp_reverts_auctionParametersEncodedImproperly() public {
-        console2.log("here");
         vm.expectRevert();
         new LBPStrategyBasicNoValidation(
             address(token),
@@ -327,13 +326,15 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     // ============ Fuzzed Tests ============
 
-    function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) public {
-        // Add bounds to fuzz parameters
-        vm.assume(tokenSplit <= 5_000);
-        vm.assume(totalSupply > 1);
-        vm.assume(uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7) > 0);
+    function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit) public {
+        tokenSplit = uint24(bound(tokenSplit, 1, 99_999));
+        totalSupply = uint128(bound(totalSupply, 1, type(uint128).max)); // At least 1 token
 
-        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit);
+        // Skip if auction amount would be 0
+        uint256 auctionAmount = uint256(totalSupply) * uint256(tokenSplit) / 1e7;
+        vm.assume(auctionAmount > 0);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);

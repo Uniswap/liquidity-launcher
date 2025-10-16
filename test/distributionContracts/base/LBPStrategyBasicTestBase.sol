@@ -19,9 +19,14 @@ import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../../src/interfaces/ILBPStrategyBasic.sol";
 import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
+import {ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
+    using FixedPointMathLib for *;
 
     // Constants
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
@@ -33,6 +38,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
     uint24 constant DEFAULT_TOKEN_SPLIT = 5e6;
     uint256 constant FORK_BLOCK = 23097193;
+    uint256 public constant FLOOR_PRICE = 1000 << FixedPoint96.RESOLUTION;
+    uint256 public constant TICK_SPACING = 100 << FixedPoint96.RESOLUTION;
 
     // Test token address (make it > address(0) but < DAI)
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
@@ -41,6 +48,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
 
     address testOperator = makeAddr("testOperator");
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
 
     // Events
     event Notified(bytes data);
@@ -160,8 +169,28 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         });
     }
 
+    function createAuctionParamsWithCurrency(address currency) internal {
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 50).addStep(100e3, 50);
+
+        auctionParams = abi.encode(
+            AuctionParameters({
+                currency: currency, // Currency (could be ETH or ERC20)
+                tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                fundsRecipient: address(1),
+                startBlock: uint64(block.number),
+                endBlock: uint64(block.number + 100),
+                claimBlock: uint64(block.number + 100 + 10),
+                tickSpacing: TICK_SPACING,
+                validationHook: address(0), // No validation hook
+                floorPrice: FLOOR_PRICE,
+                requiredCurrencyRaised: 0,
+                auctionStepsData: auctionStepsData
+            })
+        );
+    }
+
     function _setupDefaultAuctionParams() internal {
-        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 50).addStep(100e3, 50);
 
         auctionParams = abi.encode(
             AuctionParameters({
@@ -170,11 +199,11 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
                 fundsRecipient: address(1),
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
-                claimBlock: uint64(block.number + 100),
-                graduationThresholdMps: 1000000, // 100%
-                tickSpacing: 100,
+                claimBlock: uint64(block.number + 100 + 10),
+                tickSpacing: TICK_SPACING,
                 validationHook: address(0), // No validation hook
-                floorPrice: 100e6,
+                floorPrice: FLOOR_PRICE,
+                requiredCurrencyRaised: 0,
                 auctionStepsData: auctionStepsData
             })
         );
@@ -203,9 +232,9 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     }
 
     // Helper to setup with custom total supply and token split
-    function setupWithSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) internal {
+    function setupWithSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit, address currency) internal {
         migratorParams = createMigratorParams(
-            address(0), // ETH as currency (same as default)
+            currency, // ETH as currency (same as default)
             500, // fee (same as default)
             1, // tick spacing (same as default)
             tokenSplit, // Use custom tokenSplit
@@ -217,5 +246,69 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             true // createOneSidedCurrencyPosition
         );
         _deployLBPStrategy(totalSupply);
+    }
+
+    // ============ Core Bid Submission Helpers ============
+
+    /// @notice Submits a bid for ETH auction
+    /// @dev Handles ETH transfer, event emission, and bid ID validation
+    function _submitBid(
+        IAuction auction,
+        address bidder,
+        uint128 tokenAmount,
+        uint256 priceX96,
+        uint256 prevPriceX96,
+        uint256 expectedBidId
+    ) internal returns (uint256) {
+        uint128 inputAmount = tokenAmount;
+
+        vm.deal(bidder, inputAmount);
+
+        vm.prank(bidder);
+        uint256 bidId = auction.submitBid{value: inputAmount}(
+            priceX96, // maxPrice
+            inputAmount, // amount
+            bidder, // owner
+            prevPriceX96, // prevTickPrice hint
+            bytes("") // hookData
+        );
+
+        assertEq(bidId, expectedBidId);
+
+        return bidId;
+    }
+
+    /// @notice Submits a bid for ERC20 auction
+    /// @dev Assumes Permit2 approval is already set up
+    function _submitBidNonEth(
+        IAuction auction,
+        address bidder,
+        uint128 tokenAmount,
+        uint256 priceX96,
+        uint256 prevPriceX96,
+        uint256 expectedBidId
+    ) internal returns (uint256) {
+        uint128 inputAmount = tokenAmount;
+
+        vm.prank(bidder);
+        uint256 bidId = auction.submitBid(
+            priceX96, // maxPrice
+            inputAmount, // amount
+            bidder, // owner
+            prevPriceX96, // prevTickPrice hint
+            bytes("") // hookData
+        );
+
+        assertEq(bidId, expectedBidId);
+
+        return bidId;
+    }
+
+    function inputAmountForTokens(uint128 tokens, uint256 maxPrice) internal pure returns (uint128) {
+        return uint128(tokens.fullMulDivUp(maxPrice, FixedPoint96.Q96));
+    }
+
+    function tickNumberToPriceX96(uint256 tickNumber) internal pure returns (uint256) {
+        return FLOOR_PRICE + (tickNumber - 1) * TICK_SPACING;
     }
 }

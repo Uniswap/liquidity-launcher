@@ -14,7 +14,7 @@ import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
-import {Checkpoint, ValueX7X7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -101,21 +101,6 @@ abstract contract LBPTestHelpers is Test {
         vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
     }
 
-    function calculateExpectedLiquidity(
-        int24 tickSpacing,
-        uint128 tokenAmount,
-        uint128 currencyAmount,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint128) {
-        return LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
-            tokenAmount,
-            currencyAmount
-        );
-    }
-
     function sendTokensToLBP(address tokenLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
         vm.prank(tokenLauncher);
         token.transfer(address(lbp), amount);
@@ -146,41 +131,5 @@ abstract contract LBPTestHelpers is Test {
     function mockAuctionCheckpoint(LBPStrategyBasic lbp, Checkpoint memory checkpoint) internal {
         // Mock the auction's checkpoint function
         vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
-    }
-
-    function sendCurrencyToLBP(LBPStrategyBasic lbp, address currency, uint256 amount) internal {
-        if (currency == address(0)) {
-            // Send ETH
-            vm.deal(address(lbp), amount);
-        } else {
-            // Send ERC20
-            deal(currency, address(lbp), amount);
-        }
-    }
-
-    function setupAuctionWithPriceAndCurrency(LBPStrategyBasic lbp, uint256 pricePerToken, uint128 currencyAmount)
-        internal
-    {
-        mockAuctionClearingPrice(lbp, pricePerToken);
-        sendCurrencyToLBP(lbp, lbp.currency(), currencyAmount);
-    }
-
-    function migrateToMigrationBlock(LBPStrategyBasic lbp, uint256 pricePerToken) internal {
-        vm.roll(lbp.migrationBlock());
-
-        mockAuctionCheckpoint(
-            lbp,
-            Checkpoint({
-                clearingPrice: pricePerToken,
-                totalClearedX7X7: ValueX7X7.wrap(0),
-                cumulativeSupplySoldToClearingPriceX7X7: ValueX7X7.wrap(0),
-                cumulativeMpsPerPrice: 0,
-                cumulativeMps: 0,
-                prev: 0,
-                next: type(uint64).max
-            })
-        );
-        vm.prank(address(lbp));
-        lbp.migrate();
     }
 }

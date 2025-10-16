@@ -32,8 +32,8 @@ library StrategyPlanner {
 
         // Get tick bounds for full range
         TickBounds memory bounds = TickBounds({
-            lowerTick: TickMath.MIN_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing,
-            upperTick: TickMath.MAX_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing
+            lowerTick: TickMath.minUsableTick(baseParams.poolTickSpacing),
+            upperTick: TickMath.maxUsableTick(baseParams.poolTickSpacing)
         });
 
         PoolKey memory poolKey = PoolKey({
@@ -125,7 +125,7 @@ library StrategyPlanner {
         }
 
         bounds = TickBounds({
-            lowerTick: TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing, // Rounds to the nearest multiple of tick spacing (rounds towards 0 since MIN_TICK is negative)
+            lowerTick: TickMath.minUsableTick(poolTickSpacing), // Rounds to the nearest multiple of tick spacing (rounds towards 0 since MIN_TICK is negative)
             upperTick: initialTick.tickFloor(poolTickSpacing) // Rounds to the nearest multiple of tick spacing if needed (rounds toward -infinity)
         });
 
@@ -150,7 +150,7 @@ library StrategyPlanner {
 
         bounds = TickBounds({
             lowerTick: initialTick.tickStrictCeil(poolTickSpacing), // Rounds toward +infinity to the nearest multiple of tick spacing
-            upperTick: TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing // Rounds to the nearest multiple of tick spacing (rounds toward 0 since MAX_TICK is positive)
+            upperTick: TickMath.maxUsableTick(poolTickSpacing) // Rounds to the nearest multiple of tick spacing (rounds toward 0 since MAX_TICK is positive)
         });
 
         return bounds;
