@@ -4,3 +4,6 @@ out/
 
 # Dotenv file
 .env
+
+# Rust project
+**/target
