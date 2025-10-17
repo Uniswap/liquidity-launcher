@@ -1,94 +1,111 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {Auction} from "twap-auction/src/Auction.sol";
+import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParams.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
-import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {TokenPricing} from "../libraries/TokenPricing.sol";
+import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
+import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
+import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
+import {MigrationData} from "../types/MigrationData.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using SafeERC20 for IERC20;
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
+    using StrategyPlanner for BasePositionParams;
+    using TokenPricing for *;
 
-    /// @notice The token split is measured in bips (10_000 = 100%)
-    uint16 public constant TOKEN_SPLIT_DENOMINATOR = 10_000;
-    uint16 public constant MAX_TOKEN_SPLIT_TO_AUCTION = 5_000;
-    uint256 public constant Q192 = 2 ** 192; // 192 fixed point number used for token amt calculation from priceX192
+    /// @notice The maximum percentage of the supply for distribution that can be sent to the auction, expressed in mps (1e7 = 100%)
+    uint24 public constant MAX_TOKEN_SPLIT = 1e7;
 
+    /// @notice The token that is being distributed
     address public immutable token;
+    /// @notice The currency that the auction raised funds in
     address public immutable currency;
 
+    /// @notice The LP fee that the v4 pool will use
     uint24 public immutable poolLPFee;
+    /// @notice The tick spacing that the v4 pool will use
     int24 public immutable poolTickSpacing;
 
-    uint128 public immutable totalSupply;
-    uint128 public immutable reserveSupply;
+    /// @notice The supply of the token that was sent to this contract to be distributed
+    uint256 public immutable totalSupply;
+    /// @notice The remaining supply of the token that was not sent to the auction
+    uint256 public immutable reserveSupply;
+    /// @notice The address that will receive the position
     address public immutable positionRecipient;
+    /// @notice The block number at which migration is allowed
     uint64 public immutable migrationBlock;
+    /// @notice The auction factory that will be used to create the auction
     address public immutable auctionFactory;
+    /// @notice The operator that can sweep currency and tokens from the pool after sweepBlock
+    address public immutable operator;
+    /// @notice The block number at which the operator can sweep currency and tokens from the pool
+    uint64 public immutable sweepBlock;
+    /// @notice Whether to create a one sided position in the token after the full range position
+    bool public immutable createOneSidedTokenPosition;
+    /// @notice Whether to create a one sided position in the currency after the full range position
+    bool public immutable createOneSidedCurrencyPosition;
+    /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
+    /// @notice The auction that will be used to create the auction
     IAuction public auction;
-    // The initial sqrt price for the pool, expressed as a Q64.96 fixed point number
-    // This represents the square root of the ratio of currency1/currency0, where currency0 is the one with the lower address
-    uint160 public initialSqrtPriceX96;
-    uint128 public initialTokenAmount;
-    uint128 public initialCurrencyAmount;
     bytes public auctionParameters;
 
     constructor(
         address _token,
-        uint128 _totalSupply,
-        MigratorParameters memory migratorParams,
-        bytes memory auctionParams,
+        uint256 _totalSupply,
+        MigratorParameters memory _migratorParams,
+        bytes memory _auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
-        _validateMigratorParams(_token, _totalSupply, migratorParams);
+        _validateMigratorParams(_token, _totalSupply, _migratorParams);
+        _validateAuctionParams(_auctionParams, _migratorParams);
 
-        auctionParameters = auctionParams;
+        auctionParameters = _auctionParams;
 
         token = _token;
-        currency = migratorParams.currency;
+        currency = _migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
-        // e.g. if tokenSplitToAuction = 5000 (50%), then half goes to auction and half is reserved
-        // Rounds down so auction always gets less than or equal to half of the total supply
-        reserveSupply = _totalSupply
-            - uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR);
+        // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
+        reserveSupply =
+            _totalSupply - FullMath.mulDiv(_totalSupply, _migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
         positionManager = _positionManager;
-        positionRecipient = migratorParams.positionRecipient;
-        migrationBlock = migratorParams.migrationBlock;
-        auctionFactory = migratorParams.auctionFactory;
-
-        poolLPFee = migratorParams.poolLPFee;
-        poolTickSpacing = migratorParams.poolTickSpacing;
+        positionRecipient = _migratorParams.positionRecipient;
+        migrationBlock = _migratorParams.migrationBlock;
+        auctionFactory = _migratorParams.auctionFactory;
+        poolLPFee = _migratorParams.poolLPFee;
+        poolTickSpacing = _migratorParams.poolTickSpacing;
+        operator = _migratorParams.operator;
+        sweepBlock = _migratorParams.sweepBlock;
+        createOneSidedTokenPosition = _migratorParams.createOneSidedTokenPosition;
+        createOneSidedCurrencyPosition = _migratorParams.createOneSidedCurrencyPosition;
     }
 
     /// @inheritdoc IDistributionContract
@@ -97,9 +114,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
-        uint128 auctionSupply = totalSupply - reserveSupply;
+        uint256 auctionSupply = totalSupply - reserveSupply;
 
-        auction = IAuction(
+        IAuction _auction = IAuction(
             address(
                 IAuctionFactory(auctionFactory).initializeDistribution(
                     token, auctionSupply, auctionParameters, bytes32(0)
@@ -107,82 +124,189 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             )
         );
 
-        Currency.wrap(token).transfer(address(auction), auctionSupply);
-        auction.onTokensReceived();
+        Currency.wrap(token).transfer(address(_auction), auctionSupply);
+        _auction.onTokensReceived();
+        auction = _auction;
+
+        emit AuctionCreated(address(_auction));
     }
 
     /// @inheritdoc ILBPStrategyBasic
-    function validate() external {
-        if (msg.sender != address(auction)) revert NotAuction(msg.sender, address(auction));
+    function migrate() external {
+        _validateMigration();
 
-        uint256 price = auction.clearingPrice();
-        if (price == 0) {
-            revert InvalidPrice(price);
+        MigrationData memory data = _prepareMigrationData();
+
+        PoolKey memory key = _initializePool(data);
+
+        bytes memory plan = _createPositionPlan(data);
+
+        _transferAssetsAndExecutePlan(data, plan);
+
+        emit Migrated(key, data.sqrtPriceX96);
+    }
+
+    /// @inheritdoc ILBPStrategyBasic
+    function sweepToken() external {
+        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+
+        uint256 tokenBalance = Currency.wrap(token).balanceOf(address(this));
+        if (tokenBalance > 0) {
+            Currency.wrap(token).transfer(operator, tokenBalance);
+            emit TokensSwept(operator, tokenBalance);
         }
-        uint128 currencyAmount = auction.currencyRaised();
+    }
+
+    /// @inheritdoc ILBPStrategyBasic
+    function sweepCurrency() external {
+        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+
+        uint256 currencyBalance = Currency.wrap(currency).balanceOf(address(this));
+        if (currencyBalance > 0) {
+            Currency.wrap(currency).transfer(operator, currencyBalance);
+            emit CurrencySwept(operator, currencyBalance);
+        }
+    }
+
+    /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
+    /// @param _token The token that is being distributed
+    /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
+    /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
+    function _validateMigratorParams(address _token, uint256 _totalSupply, MigratorParameters memory migratorParams)
+        private
+        pure
+    {
+        // sweep block validation (cannot be before or equal to the migration block)
+        if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
+            revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
+        }
+        // token split validation (cannot be greater than or equal to 100%)
+        else if (migratorParams.tokenSplitToAuction >= MAX_TOKEN_SPLIT) {
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
+        }
+        // token validation (cannot be zero address or the same as the currency)
+        else if (_token == address(0) || _token == migratorParams.currency) {
+            revert InvalidToken(address(_token));
+        }
+        // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
+        else if (
+            migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
+                || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
+        ) {
+            revert InvalidTickSpacing(
+                migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
+            );
+        }
+        // fee validation (cannot be greater than the v4 max fee)
+        else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+            revert InvalidFee(migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
+        }
+        // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
+        else if (
+            migratorParams.positionRecipient == address(0)
+                || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
+                || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
+        ) {
+            revert InvalidPositionRecipient(migratorParams.positionRecipient);
+        }
+        // auction supply validation (cannot be zero)
+        else if (FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT) == 0) {
+            revert AuctionSupplyIsZero();
+        }
+    }
+
+    /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
+    ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
+    ///         Also validates that the migration block is after the end block of the auction.
+    /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
+    /// @param auctionParams The auction parameters that will be used to create the auction
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
+        private
+        pure
+    {
+        AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
+        if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
+            revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
+        } else if (_auctionParams.endBlock >= migratorParams.migrationBlock) {
+            revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
+        }
+    }
+
+    /// @notice Validates migration timing and currency balance
+    function _validateMigration() private {
+        if (block.number < migrationBlock) {
+            revert MigrationNotAllowed(migrationBlock, block.number);
+        }
+
+        // call checkpoint to get the final currency raised and clearing price
+        auction.checkpoint();
+        uint256 currencyAmount = auction.currencyRaised();
+
+        if (currencyAmount == 0) {
+            revert NoCurrencyRaised();
+        }
 
         if (Currency.wrap(currency).balanceOf(address(this)) < currencyAmount) {
-            revert InsufficientCurrency(currencyAmount, uint128(Currency.wrap(currency).balanceOf(address(this)))); // would not hit this if statement if not able to fit in uint128
+            revert InsufficientCurrency(currencyAmount, Currency.wrap(currency).balanceOf(address(this)));
+        }
+    }
+
+    /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
+    /// @return data MigrationData struct containing all calculated values
+    function _prepareMigrationData() private view returns (MigrationData memory data) {
+        uint256 currencyRaised = auction.currencyRaised();
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
+        data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
+
+        (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
+            priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
+
+        // validate that all amounts are less than or equal to type(uint128).max
+        if (
+            data.initialTokenAmount > type(uint128).max || data.leftoverCurrency > type(uint128).max
+                || reserveSupply - data.initialTokenAmount > type(uint128).max
+                || data.initialCurrencyAmount > type(uint128).max
+        ) {
+            revert AmountOverflow(type(uint128).max);
         }
 
-        // inverse if currency is currency0
-        if (currency < token) {
-            price = FullMath.mulDiv(1 << FixedPoint96.RESOLUTION, 1 << FixedPoint96.RESOLUTION, price);
-        }
-        uint256 priceX192 = price << FixedPoint96.RESOLUTION; // will overflow if price > type(uint160).max
-        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192)); // price will lose precision and be rounded down
-        if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(price);
-        }
-
-        // compute token amount
-        // will revert if cannot fit in uint128
-        uint128 tokenAmount;
-        if (currency < token) {
-            tokenAmount = uint128(FullMath.mulDiv(priceX192, currencyAmount, Q192));
-        } else {
-            tokenAmount = uint128(FullMath.mulDiv(currencyAmount, Q192, priceX192));
-        }
-
-        if (tokenAmount > reserveSupply) {
-            revert InvalidTokenAmount(tokenAmount, reserveSupply);
-        }
-
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing),
-            currency < token ? currencyAmount : tokenAmount,
-            currency < token ? tokenAmount : currencyAmount
+        data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            data.sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
+            TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
+            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
+        _validateLiquidity(data.liquidity);
+
+        // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
+        // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
+        data.shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount
+            || createOneSidedCurrencyPosition && data.leftoverCurrency > 0;
+
+        return data;
+    }
+
+    /// @notice Validates that liquidity doesn't exceed maximum allowed per tick
+    /// @param liquidity The liquidity to validate
+    function _validateLiquidity(uint128 liquidity) private view {
         uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
 
         if (liquidity > maxLiquidityPerTick) {
             revert InvalidLiquidity(maxLiquidityPerTick, liquidity);
         }
-
-        initialSqrtPriceX96 = sqrtPriceX96;
-        initialTokenAmount = tokenAmount;
-        initialCurrencyAmount = currencyAmount;
     }
 
-    /// @inheritdoc ILBPStrategyBasic
-    function migrate() external {
-        if (block.number < migrationBlock) revert MigrationNotAllowed(migrationBlock, block.number);
-
-        // transfer tokens to the position manager
-        Currency.wrap(token).transfer(address(positionManager), reserveSupply);
-
-        bool currencyIsNative = Currency.wrap(currency).isAddressZero();
-        // transfer raised currency to the position manager if currency is not native
-        if (!currencyIsNative) {
-            Currency.wrap(currency).transfer(address(positionManager), initialCurrencyAmount);
-        }
-
-        PoolKey memory key = PoolKey({
-            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
-            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
+    /// @notice Initializes the pool with the calculated price
+    /// @param data Migration data containing the sqrt price
+    /// @return key The pool key for the initialized pool
+    function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
+        key = PoolKey({
+            currency0: Currency.wrap(currency < token ? currency : token),
+            currency1: Currency.wrap(currency < token ? token : currency),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
@@ -192,237 +316,138 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // Will revert if:
         //      - Pool is already initialized
         //      - Initial price is not set (sqrtPriceX96 = 0)
-        poolManager.initialize(key, initialSqrtPriceX96);
+        poolManager.initialize(key, data.sqrtPriceX96);
 
-        bytes memory plan = _createPlan();
-
-        // if currency is ETH, we need to send ETH to the position manager
-        if (currencyIsNative) {
-            positionManager.modifyLiquidities{value: initialCurrencyAmount}(plan, block.timestamp + 1);
-        } else {
-            positionManager.modifyLiquidities(plan, block.timestamp + 1);
-        }
-
-        emit Migrated(key, initialSqrtPriceX96);
+        return key;
     }
 
-    function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
-        private
-        pure
-    {
-        // Validate that the amount of tokens sent to auction is <= 50% of total supply
-        // This ensures at least half of the tokens remain for the initial liquidity position
-        if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT_TO_AUCTION) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction);
-        }
-        if (
-            migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
-                || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
-        ) revert InvalidTickSpacing(migratorParams.poolTickSpacing);
-        if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) revert InvalidFee(migratorParams.poolLPFee);
-        if (
-            migratorParams.positionRecipient == address(0)
-                || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
-                || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
-        ) revert InvalidPositionRecipient(migratorParams.positionRecipient);
-        if (_token == migratorParams.currency) {
-            revert InvalidTokenAndCurrency(_token);
-        }
-        if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / TOKEN_SPLIT_DENOMINATOR) == 0)
-        {
-            revert AuctionSupplyIsZero();
-        }
-    }
-
-    function _createPlan() private view returns (bytes memory) {
+    /// @notice Creates the position plan based on migration data
+    /// @param data Migration data with all necessary parameters
+    /// @return plan The encoded position plan
+    function _createPositionPlan(MigrationData memory data) private view returns (bytes memory plan) {
         bytes memory actions;
         bytes[] memory params;
-        uint128 liquidity;
-        if (reserveSupply == initialTokenAmount) {
-            params = new bytes[](5);
-            (actions, params,) = _createFullRangePositionPlan(actions, params);
+
+        // Create base parameters
+        BasePositionParams memory baseParams = BasePositionParams({
+            currency: currency,
+            token: token,
+            poolLPFee: poolLPFee,
+            poolTickSpacing: poolTickSpacing,
+            initialSqrtPriceX96: data.sqrtPriceX96,
+            liquidity: data.liquidity,
+            positionRecipient: positionRecipient,
+            hooks: IHooks(address(this))
+        });
+
+        if (data.shouldCreateOneSided) {
+            (actions, params) = _createFullRangePositionPlan(
+                baseParams,
+                data.initialTokenAmount,
+                data.initialCurrencyAmount,
+                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
+            );
+            (actions, params) =
+                _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
+            // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
+            data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
         } else {
-            params = new bytes[](8);
-            (actions, params, liquidity) = _createFullRangePositionPlan(actions, params);
-            (actions, params) = _createOneSidedPositionPlan(actions, params, liquidity);
+            (actions, params) = _createFullRangePositionPlan(
+                baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
+            );
         }
 
         return abi.encode(actions, params);
     }
 
-    function _createFullRangePositionPlan(bytes memory actions, bytes[] memory params)
-        private
-        view
-        returns (bytes memory, bytes[] memory, uint128)
-    {
-        int24 minTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing;
-        int24 maxTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing;
-        uint128 tokenAmount = initialTokenAmount;
-        uint128 currencyAmount = initialCurrencyAmount;
+    /// @notice Transfers assets to position manager and executes the position plan
+    /// @param data Migration data with amounts and flags
+    /// @param plan The encoded position plan to execute
+    function _transferAssetsAndExecutePlan(MigrationData memory data, bytes memory plan) private {
+        // Calculate token amount to transfer
+        uint256 tokenTransferAmount = _getTokenTransferAmount(data);
 
-        PoolKey memory key = PoolKey({
-            currency0: currency < token ? Currency.wrap(currency) : Currency.wrap(token),
-            currency1: currency < token ? Currency.wrap(token) : Currency.wrap(currency),
-            fee: poolLPFee,
-            tickSpacing: poolTickSpacing,
-            hooks: IHooks(address(this))
-        });
+        // Transfer tokens to position manager
+        Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
 
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            initialSqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(minTick),
-            TickMath.getSqrtPriceAtTick(maxTick),
-            currency < token ? currencyAmount : tokenAmount,
-            currency < token ? tokenAmount : currencyAmount
-        );
+        // Calculate currency amount and execute plan
+        uint256 currencyTransferAmount = _getCurrencyTransferAmount(data);
 
-        actions = abi.encodePacked(
-            uint8(Actions.SETTLE),
-            uint8(Actions.SETTLE),
-            uint8(Actions.MINT_POSITION_FROM_DELTAS),
-            uint8(Actions.CLEAR_OR_TAKE),
-            uint8(Actions.CLEAR_OR_TAKE)
-        );
-
-        if (currency < token) {
-            params[0] = abi.encode(key.currency0, currencyAmount, false);
-            params[1] = abi.encode(key.currency1, tokenAmount, false);
+        if (Currency.wrap(currency).isAddressZero()) {
+            // Native currency: send as value with modifyLiquidities call
+            positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp);
         } else {
-            params[0] = abi.encode(key.currency0, tokenAmount, false);
-            params[1] = abi.encode(key.currency1, currencyAmount, false);
+            // Non-native currency: transfer first, then call modifyLiquidities
+            Currency.wrap(currency).transfer(address(positionManager), currencyTransferAmount);
+            positionManager.modifyLiquidities(plan, block.timestamp);
         }
-
-        params[2] = abi.encode(
-            key,
-            minTick,
-            maxTick,
-            currency < token ? currencyAmount : tokenAmount,
-            currency < token ? tokenAmount : currencyAmount,
-            positionRecipient,
-            Constants.ZERO_BYTES
-        );
-
-        params[3] = abi.encode(key.currency0, type(uint256).max);
-        params[4] = abi.encode(key.currency1, type(uint256).max);
-
-        return (actions, params, liquidity);
     }
 
-    function _createOneSidedPositionPlan(bytes memory actions, bytes[] memory params, uint128 liquidity)
-        private
-        view
-        returns (bytes memory, bytes[] memory)
-    {
-        // create something similar where you check if enough liquidity per tick spacing.
-        // then mint the position, then settle.
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
-        uint256 tokenAmount = reserveSupply - initialTokenAmount;
-        params[5] = abi.encode(Currency.wrap(token), tokenAmount, false);
-
-        if (currency < token) {
-            // Skip position creation if initial tick is too close to lower boundary
-            if (initialTick - TickMath.MIN_TICK < poolTickSpacing) {
-                // truncate params to length 3
-                return (actions, _truncate(params));
-            }
-            int24 lowerTick = TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing; // Lower tick rounded to tickSpacing towards 0
-            int24 upperTick = initialTick.tickFloor(poolTickSpacing); // Upper tick rounded down to nearest tick spacing multiple (or unchanged if already a multiple)
-
-            // get liquidity
-            uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-                initialSqrtPriceX96,
-                TickMath.getSqrtPriceAtTick(lowerTick),
-                TickMath.getSqrtPriceAtTick(upperTick),
-                0,
-                tokenAmount
-            );
-            // check that liquidity is within limits
-            if (liquidity + newLiquidity > poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-                // truncate params to length 3
-                return (actions, _truncate(params));
-            }
-
-            // Position is on the left hand side of current tick
-            // For a one-sided position, we create a range from [MIN_TICK, current tick) (because upper tick is exclusive)
-            // The upper tick must be a multiple of tickSpacing and exclusive
-            params[6] = abi.encode(
-                PoolKey({
-                    currency0: Currency.wrap(currency),
-                    currency1: Currency.wrap(token),
-                    fee: poolLPFee,
-                    tickSpacing: poolTickSpacing,
-                    hooks: IHooks(address(this))
-                }),
-                lowerTick,
-                upperTick,
-                0, // No currency amount (one-sided position)
-                tokenAmount, // Maximum token amount
-                positionRecipient,
-                Constants.ZERO_BYTES
-            );
-        } else {
-            // Skip position creation if initial tick is too close to upper boundary
-            if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
-                // truncate params to length 3
-                return (actions, _truncate(params));
-            }
-            int24 lowerTick = initialTick.tickCeil(poolTickSpacing); // Next tick multiple above current tick
-            int24 upperTick = TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing; // MAX_TICK rounded to tickSpacing towards 0
-
-            // get liquidity
-            uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-                initialSqrtPriceX96,
-                TickMath.getSqrtPriceAtTick(lowerTick),
-                TickMath.getSqrtPriceAtTick(upperTick),
-                tokenAmount,
-                0
-            );
-            // check that liquidity is within limits
-            if (liquidity + newLiquidity > poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-                // truncate params to length 3
-                return (actions, _truncate(params));
-            }
-
-            // Position is on the right hand side of current tick
-            // For a one-sided position, we create a range from (current tick, MAX_TICK) (because lower tick is inclusive)
-            // The lower tick must be:
-            // - A multiple of tickSpacing (inclusive)
-            // - Greater than current tick
-            // The upper tick must be:
-            // - A multiple of tickSpacing
-            params[6] = abi.encode(
-                PoolKey({
-                    currency0: Currency.wrap(token),
-                    currency1: Currency.wrap(currency),
-                    fee: poolLPFee,
-                    tickSpacing: poolTickSpacing,
-                    hooks: IHooks(address(this))
-                }),
-                lowerTick,
-                upperTick,
-                tokenAmount, // Maximum token amount
-                0, // No currency amount (one-sided position)
-                positionRecipient,
-                Constants.ZERO_BYTES
-            );
-        }
-        params[7] = abi.encode(Currency.wrap(token), type(uint256).max);
-        actions = abi.encodePacked(
-            actions, uint8(Actions.SETTLE), uint8(Actions.MINT_POSITION_FROM_DELTAS), uint8(Actions.CLEAR_OR_TAKE)
-        );
-
-        return (actions, params);
+    /// @notice Calculates the amount of tokens to transfer
+    /// @param data Migration data
+    /// @return The amount of tokens to transfer to the position manager
+    function _getTokenTransferAmount(MigrationData memory data) private view returns (uint256) {
+        // hasOneSidedParams can only be true if shouldCreateOneSided is true
+        return (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
+            ? reserveSupply
+            : data.initialTokenAmount;
     }
 
-    function _truncate(bytes[] memory params) private pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](5);
-        truncated[0] = params[0];
-        truncated[1] = params[1];
-        truncated[2] = params[2];
-        truncated[3] = params[3];
-        truncated[4] = params[4];
-        return truncated;
+    /// @notice Calculates the amount of currency to transfer
+    /// @param data Migration data
+    /// @return The amount of currency to transfer to the position manager
+    function _getCurrencyTransferAmount(MigrationData memory data) private pure returns (uint256) {
+        // hasOneSidedParams can only be true if shouldCreateOneSided is true
+        return (data.leftoverCurrency > 0 && data.hasOneSidedParams)
+            ? data.initialCurrencyAmount + data.leftoverCurrency
+            : data.initialCurrencyAmount;
     }
 
+    /// @notice Creates the plan for creating a full range v4 position using the position manager
+    /// @param baseParams The base parameters for the position
+    /// @param tokenAmount The amount of token to be used to create the position
+    /// @param currencyAmount The amount of currency to be used to create the position
+    /// @param paramsArraySize The size of the parameters array (either 5 or 8)
+    /// @return The actions and parameters for the position
+    function _createFullRangePositionPlan(
+        BasePositionParams memory baseParams,
+        uint256 tokenAmount,
+        uint256 currencyAmount,
+        uint256 paramsArraySize
+    ) private pure returns (bytes memory, bytes[] memory) {
+        // Create full range specific parameters
+        FullRangeParams memory fullRangeParams =
+            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount});
+
+        // Plan the full range position
+        return baseParams.planFullRangePosition(fullRangeParams, paramsArraySize);
+    }
+
+    /// @notice Creates the plan for creating a one sided v4 position using the position manager along with the full range position
+    /// @param baseParams The base parameters for the position
+    /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
+    /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
+    /// @param tokenAmount The amount of token to be used to create the position
+    /// @param leftoverCurrency The amount of currency that was leftover from the full range position
+    /// @return The actions and parameters needed to create the full range position and the one sided position
+    function _createOneSidedPositionPlan(
+        BasePositionParams memory baseParams,
+        bytes memory actions,
+        bytes[] memory params,
+        uint256 tokenAmount,
+        uint256 leftoverCurrency
+    ) private view returns (bytes memory, bytes[] memory) {
+        // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
+        uint256 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
+        bool inToken = leftoverCurrency == 0;
+
+        // Create one-sided specific parameters
+        OneSidedParams memory oneSidedParams = OneSidedParams({amount: amount, inToken: inToken});
+
+        // Plan the one-sided position
+        return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
+    }
+
+    /// @notice Receives native currency
     receive() external payable {}
 }

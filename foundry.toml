@@ -8,7 +8,7 @@ bytecode_hash = "none"
 auto_detect_solc = true
 
 [profile.default.fuzz]
-runs = 10
+runs = 1000
 
 [profile.ci.fuzz]
 runs = 100000

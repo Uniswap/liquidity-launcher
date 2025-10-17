@@ -10,17 +10,40 @@ import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
+import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
+    using AuctionStepsBuilder for bytes;
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, DEFAULT_TOKEN_SPLIT + 1));
+        uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        uint24 tokenSplitValue = maxTokenSplit + 1;
+
+        MigratorParameters memory params = createMigratorParams(
+            address(0),
+            500,
+            100,
+            tokenSplitValue,
+            address(3),
+            uint64(block.number + 500),
+            uint64(block.number + 1_000),
+            address(this),
+            true,
+            true
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplitValue, maxTokenSplit)
+        );
 
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT + 1, address(3)),
+            params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -30,13 +53,29 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_setUp_revertsWithInvalidTickSpacing() public {
         // Test too low
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MIN_TICK_SPACING - 1)
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                TickMath.MIN_TICK_SPACING - 1,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
         );
 
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, TickMath.MIN_TICK_SPACING - 1, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(0),
+                500,
+                TickMath.MIN_TICK_SPACING - 1,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -44,13 +83,29 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         // Test too high
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, TickMath.MAX_TICK_SPACING + 1)
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                TickMath.MAX_TICK_SPACING + 1,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
         );
 
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), 500, TickMath.MAX_TICK_SPACING + 1, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(0),
+                500,
+                TickMath.MAX_TICK_SPACING + 1,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -58,12 +113,27 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_setUp_revertsWithInvalidFee() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1, LPFeeLibrary.MAX_LP_FEE
+            )
+        );
 
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), LPFeeLibrary.MAX_LP_FEE + 1, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(0),
+                LPFeeLibrary.MAX_LP_FEE + 1,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
@@ -81,7 +151,18 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             new LBPStrategyBasicNoValidation(
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
-                createMigratorParams(address(0), 500, 100, DEFAULT_TOKEN_SPLIT, invalidRecipients[i]),
+                createMigratorParams(
+                    address(0),
+                    500,
+                    100,
+                    DEFAULT_TOKEN_SPLIT,
+                    invalidRecipients[i],
+                    uint64(block.number + 500),
+                    uint64(block.number + 1_000),
+                    address(this),
+                    true,
+                    true
+                ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
                 IPoolManager(POOL_MANAGER)
@@ -89,14 +170,111 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_setUp_revertsWithInvalidTokenAndCurrency() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTokenAndCurrency.selector, address(token)));
+    function test_setUp_revertsWithInvalidToken() public {
+        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(token)));
 
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(token), 500, 100, DEFAULT_TOKEN_SPLIT, address(3)),
+            createMigratorParams(
+                address(token),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
             auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(0)));
+
+        new LBPStrategyBasicNoValidation(
+            address(0),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(
+                address(token),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1_000),
+                address(this),
+                true,
+                true
+            ),
+            auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidFundsRecipient() public {
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBasic.InvalidFundsRecipient.selector, address(2), address(1))
+        );
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(
+                address(0),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1000),
+                address(this),
+                true,
+                true
+            ),
+            abi.encode(
+                AuctionParameters({
+                    currency: address(0), // ETH
+                    tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                    fundsRecipient: address(2),
+                    startBlock: uint64(block.number),
+                    endBlock: uint64(block.number + 100),
+                    claimBlock: uint64(block.number + 100),
+                    tickSpacing: 20,
+                    validationHook: address(0), // No validation hook
+                    floorPrice: 1,
+                    requiredCurrencyRaised: 0,
+                    auctionStepsData: auctionStepsData
+                })
+            ),
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_reverts_auctionParametersEncodedImproperly() public {
+        vm.expectRevert();
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(
+                address(0),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1000),
+                address(this),
+                true,
+                true
+            ),
+            "",
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -127,7 +305,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertNotEq(address(lbp.auction()), address(0));
 
         // Verify token distribution
-        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 10_000;
+        uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 1e7;
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY - expectedAuctionAmount);
     }
@@ -149,22 +327,22 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     // ============ Fuzzed Tests ============
 
-    function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint16 tokenSplit) public {
-        // Add bounds to fuzz parameters
-        vm.assume(tokenSplit <= 5_000);
-        vm.assume(totalSupply > 1);
-        vm.assume(uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000) > 0);
+    function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit) public {
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
 
-        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit);
+        // Skip if auction amount would be 0
+        uint256 auctionAmount = uint256(totalSupply) * uint256(tokenSplit) / 1e7;
+        vm.assume(auctionAmount > 0);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 
         vm.prank(address(tokenLauncher));
         token.transfer(address(lbp), totalSupply);
         lbp.onTokensReceived();
 
-        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 10_000);
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
-        assertGe(token.balanceOf(address(lbp)), token.balanceOf(address(lbp.auction())));
     }
 
     function test_fuzz_onTokenReceived_succeeds() public {
@@ -180,28 +358,50 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertNotEq(address(lbp.auction()), address(0));
 
         // Verify token distribution
-        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 10_000);
+        uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
         assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
 
     function test_fuzz_constructor_validation(
+        uint256 totalSupply,
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        uint16 tokenSplit,
-        address positionRecipient
+        uint24 tokenSplit,
+        address positionRecipient,
+        uint64 sweepBlock,
+        uint64 migrationBlock,
+        address operator
     ) public {
+        uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
+        if (sweepBlock <= migrationBlock) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
+            );
+        }
         // Test token split validation
-        if (tokenSplit > 5_000) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit));
+        else if (tokenSplit >= maxTokenSplit) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, maxTokenSplit)
+            );
         }
         // Test tick spacing validation
         else if (poolTickSpacing < TickMath.MIN_TICK_SPACING || poolTickSpacing > TickMath.MAX_TICK_SPACING) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidTickSpacing.selector, poolTickSpacing));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.InvalidTickSpacing.selector,
+                    poolTickSpacing,
+                    TickMath.MIN_TICK_SPACING,
+                    TickMath.MAX_TICK_SPACING
+                )
+            );
         }
         // Test fee validation
         else if (poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee));
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee, LPFeeLibrary.MAX_LP_FEE)
+            );
         }
         // Test position recipient validation
         else if (positionRecipient == address(0) || positionRecipient == address(1) || positionRecipient == address(2))
@@ -209,15 +409,32 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, positionRecipient)
             );
-        } else if (uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(tokenSplit) / 10_000) == 0) {
+        } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
+        } else if (auctionParameters.endBlock >= migrationBlock) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock
+                )
+            );
         }
 
         // Should succeed with valid params
         new LBPStrategyBasicNoValidation(
             address(token),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(address(0), poolLPFee, poolTickSpacing, tokenSplit, positionRecipient),
+            totalSupply,
+            createMigratorParams(
+                address(0),
+                poolLPFee,
+                poolTickSpacing,
+                tokenSplit,
+                positionRecipient,
+                migrationBlock,
+                sweepBlock,
+                operator,
+                true,
+                true
+            ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)

@@ -48,7 +48,11 @@ contract LBPStrategyBasicFactoryTest is Test {
             positionRecipient: address(3),
             migrationBlock: uint64(block.number + 1),
             auctionFactory: address(auctionFactory),
-            tokenSplitToAuction: 5000
+            tokenSplitToAuction: 5000,
+            sweepBlock: uint64(block.number + 2),
+            operator: address(this),
+            createOneSidedTokenPosition: true,
+            createOneSidedCurrencyPosition: true
         });
 
         auctionParams = abi.encode(
@@ -59,12 +63,11 @@ contract LBPStrategyBasicFactoryTest is Test {
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
                 claimBlock: uint64(block.number + 100),
-                graduationThresholdMps: 1000000, // 100%
                 tickSpacing: 1e6, // Valid tick spacing for auctions
                 validationHook: address(0), // No validation hook
                 floorPrice: 1e6, // 1 ETH as floor price
-                auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100),
-                fundsRecipientData: abi.encodeWithSelector(ILBPStrategyBasic.validate.selector)
+                requiredCurrencyRaised: 0,
+                auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100)
             })
         );
     }
@@ -97,7 +100,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                             IPositionManager(POSITION_MANAGER),
                             IPoolManager(POOL_MANAGER)
                         ),
-                        0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f
+                        0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f
                     )
                 )
             )
@@ -115,12 +118,13 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
             abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
-            keccak256(abi.encode(address(this), salt))
+            salt,
+            address(this)
         );
         assertEq(
             lbpAddress,
@@ -135,5 +139,28 @@ contract LBPStrategyBasicFactoryTest is Test {
                 )
             )
         );
+    }
+
+    function test_getLBPAddress_deterministicSender() public {
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
+        address sender1 = address(1);
+        address sender2 = address(2);
+        vm.prank(sender1);
+        address lbpAddress1 = factory.getLBPAddress(
+            address(token),
+            TOTAL_SUPPLY,
+            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+            salt,
+            sender1
+        );
+        vm.prank(sender2);
+        address lbpAddress2 = factory.getLBPAddress(
+            address(token),
+            TOTAL_SUPPLY,
+            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+            salt,
+            sender2
+        );
+        assertNotEq(lbpAddress1, lbpAddress2);
     }
 }

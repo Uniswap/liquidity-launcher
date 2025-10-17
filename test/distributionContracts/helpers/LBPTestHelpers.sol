@@ -14,6 +14,7 @@ import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
 import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
+import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -66,6 +67,17 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), expectedTickUpper);
     }
 
+    function assertPositionNotCreated(IPositionManager positionManager, uint256 tokenId) internal view {
+        (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
+
+        vm.assertEq(Currency.unwrap(poolKey.currency0), address(0));
+        vm.assertEq(Currency.unwrap(poolKey.currency1), address(0));
+        vm.assertEq(poolKey.fee, 0);
+        vm.assertEq(poolKey.tickSpacing, 0);
+        vm.assertEq(info.tickLower(), 0);
+        vm.assertEq(info.tickUpper(), 0);
+    }
+
     function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
         // Assert LBP is empty
         vm.assertEq(address(lbp).balance, 0);
@@ -87,21 +99,6 @@ abstract contract LBPTestHelpers is Test {
         // Pool Manager should have received funds
         vm.assertGt(afterMigration.tokenInPoolm, before.tokenInPoolm);
         vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
-    }
-
-    function calculateExpectedLiquidity(
-        int24 tickSpacing,
-        uint128 tokenAmount,
-        uint128 currencyAmount,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint128) {
-        return LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / tickSpacing * tickSpacing),
-            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / tickSpacing * tickSpacing),
-            tokenAmount,
-            currencyAmount
-        );
     }
 
     function sendTokensToLBP(address tokenLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
@@ -131,26 +128,8 @@ abstract contract LBPTestHelpers is Test {
         vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
     }
 
-    function sendCurrencyToLBP(LBPStrategyBasic lbp, address currency, uint256 amount) internal {
-        if (currency == address(0)) {
-            // Send ETH
-            vm.deal(address(lbp), amount);
-        } else {
-            // Send ERC20
-            deal(currency, address(lbp), amount);
-        }
-    }
-
-    function setupAuctionWithPriceAndCurrency(LBPStrategyBasic lbp, uint256 pricePerToken, uint128 currencyAmount)
-        internal
-    {
-        mockAuctionClearingPrice(lbp, pricePerToken);
-        sendCurrencyToLBP(lbp, lbp.currency(), currencyAmount);
-    }
-
-    function migrateToMigrationBlock(LBPStrategyBasic lbp) internal {
-        vm.roll(lbp.migrationBlock());
-        vm.prank(address(lbp));
-        lbp.migrate();
+    function mockAuctionCheckpoint(LBPStrategyBasic lbp, Checkpoint memory checkpoint) internal {
+        // Mock the auction's checkpoint function
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
     }
 }
