@@ -94,7 +94,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
-        reserveSupply = _totalSupply - (_totalSupply * uint256(_migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT);
+        reserveSupply =
+            _totalSupply - FullMath.mulDiv(_totalSupply, _migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;
@@ -187,8 +188,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
         }
-        // token split validation (cannot be greater than 100%)
-        else if (migratorParams.tokenSplitToAuction > MAX_TOKEN_SPLIT) {
+        // token split validation (cannot be greater than or equal to 100%)
+        else if (migratorParams.tokenSplitToAuction >= MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
         }
         // token validation (cannot be zero address or the same as the currency)
@@ -217,13 +218,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidPositionRecipient(migratorParams.positionRecipient);
         }
         // auction supply validation (cannot be zero)
-        else if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0) {
+        else if (FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT) == 0) {
             revert AuctionSupplyIsZero();
         }
     }
 
     /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
     ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
+    ///         Also validates that the migration block is after the end block of the auction.
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
     function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
@@ -239,11 +241,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() internal virtual view {
+    function _validateMigration() internal virtual {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
 
+        // call checkpoint to get the final currency raised and clearing price
+        auction.checkpoint();
         uint256 currencyAmount = auction.currencyRaised();
 
         if (currencyAmount == 0) {
@@ -258,7 +262,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     // md: removed view as checkpoint can modify state
-    function _prepareMigrationData() private /*view*/ returns (MigrationData memory data) {
+    function _prepareMigrationData() private returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
         address poolToken =  getPoolToken();
 
@@ -458,8 +462,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 
-    /// @notice Receives native currency only from the auction
-    receive() external payable {
-        if (msg.sender != address(auction)) revert NativeCurrencyTransferNotFromAuction(msg.sender, address(auction));
-    }
+    /// @notice Receives native currency
+    receive() external payable {}
 }
