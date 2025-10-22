@@ -15,13 +15,14 @@ library ParamsBuilder {
     /// @notice Empty bytes used as hook data when minting positions since no hook data is needed
     bytes constant ZERO_BYTES = new bytes(0);
 
-    /// @notice Number of params needed for a standalone full-range position without take pair
+    /// @notice Number of total params needed for a standalone full-range position
     uint256 public constant FULL_RANGE_SIZE = 4;
 
-    /// @notice Number of params needed for full-range + one-sided position without take pair
+    /// @notice Number of total params needed for full-range + one-sided position
     uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 5;
 
-    /// @notice Number of params needed for final take pair
+    /// @notice The number of params needed for a final take pair action
+    ///         (already included in the full range and full range + one sided size)
     uint256 public constant FINAL_TAKE_PAIR_SIZE = 1;
 
     /// @notice Builds the parameters needed to mint a full range position using the position manager
