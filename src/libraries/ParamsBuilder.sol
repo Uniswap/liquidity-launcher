@@ -15,17 +15,13 @@ library ParamsBuilder {
     /// @notice Empty bytes used as hook data when minting positions since no hook data is needed
     bytes constant ZERO_BYTES = new bytes(0);
 
-    /// @notice Number of params needed for a standalone full-range position without final take pair action
-    ///         (mint, settle, settle)
-    uint256 public constant FULL_RANGE_SIZE = 3;
+    /// @notice Number of params needed for a standalone full-range position
+    ///         (1. mint, 2. settle, 3. settle, 4. take pair)
+    uint256 public constant FULL_RANGE_SIZE = 4;
 
-    /// @notice Number of params needed for full-range + one-sided position without final take pair action
-    ///         (mint, settle, settle, mint)
-    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 4;
-
-    /// @notice The number of params needed for a final take pair action
-    ///         (take pair)
-    uint256 public constant FINAL_TAKE_PAIR_SIZE = 1;
+    /// @notice Number of params needed for full-range + one-sided position
+    ///         (1. mint, 2. settle, 3. settle, 4. mint, 5. take pair)
+    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 5;
 
     /// @notice Builds the parameters needed to mint a full range position using the position manager
     /// @param fullRangeParams The amounts of currency and token that will be used to mint the position
@@ -44,10 +40,7 @@ library ParamsBuilder {
         address positionRecipient,
         uint128 liquidity
     ) internal pure returns (bytes[] memory params) {
-        if (
-            paramsArraySize != FULL_RANGE_SIZE + FINAL_TAKE_PAIR_SIZE
-                && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_SIZE + FINAL_TAKE_PAIR_SIZE
-        ) {
+        if (paramsArraySize != FULL_RANGE_SIZE && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(paramsArraySize);
         }
 
@@ -92,7 +85,7 @@ library ParamsBuilder {
         address positionRecipient,
         uint128 liquidity
     ) internal pure returns (bytes[] memory) {
-        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE + FINAL_TAKE_PAIR_SIZE) {
+        if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(existingParams.length);
         }
 
@@ -107,27 +100,29 @@ library ParamsBuilder {
         uint256 amount1 = useAmountInCurrency1 ? oneSidedParams.amount : 0;
 
         // Set up mint for token
-        existingParams[FULL_RANGE_SIZE] = abi.encode(
+        existingParams[FULL_RANGE_SIZE - 1] = abi.encode(
             poolKey, bounds.lowerTick, bounds.upperTick, liquidity, amount0, amount1, positionRecipient, ZERO_BYTES
         );
 
         return existingParams;
     }
 
+    /// @notice Builds the parameters needed to take the pair using the position manager
+    /// @param currency0 The currency0 address
+    /// @param currency1 The currency1 address
+    /// @param existingParams Params to create a full range position (Output of buildFullRangeParams() or buildOneSidedParams())
+    /// @return params The parameters needed to take the pair using the position manager
     function buildFinalTakePairParams(address currency0, address currency1, bytes[] memory existingParams)
         internal
         view
         returns (bytes[] memory)
     {
-        if (
-            existingParams.length != FULL_RANGE_SIZE + FINAL_TAKE_PAIR_SIZE
-                && existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE + FINAL_TAKE_PAIR_SIZE
-        ) {
+        if (existingParams.length != FULL_RANGE_SIZE && existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(existingParams.length);
         }
 
         // Take any open deltas from the pool manager and send back to the lbp
-        existingParams[existingParams.length - FINAL_TAKE_PAIR_SIZE] =
+        existingParams[existingParams.length - 1] =
             abi.encode(Currency.wrap(currency0), Currency.wrap(currency1), address(this));
 
         return existingParams;

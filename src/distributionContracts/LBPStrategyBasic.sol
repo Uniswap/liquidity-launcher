@@ -334,19 +334,15 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 baseParams,
                 data.initialTokenAmount,
                 data.initialCurrencyAmount,
-                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE
+                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
             );
             (actions, params) =
                 _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
             // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
-            data.hasOneSidedParams =
-                params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE;
+            data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
         } else {
             (actions, params) = _createFullRangePositionPlan(
-                baseParams,
-                data.initialTokenAmount,
-                data.initialCurrencyAmount,
-                ParamsBuilder.FULL_RANGE_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE
+                baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
             );
         }
 
@@ -443,6 +439,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 
+    /// @notice Creates the plan for taking the pair using the position manager
+    /// @param baseParams The base parameters for the position
+    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
+    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
+    /// @return The actions and parameters needed to take the pair using the position manager
     function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
         private
         view

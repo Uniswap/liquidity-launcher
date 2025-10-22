@@ -274,7 +274,7 @@ contract StrategyPlannerTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE,
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
             address(0),
             liquidity
         );

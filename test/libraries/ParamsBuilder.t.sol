@@ -94,11 +94,11 @@ contract ParamsBuilderTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            ParamsBuilder.FULL_RANGE_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE,
+            ParamsBuilder.FULL_RANGE_SIZE,
             address(3),
             liquidity
         );
-        assertEq(params.length, ParamsBuilder.FULL_RANGE_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE);
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_SIZE);
         assertEq(
             params[0],
             abi.encode(
@@ -217,7 +217,7 @@ contract ParamsBuilderTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE,
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
             address(3),
             liquidity
         );
@@ -245,7 +245,7 @@ contract ParamsBuilderTest is Test {
             address(3),
             oneSidedLiquidity
         );
-        assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE);
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
 
         assertEq(
             params[0],
@@ -310,7 +310,7 @@ contract ParamsBuilderTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE,
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
             address(3),
             liquidity
         );
@@ -337,7 +337,7 @@ contract ParamsBuilderTest is Test {
             address(3),
             oneSidedLiquidity
         );
-        assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE);
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
 
         assertEq(
             params[0],
