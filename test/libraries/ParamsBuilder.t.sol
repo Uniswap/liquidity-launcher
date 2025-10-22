@@ -11,6 +11,9 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 // Test helper contract to expose internal library functions for testing
 contract ParamsBuilderTestHelper {
@@ -51,6 +54,8 @@ contract ParamsBuilderTestHelper {
 
 contract ParamsBuilderTest is Test {
     ParamsBuilderTestHelper testHelper;
+
+    using SafeCast for uint256;
 
     function setUp() public {
         testHelper = new ParamsBuilderTestHelper();
@@ -122,52 +127,52 @@ contract ParamsBuilderTest is Test {
         assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
     }
 
-    // function test_fuzz_buildFullRangeParams_succeeds(
-    //     PoolKey memory poolKey,
-    //     TickBounds memory bounds,
-    //     bool currencyIsCurrency0,
-    //     uint128 tokenAmount,
-    //     uint128 currencyAmount
-    // ) public view {
-    // uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-    //     TickMath.getSqrtPriceAtTick(0),
-    //     TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-    //     TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-    //     currencyIsCurrency0 ? currencyAmount : tokenAmount,
-    //     currencyIsCurrency0 ? tokenAmount : currencyAmount
-    // );
-    // bytes[] memory params = testHelper.buildFullRangeParams(
-    //     FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
-    //     poolKey,
-    //     bounds,
-    //     currencyIsCurrency0,
-    //     ParamsBuilder.FULL_RANGE_SIZE,
-    //     address(3),
-    //     liquidity
-    // );
+    function test_fuzz_buildFullRangeParams_succeeds(
+        PoolKey memory poolKey,
+        TickBounds memory bounds,
+        bool currencyIsCurrency0,
+        uint128 tokenAmount,
+        uint128 currencyAmount
+    ) public view {
+        if (_shouldRevertOnLiquidity(currencyIsCurrency0, tokenAmount, currencyAmount)) {
+            return;
+        }
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+            currencyIsCurrency0 ? currencyAmount : tokenAmount,
+            currencyIsCurrency0 ? tokenAmount : currencyAmount
+        );
+        bytes[] memory params = testHelper.buildFullRangeParams(
+            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
+            poolKey,
+            bounds,
+            currencyIsCurrency0,
+            ParamsBuilder.FULL_RANGE_SIZE,
+            address(3),
+            liquidity
+        );
 
-    // assertEq(params.length, ParamsBuilder.FULL_RANGE_SIZE);
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_SIZE);
 
-    // assertEq(
-    //     params[0],
-    //     abi.encode(
-    //         poolKey,
-    //         bounds.lowerTick,
-    //         bounds.upperTick,
-    //         liquidity,
-    //         currencyIsCurrency0 ? currencyAmount : tokenAmount,
-    //         currencyIsCurrency0 ? tokenAmount : currencyAmount,
-    //         address(3),
-    //         ParamsBuilder.ZERO_BYTES
-    //     )
-    // );
+        assertEq(
+            params[0],
+            abi.encode(
+                poolKey,
+                bounds.lowerTick,
+                bounds.upperTick,
+                liquidity,
+                currencyIsCurrency0 ? currencyAmount : tokenAmount,
+                currencyIsCurrency0 ? tokenAmount : currencyAmount,
+                address(3),
+                ParamsBuilder.ZERO_BYTES
+            )
+        );
 
-    // assertEq(params[1], abi.encode(poolKey.currency0, ActionConstants.OPEN_DELTA, false));
-    // assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.OPEN_DELTA, false));
-
-    // assertEq(params[3], abi.encode(poolKey.currency0, address(this)));
-    // assertEq(params[4], abi.encode(poolKey.currency1, address(this)));
-    //}
+        assertEq(params[1], abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false));
+    }
 
     function test_buildOneSidedParams_revertsWithInvalidParamsLength() public {
         vm.expectRevert(
@@ -383,85 +388,84 @@ contract ParamsBuilderTest is Test {
         );
     }
 
-    // function test_fuzz_buildOneSidedParams_succeeds(
-    //     PoolKey memory poolKey,
-    //     TickBounds memory bounds,
-    //     uint128 tokenAmount,
-    //     uint128 currencyAmount
-    // ) public view {
-    //     bool currencyIsCurrency0 = poolKey.currency0 < poolKey.currency1;
-    //     bool inToken = tokenAmount > currencyAmount;
-    //     bool useAmountInCurrency1 = currencyIsCurrency0 == inToken;
-    //     uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-    //         TickMath.getSqrtPriceAtTick(0),
-    //         TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-    //         TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-    //         currencyIsCurrency0 ? currencyAmount : tokenAmount,
-    //         currencyIsCurrency0 ? tokenAmount : currencyAmount
-    //     );
-    //     bytes[] memory fullRangeParams = testHelper.buildFullRangeParams(
-    //         FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
-    //         poolKey,
-    //         bounds,
-    //         currencyIsCurrency0,
-    //         ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
-    //         address(3),
-    //         liquidity
-    //     );
-    //     uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
-    //         TickMath.getSqrtPriceAtTick(0),
-    //         TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-    //         TickMath.getSqrtPriceAtTick(0),
-    //         0,
-    //         amount
-    //     );
-    //     bytes[] memory params = testHelper.buildOneSidedParams(
-    //         OneSidedParams({amount: amount, inToken: inToken}),
-    //         poolKey,
-    //         bounds,
-    //         currencyIsCurrency0,
-    //         fullRangeParams,
-    //         address(3),
-    //         oneSidedLiquidity
-    //     );
+    function test_fuzz_buildOneSidedParams_succeeds(
+        PoolKey memory poolKey,
+        TickBounds memory bounds,
+        uint128 tokenAmount,
+        uint128 currencyAmount
+    ) public view {
+        bool currencyIsCurrency0 = poolKey.currency0 < poolKey.currency1;
+        bool inToken = tokenAmount > currencyAmount;
+        bool useAmountInCurrency1 = currencyIsCurrency0 == inToken;
+        if (_shouldRevertOnLiquidity(currencyIsCurrency0, tokenAmount, currencyAmount)) {
+            return;
+        }
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+            currencyIsCurrency0 ? currencyAmount : tokenAmount,
+            currencyIsCurrency0 ? tokenAmount : currencyAmount
+        );
+        bytes[] memory fullRangeParams = testHelper.buildFullRangeParams(
+            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
+            poolKey,
+            bounds,
+            currencyIsCurrency0,
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
+            address(3),
+            liquidity
+        );
+        uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(0),
+            0,
+            10e18
+        );
+        bytes[] memory params = testHelper.buildOneSidedParams(
+            OneSidedParams({amount: 10e18, inToken: inToken}),
+            poolKey,
+            bounds,
+            currencyIsCurrency0,
+            fullRangeParams,
+            address(3),
+            oneSidedLiquidity
+        );
 
-    //     assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
+        assertEq(params.length, ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
 
-    //     assertEq(
-    //         params[0],
-    //         abi.encode(
-    //             poolKey,
-    //             bounds.lowerTick,
-    //             bounds.upperTick,
-    //             liquidity,
-    //             currencyIsCurrency0 ? currencyAmount : tokenAmount,
-    //             currencyIsCurrency0 ? tokenAmount : currencyAmount,
-    //             address(3),
-    //             ParamsBuilder.ZERO_BYTES
-    //         )
-    //     );
+        assertEq(
+            params[0],
+            abi.encode(
+                poolKey,
+                bounds.lowerTick,
+                bounds.upperTick,
+                liquidity,
+                currencyIsCurrency0 ? currencyAmount : tokenAmount,
+                currencyIsCurrency0 ? tokenAmount : currencyAmount,
+                address(3),
+                ParamsBuilder.ZERO_BYTES
+            )
+        );
 
-    //     assertEq(params[1], abi.encode(poolKey.currency0, ActionConstants.OPEN_DELTA, false));
-    //     assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.OPEN_DELTA, false));
+        assertEq(params[1], abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false));
 
-    //     assertEq(
-    //         params[3],
-    //         abi.encode(
-    //             poolKey,
-    //             bounds.lowerTick,
-    //             bounds.upperTick,
-    //             oneSidedLiquidity,
-    //             useAmountInCurrency1 ? 0 : amount,
-    //             useAmountInCurrency1 ? amount : 0,
-    //             address(3),
-    //             ParamsBuilder.ZERO_BYTES
-    //         )
-    //     );
-
-    //     assertEq(
-    //         params[4], abi.encode(useAmountInCurrency1 ? poolKey.currency1 : poolKey.currency0, ActionConstants.OPEN_DELTA, false)
-    //     );
-    // }
+        assertEq(
+            params[3],
+            abi.encode(
+                poolKey,
+                bounds.lowerTick,
+                bounds.upperTick,
+                oneSidedLiquidity,
+                useAmountInCurrency1 ? 0 : 10e18,
+                useAmountInCurrency1 ? 10e18 : 0,
+                address(3),
+                ParamsBuilder.ZERO_BYTES
+            )
+        );
+    }
 
     function test_truncateParams_succeeds() public view {
         bytes[] memory params = new bytes[](ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE);
@@ -469,5 +473,72 @@ contract ParamsBuilderTest is Test {
 
         bytes[] memory truncatedParams = testHelper.truncateParams(params);
         assertEq(truncatedParams.length, ParamsBuilder.FULL_RANGE_SIZE);
+    }
+
+    // Helper function to check if liquidity calculation should revert
+    function _shouldRevertOnLiquidity(bool currencyIsCurrency0, uint128 tokenAmount, uint128 currencyAmount)
+        private
+        view
+        returns (bool)
+    {
+        try this.calculateLiquidity(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+            currencyIsCurrency0 ? currencyAmount : tokenAmount,
+            currencyIsCurrency0 ? tokenAmount : currencyAmount
+        ) returns (uint128) {
+            return false;
+        } catch {
+            return true;
+        }
+    }
+
+    function calculateLiquidity(
+        uint160 sqrtPriceX96,
+        uint160 sqrtPriceAX96,
+        uint160 sqrtPriceBX96,
+        uint256 amount0,
+        uint256 amount1
+    ) external pure returns (uint128 liquidity) {
+        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+
+        if (sqrtPriceX96 <= sqrtPriceAX96) {
+            liquidity = getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
+        } else if (sqrtPriceX96 < sqrtPriceBX96) {
+            uint128 liquidity0 = getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
+            uint128 liquidity1 = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
+
+            liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
+        } else {
+            liquidity = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
+        }
+
+        return liquidity;
+    }
+
+    function getLiquidityForAmount0(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount0)
+        internal
+        pure
+        returns (uint128)
+    {
+        unchecked {
+            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+            uint256 intermediate = FullMath.mulDiv(sqrtPriceAX96, sqrtPriceBX96, FixedPoint96.Q96);
+            uint128 liquidity = FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
+            return liquidity;
+        }
+    }
+
+    function getLiquidityForAmount1(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount1)
+        internal
+        pure
+        returns (uint128)
+    {
+        unchecked {
+            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+            uint128 liquidity = FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
+            return liquidity;
+        }
     }
 }
