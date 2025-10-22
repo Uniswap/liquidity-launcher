@@ -46,7 +46,7 @@ library StrategyPlanner {
 
         actions = ActionsBuilder.buildFullRangeActions();
         params = fullRangeParams.buildFullRangeParams(
-            poolKey, bounds, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient
+            poolKey, bounds, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient, baseParams.liquidity
         );
 
         // Build actions
@@ -102,9 +102,24 @@ library StrategyPlanner {
 
         actions = ActionsBuilder.buildOneSidedActions(existingActions);
         params = oneSidedParams.buildOneSidedParams(
-            poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient
+            poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient, newLiquidity
         );
 
+        return (actions, params);
+    }
+
+    function planFinalSweep(
+        BasePositionParams memory baseParams,
+        bytes memory existingActions,
+        bytes[] memory existingParams
+    ) internal view returns (bytes memory actions, bytes[] memory params) {
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
+        actions = ActionsBuilder.buildFinalSweepActions(existingActions);
+        params = ParamsBuilder.buildFinalSweepParams(
+            currencyIsCurrency0 ? baseParams.currency : baseParams.token,
+            currencyIsCurrency0 ? baseParams.token : baseParams.currency,
+            existingParams
+        );
         return (actions, params);
     }
 

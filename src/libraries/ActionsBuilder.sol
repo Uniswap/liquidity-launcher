@@ -11,26 +11,19 @@ library ActionsBuilder {
 
     /// @notice Builds full range position actions
     function buildFullRangeActions() internal pure returns (bytes memory) {
-        return abi.encodePacked(
-            uint8(Actions.SETTLE),
-            uint8(Actions.SETTLE),
-            uint8(Actions.MINT_POSITION_FROM_DELTAS),
-            uint8(Actions.CLEAR_OR_TAKE),
-            uint8(Actions.CLEAR_OR_TAKE)
-        );
+        return abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE));
     }
 
     /// @notice Builds one-sided position actions to append
     function buildOneSidedActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE) {
+        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE - ParamsBuilder.FINAL_SWEEP_SIZE) {
             revert InvalidActionsLength(existingActions.length);
         }
 
-        return abi.encodePacked(
-            existingActions,
-            uint8(Actions.SETTLE),
-            uint8(Actions.MINT_POSITION_FROM_DELTAS),
-            uint8(Actions.CLEAR_OR_TAKE)
-        );
+        return abi.encodePacked(existingActions, uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE));
+    }
+
+    function buildFinalSweepActions(bytes memory existingActions) internal pure returns (bytes memory) {
+        return abi.encodePacked(existingActions, uint8(Actions.SWEEP), uint8(Actions.SWEEP));
     }
 }

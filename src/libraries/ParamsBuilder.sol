@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
 
@@ -18,7 +19,10 @@ library ParamsBuilder {
     uint256 public constant FULL_RANGE_SIZE = 5;
 
     /// @notice Number of params needed for full-range + one-sided position
-    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 8;
+    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 7;
+
+    /// @notice Number of params needed for final sweep
+    uint256 public constant FINAL_SWEEP_SIZE = 2;
 
     /// @notice Builds the parameters needed to mint a full range position using the position manager
     /// @param fullRangeParams The amounts of currency and token that will be used to mint the position
@@ -34,29 +38,27 @@ library ParamsBuilder {
         TickBounds memory bounds,
         bool currencyIsCurrency0,
         uint256 paramsArraySize,
-        address positionRecipient
+        address positionRecipient,
+        uint128 liquidity
     ) internal pure returns (bytes[] memory params) {
         if (paramsArraySize != FULL_RANGE_SIZE && paramsArraySize != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(paramsArraySize);
         }
 
-        // Build parameters - direct encoding to avoid stack issues
+        // Build parameters
         params = new bytes[](paramsArraySize);
 
         uint256 amount0 = currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount;
         uint256 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
 
-        // Settlement params
-        params[0] = abi.encode(poolKey.currency0, amount0, false); // payerIsUser is false because position manager will be the payer
-        params[1] = abi.encode(poolKey.currency1, amount1, false); // payerIsUser is false because position manager will be the payer
-
-        // Mint from deltas params
-        params[2] =
-            abi.encode(poolKey, bounds.lowerTick, bounds.upperTick, amount0, amount1, positionRecipient, ZERO_BYTES);
-
-        // Clear params
-        params[3] = abi.encode(poolKey.currency0, type(uint256).max);
-        params[4] = abi.encode(poolKey.currency1, type(uint256).max);
+        // Set up mint
+        params[0] = abi.encode(
+            poolKey, bounds.lowerTick, bounds.upperTick, liquidity, amount0, amount1, positionRecipient, ZERO_BYTES
+        );
+        // Set up settlement for currency0
+        params[1] = abi.encode(poolKey.currency0, ActionConstants.OPEN_DELTA, false); // payerIsUser is false because position manager will be the payer
+        // Set up settlement for currency1
+        params[2] = abi.encode(poolKey.currency1, ActionConstants.OPEN_DELTA, false); // payerIsUser is false because position manager will be the payer
 
         return params;
     }
@@ -77,35 +79,50 @@ library ParamsBuilder {
         TickBounds memory bounds,
         bool currencyIsCurrency0,
         bytes[] memory existingParams,
-        address positionRecipient
+        address positionRecipient,
+        uint128 liquidity
     ) internal pure returns (bytes[] memory) {
         if (existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
             revert InvalidParamsLength(existingParams.length);
         }
 
-        // Set up settlement for token
-        existingParams[FULL_RANGE_SIZE] = abi.encode(
-            currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0,
-            oneSidedParams.amount,
+        // Determine which currency (0 or 1) receives the one-sided liquidity amount
+        // XOR logic: position uses currency1 when:
+        //   - currencyIsCurrency0=true AND inToken=true (currency is 0, position in token which is 1)
+        //   - currencyIsCurrency0=false AND inToken=false (currency is 1, position in currency which is 1)
+        bool useAmountInCurrency1 = currencyIsCurrency0 == oneSidedParams.inToken;
+
+        // Set the amount to the appropriate currency slot
+        uint256 amount0 = useAmountInCurrency1 ? 0 : oneSidedParams.amount;
+        uint256 amount1 = useAmountInCurrency1 ? oneSidedParams.amount : 0;
+
+        // Set up mint for token
+        existingParams[FULL_RANGE_WITH_ONE_SIDED_SIZE - FULL_RANGE_SIZE + 1] = abi.encode(
+            poolKey, bounds.lowerTick, bounds.upperTick, liquidity, amount0, amount1, positionRecipient, ZERO_BYTES
+        );
+
+        // Set up settlement
+        existingParams[FULL_RANGE_WITH_ONE_SIDED_SIZE - FULL_RANGE_SIZE + 2] = abi.encode(
+            useAmountInCurrency1 ? poolKey.currency1 : poolKey.currency0, // currency to settle
+            ActionConstants.OPEN_DELTA, // amount to settle
             false // payerIsUser is false because position manager will be the payer
         );
 
-        // Set up mint params directly
-        existingParams[FULL_RANGE_SIZE + 1] = abi.encode(
-            poolKey,
-            bounds.lowerTick,
-            bounds.upperTick,
-            currencyIsCurrency0 == oneSidedParams.inToken ? 0 : oneSidedParams.amount,
-            currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0,
-            positionRecipient,
-            ZERO_BYTES
-        );
+        return existingParams;
+    }
 
-        // Set up clear params
-        existingParams[FULL_RANGE_SIZE + 2] = abi.encode(
-            currencyIsCurrency0 == oneSidedParams.inToken ? poolKey.currency1 : poolKey.currency0, type(uint256).max
-        );
+    function buildFinalSweepParams(address currency0, address currency1, bytes[] memory existingParams)
+        internal
+        view
+        returns (bytes[] memory)
+    {
+        if (existingParams.length != FULL_RANGE_SIZE && existingParams.length != FULL_RANGE_WITH_ONE_SIDED_SIZE) {
+            revert InvalidParamsLength(existingParams.length);
+        }
 
+        existingParams[existingParams.length - FINAL_SWEEP_SIZE] = abi.encode(Currency.wrap(currency0), address(this));
+        existingParams[existingParams.length - FINAL_SWEEP_SIZE + 1] =
+            abi.encode(Currency.wrap(currency1), address(this));
         return existingParams;
     }
 

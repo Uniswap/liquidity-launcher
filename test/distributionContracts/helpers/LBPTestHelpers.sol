@@ -78,21 +78,11 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), 0);
     }
 
-    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
-        // Assert LBP is empty
-        vm.assertEq(address(lbp).balance, 0);
-        vm.assertEq(IERC20(token).balanceOf(address(lbp)), 0);
-
-        if (currency != address(0)) {
-            vm.assertEq(IERC20(currency).balanceOf(address(lbp)), 0);
-        }
-    }
-
     function assertBalancesAfterMigration(BalanceSnapshot memory before, BalanceSnapshot memory afterMigration)
         internal
         pure
     {
-        // should not be any leftover dust in position manager (should all be in pool manager)
+        // should not be any leftover dust in position manager (should have been swept back)
         vm.assertEq(afterMigration.tokenInPosm, before.tokenInPosm);
         vm.assertEq(afterMigration.currencyInPosm, before.currencyInPosm);
 
