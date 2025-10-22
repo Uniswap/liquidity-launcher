@@ -108,14 +108,14 @@ library StrategyPlanner {
         return (actions, params);
     }
 
-    function planFinalSweep(
+    function planFinalTakePair(
         BasePositionParams memory baseParams,
         bytes memory existingActions,
         bytes[] memory existingParams
     ) internal view returns (bytes memory actions, bytes[] memory params) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
-        actions = ActionsBuilder.buildFinalSweepActions(existingActions);
-        params = ParamsBuilder.buildFinalSweepParams(
+        actions = ActionsBuilder.buildFinalTakePairActions(existingActions);
+        params = ParamsBuilder.buildFinalTakePairParams(
             currencyIsCurrency0 ? baseParams.currency : baseParams.token,
             currencyIsCurrency0 ? baseParams.token : baseParams.currency,
             existingParams

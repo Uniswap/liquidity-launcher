@@ -16,14 +16,14 @@ library ActionsBuilder {
 
     /// @notice Builds one-sided position actions to append
     function buildOneSidedActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE - ParamsBuilder.FINAL_SWEEP_SIZE) {
+        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE - ParamsBuilder.FINAL_TAKE_PAIR_SIZE) {
             revert InvalidActionsLength(existingActions.length);
         }
 
-        return abi.encodePacked(existingActions, uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE));
+        return abi.encodePacked(existingActions, uint8(Actions.MINT_POSITION));
     }
 
-    function buildFinalSweepActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        return abi.encodePacked(existingActions, uint8(Actions.SWEEP), uint8(Actions.SWEEP));
+    function buildFinalTakePairActions(bytes memory existingActions) internal pure returns (bytes memory) {
+        return abi.encodePacked(existingActions, uint8(Actions.TAKE_PAIR));
     }
 }

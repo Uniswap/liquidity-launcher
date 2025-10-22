@@ -93,8 +93,8 @@ contract StrategyPlannerTest is Test {
             )
         );
 
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.OPEN_DELTA, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.OPEN_DELTA, false));
+        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
     }
 
     function test_fuzz_planFullRangePosition_succeeds(
@@ -145,7 +145,7 @@ contract StrategyPlannerTest is Test {
             params[1],
             abi.encode(
                 Currency.wrap(baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token),
-                ActionConstants.OPEN_DELTA,
+                ActionConstants.CONTRACT_BALANCE,
                 false
             )
         );
@@ -153,7 +153,7 @@ contract StrategyPlannerTest is Test {
             params[2],
             abi.encode(
                 Currency.wrap(baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency),
-                ActionConstants.OPEN_DELTA,
+                ActionConstants.CONTRACT_BALANCE,
                 false
             )
         );
@@ -179,7 +179,7 @@ contract StrategyPlannerTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            7,
+            5,
             address(0),
             liquidity
         );
@@ -198,8 +198,8 @@ contract StrategyPlannerTest is Test {
             existingActions,
             existingParams
         );
-        assertEq(actions.length, 5);
-        assertEq(params.length, 7);
+        assertEq(actions.length, 4);
+        assertEq(params.length, 5);
         assertEq(actions, ActionsBuilder.buildOneSidedActions(existingActions));
 
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -230,8 +230,8 @@ contract StrategyPlannerTest is Test {
             )
         );
 
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.OPEN_DELTA, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.OPEN_DELTA, false));
+        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
 
         assertEq(
             params[3],
@@ -252,8 +252,6 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
-
-        assertEq(params[4], abi.encode(Currency.wrap(address(1)), ActionConstants.OPEN_DELTA, false));
     }
 
     function test_planOneSidedPosition_inCurrency_succeeds() public view {
@@ -276,7 +274,7 @@ contract StrategyPlannerTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            7,
+            5,
             address(0),
             liquidity
         );
@@ -295,8 +293,8 @@ contract StrategyPlannerTest is Test {
             existingActions,
             existingParams
         );
-        assertEq(actions.length, 5);
-        assertEq(params.length, 7);
+        assertEq(actions.length, 4);
+        assertEq(params.length, 5);
         assertEq(actions, ActionsBuilder.buildOneSidedActions(existingActions));
         assertEq(
             params[0],
@@ -317,8 +315,8 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.OPEN_DELTA, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.OPEN_DELTA, false));
+        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
 
         assertEq(
             params[3],
@@ -345,8 +343,6 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
-
-        assertEq(params[4], abi.encode(Currency.wrap(address(0)), ActionConstants.OPEN_DELTA, false));
     }
 
     function calculateLiquidity(
@@ -419,7 +415,7 @@ contract StrategyPlannerTest is Test {
         OneSidedTestData memory testData;
 
         // Plan full range position
-        (testData.fullActions, testData.fullParams) = testHelper.planFullRangePosition(baseParams, fullRangeParams, 7);
+        (testData.fullActions, testData.fullParams) = testHelper.planFullRangePosition(baseParams, fullRangeParams, 5);
 
         // Get tick bounds
         testData.bounds = _getTickBounds(baseParams, oneSidedParams);
@@ -510,22 +506,12 @@ contract StrategyPlannerTest is Test {
         OneSidedParams memory oneSidedParams,
         OneSidedTestData memory testData
     ) private pure {
-        assertEq(testData.actions.length, 5);
-        assertEq(testData.params.length, 7);
+        assertEq(testData.actions.length, 4);
+        assertEq(testData.params.length, 5);
         assertEq(testData.actions, ActionsBuilder.buildOneSidedActions(testData.fullActions));
 
         // Assert params[3] - extract to separate function to reduce complexity
         assertEq(testData.params[3], _buildParam3(baseParams, oneSidedParams));
-
-        // Assert params[4]
-        assertEq(
-            testData.params[4],
-            abi.encode(
-                Currency.wrap(oneSidedParams.inToken ? baseParams.token : baseParams.currency),
-                ActionConstants.OPEN_DELTA,
-                false
-            )
-        );
     }
 
     // Helper function to build parameter 6

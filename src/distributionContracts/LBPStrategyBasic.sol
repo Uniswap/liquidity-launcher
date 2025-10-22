@@ -346,7 +346,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             );
         }
 
-        (actions, params) = _createFinalSweepPlan(baseParams, actions, params);
+        (actions, params) = _createFinalTakePairPlan(baseParams, actions, params);
 
         return abi.encode(actions, params);
     }
@@ -439,12 +439,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 
-    function _createFinalSweepPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
+    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
         private
         view
         returns (bytes memory, bytes[] memory)
     {
-        return baseParams.planFinalSweep(actions, params);
+        return baseParams.planFinalTakePair(actions, params);
     }
 
     /// @notice Receives native currency

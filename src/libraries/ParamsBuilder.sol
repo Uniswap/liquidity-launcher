@@ -15,14 +15,14 @@ library ParamsBuilder {
     /// @notice Empty bytes used as hook data when minting positions since no hook data is needed
     bytes constant ZERO_BYTES = new bytes(0);
 
-    /// @notice Number of params needed for a standalone full-range position
-    uint256 public constant FULL_RANGE_SIZE = 5;
+    /// @notice Number of params needed for a standalone full-range position without take pair
+    uint256 public constant FULL_RANGE_SIZE = 4;
 
-    /// @notice Number of params needed for full-range + one-sided position
-    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 7;
+    /// @notice Number of params needed for full-range + one-sided position without take pair
+    uint256 public constant FULL_RANGE_WITH_ONE_SIDED_SIZE = 5;
 
-    /// @notice Number of params needed for final sweep
-    uint256 public constant FINAL_SWEEP_SIZE = 2;
+    /// @notice Number of params needed for final take pair
+    uint256 public constant FINAL_TAKE_PAIR_SIZE = 1;
 
     /// @notice Builds the parameters needed to mint a full range position using the position manager
     /// @param fullRangeParams The amounts of currency and token that will be used to mint the position
@@ -55,10 +55,14 @@ library ParamsBuilder {
         params[0] = abi.encode(
             poolKey, bounds.lowerTick, bounds.upperTick, liquidity, amount0, amount1, positionRecipient, ZERO_BYTES
         );
+
+        // Send the position manager's full balance of both currencies to cover both positions
+        // This includes any pre-existing tokens in the position manager, which will be sent to the pool manager
+        // and ultimately transferred to the LBP contract at the end.
         // Set up settlement for currency0
-        params[1] = abi.encode(poolKey.currency0, ActionConstants.OPEN_DELTA, false); // payerIsUser is false because position manager will be the payer
+        params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false); // payerIsUser is false because position manager will be the payer
         // Set up settlement for currency1
-        params[2] = abi.encode(poolKey.currency1, ActionConstants.OPEN_DELTA, false); // payerIsUser is false because position manager will be the payer
+        params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false); // payerIsUser is false because position manager will be the payer
 
         return params;
     }
@@ -97,21 +101,14 @@ library ParamsBuilder {
         uint256 amount1 = useAmountInCurrency1 ? oneSidedParams.amount : 0;
 
         // Set up mint for token
-        existingParams[FULL_RANGE_WITH_ONE_SIDED_SIZE - FULL_RANGE_SIZE + 1] = abi.encode(
+        existingParams[FULL_RANGE_SIZE - FINAL_TAKE_PAIR_SIZE] = abi.encode(
             poolKey, bounds.lowerTick, bounds.upperTick, liquidity, amount0, amount1, positionRecipient, ZERO_BYTES
-        );
-
-        // Set up settlement
-        existingParams[FULL_RANGE_WITH_ONE_SIDED_SIZE - FULL_RANGE_SIZE + 2] = abi.encode(
-            useAmountInCurrency1 ? poolKey.currency1 : poolKey.currency0, // currency to settle
-            ActionConstants.OPEN_DELTA, // amount to settle
-            false // payerIsUser is false because position manager will be the payer
         );
 
         return existingParams;
     }
 
-    function buildFinalSweepParams(address currency0, address currency1, bytes[] memory existingParams)
+    function buildFinalTakePairParams(address currency0, address currency1, bytes[] memory existingParams)
         internal
         view
         returns (bytes[] memory)
@@ -120,9 +117,10 @@ library ParamsBuilder {
             revert InvalidParamsLength(existingParams.length);
         }
 
-        existingParams[existingParams.length - FINAL_SWEEP_SIZE] = abi.encode(Currency.wrap(currency0), address(this));
-        existingParams[existingParams.length - FINAL_SWEEP_SIZE + 1] =
-            abi.encode(Currency.wrap(currency1), address(this));
+        // Take any open deltas from the pool manager and send back to the lbp
+        existingParams[existingParams.length - FINAL_TAKE_PAIR_SIZE] =
+            abi.encode(Currency.wrap(currency0), Currency.wrap(currency1), address(this));
+
         return existingParams;
     }
 

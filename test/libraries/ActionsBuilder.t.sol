@@ -38,6 +38,6 @@ contract ActionsBuilderTest is Test {
     function test_buildOneSidedActions_succeeds() public view {
         bytes memory actions = testHelper.buildFullRangeActions();
         bytes memory oneSidedActions = testHelper.buildOneSidedActions(actions);
-        assertEq(oneSidedActions.length, 5);
+        assertEq(oneSidedActions.length, 4);
     }
 }
