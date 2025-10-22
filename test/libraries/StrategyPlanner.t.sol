@@ -24,7 +24,7 @@ contract StrategyPlannerHelper is Test {
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams,
         uint256 paramsArraySize
-    ) public view returns (bytes memory actions, bytes[] memory params) {
+    ) public pure returns (bytes memory actions, bytes[] memory params) {
         return StrategyPlanner.planFullRangePosition(baseParams, fullRangeParams, paramsArraySize);
     }
 
@@ -33,7 +33,7 @@ contract StrategyPlannerHelper is Test {
         OneSidedParams memory oneSidedParams,
         bytes memory existingActions,
         bytes[] memory existingParams
-    ) public view returns (bytes memory actions, bytes[] memory params) {
+    ) public pure returns (bytes memory actions, bytes[] memory params) {
         return StrategyPlanner.planOneSidedPosition(baseParams, oneSidedParams, existingActions, existingParams);
     }
 }
@@ -274,7 +274,7 @@ contract StrategyPlannerTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            5,
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE,
             address(0),
             liquidity
         );

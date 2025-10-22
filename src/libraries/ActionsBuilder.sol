@@ -16,7 +16,7 @@ library ActionsBuilder {
 
     /// @notice Builds one-sided position actions to append
     function buildOneSidedActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE - ParamsBuilder.FINAL_TAKE_PAIR_SIZE) {
+        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE) {
             revert InvalidActionsLength(existingActions.length);
         }
 

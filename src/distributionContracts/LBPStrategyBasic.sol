@@ -334,15 +334,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 baseParams,
                 data.initialTokenAmount,
                 data.initialCurrencyAmount,
-                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
+                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE
             );
             (actions, params) =
                 _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
             // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
-            data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
+            data.hasOneSidedParams =
+                params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE;
         } else {
             (actions, params) = _createFullRangePositionPlan(
-                baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
+                baseParams,
+                data.initialTokenAmount,
+                data.initialCurrencyAmount,
+                ParamsBuilder.FULL_RANGE_SIZE + ParamsBuilder.FINAL_TAKE_PAIR_SIZE
             );
         }
 
