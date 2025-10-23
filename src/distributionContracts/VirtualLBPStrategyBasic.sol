@@ -64,7 +64,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
       emit MigrationApproved();
     }
 
-    function _validateMigration() internal override(LBPStrategyBasic) view {
+    function _validateMigration() internal override(LBPStrategyBasic) {
         if (!isMigrationApproved) revert MigrationNotApproved();
         super._validateMigration();
     }
