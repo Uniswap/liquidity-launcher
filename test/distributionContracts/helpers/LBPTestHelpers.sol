@@ -78,6 +78,16 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), 0);
     }
 
+    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
+        // Assert LBP is empty (with dust)
+        vm.assertLe(address(lbp).balance, 1500);
+        vm.assertLe(IERC20(token).balanceOf(address(lbp)), 1500);
+
+        if (currency != address(0)) {
+            vm.assertLe(IERC20(currency).balanceOf(address(lbp)), 1500);
+        }
+    }
+
     function assertBalancesAfterMigration(BalanceSnapshot memory before, BalanceSnapshot memory afterMigration)
         internal
         pure
