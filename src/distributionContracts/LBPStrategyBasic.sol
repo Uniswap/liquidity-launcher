@@ -176,13 +176,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         uint256 currencyBalance;
         // Before migration has taken place, you can only sweep up until the reserved amount 
         if (block.number < sweepBlock) {
-            uint256 currencyRaised = auction.currencyRaised();
-            uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
-
-            (, uint256 leftoverCurrency, ) =
-                priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
-
-            currencyBalance = leftoverCurrency;
+            (,, currencyBalance, ) = _calculateAmounts();
         } else {
             currencyBalance = Currency.wrap(currency).balanceOf(address(this));
         }
@@ -276,15 +270,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
+    function _calculateAmounts() private view returns (uint160 sqrtPriceX96, uint256 initialTokenAmount, uint256 leftoverCurrency, uint256 initialCurrencyAmount) {
+        // _validateMigration must be called before this to assert that currency balance is greater than or equal to auction.currencyRaised()
+        uint256 currencyRaised = Currency.wrap(currency).balanceOf(address(this));
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
+
+        sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
+        (initialTokenAmount, leftoverCurrency, initialCurrencyAmount) =
+            priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
+    }
+
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
-        uint256 currencyRaised = auction.currencyRaised();
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
-        data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
-
-        (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
+        (data.sqrtPriceX96, data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
+            _calculateAmounts();
 
         // validate that all amounts are less than or equal to type(uint128).max
         if (
