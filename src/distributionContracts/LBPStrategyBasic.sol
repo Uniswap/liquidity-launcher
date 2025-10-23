@@ -146,10 +146,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit Migrated(key, data.sqrtPriceX96);
     }
 
+    function _tryToMigrate() private {
+        try this.migrate() {
+        } catch {}
+    }
+
     /// @inheritdoc ILBPStrategyBasic
     function sweepToken() external {
         if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
+
+        _tryToMigrate();
 
         uint256 tokenBalance = Currency.wrap(token).balanceOf(address(this));
         if (tokenBalance > 0) {
@@ -158,12 +165,28 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
+
     /// @inheritdoc ILBPStrategyBasic
     function sweepCurrency() external {
-        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
 
-        uint256 currencyBalance = Currency.wrap(currency).balanceOf(address(this));
+        // TODO(md): are there any cases in which this can revert OOG?
+        _tryToMigrate();
+
+        uint256 currencyBalance;
+        // Before migration has taken place, you can only sweep up until the reserved amount 
+        if (block.number < sweepBlock) {
+            uint256 currencyRaised = auction.currencyRaised();
+            uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
+
+            (, uint256 leftoverCurrency, ) =
+                priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
+
+            currencyBalance = leftoverCurrency;
+        } else {
+            currencyBalance = Currency.wrap(currency).balanceOf(address(this));
+        }
+
         if (currencyBalance > 0) {
             Currency.wrap(currency).transfer(operator, currencyBalance);
             emit CurrencySwept(operator, currencyBalance);
