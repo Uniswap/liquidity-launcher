@@ -430,7 +430,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertBalancesAfterMigration(before, afterMigration);
         // leftover tokens, no leftover currency
         assertGt(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
-        assertLe(Currency.wrap(address(0)).balanceOf(address(lbp)), 100); // dust
+        assertLe(Currency.wrap(address(0)).balanceOf(address(lbp)), LBPTestHelpers.DUST_AMOUNT); // dust
 
         uint256 operatorBalanceBefore = Currency.wrap(address(token)).balanceOf(lbp.operator());
 

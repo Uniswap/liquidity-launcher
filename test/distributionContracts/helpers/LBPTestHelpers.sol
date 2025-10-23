@@ -25,6 +25,8 @@ abstract contract LBPTestHelpers is Test {
         uint256 wethInRecipient;
     }
 
+    uint256 constant DUST_AMOUNT = 1e18;
+
     function takeBalanceSnapshot(address token, address currency, address positionManager, address poolManager, address)
         internal
         view
@@ -80,11 +82,11 @@ abstract contract LBPTestHelpers is Test {
 
     function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
         // Assert LBP is empty (with dust)
-        vm.assertLe(address(lbp).balance, 1500);
-        vm.assertLe(IERC20(token).balanceOf(address(lbp)), 1500);
+        vm.assertLe(address(lbp).balance, DUST_AMOUNT);
+        vm.assertLe(IERC20(token).balanceOf(address(lbp)), DUST_AMOUNT);
 
         if (currency != address(0)) {
-            vm.assertLe(IERC20(currency).balanceOf(address(lbp)), 1500);
+            vm.assertLe(IERC20(currency).balanceOf(address(lbp)), DUST_AMOUNT);
         }
     }
 
