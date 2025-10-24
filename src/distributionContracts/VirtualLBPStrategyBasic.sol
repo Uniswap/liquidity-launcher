@@ -20,6 +20,12 @@ import {Auction} from "twap-auction/src/Auction.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+
 /// @title VirtualLBPStrategyBasic
 /// @notice Strategy for distributing virtual tokens to a v4 pool
 /// Virtual tokens are ERC20 tokens that wrap an underlying token. 
@@ -64,9 +70,33 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
       emit MigrationApproved();
     }
 
-    function _validateMigration() internal override(LBPStrategyBasic) {
-        if (!isMigrationApproved) revert MigrationNotApproved();
-        super._validateMigration();
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
+            beforeInitialize: true,
+            beforeAddLiquidity: false,
+            beforeSwap: true,
+            beforeSwapReturnDelta: false,
+            afterSwap: false,
+            afterInitialize: false,
+            beforeRemoveLiquidity: true,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
+            beforeDonate: false,
+            afterDonate: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
+        });
+    }
+
+    function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+      if (!isMigrationApproved) revert MigrationNotApproved();
+      return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+    }
+
+    function _beforeRemoveLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata) internal override returns (bytes4) {
+      if (!isMigrationApproved) revert MigrationNotApproved();
+      return IHooks.beforeRemoveLiquidity.selector;
     }
 
     function getPoolToken() internal override view returns (address) {
