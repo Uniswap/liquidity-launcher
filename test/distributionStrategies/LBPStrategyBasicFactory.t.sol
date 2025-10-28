@@ -7,7 +7,7 @@ import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic
 import {TokenLauncher} from "../../src/TokenLauncher.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {MigratorParameters} from "../../src/types/MigratorParams.sol";
+import {MigratorParameters} from "../../src/types/MigratorParameters.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";

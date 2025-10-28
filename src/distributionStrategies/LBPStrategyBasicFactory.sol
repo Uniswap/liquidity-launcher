@@ -7,7 +7,7 @@ import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
-import {MigratorParameters} from "../types/MigratorParams.sol";
+import {MigratorParameters} from "../types/MigratorParameters.sol";
 
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract

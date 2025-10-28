@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
-import {MigratorParameters} from "../../src/types/MigratorParams.sol";
+import {MigratorParameters} from "../../src/types/MigratorParameters.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
