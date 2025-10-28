@@ -28,9 +28,10 @@ library TickCalculations {
     /// @param tickSpacing The tick spacing to round down to (cannot be 0)
     /// @return The rounded down tick
     function tickFloor(int24 tick, int24 tickSpacing) internal pure returns (int24) {
-        int24 compressed = tick / tickSpacing;
-        if (tick < 0 && tick % tickSpacing != 0) compressed--;
-        return compressed * tickSpacing;
+        unchecked {
+            int24 remainder = tick % tickSpacing;
+            return remainder >= 0 ? tick - remainder : tick - remainder - tickSpacing;
+        }
     }
 
     /// @notice Rounds up to the next tick spacing
