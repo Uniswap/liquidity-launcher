@@ -105,13 +105,11 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         implToken = new MockERC20("Test Token", "TEST", totalSupply, address(tokenLauncher));
         vm.etch(TEST_TOKEN_ADDRESS, address(implToken).code);
         deal(address(token), address(tokenLauncher), totalSupply);
-
         // Get hook address with BEFORE_INITIALIZE permission
         address hookAddress = address(
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
         );
         lbp = LBPStrategyBasic(payable(hookAddress));
-
         // Deploy implementation
         impl = new LBPStrategyBasicNoValidation(
             address(token),
@@ -121,7 +119,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
-
         vm.etch(address(lbp), address(impl).code);
 
         LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);

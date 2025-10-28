@@ -12,7 +12,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 contract LBPStrategyBasicNoValidation is LBPStrategyBasic {
     constructor(
         address _tokenAddress,
-        uint256 _totalSupply,
+        uint128 _totalSupply,
         MigratorParameters memory migratorParams,
         bytes memory auctionParams,
         IPositionManager _positionManager,

@@ -345,8 +345,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
 
-    function test_fuzz_onTokenReceived_succeeds() public {
-        uint128 totalSupply = 186110499033859115776668960446522303;
+    function test_fuzz_onTokenReceived_succeeds(uint128 totalSupply) public {
         vm.assume(totalSupply > 1);
         setupWithSupply(totalSupply);
 
@@ -364,7 +363,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_fuzz_constructor_validation(
-        uint256 totalSupply,
+        uint128 totalSupply,
         uint24 poolLPFee,
         int24 poolTickSpacing,
         uint24 tokenSplit,

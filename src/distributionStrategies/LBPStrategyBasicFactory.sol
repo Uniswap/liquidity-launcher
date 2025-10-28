@@ -28,6 +28,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         external
         returns (IDistributionContract lbp)
     {
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
@@ -35,7 +37,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         lbp = IDistributionContract(
             address(
                 new LBPStrategyBasic{salt: _salt}(
-                    token, totalSupply, migratorParams, auctionParams, positionManager, poolManager
+                    token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager
                 )
             )
         );
