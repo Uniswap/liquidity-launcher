@@ -86,7 +86,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
         _validateAuctionParams(_auctionParams, _migratorParams);
-        
+
         auctionParameters = _auctionParams;
 
         token = _token;
@@ -110,7 +110,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Gets the address of the token that will be used to create the pool
     /// @return The address of the token that will be used to create the pool
-    function getPoolToken() internal virtual view returns (address) {
+    function getPoolToken() internal view virtual returns (address) {
         return token;
     }
 
@@ -263,7 +263,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
-        address poolToken =  getPoolToken();
+        address poolToken = getPoolToken();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();

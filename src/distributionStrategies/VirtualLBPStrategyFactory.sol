@@ -35,7 +35,13 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
         virtualLBP = IDistributionContract(
             address(
                 new VirtualLBPStrategyBasic{salt: _salt}(
-                    token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager, governanceAddress
+                    token,
+                    uint128(totalSupply),
+                    migratorParams,
+                    auctionParams,
+                    positionManager,
+                    poolManager,
+                    governanceAddress
                 )
             )
         );
@@ -63,7 +69,15 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(VirtualLBPStrategyBasic).creationCode,
-                abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager, governanceAddress)
+                abi.encode(
+                    token,
+                    uint128(totalSupply),
+                    migratorParams,
+                    auctionParams,
+                    positionManager,
+                    poolManager,
+                    governanceAddress
+                )
             )
         );
         return Create2.computeAddress(_salt, initCodeHash, address(this));
