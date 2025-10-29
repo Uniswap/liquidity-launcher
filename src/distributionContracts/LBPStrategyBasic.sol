@@ -46,7 +46,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice The currency that the auction raised funds in
     address public immutable currency;
 
-    /// @notice The LP fee that the v4 pool will use
+    /// @notice The LP fee that the v4 pool will use expressed in hundredths of a bip (1e6 = 100%)
     uint24 public immutable poolLPFee;
     /// @notice The tick spacing that the v4 pool will use
     int24 public immutable poolTickSpacing;
