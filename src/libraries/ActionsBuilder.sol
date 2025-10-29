@@ -9,28 +9,22 @@ import {ParamsBuilder} from "./ParamsBuilder.sol";
 library ActionsBuilder {
     error InvalidActionsLength(uint256 invalidLength);
 
-    /// @notice Builds full range position actions
+    /// @notice Builds full range position actions without final take pair action
     function buildFullRangeActions() internal pure returns (bytes memory) {
-        return abi.encodePacked(
-            uint8(Actions.SETTLE),
-            uint8(Actions.SETTLE),
-            uint8(Actions.MINT_POSITION_FROM_DELTAS),
-            uint8(Actions.CLEAR_OR_TAKE),
-            uint8(Actions.CLEAR_OR_TAKE)
-        );
+        return abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE));
     }
 
-    /// @notice Builds one-sided position actions to append
+    /// @notice Builds one-sided position actions to append without final take pair action
     function buildOneSidedActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE) {
+        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE - 1) {
             revert InvalidActionsLength(existingActions.length);
         }
 
-        return abi.encodePacked(
-            existingActions,
-            uint8(Actions.SETTLE),
-            uint8(Actions.MINT_POSITION_FROM_DELTAS),
-            uint8(Actions.CLEAR_OR_TAKE)
-        );
+        return abi.encodePacked(existingActions, uint8(Actions.MINT_POSITION));
+    }
+
+    /// @notice Builds final take pair action
+    function buildFinalTakePairActions(bytes memory existingActions) internal pure returns (bytes memory) {
+        return abi.encodePacked(existingActions, uint8(Actions.TAKE_PAIR));
     }
 }

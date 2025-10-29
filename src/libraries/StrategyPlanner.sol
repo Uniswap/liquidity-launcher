@@ -46,7 +46,7 @@ library StrategyPlanner {
 
         actions = ActionsBuilder.buildFullRangeActions();
         params = fullRangeParams.buildFullRangeParams(
-            poolKey, bounds, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient
+            poolKey, bounds, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient, baseParams.liquidity
         );
 
         // Build actions
@@ -79,16 +79,13 @@ library StrategyPlanner {
             return (existingActions, existingParams.truncateParams());
         }
 
-        // Check if the position is on the left side or the right side
-        bool isLeftSide = currencyIsCurrency0 == oneSidedParams.inToken;
-
         // If this exceeds type(uint256).max, the transaction will revert and no position will be created
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            isLeftSide ? 0 : oneSidedParams.amount,
-            isLeftSide ? oneSidedParams.amount : 0
+            currencyIsCurrency0 == oneSidedParams.inToken ? 0 : oneSidedParams.amount,
+            currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
         if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
@@ -105,9 +102,24 @@ library StrategyPlanner {
 
         actions = ActionsBuilder.buildOneSidedActions(existingActions);
         params = oneSidedParams.buildOneSidedParams(
-            poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient
+            poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient, newLiquidity
         );
 
+        return (actions, params);
+    }
+
+    function planFinalTakePair(
+        BasePositionParams memory baseParams,
+        bytes memory existingActions,
+        bytes[] memory existingParams
+    ) internal view returns (bytes memory actions, bytes[] memory params) {
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
+        actions = ActionsBuilder.buildFinalTakePairActions(existingActions);
+        params = ParamsBuilder.buildFinalTakePairParams(
+            currencyIsCurrency0 ? baseParams.currency : baseParams.token,
+            currencyIsCurrency0 ? baseParams.token : baseParams.currency,
+            existingParams
+        );
         return (actions, params);
     }
 

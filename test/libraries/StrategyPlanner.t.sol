@@ -17,6 +17,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 
 contract StrategyPlannerHelper is Test {
     function planFullRangePosition(
@@ -62,13 +63,12 @@ contract StrategyPlannerTest is Test {
             FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000}),
             5
         );
-        assertEq(actions.length, 5);
+        assertEq(actions.length, 3);
         assertEq(params.length, 5);
         assertEq(actions, ActionsBuilder.buildFullRangeActions());
-        assertEq(params[0], abi.encode(Currency.wrap(address(0)), 1000000000000000000, false));
-        assertEq(params[1], abi.encode(Currency.wrap(address(1)), 1000000000000000000, false));
+
         assertEq(
-            params[2],
+            params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -79,14 +79,22 @@ contract StrategyPlannerTest is Test {
                 }),
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
+                LiquidityAmounts.getLiquidityForAmounts(
+                    TickMath.getSqrtPriceAtTick(0),
+                    TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+                    TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+                    1000000000000000000,
+                    1000000000000000000
+                ),
                 1000000000000000000,
                 1000000000000000000,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[3], abi.encode(Currency.wrap(address(0)), type(uint256).max));
-        assertEq(params[4], abi.encode(Currency.wrap(address(1)), type(uint256).max));
+
+        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
     }
 
     function test_fuzz_planFullRangePosition_succeeds(
@@ -105,27 +113,12 @@ contract StrategyPlannerTest is Test {
         uint256 arraySize = 5;
         (bytes memory actions, bytes[] memory params) =
             testHelper.planFullRangePosition(baseParams, fullRangeParams, arraySize);
-        assertEq(actions.length, arraySize);
+        assertEq(actions.length, 3);
         assertEq(params.length, arraySize);
         assertEq(actions, ActionsBuilder.buildFullRangeActions());
+
         assertEq(
             params[0],
-            abi.encode(
-                Currency.wrap(baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token),
-                baseParams.currency < baseParams.token ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
-                false
-            )
-        );
-        assertEq(
-            params[1],
-            abi.encode(
-                Currency.wrap(baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency),
-                baseParams.currency < baseParams.token ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount,
-                false
-            )
-        );
-        assertEq(
-            params[2],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(
@@ -140,29 +133,40 @@ contract StrategyPlannerTest is Test {
                 }),
                 TickMath.MIN_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing,
                 TickMath.MAX_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing,
+                baseParams.liquidity,
                 baseParams.currency < baseParams.token ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
                 baseParams.currency < baseParams.token ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount,
                 baseParams.positionRecipient,
                 ParamsBuilder.ZERO_BYTES
             )
         );
+
         assertEq(
-            params[3],
+            params[1],
             abi.encode(
                 Currency.wrap(baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token),
-                type(uint256).max
+                ActionConstants.CONTRACT_BALANCE,
+                false
             )
         );
         assertEq(
-            params[4],
+            params[2],
             abi.encode(
                 Currency.wrap(baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency),
-                type(uint256).max
+                ActionConstants.CONTRACT_BALANCE,
+                false
             )
         );
     }
 
     function test_planOneSidedPosition_inToken_succeeds() public view {
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+            1000000000000000000,
+            1000000000000000000
+        );
         bytes memory existingActions = ActionsBuilder.buildFullRangeActions();
         bytes[] memory existingParams = ParamsBuilder.buildFullRangeParams(
             FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000}),
@@ -175,8 +179,9 @@ contract StrategyPlannerTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            8,
-            address(0)
+            5,
+            address(0),
+            liquidity
         );
         (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
             BasePositionParams({
@@ -185,7 +190,7 @@ contract StrategyPlannerTest is Test {
                 poolLPFee: 10000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(0),
-                liquidity: 1000000000000000000,
+                liquidity: liquidity,
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
@@ -193,13 +198,20 @@ contract StrategyPlannerTest is Test {
             existingActions,
             existingParams
         );
-        assertEq(actions.length, 8);
-        assertEq(params.length, 8);
+        assertEq(actions.length, 4);
+        assertEq(params.length, 5);
         assertEq(actions, ActionsBuilder.buildOneSidedActions(existingActions));
-        assertEq(params[0], abi.encode(Currency.wrap(address(0)), 1000000000000000000, false));
-        assertEq(params[1], abi.encode(Currency.wrap(address(1)), 1000000000000000000, false));
+
+        uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(0),
+            0,
+            1000000000000000000
+        );
+
         assertEq(
-            params[2],
+            params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -210,17 +222,19 @@ contract StrategyPlannerTest is Test {
                 }),
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
+                liquidity,
                 1000000000000000000,
                 1000000000000000000,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[3], abi.encode(Currency.wrap(address(0)), type(uint256).max));
-        assertEq(params[4], abi.encode(Currency.wrap(address(1)), type(uint256).max));
-        assertEq(params[5], abi.encode(Currency.wrap(address(1)), 1000000000000000000, false));
+
+        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
+
         assertEq(
-            params[6],
+            params[3],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -231,16 +245,23 @@ contract StrategyPlannerTest is Test {
                 }),
                 TickMath.MIN_TICK,
                 0,
+                oneSidedLiquidity,
                 0,
                 1000000000000000000,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[7], abi.encode(Currency.wrap(address(1)), type(uint256).max));
     }
 
     function test_planOneSidedPosition_inCurrency_succeeds() public view {
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            TickMath.getSqrtPriceAtTick(0),
+            TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+            TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+            1000000000000000000,
+            1000000000000000000
+        );
         bytes memory existingActions = ActionsBuilder.buildFullRangeActions();
         bytes[] memory existingParams = ParamsBuilder.buildFullRangeParams(
             FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000}),
@@ -253,8 +274,9 @@ contract StrategyPlannerTest is Test {
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
             true,
-            8,
-            address(0)
+            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
+            address(0),
+            liquidity
         );
         (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
             BasePositionParams({
@@ -263,7 +285,7 @@ contract StrategyPlannerTest is Test {
                 poolLPFee: 10000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(0),
-                liquidity: 1000000000000000000,
+                liquidity: liquidity,
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
@@ -271,13 +293,11 @@ contract StrategyPlannerTest is Test {
             existingActions,
             existingParams
         );
-        assertEq(actions.length, 8);
-        assertEq(params.length, 8);
+        assertEq(actions.length, 4);
+        assertEq(params.length, 5);
         assertEq(actions, ActionsBuilder.buildOneSidedActions(existingActions));
-        assertEq(params[0], abi.encode(Currency.wrap(address(0)), 1000000000000000000, false));
-        assertEq(params[1], abi.encode(Currency.wrap(address(1)), 1000000000000000000, false));
         assertEq(
-            params[2],
+            params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -288,17 +308,18 @@ contract StrategyPlannerTest is Test {
                 }),
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
+                liquidity,
                 1000000000000000000,
                 1000000000000000000,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[3], abi.encode(Currency.wrap(address(0)), type(uint256).max));
-        assertEq(params[4], abi.encode(Currency.wrap(address(1)), type(uint256).max));
-        assertEq(params[5], abi.encode(Currency.wrap(address(0)), 1000000000000000000, false));
+        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
+
         assertEq(
-            params[6],
+            params[3],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -309,13 +330,19 @@ contract StrategyPlannerTest is Test {
                 }),
                 1,
                 TickMath.MAX_TICK,
+                LiquidityAmounts.getLiquidityForAmounts(
+                    TickMath.getSqrtPriceAtTick(0),
+                    TickMath.getSqrtPriceAtTick(1),
+                    TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+                    1000000000000000000,
+                    0
+                ),
                 1000000000000000000,
                 0,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[7], abi.encode(Currency.wrap(address(0)), type(uint256).max));
     }
 
     function calculateLiquidity(
@@ -388,7 +415,7 @@ contract StrategyPlannerTest is Test {
         OneSidedTestData memory testData;
 
         // Plan full range position
-        (testData.fullActions, testData.fullParams) = testHelper.planFullRangePosition(baseParams, fullRangeParams, 8);
+        (testData.fullActions, testData.fullParams) = testHelper.planFullRangePosition(baseParams, fullRangeParams, 5);
 
         // Get tick bounds
         testData.bounds = _getTickBounds(baseParams, oneSidedParams);
@@ -408,7 +435,7 @@ contract StrategyPlannerTest is Test {
             testHelper.planOneSidedPosition(baseParams, oneSidedParams, testData.fullActions, testData.fullParams);
 
         // Assert results
-        if (testData.actions.length == 5) {
+        if (testData.actions.length == 3) {
             assertEq(testData.actions, testData.fullActions);
             assertEq(testData.params, ParamsBuilder.truncateParams(testData.fullParams));
         } else {
@@ -479,34 +506,16 @@ contract StrategyPlannerTest is Test {
         OneSidedParams memory oneSidedParams,
         OneSidedTestData memory testData
     ) private pure {
-        assertEq(testData.actions.length, 8);
-        assertEq(testData.params.length, 8);
+        assertEq(testData.actions.length, 4);
+        assertEq(testData.params.length, 5);
         assertEq(testData.actions, ActionsBuilder.buildOneSidedActions(testData.fullActions));
 
-        // Assert params[5]
-        assertEq(
-            testData.params[5],
-            abi.encode(
-                Currency.wrap(oneSidedParams.inToken ? baseParams.token : baseParams.currency),
-                oneSidedParams.amount,
-                false
-            )
-        );
-
-        // Assert params[6] - extract to separate function to reduce complexity
-        assertEq(testData.params[6], _buildParam6(baseParams, oneSidedParams));
-
-        // Assert params[7]
-        assertEq(
-            testData.params[7],
-            abi.encode(
-                Currency.wrap(oneSidedParams.inToken ? baseParams.token : baseParams.currency), type(uint256).max
-            )
-        );
+        // Assert params[3] - extract to separate function to reduce complexity
+        assertEq(testData.params[3], _buildParam3(baseParams, oneSidedParams));
     }
 
     // Helper function to build parameter 6
-    function _buildParam6(BasePositionParams memory baseParams, OneSidedParams memory oneSidedParams)
+    function _buildParam3(BasePositionParams memory baseParams, OneSidedParams memory oneSidedParams)
         private
         pure
         returns (bytes memory)
@@ -530,6 +539,14 @@ contract StrategyPlannerTest is Test {
             }
         }
 
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            baseParams.initialSqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(lowerTick),
+            TickMath.getSqrtPriceAtTick(upperTick),
+            isLeftSide ? 0 : oneSidedParams.amount,
+            isLeftSide ? oneSidedParams.amount : 0
+        );
+
         return abi.encode(
             PoolKey({
                 currency0: Currency.wrap(baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token),
@@ -540,6 +557,7 @@ contract StrategyPlannerTest is Test {
             }),
             lowerTick,
             upperTick,
+            liquidity,
             isLeftSide ? 0 : oneSidedParams.amount,
             isLeftSide ? oneSidedParams.amount : 0,
             baseParams.positionRecipient,
