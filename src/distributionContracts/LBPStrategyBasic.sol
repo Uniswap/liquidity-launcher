@@ -94,7 +94,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
-        // uint256(_totalSupply) * _migratorParams.tokenSplitToAuction will never overflow type(uint256).max 
+        // uint256(_totalSupply) * _migratorParams.tokenSplitToAuction will never overflow type(uint256).max
         //   since _totalSupply is less than or equal to type(uint128).max and _migratorParams.tokenSplitToAuction is less than or equal to MAX_TOKEN_SPLIT (1e7)
         reserveSupply =
             _totalSupply - uint128(uint256(_totalSupply) * _migratorParams.tokenSplitToAuction / MAX_TOKEN_SPLIT);
@@ -277,24 +277,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
-        _validateLiquidity(data.liquidity);
-
         // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
         // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
         data.shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount
             || createOneSidedCurrencyPosition && data.leftoverCurrency > 0;
 
         return data;
-    }
-
-    /// @notice Validates that liquidity doesn't exceed maximum allowed per tick
-    /// @param liquidity The liquidity to validate
-    function _validateLiquidity(uint128 liquidity) private view {
-        uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
-
-        if (liquidity > maxLiquidityPerTick) {
-            revert InvalidLiquidity(maxLiquidityPerTick, liquidity);
-        }
     }
 
     /// @notice Initializes the pool with the calculated price
@@ -353,6 +341,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
             );
         }
+
+        (actions, params) = _createFinalTakePairPlan(baseParams, actions, params);
 
         return abi.encode(actions, params);
     }
@@ -443,6 +433,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         // Plan the one-sided position
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
+    }
+
+    /// @notice Creates the plan for taking the pair using the position manager
+    /// @param baseParams The base parameters for the position
+    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
+    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
+    /// @return The actions and parameters needed to take the pair using the position manager
+    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
+        private
+        view
+        returns (bytes memory, bytes[] memory)
+    {
+        return baseParams.planFinalTakePair(actions, params);
     }
 
     /// @notice Receives native currency
