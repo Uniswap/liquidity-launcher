@@ -88,8 +88,11 @@ library StrategyPlanner {
             currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
-        if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-            return (existingActions, ParamsBuilder.truncateParams(existingParams));
+        if (
+            newLiquidity == 0
+                || baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
+        ) {
+            return (existingActions, existingParams.truncateParams());
         }
 
         PoolKey memory poolKey = PoolKey({
