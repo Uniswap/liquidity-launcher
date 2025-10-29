@@ -98,6 +98,7 @@ library TokenPricing {
             tokenAmount = reserveSupply; // tokenAmount will never be greater than reserveSupply
         } else {
             correspondingCurrencyAmount = currencyAmount;
+            // tokenAmountUint256 is less than or equal to reserveSupply which is less than or equal to type(uint128).max
             tokenAmount = uint128(tokenAmountUint256);
         }
 

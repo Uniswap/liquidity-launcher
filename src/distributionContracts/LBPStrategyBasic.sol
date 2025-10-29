@@ -93,9 +93,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         currency = _migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
-        // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
+        //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
+        // uint256(_totalSupply) * _migratorParams.tokenSplitToAuction will never overflow type(uint256).max 
+        //   since _totalSupply is less than or equal to type(uint128).max and _migratorParams.tokenSplitToAuction is less than or equal to MAX_TOKEN_SPLIT (1e7)
         reserveSupply =
-            _totalSupply - uint128(_totalSupply * uint256(_migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT);
+            _totalSupply - uint128(uint256(_totalSupply) * _migratorParams.tokenSplitToAuction / MAX_TOKEN_SPLIT);
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;

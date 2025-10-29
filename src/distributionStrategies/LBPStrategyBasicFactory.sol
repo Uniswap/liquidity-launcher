@@ -57,6 +57,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         view
         returns (address)
     {
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
@@ -65,7 +67,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
-                abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager)
+                abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager)
             )
         );
         return Create2.computeAddress(_salt, initCodeHash, address(this));
