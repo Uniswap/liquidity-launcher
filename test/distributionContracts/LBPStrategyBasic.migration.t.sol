@@ -872,7 +872,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 currencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
 
         realAuction.sweepCurrency();
 
@@ -883,12 +882,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, currencyRaised, Q192);
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
         bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
-        bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
         // case 1. price is 0
         // case 2. price is > type(uint160).max
@@ -901,13 +898,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             vm.prank(address(lbp.auction()));
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
             lbp.migrate();
-        } else if (!isLeftoverToken) {
-            if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
-                // Should revert with AmountOverflow
-                vm.prank(address(lbp.auction()));
-                vm.expectRevert(abi.encodeWithSelector(TokenPricing.AmountOverflow.selector, expectedTokenAmount));
-                lbp.migrate();
-            }
         }
     }
 

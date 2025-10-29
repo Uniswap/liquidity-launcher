@@ -14,9 +14,6 @@ library TokenPricing {
     /// @param price The invalid price in Q96 format in terms of currency1/currency0
     error InvalidPrice(uint256 price);
 
-    /// @notice Thrown when calculated amount exceeds uint128 max value
-    error AmountOverflow();
-
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
