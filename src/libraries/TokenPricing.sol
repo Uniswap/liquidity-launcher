@@ -11,6 +11,7 @@ import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 /// @dev Handles conversions between different price representations and calculates swap amounts
 library TokenPricing {
     /// @notice Thrown when price is invalid (0 or out of bounds)
+    /// @param price The invalid price in Q96 format in terms of currency1/currency0
     error InvalidPrice(uint256 price);
 
     /// @notice Thrown when calculated amount exceeds uint128 max value
