@@ -79,13 +79,16 @@ library StrategyPlanner {
             return (existingActions, existingParams.truncateParams());
         }
 
+        // Check if the position is on the left side or the right side
+        bool isLeftSide = currencyIsCurrency0 == oneSidedParams.inToken;
+
         // If this exceeds type(uint256).max, the transaction will revert and no position will be created
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            currencyIsCurrency0 == oneSidedParams.inToken ? 0 : oneSidedParams.amount,
-            currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
+            isLeftSide ? 0 : oneSidedParams.amount,
+            isLeftSide ? oneSidedParams.amount : 0
         );
 
         if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
