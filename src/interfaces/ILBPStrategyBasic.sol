@@ -35,6 +35,11 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
 
+    /// @notice Error thrown when the currency in the auction parameters is not the same as the currency in the migrator parameters
+    /// @param auctionCurrency The currency in the auction parameters
+    /// @param migratorCurrency The currency in the migrator parameters
+    error InvalidCurrency(address auctionCurrency, address migratorCurrency);
+
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
     error TokenSplitTooHigh(uint24 tokenSplit, uint24 maxTokenSplit);

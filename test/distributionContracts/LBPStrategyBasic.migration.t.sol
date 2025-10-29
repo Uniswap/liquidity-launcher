@@ -1034,9 +1034,17 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // ensure leftover tokens
         uint256 targetPrice = tickNumberToPriceX96(10);
 
-        _submitBid(
-            realAuction, alice, inputAmountForTokens(tokenAmount, targetPrice), targetPrice, tickNumberToPriceX96(1), 0
+        // Deal DAI and submit bids for alice
+        uint128 daiAmount = inputAmountForTokens(tokenAmount, targetPrice);
+        deal(DAI, alice, daiAmount);
+        vm.prank(alice);
+        ERC20(DAI).approve(address(PERMIT2), daiAmount);
+        vm.prank(alice);
+        IAllowanceTransfer(PERMIT2).approve(
+            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
         );
+
+        _submitBidNonEth(realAuction, alice, daiAmount, targetPrice, tickNumberToPriceX96(1), 0);
 
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();

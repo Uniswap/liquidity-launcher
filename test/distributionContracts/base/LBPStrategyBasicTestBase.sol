@@ -228,6 +228,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.createOneSidedTokenPosition,
             migratorParams.createOneSidedCurrencyPosition
         );
+        createAuctionParamsWithCurrency(currency);
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
     }
 
@@ -245,6 +246,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             true, // createOneSidedTokenPosition
             true // createOneSidedCurrencyPosition
         );
+        createAuctionParamsWithCurrency(currency);
         _deployLBPStrategy(totalSupply);
     }
 

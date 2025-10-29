@@ -231,6 +231,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
         } else if (_auctionParams.endBlock >= migratorParams.migrationBlock) {
             revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
+        } else if (_auctionParams.currency != migratorParams.currency) {
+            revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
         }
     }
 

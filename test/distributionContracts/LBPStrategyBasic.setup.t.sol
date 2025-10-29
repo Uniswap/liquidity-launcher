@@ -257,6 +257,29 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         );
     }
 
+    function test_setUp_revertsWithInvalidCurrency() public {
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidCurrency.selector, address(0), address(1)));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(
+                address(1),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1000),
+                address(this),
+                true,
+                true
+            ), // currency is address(1)
+            auctionParams, // currency is address(0)
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
     function test_setUp_reverts_auctionParametersEncodedImproperly() public {
         vm.expectRevert();
         new LBPStrategyBasicNoValidation(
