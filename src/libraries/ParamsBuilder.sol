@@ -2,9 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
-import {TickBounds} from "../types/PositionTypes.sol";
+import {FullRangeParams, OneSidedParams, TickBounds} from "../types/PositionTypes.sol";
 
 /// @title ParamsBuilder
 /// @notice Library for building position parameters
