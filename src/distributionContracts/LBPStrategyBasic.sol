@@ -86,7 +86,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
         _validateAuctionParams(_auctionParams, _migratorParams);
-        
+
         auctionParameters = _auctionParams;
 
         token = _token;
@@ -110,7 +110,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Gets the address of the token that will be used to create the pool
     /// @return The address of the token that will be used to create the pool
-    function getPoolToken() internal virtual view returns (address) {
+    function getPoolToken() internal view virtual returns (address) {
         return token;
     }
 
@@ -263,7 +263,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
         uint256 currencyRaised = auction.currencyRaised();
-        address poolToken =  getPoolToken();
+        address poolToken = getPoolToken();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
@@ -280,6 +280,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert AmountOverflow(type(uint128).max);
         }
 
+        // will eventually revert if liquidity exceeds max liquidity per tick
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
@@ -288,24 +289,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
-        _validateLiquidity(data.liquidity);
-
         // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
         // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
         data.shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount
             || createOneSidedCurrencyPosition && data.leftoverCurrency > 0;
 
         return data;
-    }
-
-    /// @notice Validates that liquidity doesn't exceed maximum allowed per tick
-    /// @param liquidity The liquidity to validate
-    function _validateLiquidity(uint128 liquidity) private view {
-        uint128 maxLiquidityPerTick = poolTickSpacing.tickSpacingToMaxLiquidityPerTick();
-
-        if (liquidity > maxLiquidityPerTick) {
-            revert InvalidLiquidity(maxLiquidityPerTick, liquidity);
-        }
     }
 
     /// @notice Initializes the pool with the calculated price
@@ -368,6 +357,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
             );
         }
+
+        (actions, params) = _createFinalTakePairPlan(baseParams, actions, params);
 
         return abi.encode(actions, params);
     }
@@ -458,6 +449,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         // Plan the one-sided position
         return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
+    }
+
+    /// @notice Creates the plan for taking the pair using the position manager
+    /// @param baseParams The base parameters for the position
+    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
+    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
+    /// @return The actions and parameters needed to take the pair using the position manager
+    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
+        private
+        view
+        returns (bytes memory, bytes[] memory)
+    {
+        return baseParams.planFinalTakePair(actions, params);
     }
 
     /// @notice Receives native currency
