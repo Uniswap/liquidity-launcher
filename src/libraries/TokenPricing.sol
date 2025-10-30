@@ -14,6 +14,10 @@ library TokenPricing {
     /// @param price The invalid price in Q96 format in terms of currency1/currency0
     error InvalidPrice(uint256 price);
 
+    /// @notice Thrown when calculated amount exceeds uint128 max value
+    /// @param currencyAmount The invalid currency amount
+    error AmountOverflow(uint256 currencyAmount);
+
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
@@ -70,26 +74,34 @@ library TokenPricing {
     /// @return correspondingCurrencyAmount The corresponding currency amount
     function calculateAmounts(
         uint256 priceX192,
-        uint256 currencyAmount,
+        uint128 currencyAmount,
         bool currencyIsCurrency0,
-        uint256 reserveSupply
-    ) internal pure returns (uint256 tokenAmount, uint256 leftoverCurrency, uint256 correspondingCurrencyAmount) {
+        uint128 reserveSupply
+    ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
-        tokenAmount = currencyIsCurrency0
+        uint256 tokenAmountUint256 = currencyIsCurrency0
             ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
             : FullMath.mulDiv(currencyAmount, Q192, priceX192);
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
-        if (tokenAmount > reserveSupply) {
-            correspondingCurrencyAmount = currencyIsCurrency0
+        if (tokenAmountUint256 > reserveSupply) {
+            uint256 correspondingCurrencyAmountUint256 = currencyIsCurrency0
                 ? FullMath.mulDiv(reserveSupply, Q192, priceX192)
                 : FullMath.mulDiv(priceX192, reserveSupply, Q192);
+
+            if (correspondingCurrencyAmountUint256 > type(uint128).max) {
+                revert AmountOverflow(correspondingCurrencyAmountUint256);
+            }
+
+            correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
 
             // currencyAmount is already validated to be less than or equal to type(uint128).max so leftoverCurrency is also less than or equal to type(uint128).max
             leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply; // tokenAmount will never be greater than reserveSupply
         } else {
             correspondingCurrencyAmount = currencyAmount;
+            // tokenAmountUint256 is less than or equal to reserveSupply which is less than or equal to type(uint128).max
+            tokenAmount = uint128(tokenAmountUint256);
         }
 
         return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
