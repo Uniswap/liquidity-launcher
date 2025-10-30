@@ -14,13 +14,14 @@ import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.s
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
-        uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
         uint24 tokenSplitValue = maxTokenSplit + 1;
 
         MigratorParameters memory params = createMigratorParams(
@@ -372,7 +373,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         uint64 migrationBlock,
         address operator
     ) public {
-        uint24 maxTokenSplit = lbp.MAX_TOKEN_SPLIT();
+        uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
         AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
         if (sweepBlock <= migrationBlock) {
             vm.expectRevert(

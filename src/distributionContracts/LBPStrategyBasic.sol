@@ -27,6 +27,7 @@ import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
+import {TokenDistribution} from "../libraries/TokenDistribution.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -36,10 +37,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
+    using TokenDistribution for uint128;
     using TokenPricing for *;
-
-    /// @notice The maximum percentage of the supply for distribution that can be sent to the auction, expressed in mps (1e7 = 100%)
-    uint24 public constant MAX_TOKEN_SPLIT = 1e7;
 
     /// @notice The token that is being distributed
     address public immutable token;
@@ -94,10 +93,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
-        // uint256(_totalSupply) * _migratorParams.tokenSplitToAuction will never overflow type(uint256).max
-        //   since _totalSupply is less than or equal to type(uint128).max and _migratorParams.tokenSplitToAuction is less than or equal to MAX_TOKEN_SPLIT (1e7)
-        reserveSupply =
-            _totalSupply - uint128(uint256(_totalSupply) * _migratorParams.tokenSplitToAuction / MAX_TOKEN_SPLIT);
+        reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;
@@ -185,8 +181,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
         }
         // token split validation (cannot be greater than or equal to 100%)
-        else if (migratorParams.tokenSplitToAuction >= MAX_TOKEN_SPLIT) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
+        else if (migratorParams.tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT) {
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT);
         }
         // token validation (cannot be zero address or the same as the currency)
         else if (_token == address(0) || _token == migratorParams.currency) {
@@ -214,7 +210,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidPositionRecipient(migratorParams.positionRecipient);
         }
         // auction supply validation (cannot be zero)
-        else if (uint128(uint256(_totalSupply) * uint256(migratorParams.tokenSplitToAuction) / MAX_TOKEN_SPLIT) == 0) {
+        else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
     }
