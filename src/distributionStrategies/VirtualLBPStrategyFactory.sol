@@ -28,6 +28,8 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
         external
         returns (IDistributionContract virtualLBP)
     {
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+
         (address governanceAddress, MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (address, MigratorParameters, bytes));
 
@@ -49,18 +51,20 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
         emit DistributionInitialized(address(virtualLBP), token, totalSupply);
     }
 
-    /// @notice Gets the address of the LBPStrategyBasic contract
+    /// @notice Gets the address of the VirtualLBPStrategyBasic contract
     /// @param token The token that is being distributed
     /// @param totalSupply The supply of the token that will be distributed
-    /// @param configData The config data for the LBPStrategyBasic contract
-    /// @param salt The salt to deterministicly deploy the LBPStrategyBasic contract
+    /// @param configData The config data for the VirtualLBPStrategyBasic contract
+    /// @param salt The salt to deterministicly deploy the VirtualLBPStrategyBasic contract
     /// @param sender The address to be concatenated with the salt parameter before being hashed
-    /// @return The address of the LBPStrategyBasic contract
-    function getLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
+    /// @return The address of the VirtualLBPStrategyBasic contract
+    function getVirtualLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (address)
     {
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+        
         (address governanceAddress, MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (address, MigratorParameters, bytes));
 
