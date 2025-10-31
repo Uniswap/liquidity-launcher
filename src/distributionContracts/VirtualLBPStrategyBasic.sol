@@ -85,7 +85,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
             beforeSwapReturnDelta: false,
             afterSwap: false,
             afterInitialize: false,
-            beforeRemoveLiquidity: true,
+            beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
             afterRemoveLiquidity: false,
             beforeDonate: false,
@@ -105,17 +105,6 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
     {
         if (!isMigrationApproved) revert MigrationNotApproved();
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-    }
-
-    /// @notice Validates that migration is approved before removing liquidity on the pool and returns the selector
-    /// @dev Reverts if migration is not approved
-    function _beforeRemoveLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
-        internal
-        override
-        returns (bytes4)
-    {
-        if (!isMigrationApproved) revert MigrationNotApproved();
-        return IHooks.beforeRemoveLiquidity.selector;
     }
 
     /// @notice Returns the address of the underlying token

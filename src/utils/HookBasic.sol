@@ -18,7 +18,7 @@ abstract contract HookBasic is BaseHook {
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
     /// @inheritdoc BaseHook
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override virtual returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             beforeAddLiquidity: false,
