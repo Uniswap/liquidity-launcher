@@ -22,9 +22,7 @@ contract USUPERC20FactoryTest is Test {
     function setUp() public {
         factory = new USUPERC20Factory();
         tokenMetadata = UERC20Metadata({
-            description: "A test token",
-            website: "https://example.com",
-            image: "https://example.com/image.png"
+            description: "A test token", website: "https://example.com", image: "https://example.com/image.png"
         });
     }
 

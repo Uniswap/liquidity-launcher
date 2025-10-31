@@ -487,7 +487,9 @@ contract ParamsBuilderTest is Test {
             TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
             currencyIsCurrency0 ? currencyAmount : tokenAmount,
             currencyIsCurrency0 ? tokenAmount : currencyAmount
-        ) returns (uint128) {
+        ) returns (
+            uint128
+        ) {
             return false;
         } catch {
             return true;
@@ -501,7 +503,9 @@ contract ParamsBuilderTest is Test {
         uint256 amount0,
         uint256 amount1
     ) external pure returns (uint128 liquidity) {
-        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        if (sqrtPriceAX96 > sqrtPriceBX96) {
+            (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        }
 
         if (sqrtPriceX96 <= sqrtPriceAX96) {
             liquidity = getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);

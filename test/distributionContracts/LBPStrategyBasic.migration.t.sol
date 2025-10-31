@@ -314,9 +314,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(alice);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(alice);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, alice, daiAmount, targetPrice, tickNumberToPriceX96(1), 0);
 
@@ -325,9 +324,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(bob);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(bob);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, bob, daiAmount, targetPrice, tickNumberToPriceX96(1), 1);
 
@@ -618,9 +616,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(alice);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(alice);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, alice, daiAmount, targetPrice, tickNumberToPriceX96(1), 0);
 
@@ -630,9 +627,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(bob);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(bob);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, bob, daiAmount, targetPrice, tickNumberToPriceX96(1), 1);
 
@@ -793,9 +789,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(alice);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(alice);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, alice, daiAmount, targetPrice, tickNumberToPriceX96(1), 0);
 
