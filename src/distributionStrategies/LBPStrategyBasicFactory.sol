@@ -7,7 +7,7 @@ import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
-import {MigratorParameters} from "../types/MigratorParams.sol";
+import {MigratorParameters} from "../types/MigratorParameters.sol";
 
 /// @title LBPStrategyBasicFactory
 /// @notice Factory for the LBPStrategyBasic contract
@@ -28,6 +28,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         external
         returns (IDistributionContract lbp)
     {
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
@@ -35,7 +37,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         lbp = IDistributionContract(
             address(
                 new LBPStrategyBasic{salt: _salt}(
-                    token, totalSupply, migratorParams, auctionParams, positionManager, poolManager
+                    token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager
                 )
             )
         );
@@ -55,6 +57,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         view
         returns (address)
     {
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+
         (MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
@@ -63,7 +67,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
-                abi.encode(token, totalSupply, migratorParams, auctionParams, positionManager, poolManager)
+                abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager)
             )
         );
         return Create2.computeAddress(_salt, initCodeHash, address(this));

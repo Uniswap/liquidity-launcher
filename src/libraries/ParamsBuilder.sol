@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {FullRangeParams, OneSidedParams, TickBounds} from "../types/PositionTypes.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
-import {TickBounds} from "../types/PositionTypes.sol";
 
 /// @title ParamsBuilder
 /// @notice Library for building position parameters
@@ -47,8 +46,8 @@ library ParamsBuilder {
         // Build parameters
         params = new bytes[](paramsArraySize);
 
-        uint256 amount0 = currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount;
-        uint256 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
+        uint128 amount0 = currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount;
+        uint128 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
 
         // Set up mint
         params[0] = abi.encode(

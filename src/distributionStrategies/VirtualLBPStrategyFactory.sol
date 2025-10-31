@@ -7,10 +7,10 @@ import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {VirtualLBPStrategyBasic} from "../distributionContracts/VirtualLBPStrategyBasic.sol";
-import {MigratorParameters} from "../types/MigratorParams.sol";
+import {MigratorParameters} from "../types/MigratorParameters.sol";
 
-/// @title LBPStrategyBasicFactory
-/// @notice Factory for the LBPStrategyBasic contract
+/// @title VirtualLBPStrategyFactory
+/// @notice Factory for the VirtualLBPStrategyBasic contract
 /// @custom:security-contact security@uniswap.org
 contract VirtualLBPStrategyFactory is IDistributionStrategy {
     /// @notice The position manager that will be used to create the position

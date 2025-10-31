@@ -22,7 +22,7 @@ contract TokenPricingHelper is Test {
         uint128 currencyAmount,
         bool currencyIsCurrency0,
         uint128 reserveSupply
-    ) public pure returns (uint256 tokenAmount, uint256 leftoverCurrency, uint256 correspondingCurrencyAmount) {
+    ) public pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         return TokenPricing.calculateAmounts(priceX192, currencyAmount, currencyIsCurrency0, reserveSupply);
     }
 }
