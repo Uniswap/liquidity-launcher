@@ -116,9 +116,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         IAuction _auction = IAuction(
             address(
-                IAuctionFactory(auctionFactory).initializeDistribution(
-                    token, auctionSupply, auctionParameters, bytes32(0)
-                )
+                IAuctionFactory(auctionFactory)
+                    .initializeDistribution(token, auctionSupply, auctionParameters, bytes32(0))
             )
         );
 
@@ -220,10 +219,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ///         Also validates that the migration block is after the end block of the auction.
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
-        private
-        pure
-    {
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
@@ -328,8 +324,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 data.initialCurrencyAmount,
                 ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
             );
-            (actions, params) =
-                _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
+            (actions, params) = _createOneSidedPositionPlan(
+                baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency
+            );
             // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
             data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
         } else {
@@ -371,9 +368,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @return The amount of tokens to transfer to the position manager
     function _getTokenTransferAmount(MigrationData memory data) private view returns (uint128) {
         // hasOneSidedParams can only be true if shouldCreateOneSided is true
-        return (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
-            ? reserveSupply
-            : data.initialTokenAmount;
+        return
+            (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
+                ? reserveSupply
+                : data.initialTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer
@@ -436,11 +434,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
     /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
     /// @return The actions and parameters needed to take the pair using the position manager
-    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
-        private
-        view
-        returns (bytes memory, bytes[] memory)
-    {
+    function _createFinalTakePairPlan(
+        BasePositionParams memory baseParams,
+        bytes memory actions,
+        bytes[] memory params
+    ) private view returns (bytes memory, bytes[] memory) {
         return baseParams.planFinalTakePair(actions, params);
     }
 
