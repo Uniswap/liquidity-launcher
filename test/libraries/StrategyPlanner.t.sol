@@ -101,8 +101,9 @@ contract StrategyPlannerTest is Test {
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams
     ) public view {
-        baseParams.poolTickSpacing =
-            int24(bound(baseParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+        baseParams.poolTickSpacing = int24(
+            bound(baseParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING)
+        );
         baseParams.poolLPFee = uint24(bound(baseParams.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
         baseParams.liquidity = uint128(bound(baseParams.liquidity, 0, type(uint128).max));
         baseParams.initialSqrtPriceX96 =
@@ -353,7 +354,9 @@ contract StrategyPlannerTest is Test {
         uint256 amount0,
         uint256 amount1
     ) external pure returns (uint128 liquidity) {
-        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        if (sqrtPriceAX96 > sqrtPriceBX96) {
+            (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        }
 
         if (sqrtPriceX96 <= sqrtPriceAX96) {
             liquidity = getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
@@ -493,7 +496,9 @@ contract StrategyPlannerTest is Test {
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
             oneSidedParams.inToken == baseParams.currency < baseParams.token ? 0 : oneSidedParams.amount,
             oneSidedParams.inToken == baseParams.currency < baseParams.token ? oneSidedParams.amount : 0
-        ) returns (uint128) {
+        ) returns (
+            uint128
+        ) {
             return false;
         } catch {
             return true;
@@ -532,9 +537,8 @@ contract StrategyPlannerTest is Test {
                 upperTick =
                     TickMath.getTickAtSqrtPrice(baseParams.initialSqrtPriceX96).tickFloor(baseParams.poolTickSpacing);
             } else {
-                lowerTick = TickMath.getTickAtSqrtPrice(baseParams.initialSqrtPriceX96).tickStrictCeil(
-                    baseParams.poolTickSpacing
-                );
+                lowerTick = TickMath.getTickAtSqrtPrice(baseParams.initialSqrtPriceX96)
+                    .tickStrictCeil(baseParams.poolTickSpacing);
                 upperTick = TickMath.MAX_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing;
             }
         }
@@ -549,8 +553,12 @@ contract StrategyPlannerTest is Test {
 
         return abi.encode(
             PoolKey({
-                currency0: Currency.wrap(baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token),
-                currency1: Currency.wrap(baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency),
+                currency0: Currency.wrap(
+                    baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token
+                ),
+                currency1: Currency.wrap(
+                    baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency
+                ),
                 fee: baseParams.poolLPFee,
                 tickSpacing: baseParams.poolTickSpacing,
                 hooks: baseParams.hooks

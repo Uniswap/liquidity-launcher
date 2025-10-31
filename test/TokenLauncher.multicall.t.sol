@@ -36,9 +36,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     function test_multicall_create_and_distribute_token() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher",
-            website: "https://test.com",
-            image: "https://test.com/image.png"
+            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
         });
 
         uint128 initialSupply = 1e18;
@@ -137,9 +135,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     function test_multicall_create_and_distribute_token_gas() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher",
-            website: "https://test.com",
-            image: "https://test.com/image.png"
+            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
         });
 
         uint128 initialSupply = 1e18;

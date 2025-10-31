@@ -89,8 +89,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         //     )
         // );
         LBPStrategyBasic lbp = LBPStrategyBasic(
-            payable(
-                address(
+            payable(address(
                     factory.initializeDistribution(
                         address(token),
                         TOTAL_SUPPLY,
@@ -102,8 +101,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                         ),
                         0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f
                     )
-                )
-            )
+                ))
         );
 
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);

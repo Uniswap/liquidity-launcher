@@ -46,9 +46,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     function test_createToken_succeeds() public {
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher",
-            website: "https://test.com",
-            image: "https://test.com/image.png"
+            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
         });
 
         bytes memory tokenData = abi.encode(metadata);
@@ -192,9 +190,7 @@ contract TokenLauncherTest is Test, DeployPermit2 {
     function test_createToken_gas() public {
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher",
-            website: "https://test.com",
-            image: "https://test.com/image.png"
+            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
         });
 
         bytes memory tokenData = abi.encode(metadata);
