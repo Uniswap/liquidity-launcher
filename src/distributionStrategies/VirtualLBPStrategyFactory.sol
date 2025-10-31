@@ -58,13 +58,15 @@ contract VirtualLBPStrategyFactory is IDistributionStrategy {
     /// @param salt The salt to deterministicly deploy the VirtualLBPStrategyBasic contract
     /// @param sender The address to be concatenated with the salt parameter before being hashed
     /// @return The address of the VirtualLBPStrategyBasic contract
-    function getVirtualLBPAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
-        external
-        view
-        returns (address)
-    {
+    function getVirtualLBPAddress(
+        address token,
+        uint256 totalSupply,
+        bytes calldata configData,
+        bytes32 salt,
+        address sender
+    ) external view returns (address) {
         if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
-        
+
         (address governanceAddress, MigratorParameters memory migratorParams, bytes memory auctionParams) =
             abi.decode(configData, (address, MigratorParameters, bytes));
 
