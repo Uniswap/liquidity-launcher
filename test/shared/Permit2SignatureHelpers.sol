@@ -70,10 +70,9 @@ contract Permit2SignatureHelpers {
     {
         IAllowanceTransfer.PermitDetails memory details =
             IAllowanceTransfer.PermitDetails({token: token0, amount: amount, expiration: expiration, nonce: nonce});
-        return IAllowanceTransfer.PermitSingle({
-            details: details,
-            spender: address(this),
-            sigDeadline: block.timestamp + 100
-        });
+        return
+            IAllowanceTransfer.PermitSingle({
+                details: details, spender: address(this), sigDeadline: block.timestamp + 100
+            });
     }
 }

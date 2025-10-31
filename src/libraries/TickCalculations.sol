@@ -28,9 +28,10 @@ library TickCalculations {
     /// @param tickSpacing The tick spacing to round down to (cannot be 0)
     /// @return The rounded down tick
     function tickFloor(int24 tick, int24 tickSpacing) internal pure returns (int24) {
-        int24 compressed = tick / tickSpacing;
-        if (tick < 0 && tick % tickSpacing != 0) compressed--;
-        return compressed * tickSpacing;
+        unchecked {
+            int24 remainder = tick % tickSpacing;
+            return remainder >= 0 ? tick - remainder : tick - remainder - tickSpacing;
+        }
     }
 
     /// @notice Rounds up to the next tick spacing
@@ -38,15 +39,9 @@ library TickCalculations {
     /// @param tickSpacing The tick spacing to round up to (cannot be 0)
     /// @return The rounded up tick
     function tickStrictCeil(int24 tick, int24 tickSpacing) internal pure returns (int24) {
-        int24 compressed = tick / tickSpacing;
-        if (tick % tickSpacing != 0) {
-            if (tick >= 0) {
-                compressed++; // For positive ticks, add 1 to round up
-            }
-            // For negative ticks, integer division already rounds towards zero (up)
-        } else {
-            compressed++; // If already a multiple, go to next one
+        unchecked {
+            int24 remainder = tick % tickSpacing;
+            return remainder >= 0 ? tick + tickSpacing - remainder : tick - remainder;
         }
-        return compressed * tickSpacing;
     }
 }
