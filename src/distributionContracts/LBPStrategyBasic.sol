@@ -274,8 +274,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
+            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
