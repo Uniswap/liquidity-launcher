@@ -32,9 +32,8 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         if (recipient == address(0)) {
             revert RecipientCannotBeZeroAddress();
         }
-        tokenAddress = ITokenFactory(factory).createToken(
-            name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender)
-        );
+        tokenAddress = ITokenFactory(factory)
+            .createToken(name, symbol, decimals, initialSupply, recipient, tokenData, getGraffiti(msg.sender));
 
         emit TokenCreated(tokenAddress);
     }
@@ -47,9 +46,10 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
     {
         // Call the strategy: it might do distributions itself or deploy a new instance.
         // If it does distributions itself, distributionContract == dist.strategy
-        distributionContract = IDistributionStrategy(distribution.strategy).initializeDistribution(
-            token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
-        );
+        distributionContract = IDistributionStrategy(distribution.strategy)
+            .initializeDistribution(
+                token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
+            );
 
         // Now transfer the tokens to the returned address
         // payerIsUser should be false if the tokens were created in the same call via multicall

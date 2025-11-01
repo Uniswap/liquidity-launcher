@@ -12,6 +12,11 @@ interface IDistributionStrategy {
     /// @param totalSupply The supply of the token that is being distributed.
     event DistributionInitialized(address indexed distributionContract, address indexed token, uint256 totalSupply);
 
+    /// @notice Error thrown when the amount to be distributed is invalid
+    /// @param amount The invalid amount
+    /// @param maxAmount The maximum valid amount to be distributed
+    error InvalidAmount(uint256 amount, uint256 maxAmount);
+
     /// @notice Initialize a distribution of tokens under this strategy.
     /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
     /// implementing contract. For some strategies this function will handle the entire distribution, for others it

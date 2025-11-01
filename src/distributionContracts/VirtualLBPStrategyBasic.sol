@@ -15,7 +15,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {TokenPricing} from "../libraries/TokenPricing.sol";
-import {MigratorParameters} from "../types/MigratorParams.sol";
+import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {Auction} from "twap-auction/src/Auction.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {MigrationData} from "../types/MigrationData.sol";

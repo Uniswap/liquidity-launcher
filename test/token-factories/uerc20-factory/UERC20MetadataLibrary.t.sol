@@ -13,9 +13,7 @@ contract UERC20MetadataLibraryTest is Test {
 
     function testToJSON_ValidMetadata() public pure {
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test Token",
-            website: "https://example.com",
-            image: "https://example.com/image.png"
+            description: "Test Token", website: "https://example.com", image: "https://example.com/image.png"
         });
 
         string memory result = metadata.toJSON();

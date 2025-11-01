@@ -18,7 +18,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {MigratorParameters} from "../types/MigratorParams.sol";
+import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TickCalculations} from "../libraries/TickCalculations.sol";
@@ -27,6 +27,7 @@ import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
+import {TokenDistribution} from "../libraries/TokenDistribution.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -36,25 +37,23 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using TickCalculations for int24;
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
+    using TokenDistribution for uint128;
     using TokenPricing for *;
-
-    /// @notice The maximum percentage of the supply for distribution that can be sent to the auction, expressed in mps (1e7 = 100%)
-    uint24 public constant MAX_TOKEN_SPLIT = 1e7;
 
     /// @notice The token that is being distributed
     address public immutable token;
     /// @notice The currency that the auction raised funds in
     address public immutable currency;
 
-    /// @notice The LP fee that the v4 pool will use
+    /// @notice The LP fee that the v4 pool will use expressed in hundredths of a bip (1e6 = 100%)
     uint24 public immutable poolLPFee;
     /// @notice The tick spacing that the v4 pool will use
     int24 public immutable poolTickSpacing;
 
     /// @notice The supply of the token that was sent to this contract to be distributed
-    uint256 public immutable totalSupply;
+    uint128 public immutable totalSupply;
     /// @notice The remaining supply of the token that was not sent to the auction
-    uint256 public immutable reserveSupply;
+    uint128 public immutable reserveSupply;
     /// @notice The address that will receive the position
     address public immutable positionRecipient;
     /// @notice The block number at which migration is allowed
@@ -78,7 +77,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     constructor(
         address _token,
-        uint256 _totalSupply,
+        uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
         bytes memory _auctionParams,
         IPositionManager _positionManager,
@@ -93,9 +92,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         currency = _migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
-        // e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
-        reserveSupply =
-            _totalSupply - FullMath.mulDiv(_totalSupply, _migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
+        //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
+        reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;
@@ -120,13 +118,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
-        uint256 auctionSupply = totalSupply - reserveSupply;
+        uint128 auctionSupply = totalSupply - reserveSupply;
 
         IAuction _auction = IAuction(
             address(
-                IAuctionFactory(auctionFactory).initializeDistribution(
-                    token, auctionSupply, auctionParameters, bytes32(0)
-                )
+                IAuctionFactory(auctionFactory)
+                    .initializeDistribution(token, auctionSupply, auctionParameters, bytes32(0))
             )
         );
 
@@ -180,7 +177,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param _token The token that is being distributed
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(address _token, uint256 _totalSupply, MigratorParameters memory migratorParams)
+    function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
         private
         pure
     {
@@ -189,8 +186,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
         }
         // token split validation (cannot be greater than or equal to 100%)
-        else if (migratorParams.tokenSplitToAuction >= MAX_TOKEN_SPLIT) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT);
+        else if (migratorParams.tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT) {
+            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT);
         }
         // token validation (cannot be zero address or the same as the currency)
         else if (_token == address(0) || _token == migratorParams.currency) {
@@ -218,7 +215,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidPositionRecipient(migratorParams.positionRecipient);
         }
         // auction supply validation (cannot be zero)
-        else if (FullMath.mulDiv(_totalSupply, migratorParams.tokenSplitToAuction, MAX_TOKEN_SPLIT) == 0) {
+        else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
     }
@@ -228,10 +225,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ///         Also validates that the migration block is after the end block of the auction.
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
-        private
-        pure
-    {
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
@@ -250,6 +244,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.checkpoint();
         uint256 currencyAmount = auction.currencyRaised();
 
+        if (currencyAmount > type(uint128).max) {
+            revert CurrencyAmountTooHigh(currencyAmount, type(uint128).max);
+        }
+
         if (currencyAmount == 0) {
             revert NoCurrencyRaised();
         }
@@ -262,31 +260,22 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
-        uint256 currencyRaised = auction.currencyRaised();
+        uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
         address poolToken = getPoolToken();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
+
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
             priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
 
-        // validate that all amounts are less than or equal to type(uint128).max
-        if (
-            data.initialTokenAmount > type(uint128).max || data.leftoverCurrency > type(uint128).max
-                || reserveSupply - data.initialTokenAmount > type(uint128).max
-                || data.initialCurrencyAmount > type(uint128).max
-        ) {
-            revert AmountOverflow(type(uint128).max);
-        }
-
-        // will eventually revert if liquidity exceeds max liquidity per tick
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
+            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
@@ -348,8 +337,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
                 data.initialCurrencyAmount,
                 ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
             );
-            (actions, params) =
-                _createOneSidedPositionPlan(baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency);
+            (actions, params) = _createOneSidedPositionPlan(
+                baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency
+            );
             // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
             data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
         } else {
@@ -368,13 +358,13 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param plan The encoded position plan to execute
     function _transferAssetsAndExecutePlan(MigrationData memory data, bytes memory plan) private {
         // Calculate token amount to transfer
-        uint256 tokenTransferAmount = _getTokenTransferAmount(data);
+        uint128 tokenTransferAmount = _getTokenTransferAmount(data);
 
         // Transfer tokens to position manager
         Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
 
         // Calculate currency amount and execute plan
-        uint256 currencyTransferAmount = _getCurrencyTransferAmount(data);
+        uint128 currencyTransferAmount = _getCurrencyTransferAmount(data);
 
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
@@ -389,17 +379,18 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Calculates the amount of tokens to transfer
     /// @param data Migration data
     /// @return The amount of tokens to transfer to the position manager
-    function _getTokenTransferAmount(MigrationData memory data) private view returns (uint256) {
+    function _getTokenTransferAmount(MigrationData memory data) private view returns (uint128) {
         // hasOneSidedParams can only be true if shouldCreateOneSided is true
-        return (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
-            ? reserveSupply
-            : data.initialTokenAmount;
+        return
+            (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
+                ? reserveSupply
+                : data.initialTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer
     /// @param data Migration data
     /// @return The amount of currency to transfer to the position manager
-    function _getCurrencyTransferAmount(MigrationData memory data) private pure returns (uint256) {
+    function _getCurrencyTransferAmount(MigrationData memory data) private pure returns (uint128) {
         // hasOneSidedParams can only be true if shouldCreateOneSided is true
         return (data.leftoverCurrency > 0 && data.hasOneSidedParams)
             ? data.initialCurrencyAmount + data.leftoverCurrency
@@ -414,8 +405,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @return The actions and parameters for the position
     function _createFullRangePositionPlan(
         BasePositionParams memory baseParams,
-        uint256 tokenAmount,
-        uint256 currencyAmount,
+        uint128 tokenAmount,
+        uint128 currencyAmount,
         uint256 paramsArraySize
     ) private pure returns (bytes memory, bytes[] memory) {
         // Create full range specific parameters
@@ -437,11 +428,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         BasePositionParams memory baseParams,
         bytes memory actions,
         bytes[] memory params,
-        uint256 tokenAmount,
-        uint256 leftoverCurrency
+        uint128 tokenAmount,
+        uint128 leftoverCurrency
     ) private view returns (bytes memory, bytes[] memory) {
         // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
-        uint256 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
+        uint128 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
         bool inToken = leftoverCurrency == 0;
 
         // Create one-sided specific parameters
@@ -456,11 +447,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
     /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
     /// @return The actions and parameters needed to take the pair using the position manager
-    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
-        private
-        view
-        returns (bytes memory, bytes[] memory)
-    {
+    function _createFinalTakePairPlan(
+        BasePositionParams memory baseParams,
+        bytes memory actions,
+        bytes[] memory params
+    ) private view returns (bytes memory, bytes[] memory) {
         return baseParams.planFinalTakePair(actions, params);
     }
 
