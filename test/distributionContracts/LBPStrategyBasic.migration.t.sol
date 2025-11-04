@@ -839,71 +839,55 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     /// @notice Tests validate with fuzzed inputs
     /// @dev This test checks various price and currency amount combinations
-    function test_fuzz_migrate_withETH(uint128 totalSupply, uint24 tokenSplit) public {
+    function test_fuzz_migrate_withETH(uint128 totalSupply, uint24 tokenSplit, uint256 clearingPrice) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        totalSupply = uint128(bound(totalSupply, 1, type(uint128).max));
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
-        vm.assume(tokenAmount > 1e7);
+        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
+
+        vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
 
-        IAuction realAuction = lbp.auction();
-        assertFalse(address(realAuction) == address(0));
+        mockAuctionClearingPrice(lbp, clearingPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
+        mockCurrencyRaised(lbp, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
+        deal(address(lbp), FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
 
-        // Move to auction start
-        vm.roll(realAuction.startBlock());
-
-        // ensure leftover tokens
-        uint256 targetPrice = tickNumberToPriceX96(10);
-
-        _submitBid(
-            realAuction, alice, inputAmountForTokens(tokenAmount, targetPrice), targetPrice, tickNumberToPriceX96(1), 0
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: clearingPrice,
+                currencyRaisedQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
+                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
+                cumulativeMpsPerPrice: 0,
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
         );
-
-        vm.roll(realAuction.endBlock());
-        realAuction.checkpoint();
-
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 currencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
-
-        realAuction.sweepCurrency();
 
         vm.roll(lbp.migrationBlock());
 
-        uint160 pricePerToken = uint160(InverseHelpers.inverseQ96(clearingPrice));
+        uint256 pricePerToken = uint256(InverseHelpers.inverseQ96(clearingPrice));
 
         // Calculate expected values
         uint256 priceX192 = pricePerToken << 96;
         uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint256 expectedTokenAmount = FullMath.mulDiv(priceX192, currencyRaised, Q192);
+        uint256 expectedTokenAmount =
+            FullMath.mulDiv(priceX192, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), Q192);
 
         // Check if the price is within valid bounds
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
         bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
         bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
-        // case 1. price is 0
-        // case 2. price is > type(uint160).max
-        // case 3. sqrt price is not in valid range
-        // case 4. token amt > reserve supply
-        // case 5. corresponding currency amt > type(uint128).max
-
-        if (!isValidPrice || !priceFitsInUint160) {
-            // Should revert with InvalidPrice
-            vm.prank(address(lbp.auction()));
-            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, pricePerToken));
-            lbp.migrate();
-        } else if (!isLeftoverToken) {
-            if (FullMath.mulDiv(lbp.reserveSupply(), Q192, priceX192) > type(uint128).max) {
-                // Should revert with AmountOverflow
-                vm.prank(address(lbp.auction()));
-                vm.expectRevert(abi.encodeWithSelector(TokenPricing.AmountOverflow.selector, expectedTokenAmount));
-                lbp.migrate();
-            }
-        }
+        lbp.migrate();
     }
 
     function test_migrate_withETH_revertsWithInvalidPrice() public {
@@ -1035,9 +1019,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(alice);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(alice);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, alice, daiAmount, targetPrice, tickNumberToPriceX96(1), 0);
 

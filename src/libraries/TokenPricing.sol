@@ -31,6 +31,7 @@ library TokenPricing {
         if (price == 0) {
             revert InvalidPrice(price);
         }
+
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
         if (currencyIsCurrency0) {
             // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
@@ -79,6 +80,7 @@ library TokenPricing {
         uint128 reserveSupply
     ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
+        console2.log("priceX192", priceX192);
         uint256 tokenAmountUint256 = currencyIsCurrency0
             ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
             : FullMath.mulDiv(currencyAmount, Q192, priceX192);
