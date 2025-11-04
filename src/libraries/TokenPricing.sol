@@ -82,7 +82,6 @@ library TokenPricing {
         uint128 reserveSupply
     ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
-        console2.log("priceX192", priceX192);
         uint256 tokenAmountUint256 = currencyIsCurrency0
             ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
             : FullMath.mulDiv(currencyAmount, Q192, priceX192);
