@@ -906,6 +906,196 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         }
     }
 
+    function test_WhenAmountsAndClearingPriceWithinBounds(
+        uint128 totalSupply,
+        uint256 clearingPrice,
+        uint24 tokenSplit
+    ) public {
+        // it should migrate successfully
+
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
+        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
+        sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
+
+        uint256 auctionMaxBidPrice = (1 << 203) / tokenAmount;
+        clearingPrice = _bound(clearingPrice, 2 ** 33, auctionMaxBidPrice);
+        // Calculate currency raised based on the clearingPrice
+        uint256 currencyRaised = (tokenAmount * clearingPrice) >> 96;
+        vm.assume(currencyRaised > 0 && currencyRaised <= type(uint128).max);
+
+        // In the case where currency is currency0, the price will be inverted
+        uint256 invertedClearingPrice = (~uint256(0) / clearingPrice) << 32;
+        // And the tokenAmountUint256 calculated with the inverted price
+        assertEq(lbp.currency() < lbp.token(), true);
+        uint256 expectedTokenAmountUint256 = FullMath.mulDiv(invertedClearingPrice, currencyRaised, Q192);
+        // Assume the expected token amount is greater than 0 so the clearing price and currency raised
+        // are large enough values
+        vm.assume(expectedTokenAmountUint256 > 0);
+
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(currencyRaised, uint64(block.number - 1));
+        vm.label(address(mockAuction), "mockAuction");
+
+        vm.deal(address(lbp.auction()), currencyRaised);
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        // Mock the clearingPrice again after etching
+        mockAuctionClearingPrice(lbp, clearingPrice);
+        mockCurrencyRaised(lbp, currencyRaised);
+
+        vm.deal(address(lbp), currencyRaised);
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: clearingPrice,
+                currencyRaisedQ96_X7: ValueX7.wrap(currencyRaised),
+                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(currencyRaised),
+                cumulativeMpsPerPrice: 0,
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
+
+        vm.roll(lbp.migrationBlock());
+
+        // This should not revert
+        lbp.migrate();
+    }
+
+    function test_WhenCurrencyIsCurrency0AndTokenAmountUint256RoundsDownToZero(
+        uint128 totalSupply,
+        uint256 clearingPrice,
+        uint24 tokenSplit
+    ) public {
+        // it should revert with {CannotUpdateEmptyPosition}
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
+        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
+        sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
+        
+        // Bound the clearing price to be between 1 and 2 ** 33 - 1
+        clearingPrice = _bound(clearingPrice, 1, 2 ** 33 - 1);
+        // In the case where currency is currency0, the price will be inverted
+        uint256 invertedClearingPrice = (~uint256(0) / clearingPrice) << 32;
+
+        // Very low currencyRaised
+        uint256 currencyRaised = 1;
+
+        // Assume that the numerator is < denominator so that the result is zero
+        // FullMath.mulDiv(invertedClearingPrice, currencyRaised, Q192) == 0
+        vm.assume(invertedClearingPrice < Q192 / currencyRaised);
+
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(currencyRaised, uint64(block.number - 1));
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        vm.deal(address(lbp.auction()), currencyRaised);
+        vm.deal(address(lbp), currencyRaised);
+
+        Checkpoint memory checkpoint;
+        checkpoint.clearingPrice = clearingPrice;
+        mockAuctionClearingPrice(lbp, clearingPrice);
+        mockCurrencyRaised(lbp, currencyRaised);
+        mockAuctionCheckpoint(lbp, checkpoint);
+
+        vm.roll(lbp.migrationBlock());
+
+        lbp.migrate();
+    }
+
+    // To test the case where the inverted currency is too high
+    function test_WhenCurrencyIsCurrency0AndClearingPriceIsTooLow(
+        uint128 totalSupply,
+        uint256 clearingPrice,
+        uint24 tokenSplit
+    ) public {
+        // it should revert with InvalidPrice
+
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
+        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
+        sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
+
+        // Bound the clearing price to be between 1 and 2 ** 33 - 1
+        clearingPrice = _bound(clearingPrice, 1, 2 ** 33 - 1);
+        // In the case where currency is currency0, the price will be inverted 
+        // and checked to be less than uint224.max before shifted to the left 32
+        uint256 uint256MaxDivPrice = ~uint256(0) / clearingPrice;
+        vm.assume(uint256MaxDivPrice > type(uint224).max);
+
+        // This doesn't really matter for this test but it can't be zero
+        uint256 currencyRaised = 1;
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(currencyRaised, uint64(block.number - 1));
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        vm.deal(address(lbp.auction()), currencyRaised);
+        vm.deal(address(lbp), currencyRaised);
+
+        Checkpoint memory checkpoint;
+        checkpoint.clearingPrice = clearingPrice;
+
+        // Mock the clearingPrice again after etching
+        mockAuctionClearingPrice(lbp, clearingPrice);
+        mockCurrencyRaised(lbp, currencyRaised);
+        mockAuctionCheckpoint(
+            lbp,
+            checkpoint
+        );
+
+        vm.roll(lbp.migrationBlock());
+
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, uint256MaxDivPrice));
+        lbp.migrate();
+    }
+
+    function test_WhenCurrencyIsCurrency1AndClearingPriceIsTooHigh_withToken(
+        uint128 totalSupply,
+        uint256 clearingPrice,
+        uint24 tokenSplit
+    ) public {
+        // it should revert with InvalidPrice
+
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
+        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+
+        setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, DAI);
+        sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
+
+        // Bound the clearing price to be between type(uint160).max and type(uint256).max
+        clearingPrice = bound(clearingPrice, uint256(type(uint160).max) + 1, type(uint256).max);
+        // In the case where currency is currency1, the price will not be inverted
+        assertEq(lbp.currency() > lbp.token(), true);
+
+        uint256 currencyRaised = FullMath.mulDiv(tokenAmount, clearingPrice, Q192);
+        vm.assume(currencyRaised > 0 && currencyRaised <= type(uint128).max);
+
+        MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(currencyRaised, uint64(block.number - 1));
+        vm.etch(address(lbp.auction()), address(mockAuction).code);
+
+        deal(DAI, address(lbp.auction()), currencyRaised);
+        deal(DAI, address(lbp), currencyRaised);
+
+        Checkpoint memory checkpoint;
+        checkpoint.clearingPrice = clearingPrice;
+
+        mockAuctionClearingPrice(lbp, clearingPrice);
+        mockCurrencyRaised(lbp, currencyRaised);
+        mockAuctionCheckpoint(lbp, checkpoint);
+
+        vm.roll(lbp.migrationBlock());
+
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, clearingPrice));
+        lbp.migrate();
+    }
+
     function test_migrate_withETH_revertsWithInvalidPrice() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -1035,9 +1225,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.prank(alice);
         ERC20(DAI).approve(address(PERMIT2), daiAmount);
         vm.prank(alice);
-        IAllowanceTransfer(PERMIT2).approve(
-            DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000)
-        );
+        IAllowanceTransfer(PERMIT2)
+            .approve(DAI, address(realAuction), uint160(daiAmount), uint48(block.timestamp + 1000));
 
         _submitBidNonEth(realAuction, alice, daiAmount, targetPrice, tickNumberToPriceX96(1), 0);
 

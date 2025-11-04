@@ -110,6 +110,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
         );
         lbp = LBPStrategyBasic(payable(hookAddress));
+        vm.label(address(lbp), "lbp");
         // Deploy implementation
         impl = new LBPStrategyBasicNoValidation(
             address(token),

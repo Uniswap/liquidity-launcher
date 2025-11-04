@@ -6,6 +6,8 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 /// @title TokenPricing
 /// @notice Library for pricing operations including price conversions and token amount calculations
 /// @dev Handles conversions between different price representations and calculates swap amounts
@@ -29,22 +31,25 @@ library TokenPricing {
     /// @return priceX192 The price in Q192 fixed-point format
     function convertToPriceX192(uint256 price, bool currencyIsCurrency0) internal pure returns (uint256 priceX192) {
         if (price == 0) {
+            console2.log("revert: price is 0");
             revert InvalidPrice(price);
         }
-        // If currency is currency0, we need to invert the price (price = currency1/currency0)
+
         if (currencyIsCurrency0) {
-            // Inverts the Q96 price: (2^192 / priceQ96) = (2^96 / actualPrice), maintaining Q96 format
-            price = (1 << (FixedPoint96.RESOLUTION * 2)) / price;
+            // Inverts the Q96 price with 256 bits of precision
+            price = ~uint256(0) / price;
+            if (price >> 224 != 0) {
+                console2.log("revert: intermediate price overflows uint224");
+                revert InvalidPrice(price);
+            }
+            priceX192 = price << 32;
+        } else {
+            if (price >> 160 != 0) {
+                console2.log("revert: intermediate price overflows uint160");
+                revert InvalidPrice(price);
+            }
+            priceX192 = price << 96;
         }
-
-        // Check price bounds after potential inversion
-        if (price > type(uint160).max) {
-            revert InvalidPrice(price);
-        }
-
-        // Convert from Q96 to X192 format by shifting left 96 bits (will not overflow since price is less than or equal to type(uint160).max)
-        priceX192 = price << FixedPoint96.RESOLUTION;
-        return priceX192;
     }
 
     /// @notice Converts a Q192 price to Uniswap v4 sqrtPriceX96 format
@@ -57,6 +62,7 @@ library TokenPricing {
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+            console2.log("revert: sqrtPriceX96 is less than MIN_SQRT_PRICE or greater than MAX_SQRT_PRICE");
             revert InvalidPrice(priceX192);
         }
 
