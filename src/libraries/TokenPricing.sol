@@ -6,8 +6,6 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 /// @title TokenPricing
 /// @notice Library for pricing operations including price conversions and token amount calculations
 /// @dev Handles conversions between different price representations and calculates swap amounts
@@ -30,8 +28,8 @@ library TokenPricing {
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
     /// @return priceX192 The price in Q192 fixed-point format
     function convertToPriceX192(uint256 price, bool currencyIsCurrency0) internal pure returns (uint256 priceX192) {
+        // Prevent division by zero
         if (price == 0) {
-            console2.log("revert: price is 0");
             revert InvalidPrice(price);
         }
 
@@ -39,13 +37,12 @@ library TokenPricing {
             // Inverts the Q96 price with 256 bits of precision
             price = ~uint256(0) / price;
             if (price >> 224 != 0) {
-                console2.log("revert: intermediate price overflows uint224");
                 revert InvalidPrice(price);
             }
             priceX192 = price << 32;
         } else {
+            // Otherwise, revert if the price exceeds uint160.max
             if (price >> 160 != 0) {
-                console2.log("revert: intermediate price overflows uint160");
                 revert InvalidPrice(price);
             }
             priceX192 = price << 96;
@@ -62,7 +59,6 @@ library TokenPricing {
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            console2.log("revert: sqrtPriceX96 is less than MIN_SQRT_PRICE or greater than MAX_SQRT_PRICE");
             revert InvalidPrice(priceX192);
         }
 

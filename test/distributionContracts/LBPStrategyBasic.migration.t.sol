@@ -978,7 +978,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
         sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
-        
+
         // Bound the clearing price to be between 1 and 2 ** 33 - 1
         clearingPrice = _bound(clearingPrice, 1, 2 ** 33 - 1);
         // In the case where currency is currency0, the price will be inverted
@@ -1025,7 +1025,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Bound the clearing price to be between 1 and 2 ** 33 - 1
         clearingPrice = _bound(clearingPrice, 1, 2 ** 33 - 1);
-        // In the case where currency is currency0, the price will be inverted 
+        // In the case where currency is currency0, the price will be inverted
         // and checked to be less than uint224.max before shifted to the left 32
         uint256 uint256MaxDivPrice = ~uint256(0) / clearingPrice;
         vm.assume(uint256MaxDivPrice > type(uint224).max);
@@ -1044,10 +1044,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Mock the clearingPrice again after etching
         mockAuctionClearingPrice(lbp, clearingPrice);
         mockCurrencyRaised(lbp, currencyRaised);
-        mockAuctionCheckpoint(
-            lbp,
-            checkpoint
-        );
+        mockAuctionCheckpoint(lbp, checkpoint);
 
         vm.roll(lbp.migrationBlock());
 
