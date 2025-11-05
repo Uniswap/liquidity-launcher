@@ -20,6 +20,7 @@ import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol"
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ITokenCurrencyStorage} from "twap-auction/src/interfaces/ITokenCurrencyStorage.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -46,6 +47,7 @@ contract MockAuctionWithERC20Sweep {
 }
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
+    using TokenDistribution for uint128;
     uint256 constant Q192 = 2 ** 192;
 
     // ============ Migration Timing Tests ============
@@ -845,7 +847,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         totalSupply = uint128(bound(totalSupply, 1, type(uint128).max));
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
-        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+        vm.assume(tokenAmount > 0);
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
         clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
 
         vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
@@ -1000,12 +1003,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.migrate();
     }
 
-    function test_fuzz_validate_withToken(uint128 totalSupply, uint24 tokenSplit) public {
-        vm.assume(totalSupply <= type(uint256).max);
+    function test_fuzz_migrate_withNonETHCurrency(uint128 totalSupply, uint24 tokenSplit) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 1e7);
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, DAI);
 
@@ -1042,34 +1045,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
-        // Calculate expected values
-        // Only invert price if currency < token (matching the implementation)
-        uint256 priceX192 = clearingPrice << 96;
-        uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-
-        uint256 tokenAmountUint256 = uint128(FullMath.mulDiv(currencyRaised, Q192, priceX192));
-        bool tokenAmountFitsInUint128 = tokenAmountUint256 <= type(uint128).max;
-
-        // Check if the price is within valid bounds
-        bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
-
-        if (!isValidPrice) {
-            // Should revert with SqrtPriceX96OutOfBounds
-            vm.prank(address(lbp.auction()));
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    TokenPricing.SqrtPriceX96OutOfBounds.selector,
-                    expectedSqrtPrice,
-                    TickMath.MIN_SQRT_PRICE,
-                    TickMath.MAX_SQRT_PRICE
-                )
-            );
-            lbp.migrate();
-        } else if (!tokenAmountFitsInUint128) {
-            // Should revert
-            vm.prank(address(lbp.auction()));
-            vm.expectRevert();
-            lbp.migrate();
-        }
+        lbp.migrate();
     }
 }

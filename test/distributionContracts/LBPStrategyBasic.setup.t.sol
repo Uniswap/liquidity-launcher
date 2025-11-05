@@ -18,6 +18,7 @@ import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
+    using TokenDistribution for uint128;
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
@@ -391,6 +392,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
 
         // Skip if auction amount would be 0
         uint256 auctionAmount = uint256(totalSupply) * uint256(tokenSplit) / 1e7;
@@ -409,6 +411,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_onTokenReceived_succeeds(uint128 totalSupply) public {
         vm.assume(totalSupply > 1);
+        vm.assume(totalSupply.calculateReserveSupply(DEFAULT_TOKEN_SPLIT) <= 1e30);
         setupWithSupply(totalSupply);
 
         vm.prank(address(tokenLauncher));
@@ -472,6 +475,14 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
+        } else if (totalSupply.calculateReserveSupply(tokenSplit) > 1e30) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.ReserveSupplyIsTooHigh.selector,
+                    totalSupply.calculateReserveSupply(tokenSplit),
+                    1e30
+                )
+            );
         } else if (auctionParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(

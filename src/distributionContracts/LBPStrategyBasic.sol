@@ -218,6 +218,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
+        // reserve supply validation (cannot be greater than 1e30)
+        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > 1e30) {
+            // 1e30 is the maximum reserve supply that can be created with the current token split
+            revert ReserveSupplyIsTooHigh(_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), 1e30);
+        }
     }
 
     /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
@@ -249,10 +254,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.checkpoint();
         uint256 currencyAmount = auction.currencyRaised();
 
+        // cannot create a v4 pool with more than type(uint128).max currency amount
         if (currencyAmount > type(uint128).max) {
             revert CurrencyAmountTooHigh(currencyAmount, type(uint128).max);
         }
 
+        // cannot create a v4 pool with no currency raised
         if (currencyAmount == 0) {
             revert NoCurrencyRaised();
         }
