@@ -447,11 +447,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
     /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
     /// @return The actions and parameters needed to take the pair using the position manager
-    function _createFinalTakePairPlan(
-        BasePositionParams memory baseParams,
-        bytes memory actions,
-        bytes[] memory params
-    ) private view returns (bytes memory, bytes[] memory) {
+    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
+        private
+        view
+        returns (bytes memory, bytes[] memory)
+    {
         return baseParams.planFinalTakePair(actions, params);
     }
 
