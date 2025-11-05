@@ -19,6 +19,7 @@ import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ITokenCurrencyStorage} from "twap-auction/src/interfaces/ITokenCurrencyStorage.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -845,9 +846,22 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
+        uint256 maxClearingPrice = FixedPointMathLib.min(type(uint256).max / totalSupply, 1 << 223);
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, maxClearingPrice));
 
-        vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
+        uint256 inverseClearingPrice = InverseHelpers.inverseQ96(clearingPrice);
+        // Ensure that we don't hit cannot update empty position because the amounts round to 0
+        uint256 currencyRaised = FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96);
+        vm.assume(currencyRaised > 0 && currencyRaised <= type(uint128).max);
+
+        uint256 expectedTokenAmount;
+        if (lbp.currency() < lbp.token()) {
+            expectedTokenAmount = FullMath.mulDiv(tokenAmount, 2 ** 96, inverseClearingPrice);
+            vm.assume(expectedTokenAmount > 0);
+        } else {
+            expectedTokenAmount = FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96);
+            vm.assume(expectedTokenAmount > 0);
+        }
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 
@@ -856,15 +870,15 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         mockAuctionClearingPrice(lbp, clearingPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1));
-        mockCurrencyRaised(lbp, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
-        deal(address(lbp), FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
+        mockCurrencyRaised(lbp, currencyRaised);
+        deal(address(lbp), currencyRaised);
 
         mockAuctionCheckpoint(
             lbp,
             Checkpoint({
                 clearingPrice: clearingPrice,
-                currencyRaisedQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
-                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
+                currencyRaisedQ96_X7: ValueX7.wrap(currencyRaised),
+                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(currencyRaised),
                 cumulativeMpsPerPrice: 0,
                 cumulativeMps: 0,
                 prev: 0,
@@ -873,19 +887,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         vm.roll(lbp.migrationBlock());
-
-        uint256 pricePerToken = uint256(InverseHelpers.inverseQ96(clearingPrice));
-
-        // Calculate expected values
-        uint256 priceX192 = pricePerToken << 96;
-        uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint256 expectedTokenAmount =
-            FullMath.mulDiv(priceX192, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), Q192);
-
-        // Check if the price is within valid bounds
-        bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
-        bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
-        bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
 
         lbp.migrate();
     }
@@ -1005,12 +1006,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
         sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
 
-        // Bound the clearing price to be between 1 and 2 ** 33 - 1
-        clearingPrice = _bound(clearingPrice, 1, 2 ** 33 - 1);
-        // In the case where currency is currency0, the price will be inverted
-        // and checked to be less than uint224.max before shifted to the left 32
-        uint256 uint256MaxDivPrice = ~uint256(0) / clearingPrice;
-        vm.assume(uint256MaxDivPrice > type(uint224).max);
+        // Bound the clearing price to be between 1 and 2 ** 32 - 1
+        // Since the inverse has to fit within uint160, uint192 / uint32 > uint160
+        clearingPrice = _bound(clearingPrice, 1, 2 ** 32 - 1);
 
         // This doesn't really matter for this test but it can't be zero
         uint256 currencyRaised = 1;
@@ -1030,7 +1028,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, uint256MaxDivPrice));
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, (1 << 192) / clearingPrice));
         lbp.migrate();
     }
 
