@@ -181,7 +181,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: veryLowPrice,
-                currencyRaisedQ96_X7: ValueX7.wrap(0),
                 currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(0),
                 cumulativeMpsPerPrice: 0,
                 cumulativeMps: 0,
@@ -867,7 +866,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: clearingPrice,
-                currencyRaisedQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
                 currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
                 cumulativeMpsPerPrice: 0,
                 cumulativeMps: 0,
@@ -937,7 +935,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: veryLowClearingPrice,
-                currencyRaisedQ96_X7: ValueX7.wrap(0),
                 currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(0),
                 cumulativeMpsPerPrice: 0,
                 cumulativeMps: 0,
@@ -988,7 +985,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: veryLowClearingPrice,
-                currencyRaisedQ96_X7: ValueX7.wrap(0),
                 currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(0),
                 cumulativeMpsPerPrice: 0,
                 cumulativeMps: 0,
@@ -1037,9 +1033,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();
-
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 currencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
 
         realAuction.sweepCurrency();
 

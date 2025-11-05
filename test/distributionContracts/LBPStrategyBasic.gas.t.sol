@@ -48,7 +48,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, tickNumberToPriceX96(2));
         assertEq(realCurrencyRaised, inputAmountForTokens(500e18, tickNumberToPriceX96(2))); // add up all the bids
@@ -84,7 +84,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
         assertEq(realCurrencyRaised, inputAmountForTokens(200e18, targetPrice));
@@ -132,7 +132,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
         assertEq(realCurrencyRaised, inputAmountForTokens(500e18, targetPrice));
@@ -193,7 +193,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
         assertEq(realCurrencyRaised, inputAmountForTokens(800e18, targetPrice));

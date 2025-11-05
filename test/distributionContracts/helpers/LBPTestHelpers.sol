@@ -119,9 +119,7 @@ abstract contract LBPTestHelpers is Test {
     function mockCurrencyRaised(LBPStrategyBasic lbp, uint256 amount) internal {
         // Mock the auction's currencyRaised function
         vm.mockCall(
-            address(lbp.auction()),
-            abi.encodeWithSelector(ICheckpointStorage.currencyRaised.selector),
-            abi.encode(amount)
+            address(lbp.auction()), abi.encodeWithSelector(IAuction.currencyRaised.selector), abi.encode(amount)
         );
     }
 
