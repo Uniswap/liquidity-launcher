@@ -39,7 +39,7 @@ contract TokenPricingTest is Test {
         uint256 price = 1e18;
         bool currencyIsCurrency0 = true;
         uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
-        assertEq(priceX192, InverseHelpers.inverseQ96(price) << 96);
+        assertEq(priceX192, InverseHelpers.inverseQ96(price));
     }
 
     function test_convertToPriceX192_currencyIsCurrency1_succeeds() public view {
@@ -60,7 +60,7 @@ contract TokenPricingTest is Test {
                     tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                 } else {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
-                    assertEq(priceX192, InverseHelpers.inverseQ96(price) << 96);
+                    assertEq(priceX192, InverseHelpers.inverseQ96(price));
                 }
             } else {
                 if (price > type(uint160).max) {

@@ -890,11 +890,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.migrate();
     }
 
-    function test_WhenAmountsAndClearingPriceWithinBounds(
-        uint128 totalSupply,
-        uint256 clearingPrice,
-        uint24 tokenSplit
-    ) public {
+    function test_WhenAmountsAndClearingPriceWithinBounds(uint128 totalSupply, uint256 clearingPrice, uint24 tokenSplit)
+        public
+    {
         // it should migrate successfully
 
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));

@@ -18,6 +18,9 @@ library TokenPricing {
     /// @param currencyAmount The invalid currency amount
     error AmountOverflow(uint256 currencyAmount);
 
+    /// @notice Q96 format: 96-bit fixed-point number representation
+    uint256 public constant Q96 = 1 << 96;
+
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 2 ** 192;
@@ -35,12 +38,14 @@ library TokenPricing {
 
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
         if (currencyIsCurrency0) {
-            // Inverts the Q96 price with 256 bits of precision
-            price = ~uint256(0) / price;
-            if (price >> 224 != 0) {
-                revert InvalidPrice(price);
+            // If the inverted price is greater than uint160.max it will revert in FullMath
+            // Catch it explicitly here and revert with InvalidPrice
+            if ((Q192 / price) >> 160 != 0) {
+                revert InvalidPrice(Q192 / price);
             }
-            priceX192 = price << 32;
+            // Invert the Q96 price using FullMath with 512 bits of precision
+            // Equivalent to finding the inverse then shifting left 96 bits
+            priceX192 = FullMath.mulDiv(Q192, Q96, price);
         } else {
             // Otherwise, revert if the price exceeds uint160.max
             if (price >> 160 != 0) {
