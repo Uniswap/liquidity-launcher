@@ -874,20 +874,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
-        uint256 pricePerToken = uint256(InverseHelpers.inverseQ96(clearingPrice));
-
-        // Calculate expected values
-        uint256 priceX192 = pricePerToken << 96;
-        uint160 expectedSqrtPrice = uint160(Math.sqrt(priceX192));
-        uint256 expectedTokenAmount =
-            FullMath.mulDiv(priceX192, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), Q192);
-
-        // Check if the price is within valid bounds
-        bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
-        bool priceFitsInUint160 = pricePerToken <= type(uint160).max;
-        bool isLeftoverToken = expectedTokenAmount <= lbp.reserveSupply();
-
-        lbp.migrate();
+        if (InverseHelpers.inverseQ96(clearingPrice) == 0) {
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, 0));
+            lbp.migrate();
+        } else {
+            lbp.migrate();
+        }
     }
 
     function test_migrate_withETH_revertsWithInvalidPrice() public {
