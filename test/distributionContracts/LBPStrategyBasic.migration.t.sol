@@ -19,6 +19,7 @@ import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {ITokenCurrencyStorage} from "twap-auction/src/interfaces/ITokenCurrencyStorage.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -143,7 +144,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.migrate();
     }
 
-    function test_migrate_revertsWithInvalidPrice_tooLow() public {
+    function test_migrate_revertsWithPriceIsZero() public {
         // Setup with DAI as currency1
         setupWithCurrency(DAI);
 
@@ -153,8 +154,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
         // Mock a very low price that will result in sqrtPrice below MIN_SQRT_PRICE
-        uint256 veryLowPrice = uint256(TickMath.MIN_SQRT_PRICE - 1) * (uint256(TickMath.MIN_SQRT_PRICE) - 1); // Extremely low price
-        veryLowPrice = veryLowPrice >> 96;
+        // would never happen because the floor price is 1 << 33
+        uint256 veryLowPrice = 0;
         mockAuctionClearingPrice(lbp, veryLowPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
 
@@ -187,9 +188,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             })
         );
 
-        // Expect revert with InvalidPrice
+        // Expect revert with PriceIsZero
         vm.prank(address(lbp.auction()));
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, veryLowPrice));
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceIsZero.selector, veryLowPrice));
         lbp.migrate();
     }
 
@@ -875,7 +876,22 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.roll(lbp.migrationBlock());
 
         if (InverseHelpers.inverseQ96(clearingPrice) == 0) {
-            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, 0));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenPricing.SqrtPriceX96OutOfBounds.selector, 0, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE
+                )
+            );
+            lbp.migrate();
+        }
+        // calculate corresponding token amount and if it is 0, the position will be empty and revert
+        else if (
+            FullMath.mulDiv(
+                    InverseHelpers.inverseQ96(clearingPrice) << 96, // priceX192
+                    FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), // currencyAmount
+                    Q192 // Q192
+                ) == 0
+        ) {
+            vm.expectRevert(abi.encodeWithSelector(Position.CannotUpdateEmptyPosition.selector));
             lbp.migrate();
         } else {
             lbp.migrate();
@@ -928,8 +944,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         vm.prank(address(lbp.auction()));
-        // Expect revert with InvalidPrice (the error will contain the inverted price)
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
+        // Expect revert with PriceTooHigh (the error will contain the inverted price)
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, invertedPrice, type(uint160).max));
         lbp.migrate();
     }
 
@@ -943,7 +959,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // We want actualPrice that results in sqrtPrice > MAX_SQRT_PRICE
         // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
         // So we need a clearing price close to 0 but not 0
-        uint256 veryLowClearingPrice = 1; // Minimal non-zero price
+        uint256 veryLowClearingPrice = 1 << 32; // Below the minimum floor price
         mockAuctionClearingPrice(lbp, veryLowClearingPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
@@ -979,8 +995,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         vm.prank(address(lbp.auction()));
-        // Expect revert with InvalidPrice (the error will contain the inverted price)
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, invertedPrice));
+        // Expect revert with PriceTooHigh (the error will contain the inverted price)
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, invertedPrice, type(uint160).max));
         lbp.migrate();
     }
 
@@ -1038,9 +1054,16 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         bool isValidPrice = expectedSqrtPrice >= TickMath.MIN_SQRT_PRICE && expectedSqrtPrice <= TickMath.MAX_SQRT_PRICE;
 
         if (!isValidPrice) {
-            // Should revert with InvalidPrice
+            // Should revert with SqrtPriceX96OutOfBounds
             vm.prank(address(lbp.auction()));
-            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, clearingPrice));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenPricing.SqrtPriceX96OutOfBounds.selector,
+                    expectedSqrtPrice,
+                    TickMath.MIN_SQRT_PRICE,
+                    TickMath.MAX_SQRT_PRICE
+                )
+            );
             lbp.migrate();
         } else if (!tokenAmountFitsInUint128) {
             // Should revert

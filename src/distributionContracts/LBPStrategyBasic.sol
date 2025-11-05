@@ -233,6 +233,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
         } else if (_auctionParams.currency != migratorParams.currency) {
             revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
+        } else if (_auctionParams.floorPrice < (1 << 33)) {
+            // when inverted, the price must be less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
+            revert InvalidFloorPrice(_auctionParams.floorPrice, (1 << 33));
         }
     }
 

@@ -12,7 +12,18 @@ import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 library TokenPricing {
     /// @notice Thrown when price is invalid (0 or out of bounds)
     /// @param price The invalid price in Q96 format in terms of currency1/currency0
-    error InvalidPrice(uint256 price);
+    error PriceIsZero(uint256 price);
+
+    /// @notice Thrown when price is too high
+    /// @param price The invalid price in Q96 format in terms of currency1/currency0
+    /// @param maxPrice The maximum price (type(uint160).max)
+    error PriceTooHigh(uint256 price, uint256 maxPrice);
+
+    /// @notice Thrown when price is out of bounds
+    /// @param sqrtPriceX96 The invalid sqrt price in Q96 format
+    /// @param minSqrtPriceX96 The minimum sqrt price (TickMath.MIN_SQRT_PRICE)
+    /// @param maxSqrtPriceX96 The maximum sqrt price (TickMath.MAX_SQRT_PRICE)
+    error SqrtPriceX96OutOfBounds(uint160 sqrtPriceX96, uint160 minSqrtPriceX96, uint160 maxSqrtPriceX96);
 
     /// @notice Thrown when calculated amount exceeds uint128 max value
     /// @param currencyAmount The invalid currency amount
@@ -28,8 +39,9 @@ library TokenPricing {
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
     /// @return priceX192 The price in Q192 fixed-point format
     function convertToPriceX192(uint256 price, bool currencyIsCurrency0) internal pure returns (uint256 priceX192) {
+        // (should not happen because floor price of 1 << 33 prevents this)
         if (price == 0) {
-            revert InvalidPrice(price);
+            revert PriceIsZero(price);
         }
 
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
@@ -38,9 +50,9 @@ library TokenPricing {
             price = (1 << (FixedPoint96.RESOLUTION * 2)) / price;
         }
 
-        // Check price bounds after potential inversion
+        // Check price bounds after potential inversion (should not happen because floor price of 1 << 33 prevents this)
         if (price > type(uint160).max) {
-            revert InvalidPrice(price);
+            revert PriceTooHigh(price, type(uint160).max);
         }
 
         // Convert from Q96 to X192 format by shifting left 96 bits (will not overflow since price is less than or equal to type(uint160).max)
@@ -58,7 +70,7 @@ library TokenPricing {
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
 
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            revert InvalidPrice(priceX192);
+            revert SqrtPriceX96OutOfBounds(sqrtPriceX96, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE);
         }
 
         return sqrtPriceX96;
