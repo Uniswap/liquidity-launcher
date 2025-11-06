@@ -15,6 +15,9 @@ import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic
 import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
+import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
+import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
@@ -284,7 +287,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_setUp_revertsWithInvalidFloorPrice() public {
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 50).addStep(100e3, 50);
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, 0, (1 << 33)));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, 0, (2 ** 32 + 1)));
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
@@ -508,6 +511,81 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 true
             ),
             auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_fuzz_auction_validation(uint256 floorPrice) public {
+        uint256 maxFloorPrice = 2 ** 32 + 1;
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 50).addStep(100e3, 50);
+
+        if (floorPrice < maxFloorPrice) {
+            vm.expectRevert(
+                abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, floorPrice, (2 ** 32 + 1))
+            );
+        }
+        // check pricex192
+        else if (FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice) == 0) {
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, floorPrice, type(uint160).max));
+        }
+        // check sqrt price
+        else if (
+            uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))) < TickMath.MIN_SQRT_PRICE
+                || uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))) > TickMath.MAX_SQRT_PRICE
+        ) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, floorPrice));
+        } else if (
+            LiquidityAmounts.getLiquidityForAmount1(
+                    TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+                    uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))),
+                    DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT)
+                ) > 2 ** 107
+        ) {
+            console2.log("hitting here");
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.InvalidLiquidity.selector,
+                    LiquidityAmounts.getLiquidityForAmount1(
+                        TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+                        uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))),
+                        DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT)
+                    ),
+                    2 ** 107
+                )
+            );
+        }
+
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(
+                address(0),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1000),
+                address(this),
+                true,
+                true
+            ),
+            abi.encode(
+                AuctionParameters({
+                    currency: address(0), // ETH
+                    tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                    fundsRecipient: address(1),
+                    startBlock: uint64(block.number),
+                    endBlock: uint64(block.number + 100),
+                    claimBlock: uint64(block.number + 100),
+                    tickSpacing: 20,
+                    validationHook: address(0), // No validation hook
+                    floorPrice: floorPrice,
+                    requiredCurrencyRaised: 0,
+                    auctionStepsData: auctionStepsData
+                })
+            ),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );

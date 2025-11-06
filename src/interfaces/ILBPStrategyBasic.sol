@@ -42,8 +42,7 @@ interface ILBPStrategyBasic is IDistributionContract {
 
     /// @notice Error thrown when the floor price is invalid
     /// @param floorPrice The invalid floor price
-    /// @param minFloorPrice The minimum floor price (1 << 33)
-    error InvalidFloorPrice(uint256 floorPrice, uint256 minFloorPrice);
+    error InvalidFloorPrice(uint256 floorPrice);
 
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
@@ -72,9 +71,9 @@ interface ILBPStrategyBasic is IDistributionContract {
     error ReserveSupplyIsTooHigh(uint256 reserveSupply, uint256 maxReserveSupply);
 
     /// @notice Error thrown when the liquidity is invalid
-    /// @param maxLiquidityPerTick The max liquidity per tick
     /// @param liquidity The invalid liquidity
-    error InvalidLiquidity(uint128 maxLiquidityPerTick, uint128 liquidity);
+    /// @param maxLiquidity The max liquidity
+    error InvalidLiquidity(uint128 liquidity, uint128 maxLiquidity);
 
     /// @notice Error thrown when the caller is not the auction
     /// @param caller The caller that is not the auction

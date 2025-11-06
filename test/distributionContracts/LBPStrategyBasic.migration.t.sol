@@ -231,10 +231,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 amount0,
         uint128 amount1
     ) public {
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, type(uint256).max));
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         amount0 = uint128(bound(amount0, 1, type(uint128).max));
         amount1 = uint128(bound(amount1, 1, 1e30));
+
+        uint128 tokenAmount = uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
 
         uint256 priceX192 = TokenPricing.convertToPriceX192(clearingPrice, true);
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
@@ -243,8 +245,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         // 1000 total supply, 500 auction supply, 500 reserve supply
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-
-        uint128 tokenAmount = uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
 
         mockAuctionClearingPrice(lbp, clearingPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1));
@@ -266,11 +266,13 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Migrate
         vm.roll(lbp.migrationBlock());
 
+        // Since price is bounded, we know that the amount1 liquidty will not overflow since currency is ETH
+        // Need to check if the amount0 liquidity will overflow
         if (
             FullMath.mulDiv(amount0, FixedPoint96.Q96, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK) - sqrtPriceX96)
                 > type(uint128).max
         ) {
-            vm.expectRevert();
+            vm.expectRevert(SafeCast.SafeCastOverflow.selector);
             lbp.migrate();
         } else {
             lbp.migrate();
@@ -903,7 +905,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 0);
         vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, type(uint256).max));
 
         vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
 
@@ -931,7 +933,16 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
-        if (InverseHelpers.inverseQ96(clearingPrice) == 0) {
+        if (FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > type(uint128).max) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.CurrencyAmountTooHigh.selector,
+                    FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96),
+                    type(uint128).max
+                )
+            );
+            lbp.migrate();
+        } else if (InverseHelpers.inverseQ96(clearingPrice) == 0) {
             vm.expectRevert(
                 abi.encodeWithSelector(
                     TokenPricing.SqrtPriceX96OutOfBounds.selector, 0, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE
