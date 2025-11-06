@@ -47,7 +47,7 @@ library TokenPricing {
         // If currency is currency0, we need to invert the price (price = currency1/currency0)
         if (currencyIsCurrency0) {
             // If the inverted price is greater than uint160.max it will revert in FullMath
-            // Catch it explicitly here and revert with InvalidPrice
+            // Catch it explicitly here and revert with PriceTooHigh
             if ((Q192 / price) >> 160 != 0) {
                 revert PriceTooHigh(Q192 / price, 1 << 160);
             }

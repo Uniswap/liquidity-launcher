@@ -990,7 +990,6 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             lbp,
             Checkpoint({
                 clearingPrice: clearingPrice,
-                currencyRaisedQ96_X7: ValueX7.wrap(currencyRaised),
                 currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(currencyRaised),
                 cumulativeMpsPerPrice: 0,
                 cumulativeMps: 0,
@@ -1053,7 +1052,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 clearingPrice,
         uint24 tokenSplit
     ) public {
-        // it should revert with InvalidPrice
+        // it should revert with PriceTooHigh
 
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
@@ -1084,7 +1083,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, (1 << 192) / clearingPrice));
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, (1 << 192) / clearingPrice));
         lbp.migrate();
     }
 
@@ -1093,7 +1092,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 clearingPrice,
         uint24 tokenSplit
     ) public {
-        // it should revert with InvalidPrice
+        // it should revert with PriceTooHigh
 
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
@@ -1125,11 +1124,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
-        vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, clearingPrice));
+        vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, clearingPrice));
         lbp.migrate();
     }
 
-    function test_migrate_withETH_revertsWithInvalidPrice() public {
+    function test_migrate_withETH_revertsWithPriceTooHigh() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -1179,7 +1178,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.migrate();
     }
 
-    function test_migrate_withETH_revertsWithPriceTooHigh() public {
+    function test_migrate_withETH_revertsWithPriceTooHigh_1() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
