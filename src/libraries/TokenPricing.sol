@@ -49,7 +49,7 @@ library TokenPricing {
             // If the inverted price is greater than uint160.max it will revert in FullMath
             // Catch it explicitly here and revert with PriceTooHigh
             if ((Q192 / price) >> 160 != 0) {
-                revert PriceTooHigh(Q192 / price, 1 << 160);
+                revert PriceTooHigh(Q192 / price, type(uint160).max);
             }
             // Invert the Q96 price using FullMath with 512 bits of precision
             // Equivalent to finding the inverse then shifting left 96 bits
@@ -57,7 +57,7 @@ library TokenPricing {
         } else {
             // Otherwise, revert if the price exceeds uint160.max
             if (price >> 160 != 0) {
-                revert PriceTooHigh(price, 1 << 160);
+                revert PriceTooHigh(price, type(uint160).max);
             }
             priceX192 = price << FixedPoint96.RESOLUTION;
         }
