@@ -18,6 +18,7 @@ import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
@@ -517,10 +518,10 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_fuzz_auction_validation(uint256 floorPrice) public {
-        uint256 maxFloorPrice = 2 ** 32 + 1;
+        uint256 minFloorPrice = 2 ** 32 + 1;
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 50).addStep(100e3, 50);
 
-        if (floorPrice < maxFloorPrice) {
+        if (floorPrice < minFloorPrice) {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, floorPrice, (2 ** 32 + 1))
             );
@@ -536,13 +537,21 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         ) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, floorPrice));
         } else if (
+            FullMath.mulDiv(
+                    DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT),
+                    FixedPoint96.Q96,
+                    uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice)))
+                        - TickMath.MIN_SQRT_PRICE
+                ) > type(uint128).max
+        ) {
+            vm.expectRevert(abi.encodeWithSelector(SafeCast.SafeCastOverflow.selector));
+        } else if (
             LiquidityAmounts.getLiquidityForAmount1(
                     TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
                     uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))),
                     DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT)
                 ) > 2 ** 107
         ) {
-            console2.log("hitting here");
             vm.expectRevert(
                 abi.encodeWithSelector(
                     ILBPStrategyBasic.InvalidLiquidity.selector,
