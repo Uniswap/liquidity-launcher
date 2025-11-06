@@ -941,7 +941,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
                 )
             );
             lbp.migrate();
-        } else if (FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice) == 0) {
+        }
+        // take the inverse and convert to x192
+        else if (FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice) == 0) {
             vm.expectRevert(
                 abi.encodeWithSelector(
                     TokenPricing.SqrtPriceX96OutOfBounds.selector, 0, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE

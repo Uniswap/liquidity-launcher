@@ -29,7 +29,6 @@ import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/Posi
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {TokenDistribution} from "../libraries/TokenDistribution.sol";
-import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -40,7 +39,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
-    using TokenPricing for *;
+    using TokenPricing for uint256;
 
     /// @notice The maximum reserve supply of tokens that can be used for the v4 LP position
     /// @dev For a token with 18 decimals, this is 1 trillion tokens
@@ -275,32 +274,27 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // if currency > token: liquidity = getLiquidityForAmount0(floorprice, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK), reserveSupply)
             //                       if liquidity > 2^107, revert
             bool currencyIsCurrency0 = migratorParams.currency < _token;
-            uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, currencyIsCurrency0);
-            console2.log("priceX192", priceX192);
+            uint256 priceX192 = _auctionParams.floorPrice.convertToPriceX192(currencyIsCurrency0);
             uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-            console2.log("sqrtPriceX96", sqrtPriceX96);
             if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
                 revert InvalidFloorPrice(_auctionParams.floorPrice);
             }
             uint128 liquidity;
             if (currencyIsCurrency0) {
-                console2.log("currencyIsCurrency0");
                 liquidity = LiquidityAmounts.getLiquidityForAmount1(
                     TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
                     sqrtPriceX96,
-                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
+                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) // maximum token amount that can be used to create the position
                 );
-                console2.log("liquidity", liquidity);
             } else {
                 liquidity = LiquidityAmounts.getLiquidityForAmount0(
                     sqrtPriceX96,
                     TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
+                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) // maximum token amount that can be used to create the position
                 );
             }
             // Revert if the liquidty from the token would overflow the max liquidity per tick
             if (liquidity > MAX_LIQUIDITY) {
-                console2.log("MAX_LIQUIDITY", MAX_LIQUIDITY);
                 revert InvalidLiquidity(liquidity, MAX_LIQUIDITY);
             }
         }
