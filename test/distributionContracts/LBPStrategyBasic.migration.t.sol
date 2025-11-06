@@ -21,6 +21,8 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {ITokenCurrencyStorage} from "twap-auction/src/interfaces/ITokenCurrencyStorage.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -220,6 +222,59 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         priceX192 = FullMath.mulDiv(333e18, Q192, 111e18);
         sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         assertEq(sqrtPriceX96, 137227202865029797602485611888);
+    }
+
+    /// forge-config: default.allow_internal_expect_revert = true
+    function test_migrate_liquidityDoesNotRevert(
+        uint256 clearingPrice,
+        int24 tickSpacing,
+        uint128 amount0,
+        uint128 amount1
+    ) public {
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, type(uint256).max));
+        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+        amount0 = uint128(bound(amount0, 1, type(uint128).max));
+        amount1 = uint128(bound(amount1, 1, 1e30));
+
+        uint256 priceX192 = TokenPricing.convertToPriceX192(clearingPrice, true);
+        uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+        vm.assume(sqrtPriceX96 > TickMath.MIN_SQRT_PRICE && sqrtPriceX96 < TickMath.MAX_SQRT_PRICE);
+
+        // Setup
+        // 1000 total supply, 500 auction supply, 500 reserve supply
+        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+
+        uint128 tokenAmount = uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
+
+        mockAuctionClearingPrice(lbp, clearingPrice);
+        mockAuctionEndBlock(lbp, uint64(block.number - 1));
+        mockCurrencyRaised(lbp, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
+        deal(address(lbp), FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
+
+        mockAuctionCheckpoint(
+            lbp,
+            Checkpoint({
+                clearingPrice: clearingPrice,
+                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
+                cumulativeMpsPerPrice: 0,
+                cumulativeMps: 0,
+                prev: 0,
+                next: type(uint64).max
+            })
+        );
+
+        // Migrate
+        vm.roll(lbp.migrationBlock());
+
+        if (
+            FullMath.mulDiv(amount0, FixedPoint96.Q96, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK) - sqrtPriceX96)
+                > type(uint128).max
+        ) {
+            vm.expectRevert();
+            lbp.migrate();
+        } else {
+            lbp.migrate();
+        }
     }
 
     // ============ Full Range Migration Tests ============

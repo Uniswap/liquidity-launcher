@@ -28,6 +28,7 @@ import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/Posi
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {TokenDistribution} from "../libraries/TokenDistribution.sol";
+import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -84,7 +85,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
-        _validateAuctionParams(_auctionParams, _migratorParams);
+        _validateAuctionParams(_auctionParams, _migratorParams, _totalSupply, _token);
 
         auctionParameters = _auctionParams;
 
@@ -230,7 +231,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ///         Also validates that the migration block is after the end block of the auction.
     /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
+    function _validateAuctionParams(
+        bytes memory auctionParams,
+        MigratorParameters memory migratorParams,
+        uint128 _totalSupply,
+        address _token
+    ) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
@@ -241,6 +247,43 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         } else if (_auctionParams.floorPrice < (1 << 33)) {
             // when inverted, the price must be less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
             revert InvalidFloorPrice(_auctionParams.floorPrice, (1 << 33));
+        } else {
+            // convert floor price to sqrt price
+            // check floor is less than max sqrt price
+            // if currency < token: liquidity = getLiquidityForAmount1(TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK), floorprice, reserveSupply)
+            //                       if liquidity > 2^107, revert
+            //                       2^107 is the minimum.
+            // if currency > token: liquidity = getLiquidityForAmount0(floorprice, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK), reserveSupply)
+            //                       if liquidity > 2^107, revert
+            if (migratorParams.currency < _token) {
+                uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, true);
+                uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+                if (sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+                    revert InvalidFloorPrice(_auctionParams.floorPrice, TickMath.MAX_SQRT_PRICE);
+                }
+                uint128 liquidity = LiquidityAmounts.getLiquidityForAmount1(
+                    TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+                    sqrtPriceX96,
+                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
+                );
+                if (liquidity > 2 ** 107) {
+                    revert InvalidLiquidity(2 ** 107, liquidity);
+                }
+            } else {
+                uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, false);
+                uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+                if (sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+                    revert InvalidFloorPrice(_auctionParams.floorPrice, TickMath.MAX_SQRT_PRICE);
+                }
+                uint128 liquidity = LiquidityAmounts.getLiquidityForAmount0(
+                    sqrtPriceX96,
+                    TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
+                );
+                if (liquidity > 2 ** 107) {
+                    revert InvalidLiquidity(2 ** 107, liquidity);
+                }
+            }
         }
     }
 
