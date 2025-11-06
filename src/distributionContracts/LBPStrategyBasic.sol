@@ -41,6 +41,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using TokenDistribution for uint128;
     using TokenPricing for *;
 
+    /// @notice The maximum reserve supply of tokens that can be used for the v4 LP position
+    /// @dev For a token with 18 decimals, this is 1 trillion tokens
+    uint256 public constant MAX_RESERVE_SUPPLY = 1e30;
+
     /// @notice The token that is being distributed
     address public immutable token;
     /// @notice The currency that the auction raised funds in
@@ -219,10 +223,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
-        // reserve supply validation (cannot be greater than 1e30)
-        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > 1e30) {
-            // 1e30 is the maximum reserve supply that can be created with the current token split
-            revert ReserveSupplyIsTooHigh(_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), 1e30);
+        // reserve supply validation (cannot be greater than MAX_RESERVE_SUPPLY)
+        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > MAX_RESERVE_SUPPLY) {
+            revert ReserveSupplyIsTooHigh(_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), MAX_RESERVE_SUPPLY);
         }
     }
 
