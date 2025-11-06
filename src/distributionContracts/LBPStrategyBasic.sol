@@ -28,6 +28,7 @@ import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/Posi
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {TokenDistribution} from "../libraries/TokenDistribution.sol";
+import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
@@ -39,6 +40,10 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
     using TokenPricing for *;
+
+    /// @notice The maximum reserve supply of tokens that can be used for the v4 LP position
+    /// @dev For a token with 18 decimals, this is 1 trillion tokens
+    uint256 public constant MAX_RESERVE_SUPPLY = 1e30;
 
     /// @notice The token that is being distributed
     address public immutable token;
@@ -84,7 +89,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
         _validateMigratorParams(_token, _totalSupply, _migratorParams);
-        _validateAuctionParams(_auctionParams, _migratorParams);
+        _validateAuctionParams(_auctionParams, _migratorParams, _totalSupply, _token);
 
         auctionParameters = _auctionParams;
 
@@ -218,19 +223,26 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
-        // reserve supply validation (cannot be greater than 1e30)
-        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > 1e30) {
-            // 1e30 is the maximum reserve supply that can be created with the current token split
-            revert ReserveSupplyIsTooHigh(_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), 1e30);
+        // reserve supply validation (cannot be greater than MAX_RESERVE_SUPPLY)
+        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > MAX_RESERVE_SUPPLY) {
+            revert ReserveSupplyIsTooHigh(
+                _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), MAX_RESERVE_SUPPLY
+            );
         }
     }
 
-    /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
-    ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
-    ///         Also validates that the migration block is after the end block of the auction.
-    /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
+    /// @notice Validates that the auction parameters are valid
+    /// @dev Ensures that the `fundsRecipient` is set to ActionConstants.MSG_SENDER
+    ///      and that the auction concludes before the configured migration block.
+    ///      Also, this checks that the amount of tokens being reserved for the liquidity position
+    ///      does not overflow the max liquidity per tick at the floor price.
     /// @param auctionParams The auction parameters that will be used to create the auction
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
+    function _validateAuctionParams(
+        bytes memory auctionParams,
+        MigratorParameters memory migratorParams,
+        uint128 _totalSupply,
+        address _token
+    ) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
@@ -241,6 +253,38 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         } else if (_auctionParams.floorPrice < (1 << 33)) {
             // when inverted, the price must be less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
             revert InvalidFloorPrice(_auctionParams.floorPrice, (1 << 33));
+        } else {
+            // convert floor price to sqrt price
+            // check floor is less than max sqrt price
+            // if currency < token: liquidity = getLiquidityForAmount1(TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK), floorprice, reserveSupply)
+            //                       if liquidity > 2^107, revert
+            //                       2^107 is the tighest bound for max liquidity per tick .
+            // if currency > token: liquidity = getLiquidityForAmount0(floorprice, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK), reserveSupply)
+            //                       if liquidity > 2^107, revert
+            bool currencyIsCurrency0 = migratorParams.currency < _token;
+            uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, currencyIsCurrency0);
+            uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+            if (sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+                revert InvalidFloorPrice(_auctionParams.floorPrice, TickMath.MAX_SQRT_PRICE);
+            }
+            uint128 liquidity;
+            if (currencyIsCurrency0) {
+                liquidity = LiquidityAmounts.getLiquidityForAmount1(
+                    TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
+                    sqrtPriceX96,
+                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
+                );
+            } else {
+                liquidity = LiquidityAmounts.getLiquidityForAmount0(
+                    sqrtPriceX96,
+                    TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
+                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
+                );
+            }
+            // Revert if the liquidty from the token would overflow the max liquidity per tick
+            if (liquidity > 2 ** 107) {
+                revert InvalidLiquidity(2 ** 107, liquidity);
+            }
         }
     }
 
