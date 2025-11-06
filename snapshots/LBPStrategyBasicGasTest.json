@@ -1,7 +1,7 @@
 {
-  "migrateWithETH": "619565",
-  "migrateWithETH_withOneSidedPosition": "619565",
-  "migrateWithNonETHCurrency": "503122",
-  "migrateWithNonETHCurrency_withOneSidedPosition": "651754",
+  "migrateWithETH": "619599",
+  "migrateWithETH_withOneSidedPosition": "619599",
+  "migrateWithNonETHCurrency": "503156",
+  "migrateWithNonETHCurrency_withOneSidedPosition": "651788",
   "onTokensReceived": "3978244"
 }

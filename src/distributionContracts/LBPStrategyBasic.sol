@@ -106,6 +106,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         createOneSidedCurrencyPosition = _migratorParams.createOneSidedCurrencyPosition;
     }
 
+    /// @notice Gets the address of the token that will be used to create the pool
+    /// @return The address of the token that will be used to create the pool
+    function getPoolToken() internal view virtual returns (address) {
+        return token;
+    }
+
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {
         if (IERC20(token).balanceOf(address(this)) < totalSupply) {
@@ -212,6 +218,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
+        // reserve supply validation (cannot be greater than 1e30)
+        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > 1e30) {
+            // 1e30 is the maximum reserve supply that can be created with the current token split
+            revert ReserveSupplyIsTooHigh(_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), 1e30);
+        }
     }
 
     /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
@@ -227,11 +238,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
         } else if (_auctionParams.currency != migratorParams.currency) {
             revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
+        } else if (_auctionParams.floorPrice < (1 << 33)) {
+            // when inverted, the price must be less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
+            revert InvalidFloorPrice(_auctionParams.floorPrice, (1 << 33));
         }
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() private {
+    function _validateMigration() internal virtual {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
@@ -240,10 +254,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.checkpoint();
         uint256 currencyAmount = auction.currencyRaised();
 
+        // cannot create a v4 pool with more than type(uint128).max currency amount
         if (currencyAmount > type(uint128).max) {
             revert CurrencyAmountTooHigh(currencyAmount, type(uint128).max);
         }
 
+        // cannot create a v4 pool with no currency raised
         if (currencyAmount == 0) {
             revert NoCurrencyRaised();
         }
@@ -257,18 +273,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
         uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < token);
+        address poolToken = getPoolToken();
+
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
+
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < token, reserveSupply);
+            priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
 
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < token ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < token ? data.initialTokenAmount : data.initialCurrencyAmount
+            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
@@ -283,9 +302,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
     function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
+        address poolToken = getPoolToken();
+
         key = PoolKey({
-            currency0: Currency.wrap(currency < token ? currency : token),
-            currency1: Currency.wrap(currency < token ? token : currency),
+            currency0: Currency.wrap(currency < poolToken ? currency : poolToken),
+            currency1: Currency.wrap(currency < poolToken ? poolToken : currency),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
@@ -307,10 +328,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         bytes memory actions;
         bytes[] memory params;
 
+        address poolToken = getPoolToken();
+
         // Create base parameters
         BasePositionParams memory baseParams = BasePositionParams({
             currency: currency,
-            token: token,
+            token: poolToken,
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             initialSqrtPriceX96: data.sqrtPriceX96,

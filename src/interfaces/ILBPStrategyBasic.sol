@@ -40,6 +40,11 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @param migratorCurrency The currency in the migrator parameters
     error InvalidCurrency(address auctionCurrency, address migratorCurrency);
 
+    /// @notice Error thrown when the floor price is invalid
+    /// @param floorPrice The invalid floor price
+    /// @param minFloorPrice The minimum floor price (1 << 33)
+    error InvalidFloorPrice(uint256 floorPrice, uint256 minFloorPrice);
+
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
     error TokenSplitTooHigh(uint24 tokenSplit, uint24 maxTokenSplit);

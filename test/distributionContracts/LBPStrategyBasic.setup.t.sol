@@ -18,6 +18,7 @@ import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
+    using TokenDistribution for uint128;
     // ============ Constructor Validation Tests ============
 
     function test_setUp_revertsWithTokenSplitTooHigh() public {
@@ -242,7 +243,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 AuctionParameters({
                     currency: address(0), // ETH
                     tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
-                    fundsRecipient: address(2),
+                    fundsRecipient: address(2), // invalid funds recipient
                     startBlock: uint64(block.number),
                     endBlock: uint64(block.number + 100),
                     claimBlock: uint64(block.number + 100),
@@ -276,6 +277,44 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 true
             ), // currency is address(1)
             auctionParams, // currency is address(0)
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+    }
+
+    function test_setUp_revertsWithInvalidFloorPrice() public {
+        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 50).addStep(100e3, 50);
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, 0, (1 << 33)));
+        new LBPStrategyBasicNoValidation(
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            createMigratorParams(
+                address(0),
+                500,
+                100,
+                DEFAULT_TOKEN_SPLIT,
+                address(3),
+                uint64(block.number + 500),
+                uint64(block.number + 1000),
+                address(this),
+                true,
+                true
+            ), // currency is address(1)
+            abi.encode(
+                AuctionParameters({
+                    currency: address(0), // ETH
+                    tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                    fundsRecipient: address(1),
+                    startBlock: uint64(block.number),
+                    endBlock: uint64(block.number + 100),
+                    claimBlock: uint64(block.number + 100),
+                    tickSpacing: 20,
+                    validationHook: address(0), // No validation hook
+                    floorPrice: 0,
+                    requiredCurrencyRaised: 0,
+                    auctionStepsData: auctionStepsData
+                })
+            ),
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER)
         );
@@ -353,6 +392,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
 
         // Skip if auction amount would be 0
         uint256 auctionAmount = uint256(totalSupply) * uint256(tokenSplit) / 1e7;
@@ -371,6 +411,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_onTokenReceived_succeeds(uint128 totalSupply) public {
         vm.assume(totalSupply > 1);
+        vm.assume(totalSupply.calculateReserveSupply(DEFAULT_TOKEN_SPLIT) <= 1e30);
         setupWithSupply(totalSupply);
 
         vm.prank(address(tokenLauncher));
@@ -434,6 +475,14 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
+        } else if (totalSupply.calculateReserveSupply(tokenSplit) > 1e30) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.ReserveSupplyIsTooHigh.selector,
+                    totalSupply.calculateReserveSupply(tokenSplit),
+                    1e30
+                )
+            );
         } else if (auctionParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(

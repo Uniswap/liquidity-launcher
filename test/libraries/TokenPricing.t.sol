@@ -51,12 +51,16 @@ contract TokenPricingTest is Test {
 
     function test_fuzz_convertToPriceX192_succeeds(uint256 price, bool currencyIsCurrency0) public {
         if (price == 0) {
-            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, price));
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceIsZero.selector, price));
             tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
         } else {
             if (currencyIsCurrency0) {
                 if ((1 << 192) / price > type(uint160).max) {
-                    vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, (1 << 192) / price));
+                    vm.expectRevert(
+                        abi.encodeWithSelector(
+                            TokenPricing.PriceTooHigh.selector, (1 << 192) / price, type(uint160).max
+                        )
+                    );
                     tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                 } else {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
@@ -64,7 +68,9 @@ contract TokenPricingTest is Test {
                 }
             } else {
                 if (price > type(uint160).max) {
-                    vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, price));
+                    vm.expectRevert(
+                        abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, price, type(uint160).max)
+                    );
                     tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                 } else {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
@@ -77,7 +83,14 @@ contract TokenPricingTest is Test {
     function test_fuzz_convertToSqrtPriceX96_succeeds(uint256 priceX192) public {
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            vm.expectRevert();
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenPricing.SqrtPriceX96OutOfBounds.selector,
+                    sqrtPriceX96,
+                    TickMath.MIN_SQRT_PRICE,
+                    TickMath.MAX_SQRT_PRICE
+                )
+            );
             tokenPricingHelper.convertToSqrtPriceX96(priceX192);
         } else {
             uint160 sqrtP = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
