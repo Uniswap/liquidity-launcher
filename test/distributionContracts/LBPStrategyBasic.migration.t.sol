@@ -1013,7 +1013,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // it should revert with {CannotUpdateEmptyPosition}
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
-        vm.assume(tokenAmount > 0 && tokenAmount <= 1e30);
+        vm.assume(tokenAmount > 0);
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
         sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
