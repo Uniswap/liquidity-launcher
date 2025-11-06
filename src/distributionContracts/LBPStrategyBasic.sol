@@ -225,14 +225,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
         // reserve supply validation (cannot be greater than MAX_RESERVE_SUPPLY)
         else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > MAX_RESERVE_SUPPLY) {
-            revert ReserveSupplyIsTooHigh(_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), MAX_RESERVE_SUPPLY);
+            revert ReserveSupplyIsTooHigh(
+                _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), MAX_RESERVE_SUPPLY
+            );
         }
     }
 
-    /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
-    ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
-    ///         Also validates that the migration block is after the end block of the auction.
-    /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
+    /// @notice Validates that the auction parameters are valid
+    /// @dev Ensures that the `fundsRecipient` is set to ActionConstants.MSG_SENDER
+    ///      and that the auction concludes before the configured migration block.
+    ///      Also, this checks that the amount of tokens being reserved for the liquidity position
+    ///      does not overflow the max liquidity per tick at the floor price.
     /// @param auctionParams The auction parameters that will be used to create the auction
     function _validateAuctionParams(
         bytes memory auctionParams,
@@ -255,37 +258,32 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             // check floor is less than max sqrt price
             // if currency < token: liquidity = getLiquidityForAmount1(TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK), floorprice, reserveSupply)
             //                       if liquidity > 2^107, revert
-            //                       2^107 is the minimum.
+            //                       2^107 is the tighest bound for max liquidity per tick .
             // if currency > token: liquidity = getLiquidityForAmount0(floorprice, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK), reserveSupply)
             //                       if liquidity > 2^107, revert
-            if (migratorParams.currency < _token) {
-                uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, true);
-                uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-                if (sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-                    revert InvalidFloorPrice(_auctionParams.floorPrice, TickMath.MAX_SQRT_PRICE);
-                }
-                uint128 liquidity = LiquidityAmounts.getLiquidityForAmount1(
+            bool currencyIsCurrency0 = migratorParams.currency < _token;
+            uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, currencyIsCurrency0);
+            uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
+            if (sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
+                revert InvalidFloorPrice(_auctionParams.floorPrice, TickMath.MAX_SQRT_PRICE);
+            }
+            uint128 liquidity;
+            if (currencyIsCurrency0) {
+                liquidity = LiquidityAmounts.getLiquidityForAmount1(
                     TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
                     sqrtPriceX96,
                     _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
                 );
-                if (liquidity > 2 ** 107) {
-                    revert InvalidLiquidity(2 ** 107, liquidity);
-                }
             } else {
-                uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, false);
-                uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-                if (sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-                    revert InvalidFloorPrice(_auctionParams.floorPrice, TickMath.MAX_SQRT_PRICE);
-                }
-                uint128 liquidity = LiquidityAmounts.getLiquidityForAmount0(
+                liquidity = LiquidityAmounts.getLiquidityForAmount0(
                     sqrtPriceX96,
                     TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
                     _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
                 );
-                if (liquidity > 2 ** 107) {
-                    revert InvalidLiquidity(2 ** 107, liquidity);
-                }
+            }
+            // Revert if the liquidty from the token would overflow the max liquidity per tick
+            if (liquidity > 2 ** 107) {
+                revert InvalidLiquidity(2 ** 107, liquidity);
             }
         }
     }
