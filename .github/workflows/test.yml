@@ -10,24 +10,29 @@ env:
 
 jobs:
   forge-tests:
-    name: Forge Tests
+    name: Foundry project
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
         with:
           submodules: recursive
           token: ${{ secrets.ORG_ACCESS_TOKEN }}
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@82dee4ba654bd2146511f85f0d013af94670c4de # v1
         with:
           version: stable
 
-      - name: Build
-        run: forge build
+      - name: Run Forge build
+        run: |
+          echo Foundry profile: $FOUNDRY_PROFILE
+          forge --version
+          forge build --sizes
+        id: build
 
-      - name: Run tests
-        run: forge test
+      - name: Run Forge tests
+        run: forge test --isolate -vvv
+        id: test
         env:
           FORGE_SNAPSHOT_CHECK: true
           FORK_URL: https://mainnet.infura.io/v3/${{ secrets.INFURA_API_KEY }}
