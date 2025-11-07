@@ -3,10 +3,10 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
-import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 contract TokenPricingHelper is Test {
     function convertToPriceX192(uint256 price, bool currencyIsCurrency0) public pure returns (uint256 priceX192) {
@@ -39,7 +39,7 @@ contract TokenPricingTest is Test {
         uint256 price = 1e18;
         bool currencyIsCurrency0 = true;
         uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
-        assertEq(priceX192, InverseHelpers.inverseQ96(price));
+        assertEq(priceX192, FullMath.mulDiv(1 << 192, FixedPoint96.Q96, price));
     }
 
     function test_convertToPriceX192_currencyIsCurrency1_succeeds() public view {
@@ -64,7 +64,7 @@ contract TokenPricingTest is Test {
                     tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                 } else {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
-                    assertEq(priceX192, InverseHelpers.inverseQ96(price));
+                    assertEq(priceX192, FullMath.mulDiv(1 << 192, FixedPoint96.Q96, price));
                 }
             } else {
                 if (price > type(uint160).max) {
