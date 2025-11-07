@@ -41,13 +41,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using TokenDistribution for uint128;
     using TokenPricing for uint256;
 
-    /// @notice The maximum reserve supply of tokens that can be used for the v4 LP position
-    /// @dev For a token with 18 decimals, this is 1 trillion tokens
-    uint256 public constant MAX_RESERVE_SUPPLY = 1e30;
-
     /// @notice The minimum floor price that can be used for the auction
     /// @dev This is the minimum floor price such that when inverted, the price is less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
-    uint256 MINIMUM_FLOOR_PRICE = 2 ** 32 + 1;
+    uint256 public constant MINIMUM_FLOOR_PRICE = 2 ** 32 + 1;
 
     /// @notice The token that is being distributed
     address public immutable token;
@@ -219,12 +215,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
-        // reserve supply validation (cannot be greater than MAX_RESERVE_SUPPLY)
-        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > MAX_RESERVE_SUPPLY) {
-            revert ReserveSupplyIsTooHigh(
-                _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), MAX_RESERVE_SUPPLY
-            );
-        }
     }
 
     /// @notice Validates that the auction parameters are valid
@@ -232,7 +222,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     ///      and that the auction concludes before the configured migration block.
     /// @param auctionParams The auction parameters that will be used to create the auction
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private view {
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);

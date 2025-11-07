@@ -433,14 +433,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
-        } else if (totalSupply.calculateReserveSupply(tokenSplit) > 1e30) {
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBasic.ReserveSupplyIsTooHigh.selector,
-                    totalSupply.calculateReserveSupply(tokenSplit),
-                    1e30
-                )
-            );
         } else if (auctionParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(
