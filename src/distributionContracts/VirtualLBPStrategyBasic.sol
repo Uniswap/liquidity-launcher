@@ -16,7 +16,7 @@ import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/Posi
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
+import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 

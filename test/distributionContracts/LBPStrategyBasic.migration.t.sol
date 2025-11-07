@@ -11,14 +11,14 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
+import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {InverseHelpers} from "../shared/InverseHelpers.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {ITokenCurrencyStorage} from "twap-auction/src/interfaces/ITokenCurrencyStorage.sol";
+import {ITokenCurrencyStorage} from "continuous-clearing-auction/src/interfaces/ITokenCurrencyStorage.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
@@ -64,7 +64,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
 
         // Submit bids and checkpoint auction
         vm.roll(realAuction.startBlock());
@@ -108,7 +108,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Send tokens but don't submit any bids
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
 
         // Move to end of auction without any bids
         vm.roll(realAuction.endBlock());
@@ -130,7 +130,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Send tokens but don't submit any bids
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
 
         // Move to end of auction without any bids
         vm.roll(realAuction.endBlock());
@@ -286,7 +286,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // 1000 total supply, 500 auction supply, 500 reserve supply
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -358,7 +358,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -438,7 +438,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -514,7 +514,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -577,7 +577,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -662,7 +662,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -750,7 +750,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -835,7 +835,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -1077,7 +1077,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start

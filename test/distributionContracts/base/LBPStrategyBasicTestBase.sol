@@ -15,13 +15,13 @@ import {TokenLauncher} from "../../../src/TokenLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
+import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../../src/interfaces/ILBPStrategyBasic.sol";
-import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
+import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
@@ -61,7 +61,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     LBPStrategyBasicNoValidation impl;
     MockERC20 token;
     MockERC20 implToken;
-    AuctionFactory auctionFactory;
+    ContinuousClearingAuctionFactory auctionFactory;
     MigratorParameters migratorParams;
     uint256 nextTokenId;
     bytes auctionParams;
@@ -76,7 +76,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     }
 
     function _setupContracts() internal {
-        auctionFactory = new AuctionFactory();
+        auctionFactory = new ContinuousClearingAuctionFactory();
         tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
@@ -252,7 +252,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     /// @notice Submits a bid for ETH auction
     /// @dev Handles ETH transfer, event emission, and bid ID validation
     function _submitBid(
-        IAuction auction,
+        IContinuousClearingAuction auction,
         address bidder,
         uint128 tokenAmount,
         uint256 priceX96,
@@ -280,7 +280,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     /// @notice Submits a bid for ERC20 auction
     /// @dev Assumes Permit2 approval is already set up
     function _submitBidNonEth(
-        IAuction auction,
+        IContinuousClearingAuction auction,
         address bidder,
         uint128 tokenAmount,
         uint256 priceX96,
