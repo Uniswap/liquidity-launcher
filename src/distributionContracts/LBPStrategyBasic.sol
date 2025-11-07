@@ -2,10 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
 import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -15,14 +12,11 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {TickCalculations} from "../libraries/TickCalculations.sol";
 import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
@@ -34,8 +28,6 @@ import {TokenDistribution} from "../libraries/TokenDistribution.sol";
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
-    using SafeERC20 for IERC20;
-    using TickCalculations for int24;
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
