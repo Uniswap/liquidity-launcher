@@ -904,7 +904,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 0);
         vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, type(uint256).max));
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
 
         vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
 

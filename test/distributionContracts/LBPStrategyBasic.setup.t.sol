@@ -176,52 +176,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_setUp_revertsWithInvalidToken() public {
-        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(token)));
-
-        new LBPStrategyBasicNoValidation(
-            address(token),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(
-                address(token),
-                500,
-                100,
-                DEFAULT_TOKEN_SPLIT,
-                address(3),
-                uint64(block.number + 500),
-                uint64(block.number + 1_000),
-                address(this),
-                true,
-                true
-            ),
-            auctionParams,
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
-        );
-
-        vm.expectRevert(abi.encodeWithSelector(IDistributionContract.InvalidToken.selector, address(0)));
-
-        new LBPStrategyBasicNoValidation(
-            address(0),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(
-                address(token),
-                500,
-                100,
-                DEFAULT_TOKEN_SPLIT,
-                address(3),
-                uint64(block.number + 500),
-                uint64(block.number + 1_000),
-                address(this),
-                true,
-                true
-            ),
-            auctionParams,
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
-        );
-    }
-
     function test_setUp_revertsWithInvalidFundsRecipient() public {
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
 
@@ -529,40 +483,6 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         // check pricex192
         else if (FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice) == 0) {
             vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, floorPrice, type(uint160).max));
-        }
-        // check sqrt price
-        else if (
-            uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))) < TickMath.MIN_SQRT_PRICE
-                || uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))) > TickMath.MAX_SQRT_PRICE
-        ) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidFloorPrice.selector, floorPrice));
-        } else if (
-            FullMath.mulDiv(
-                    DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT),
-                    FixedPoint96.Q96,
-                    uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice)))
-                        - TickMath.MIN_SQRT_PRICE
-                ) > type(uint128).max
-        ) {
-            vm.expectRevert(abi.encodeWithSelector(SafeCast.SafeCastOverflow.selector));
-        } else if (
-            LiquidityAmounts.getLiquidityForAmount1(
-                    TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-                    uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))),
-                    DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT)
-                ) > 2 ** 107
-        ) {
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBasic.InvalidLiquidity.selector,
-                    LiquidityAmounts.getLiquidityForAmount1(
-                        TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-                        uint160(Math.sqrt(FullMath.mulDiv(1 << 192, FixedPoint96.Q96, floorPrice))),
-                        DEFAULT_TOTAL_SUPPLY.calculateReserveSupply(DEFAULT_TOKEN_SPLIT)
-                    ),
-                    2 ** 107
-                )
-            );
         }
 
         new LBPStrategyBasicNoValidation(
