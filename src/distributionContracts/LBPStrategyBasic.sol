@@ -41,10 +41,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     using TokenDistribution for uint128;
     using TokenPricing for uint256;
 
-    /// @notice The minimum floor price that can be used for the auction
-    /// @dev This is the minimum floor price such that when inverted, the price is less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
-    uint256 public constant MINIMUM_FLOOR_PRICE = 2 ** 32 + 1;
-
     /// @notice The token that is being distributed
     address public immutable token;
     /// @notice The currency that the auction raised funds in
@@ -230,9 +226,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
         } else if (_auctionParams.currency != migratorParams.currency) {
             revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
-        } else if (_auctionParams.floorPrice < MINIMUM_FLOOR_PRICE) {
-            // when inverted, the price must be less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
-            revert InvalidFloorPrice(_auctionParams.floorPrice);
         }
     }
 
