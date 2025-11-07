@@ -131,10 +131,9 @@ library ParamsBuilder {
     /// @param params The parameters to truncate
     /// @return truncated The truncated parameters only (5 params)
     function truncateParams(bytes[] memory params) internal pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](FULL_RANGE_SIZE);
-        for (uint256 i = 0; i < FULL_RANGE_SIZE; i++) {
-            truncated[i] = params[i];
+        assembly {
+            mstore(params, FULL_RANGE_SIZE)
         }
-        return truncated;
+        return params;
     }
 }
