@@ -9,18 +9,14 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {console2} from "forge-std/console2.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 
 contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;

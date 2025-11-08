@@ -15,10 +15,10 @@ import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {AuctionStepsBuilder} from "twap-auction/test/utils/AuctionStepsBuilder.sol";
+import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
-import {AuctionFactory} from "twap-auction/src/AuctionFactory.sol";
+import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -30,7 +30,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     LBPStrategyBasicFactory public factory;
     MockERC20 token;
     TokenLauncher tokenLauncher;
-    AuctionFactory auctionFactory;
+    ContinuousClearingAuctionFactory auctionFactory;
     MigratorParameters migratorParams;
     bytes auctionParams;
 
@@ -39,7 +39,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(tokenLauncher));
-        auctionFactory = new AuctionFactory();
+        auctionFactory = new ContinuousClearingAuctionFactory();
 
         migratorParams = MigratorParameters({
             currency: address(0),

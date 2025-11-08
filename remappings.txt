@@ -6,4 +6,4 @@ merkle-distributor/=lib/merkle-distributor/
 @openzeppelin-latest=lib/openzeppelin-contracts/
 @solady/=lib/solady/
 @optimism/=lib/optimism/packages/contracts-bedrock/
-twap-auction/=lib/twap-auction
+continuous-clearing-auction/=lib/continuous-clearing-auction/

@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
+import {
+    IContinuousClearingAuction,
+    AuctionParameters
+} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
+import {
+    IContinuousClearingAuctionFactory
+} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -65,7 +73,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     IPositionManager public immutable positionManager;
 
     /// @notice The auction that will be used to create the auction
-    IAuction public auction;
+    IContinuousClearingAuction public auction;
     bytes public auctionParameters;
 
     constructor(
@@ -113,9 +121,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        IAuction _auction = IAuction(
+        IContinuousClearingAuction _auction = IContinuousClearingAuction(
             address(
-                IAuctionFactory(auctionFactory)
+                IContinuousClearingAuctionFactory(auctionFactory)
                     .initializeDistribution(token, auctionSupply, auctionParameters, bytes32(0))
             )
         );
