@@ -566,8 +566,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.roll(lbp.sweepBlock());
         vm.prank(lbp.operator());
         lbp.sweepCurrency();
+        vm.prank(lbp.operator());
+        lbp.sweepToken();
         assertEq(Currency.wrap(address(0)).balanceOf(address(lbp)), 0);
         assertGt(Currency.wrap(address(0)).balanceOf(lbp.operator()), operatorBalanceBefore);
+        assertEq(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
+        assertGt(Currency.wrap(address(token)).balanceOf(lbp.operator()), operatorBalanceBefore);
     }
 
     // ============ One-Sided Position Migration Tests ============

@@ -25,7 +25,7 @@ abstract contract LBPTestHelpers is Test {
         uint256 wethInRecipient;
     }
 
-    uint256 constant DUST_AMOUNT = 1e18;
+    uint256 constant DUST_AMOUNT = 15e18;
 
     function takeBalanceSnapshot(address token, address currency, address positionManager, address poolManager, address)
         internal
