@@ -20,45 +20,26 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {TickCalculations} from "../libraries/TickCalculations.sol";
 import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {TokenDistribution} from "../libraries/TokenDistribution.sol";
-import {console2} from "forge-std/console2.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
-    using SafeERC20 for IERC20;
-    using TickCalculations for int24;
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
-    using TokenPricing for *;
-
-    /// @notice The maximum reserve supply of tokens that can be used for the v4 LP position
-    /// @dev For a token with 18 decimals, this is 1 trillion tokens
-    uint256 public constant MAX_RESERVE_SUPPLY = 1e30;
-
-    /// @notice The minimum floor price that can be used for the auction
-    /// @dev This is the minimum floor price such that when inverted, the price is less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
-    uint256 MINIMUM_FLOOR_PRICE = 2 ** 32 + 1;
-
-    /// @notice The maximum liquidity that can be used for the v4 LP position
-    /// @dev This is the maximum liquidity possible for a v4 position given the minimum tick spacing of 1
-    ///      2^107 < L_max = (2^128 - 1) / (2 * T_max + 1) < 2^108, where T_max is the max tick (887272)
-    uint128 public constant MAX_LIQUIDITY = 2 ** 107;
+    using TokenPricing for uint256;
 
     /// @notice The token that is being distributed
     address public immutable token;
@@ -103,8 +84,8 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPositionManager _positionManager,
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
-        _validateMigratorParams(_token, _totalSupply, _migratorParams);
-        _validateAuctionParams(_totalSupply, _token, _auctionParams, _migratorParams);
+        _validateMigratorParams(_totalSupply, _migratorParams);
+        _validateAuctionParams(_auctionParams, _migratorParams);
 
         auctionParameters = _auctionParams;
 
@@ -194,13 +175,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
-    /// @param _token The token that is being distributed
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
-        private
-        pure
-    {
+    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters memory migratorParams) private pure {
         // sweep block validation (cannot be before or equal to the migration block)
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
@@ -208,10 +185,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // token split validation (cannot be greater than or equal to 100%)
         else if (migratorParams.tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT);
-        }
-        // token validation (cannot be zero address or the same as the currency)
-        else if (_token == address(0) || _token == migratorParams.currency) {
-            revert InvalidToken(address(_token));
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         else if (
@@ -238,29 +211,14 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
             revert AuctionSupplyIsZero();
         }
-        // reserve supply validation (cannot be greater than MAX_RESERVE_SUPPLY)
-        else if (_totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction) > MAX_RESERVE_SUPPLY) {
-            revert ReserveSupplyIsTooHigh(
-                _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction), MAX_RESERVE_SUPPLY
-            );
-        }
     }
 
     /// @notice Validates that the auction parameters are valid
     /// @dev Ensures that the `fundsRecipient` is set to ActionConstants.MSG_SENDER
     ///      and that the auction concludes before the configured migration block.
-    ///      Also, this checks that the amount of tokens being reserved for the liquidity position
-    ///      does not overflow the max liquidity per tick at the floor price.
-    /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
-    /// @param _token The token that is being distributed
     /// @param auctionParams The auction parameters that will be used to create the auction
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateAuctionParams(
-        uint128 _totalSupply,
-        address _token,
-        bytes memory auctionParams,
-        MigratorParameters memory migratorParams
-    ) private view {
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
@@ -268,46 +226,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
         } else if (_auctionParams.currency != migratorParams.currency) {
             revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
-        } else if (_auctionParams.floorPrice < MINIMUM_FLOOR_PRICE) {
-            // when inverted, the price must be less than or equal to type(uint160).max so it can be converted to Uniswap v4 X192 format
-            revert InvalidFloorPrice(_auctionParams.floorPrice);
-        } else {
-            // convert floor price to sqrt price
-            // check floor is less than max sqrt price
-            // if currency < token: liquidity = getLiquidityForAmount1(TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK), floorprice, reserveSupply)
-            //                       if liquidity > 2^107, revert
-            //                       2^107 is the tighest bound for max liquidity per tick .
-            // if currency > token: liquidity = getLiquidityForAmount0(floorprice, TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK), reserveSupply)
-            //                       if liquidity > 2^107, revert
-            bool currencyIsCurrency0 = migratorParams.currency < _token;
-            uint256 priceX192 = TokenPricing.convertToPriceX192(_auctionParams.floorPrice, currencyIsCurrency0);
-            console2.log("priceX192", priceX192);
-            uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
-            console2.log("sqrtPriceX96", sqrtPriceX96);
-            if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-                revert InvalidFloorPrice(_auctionParams.floorPrice);
-            }
-            uint128 liquidity;
-            if (currencyIsCurrency0) {
-                console2.log("currencyIsCurrency0");
-                liquidity = LiquidityAmounts.getLiquidityForAmount1(
-                    TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-                    sqrtPriceX96,
-                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
-                );
-                console2.log("liquidity", liquidity);
-            } else {
-                liquidity = LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtPriceX96,
-                    TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-                    _totalSupply.calculateReserveSupply(migratorParams.tokenSplitToAuction)
-                );
-            }
-            // Revert if the liquidty from the token would overflow the max liquidity per tick
-            if (liquidity > MAX_LIQUIDITY) {
-                console2.log("MAX_LIQUIDITY", MAX_LIQUIDITY);
-                revert InvalidLiquidity(liquidity, MAX_LIQUIDITY);
-            }
         }
     }
 

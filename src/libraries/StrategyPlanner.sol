@@ -79,7 +79,7 @@ library StrategyPlanner {
             return (existingActions, existingParams.truncateParams());
         }
 
-        // If this exceeds type(uint256).max, the transaction will revert and no position will be created
+        // If this overflows, the transaction will revert and no position will be created
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
