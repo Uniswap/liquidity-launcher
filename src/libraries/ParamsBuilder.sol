@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {FullRangeParams, OneSidedParams, TickBounds} from "../types/PositionTypes.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {FullRangeParams, OneSidedParams, TickBounds} from "../types/PositionTypes.sol";
 
 /// @title ParamsBuilder
 /// @notice Library for building position parameters
@@ -131,10 +131,9 @@ library ParamsBuilder {
     /// @param params The parameters to truncate
     /// @return truncated The truncated parameters only (5 params)
     function truncateParams(bytes[] memory params) internal pure returns (bytes[] memory) {
-        bytes[] memory truncated = new bytes[](FULL_RANGE_SIZE);
-        for (uint256 i = 0; i < FULL_RANGE_SIZE; i++) {
-            truncated[i] = params[i];
+        assembly {
+            mstore(params, FULL_RANGE_SIZE)
         }
-        return truncated;
+        return params;
     }
 }

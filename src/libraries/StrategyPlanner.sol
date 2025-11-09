@@ -79,7 +79,7 @@ library StrategyPlanner {
             return (existingActions, existingParams.truncateParams());
         }
 
-        // If this exceeds type(uint256).max, the transaction will revert and no position will be created
+        // If this overflows, the transaction will revert and no position will be created
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
@@ -88,8 +88,11 @@ library StrategyPlanner {
             currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
-        if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-            return (existingActions, ParamsBuilder.truncateParams(existingParams));
+        if (
+            newLiquidity == 0
+                || baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
+        ) {
+            return (existingActions, existingParams.truncateParams());
         }
 
         PoolKey memory poolKey = PoolKey({

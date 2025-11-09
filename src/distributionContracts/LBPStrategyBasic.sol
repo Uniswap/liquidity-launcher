@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IAuction, AuctionParameters} from "twap-auction/src/interfaces/IAuction.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
-import {IAuctionFactory} from "twap-auction/src/interfaces/IAuctionFactory.sol";
+import {
+    IContinuousClearingAuction,
+    AuctionParameters
+} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
+import {
+    IContinuousClearingAuctionFactory
+} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -15,13 +20,11 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
-import {TickCalculations} from "../libraries/TickCalculations.sol";
 import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
@@ -33,12 +36,10 @@ import {TokenDistribution} from "../libraries/TokenDistribution.sol";
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
-    using SafeERC20 for IERC20;
-    using TickCalculations for int24;
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
-    using TokenPricing for *;
+    using TokenPricing for uint256;
 
     /// @notice The token that is being distributed
     address public immutable token;
@@ -72,7 +73,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     IPositionManager public immutable positionManager;
 
     /// @notice The auction that will be used to create the auction
-    IAuction public auction;
+    IContinuousClearingAuction public auction;
     bytes public auctionParameters;
 
     constructor(
@@ -83,7 +84,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         IPositionManager _positionManager,
         IPoolManager _poolManager
     ) HookBasic(_poolManager) {
-        _validateMigratorParams(_token, _totalSupply, _migratorParams);
+        _validateMigratorParams(_totalSupply, _migratorParams);
         _validateAuctionParams(_auctionParams, _migratorParams);
 
         auctionParameters = _auctionParams;
@@ -120,9 +121,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        IAuction _auction = IAuction(
+        IContinuousClearingAuction _auction = IContinuousClearingAuction(
             address(
-                IAuctionFactory(auctionFactory)
+                IContinuousClearingAuctionFactory(auctionFactory)
                     .initializeDistribution(token, auctionSupply, auctionParameters, bytes32(0))
             )
         );
@@ -174,13 +175,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
-    /// @param _token The token that is being distributed
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(address _token, uint128 _totalSupply, MigratorParameters memory migratorParams)
-        private
-        pure
-    {
+    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters memory migratorParams) private pure {
         // sweep block validation (cannot be before or equal to the migration block)
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
@@ -188,10 +185,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // token split validation (cannot be greater than or equal to 100%)
         else if (migratorParams.tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT);
-        }
-        // token validation (cannot be zero address or the same as the currency)
-        else if (_token == address(0) || _token == migratorParams.currency) {
-            revert InvalidToken(address(_token));
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         else if (
@@ -220,17 +213,19 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
-    /// @notice Validates that the funds recipient in the auction parameters is set to ActionConstants.MSG_SENDER (address(1)),
-    ///         which will be replaced with this contract's address by the AuctionFactory during auction creation
-    ///         Also validates that the migration block is after the end block of the auction.
-    /// @dev Will revert if the parameters are not correcly encoded for AuctionParameters
+    /// @notice Validates that the auction parameters are valid
+    /// @dev Ensures that the `fundsRecipient` is set to ActionConstants.MSG_SENDER
+    ///      and that the auction concludes before the configured migration block.
     /// @param auctionParams The auction parameters that will be used to create the auction
+    /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
         } else if (_auctionParams.endBlock >= migratorParams.migrationBlock) {
             revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
+        } else if (_auctionParams.currency != migratorParams.currency) {
+            revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
         }
     }
 
@@ -244,10 +239,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         auction.checkpoint();
         uint256 currencyAmount = auction.currencyRaised();
 
+        // cannot create a v4 pool with more than type(uint128).max currency amount
         if (currencyAmount > type(uint128).max) {
             revert CurrencyAmountTooHigh(currencyAmount, type(uint128).max);
         }
 
+        // cannot create a v4 pool with no currency raised
         if (currencyAmount == 0) {
             revert NoCurrencyRaised();
         }
@@ -447,11 +444,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
     /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
     /// @return The actions and parameters needed to take the pair using the position manager
-    function _createFinalTakePairPlan(
-        BasePositionParams memory baseParams,
-        bytes memory actions,
-        bytes[] memory params
-    ) private view returns (bytes memory, bytes[] memory) {
+    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
+        private
+        view
+        returns (bytes memory, bytes[] memory)
+    {
         return baseParams.planFinalTakePair(actions, params);
     }
 

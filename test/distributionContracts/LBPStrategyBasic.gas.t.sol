@@ -4,10 +4,10 @@ pragma solidity ^0.8.26;
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
-import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
-import {ITickStorage} from "twap-auction/src/interfaces/ITickStorage.sol";
+import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
+import {ITickStorage} from "continuous-clearing-auction/src/interfaces/ITickStorage.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
@@ -28,7 +28,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Step 2: Move to auction start
@@ -48,7 +48,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, tickNumberToPriceX96(2));
         assertEq(realCurrencyRaised, inputAmountForTokens(500e18, tickNumberToPriceX96(2))); // add up all the bids
@@ -68,7 +68,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         setupWithSupplyAndTokenSplit(DEFAULT_TOTAL_SUPPLY, 2e6, address(0));
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -84,7 +84,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
         assertEq(realCurrencyRaised, inputAmountForTokens(200e18, targetPrice));
@@ -107,7 +107,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -132,7 +132,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
         assertEq(realCurrencyRaised, inputAmountForTokens(500e18, targetPrice));
@@ -168,7 +168,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         // Setup for migration
         sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -193,7 +193,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         realAuction.checkpoint();
 
         uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
-        uint256 realCurrencyRaised = ICheckpointStorage(address(realAuction)).currencyRaised();
+        uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
         assertEq(realCurrencyRaised, inputAmountForTokens(800e18, targetPrice));

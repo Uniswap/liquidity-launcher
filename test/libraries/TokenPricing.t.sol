@@ -3,10 +3,10 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
-import {InverseHelpers} from "../shared/InverseHelpers.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 contract TokenPricingHelper is Test {
     function convertToPriceX192(uint256 price, bool currencyIsCurrency0) public pure returns (uint256 priceX192) {
@@ -39,7 +39,7 @@ contract TokenPricingTest is Test {
         uint256 price = 1e18;
         bool currencyIsCurrency0 = true;
         uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
-        assertEq(priceX192, InverseHelpers.inverseQ96(price) << 96);
+        assertEq(priceX192, FullMath.mulDiv(1 << 192, FixedPoint96.Q96, price));
     }
 
     function test_convertToPriceX192_currencyIsCurrency1_succeeds() public view {
@@ -51,20 +51,26 @@ contract TokenPricingTest is Test {
 
     function test_fuzz_convertToPriceX192_succeeds(uint256 price, bool currencyIsCurrency0) public {
         if (price == 0) {
-            vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, price));
+            vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceIsZero.selector, price));
             tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
         } else {
             if (currencyIsCurrency0) {
                 if ((1 << 192) / price > type(uint160).max) {
-                    vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, (1 << 192) / price));
+                    vm.expectRevert(
+                        abi.encodeWithSelector(
+                            TokenPricing.PriceTooHigh.selector, (1 << 192) / price, type(uint160).max
+                        )
+                    );
                     tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                 } else {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
-                    assertEq(priceX192, InverseHelpers.inverseQ96(price) << 96);
+                    assertEq(priceX192, FullMath.mulDiv(1 << 192, FixedPoint96.Q96, price));
                 }
             } else {
                 if (price > type(uint160).max) {
-                    vm.expectRevert(abi.encodeWithSelector(TokenPricing.InvalidPrice.selector, price));
+                    vm.expectRevert(
+                        abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, price, type(uint160).max)
+                    );
                     tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
                 } else {
                     uint256 priceX192 = tokenPricingHelper.convertToPriceX192(price, currencyIsCurrency0);
@@ -77,7 +83,14 @@ contract TokenPricingTest is Test {
     function test_fuzz_convertToSqrtPriceX96_succeeds(uint256 priceX192) public {
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         if (sqrtPriceX96 < TickMath.MIN_SQRT_PRICE || sqrtPriceX96 > TickMath.MAX_SQRT_PRICE) {
-            vm.expectRevert();
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    TokenPricing.SqrtPriceX96OutOfBounds.selector,
+                    sqrtPriceX96,
+                    TickMath.MIN_SQRT_PRICE,
+                    TickMath.MAX_SQRT_PRICE
+                )
+            );
             tokenPricingHelper.convertToSqrtPriceX96(priceX192);
         } else {
             uint160 sqrtP = tokenPricingHelper.convertToSqrtPriceX96(priceX192);

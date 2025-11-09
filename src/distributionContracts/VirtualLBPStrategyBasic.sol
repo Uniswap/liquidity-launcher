@@ -5,20 +5,8 @@ import {LBPStrategyBasic} from "./LBPStrategyBasic.sol";
 import {IVirtualERC20} from "../interfaces/external/IVirtualERC20.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
-import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
-import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {Auction} from "twap-auction/src/Auction.sol";
-import {HookBasic} from "../utils/HookBasic.sol";
-import {MigrationData} from "../types/MigrationData.sol";
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
