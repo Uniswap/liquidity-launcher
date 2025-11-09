@@ -15,6 +15,8 @@ import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {IVirtualERC20} from "../../../src/interfaces/external/IVirtualERC20.sol";
+import {MockVirtualERC20} from "../../mocks/MockVirtualERC20.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -80,13 +82,17 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), 0);
     }
 
-    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
+    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address currency) internal view {
         // Assert LBP is empty (with dust)
-        vm.assertLe(address(lbp).balance, DUST_AMOUNT);
-        vm.assertLe(IERC20(token).balanceOf(address(lbp)), DUST_AMOUNT);
+        vm.assertLe(address(lbp).balance, DUST_AMOUNT, "should not have any leftover currency in LBP");
+        vm.assertLe(
+            IERC20(lbp.token()).balanceOf(address(lbp)), DUST_AMOUNT, "should not have any leftover tokens in LBP"
+        );
 
         if (currency != address(0)) {
-            vm.assertLe(IERC20(currency).balanceOf(address(lbp)), DUST_AMOUNT);
+            vm.assertLe(
+                IERC20(currency).balanceOf(address(lbp)), DUST_AMOUNT, "should not have any leftover currency in LBP"
+            );
         }
     }
 
@@ -95,17 +101,39 @@ abstract contract LBPTestHelpers is Test {
         pure
     {
         // should not be any leftover dust in position manager (should have been swept back)
-        vm.assertEq(afterMigration.tokenInPosm, before.tokenInPosm);
-        vm.assertEq(afterMigration.currencyInPosm, before.currencyInPosm);
+        vm.assertEq(
+            afterMigration.tokenInPosm, before.tokenInPosm, "should not have any leftover tokens in position manager"
+        );
+        vm.assertEq(
+            afterMigration.currencyInPosm,
+            before.currencyInPosm,
+            "should not have any leftover currency in position manager"
+        );
 
         // Pool Manager should have received funds
-        vm.assertGt(afterMigration.tokenInPoolm, before.tokenInPoolm);
-        vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
+        vm.assertGt(afterMigration.tokenInPoolm, before.tokenInPoolm, "should have received tokens in pool manager");
+        vm.assertGt(
+            afterMigration.currencyInPoolm, before.currencyInPoolm, "should have received currency in pool manager"
+        );
     }
 
     function sendTokensToLBP(address tokenLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
         vm.prank(tokenLauncher);
         token.transfer(address(lbp), amount);
+        lbp.onTokensReceived();
+    }
+
+    function sendVirtualTokensToLBP(
+        address tokenLauncher,
+        MockVirtualERC20 virtualToken,
+        LBPStrategyBasic lbp,
+        uint256 amount
+    ) internal {
+        vm.prank(tokenLauncher);
+        virtualToken.transfer(address(lbp), amount);
+        assertEq(virtualToken.balanceOf(address(lbp)), amount);
+        // Assert that the lbp has the virtual token but not the underlying token
+        assertEq(IERC20(virtualToken.UNDERLYING_TOKEN_ADDRESS()).balanceOf(address(lbp)), 0);
         lbp.onTokensReceived();
     }
 

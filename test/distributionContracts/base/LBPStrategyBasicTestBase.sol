@@ -23,6 +23,9 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {MockVirtualERC20} from "../../mocks/MockVirtualERC20.sol";
+import {VirtualLBPStrategyBasic} from "../../../src/distributionContracts/VirtualLBPStrategyBasic.sol";
+import {VirtualLBPStrategyBasicNoValidation} from "../../mocks/VirtualLBPStrategyBasicNoValidation.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
@@ -43,6 +46,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Test token address (make it > address(0) but < DAI)
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
+    address constant TEST_VIRTUAL_TOKEN_ADDRESS = 0x2222222222222222222222222222222222222222;
 
     uint160 constant HOOK_PERMISSION_COUNT = 14;
     uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
@@ -58,21 +62,69 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     // State variables
     LBPStrategyBasic lbp;
     TokenLauncher tokenLauncher;
-    LBPStrategyBasicNoValidation impl;
+    ILBPStrategyBasic impl;
     MockERC20 token;
     MockERC20 implToken;
+    MockVirtualERC20 virtualToken;
+    MockVirtualERC20 virtualTokenImpl;
     ContinuousClearingAuctionFactory auctionFactory;
     MigratorParameters migratorParams;
     uint256 nextTokenId;
     bytes auctionParams;
+    address governance;
+
+    constructor() {
+        governance = makeAddr("governance");
+        vm.label(governance, "governance");
+    }
+
+    modifier deployLBPStrategy() {
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _;
+    }
+
+    modifier deployVirtualLBPStrategy() {
+        _deployVirtualLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _;
+    }
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("FORK_URL"), FORK_BLOCK);
         _setupContracts();
         _setupDefaultMigratorParams();
         _setupDefaultAuctionParams();
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployLBPStrategyAndVerifyInitialState(false);
+    }
+
+    /// @notice Deploys the LBPStrategy and verifies the initial state
+    function _deployLBPStrategyAndVerifyInitialState(bool isVirtual) internal {
+        if (isVirtual) {
+            _deployVirtualLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+            assertEq(lbp.token(), address(virtualToken));
+        } else {
+            _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+            assertEq(lbp.token(), address(token));
+        }
         _verifyInitialState();
+    }
+
+    /// @notice Deploys the LBPStrategy and verifies the initial state, then sends the tokens to the LBP
+    function _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(bool isVirtual, uint256 amount) internal {
+        _deployLBPStrategyAndVerifyInitialState(isVirtual);
+        if (isVirtual) {
+            sendVirtualTokensToLBP(address(tokenLauncher), virtualToken, lbp, amount);
+        } else {
+            sendTokensToLBP(address(tokenLauncher), token, lbp, amount);
+        }
+    }
+
+    /// @notice Migrates the LBPStrategy and approves migration if virtual
+    function _migrate(bool isVirtual) internal {
+        if (isVirtual) {
+            vm.prank(governance);
+            VirtualLBPStrategyBasic(payable(address(lbp))).approveMigration();
+        }
+        lbp.migrate();
     }
 
     function _setupContracts() internal {
@@ -102,6 +154,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     function _deployLBPStrategy(uint128 totalSupply) internal {
         // Deploy token and give supply to token launcher
         token = MockERC20(TEST_TOKEN_ADDRESS);
+        vm.label(address(token), "MockERC20");
         implToken = new MockERC20("Test Token", "TEST", totalSupply, address(tokenLauncher));
         vm.etch(TEST_TOKEN_ADDRESS, address(implToken).code);
         deal(address(token), address(tokenLauncher), totalSupply);
@@ -110,22 +163,63 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
         );
         lbp = LBPStrategyBasic(payable(hookAddress));
+        vm.label(address(lbp), "LBPStrategyBasic");
         // Deploy implementation
-        impl = new LBPStrategyBasicNoValidation(
-            address(token),
-            totalSupply,
-            migratorParams,
-            auctionParams,
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+        impl = ILBPStrategyBasic(
+            new LBPStrategyBasicNoValidation(
+                address(token),
+                totalSupply,
+                migratorParams,
+                auctionParams,
+                IPositionManager(POSITION_MANAGER),
+                IPoolManager(POOL_MANAGER)
+            )
         );
         vm.etch(address(lbp), address(impl).code);
 
         LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
     }
 
+    function _deployVirtualLBPStrategy(uint128 totalSupply) internal {
+        token = MockERC20(TEST_TOKEN_ADDRESS);
+        vm.label(address(token), "MockERC20");
+        implToken = new MockERC20("Test Token", "TEST", totalSupply, address(tokenLauncher));
+        vm.etch(TEST_TOKEN_ADDRESS, address(implToken).code);
+
+        virtualToken = MockVirtualERC20(TEST_VIRTUAL_TOKEN_ADDRESS);
+        vm.label(address(virtualToken), "MockVirtualERC20");
+        virtualTokenImpl = new MockVirtualERC20(address(token), totalSupply, address(tokenLauncher));
+        vm.etch(TEST_VIRTUAL_TOKEN_ADDRESS, address(virtualTokenImpl).code);
+        // deal the token supply to the virtual token
+        deal(address(token), address(virtualToken), totalSupply);
+        // deal the virtual token supply to the token launcher
+        deal(address(virtualToken), address(tokenLauncher), totalSupply);
+        // Assert the virtual token is fully collateralized
+        assertEq(token.balanceOf(address(virtualToken)), totalSupply);
+        // Assert that the token launcher has the full supply of virtual token
+        assertEq(virtualToken.balanceOf(address(tokenLauncher)), totalSupply);
+        // Get hook address with BEFORE_INITIALIZE permission
+        address hookAddress = address(
+            uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
+        );
+        lbp = VirtualLBPStrategyBasic(payable(address(hookAddress)));
+        vm.label(address(lbp), "VirtualLBPStrategyBasic");
+        impl = ILBPStrategyBasic(
+            new VirtualLBPStrategyBasicNoValidation(
+                address(virtualToken),
+                totalSupply,
+                migratorParams,
+                auctionParams,
+                IPositionManager(POSITION_MANAGER),
+                IPoolManager(POOL_MANAGER),
+                governance
+            )
+        );
+        vm.etch(address(lbp), address(impl).code);
+        VirtualLBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
+    }
+
     function _verifyInitialState() internal view {
-        assertEq(lbp.token(), address(token));
         assertEq(lbp.currency(), migratorParams.currency);
         assertEq(lbp.totalSupply(), DEFAULT_TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
