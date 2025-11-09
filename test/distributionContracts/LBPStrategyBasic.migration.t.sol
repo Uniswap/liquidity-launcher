@@ -22,6 +22,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {VirtualLBPStrategyBasic} from "../../src/distributionContracts/VirtualLBPStrategyBasic.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -280,10 +281,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     // ============ Full Range Migration Tests ============
 
-    function test_migrate_fullRange_withETH_succeeds() public {
+    function test_migrate_fullRange_withETH_succeeds(bool isVirtual) public {
         // Setup
         // 1000 total supply, 500 auction supply, 500 reserve supply
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -328,7 +329,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -347,8 +348,49 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), address(0));
+        assertLBPStateAfterMigration(lbp, address(0));
         assertBalancesAfterMigration(before, afterMigration);
+    }
+
+    function test_migrate_fullRange_withETH_VirtualNotApprovedReverts() public {
+        bool isVirtual = true;
+        // Setup
+        // 1000 total supply, 500 auction supply, 500 reserve supply
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
+        IContinuousClearingAuction realAuction = lbp.auction();
+        assertFalse(address(realAuction) == address(0));
+        // Move to auction start
+        vm.roll(realAuction.startBlock());
+        // Submit bids at a valid tick price
+        uint256 targetPrice = tickNumberToPriceX96(2); // floor price + 1 tick
+
+        _submitBid(
+            realAuction,
+            alice,
+            inputAmountForTokens(250e18, targetPrice), // 250 tokens at max target price
+            targetPrice,
+            tickNumberToPriceX96(1), // prev price is floor price
+            0
+        );
+
+        _submitBid(
+            realAuction,
+            bob,
+            inputAmountForTokens(250e18, targetPrice), // 250 tokens at max target price
+            targetPrice,
+            tickNumberToPriceX96(1), // prev price is floor price
+            1
+        );
+
+        vm.roll(realAuction.endBlock());
+        realAuction.checkpoint();
+
+        realAuction.sweepCurrency();
+
+        // Migrate
+        vm.roll(lbp.migrationBlock());
+        vm.expectRevert(abi.encodeWithSelector(VirtualLBPStrategyBasic.MigrationNotApproved.selector));
+        lbp.migrate();
     }
 
     function test_migrate_fullRange_withNonETHCurrency_succeeds() public {
@@ -417,11 +459,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), DAI);
+        assertLBPStateAfterMigration(lbp, DAI);
         assertBalancesAfterMigration(before, afterMigration);
     }
 
-    function test_migrate_noOneSidedPosition_leftoverToken_succeeds() public {
+    function test_migrate_noOneSidedPosition_leftoverToken_succeeds(bool isVirtual) public {
         migratorParams = createMigratorParams(
             address(0),
             500,
@@ -434,8 +476,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             false, // no one-sided position in tokens
             false // no one-sided position in currency
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -461,7 +502,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -485,19 +526,27 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Verify balances
         assertBalancesAfterMigration(before, afterMigration);
         // leftover tokens, no leftover currency
-        assertGt(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
-        assertLe(Currency.wrap(address(0)).balanceOf(address(lbp)), LBPTestHelpers.DUST_AMOUNT); // dust
+        assertGt(Currency.wrap(address(lbp.token())).balanceOf(address(lbp)), 0, "leftover tokens");
+        assertLe(
+            Currency.wrap(address(lbp.currency())).balanceOf(address(lbp)),
+            LBPTestHelpers.DUST_AMOUNT,
+            "leftover currency"
+        ); // dust
 
-        uint256 operatorBalanceBefore = Currency.wrap(address(token)).balanceOf(lbp.operator());
+        uint256 operatorBalanceBefore = Currency.wrap(address(lbp.currency())).balanceOf(lbp.operator());
 
         vm.roll(lbp.sweepBlock());
         vm.prank(lbp.operator());
         lbp.sweepToken();
-        assertEq(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
-        assertGt(Currency.wrap(address(token)).balanceOf(lbp.operator()), operatorBalanceBefore);
+        assertEq(Currency.wrap(address(lbp.token())).balanceOf(address(lbp)), 0, "tokens swept");
+        assertGt(
+            Currency.wrap(address(lbp.token())).balanceOf(lbp.operator()),
+            operatorBalanceBefore,
+            "tokens operator balance"
+        );
     }
 
-    function test_migrate_noOneSidedPosition_leftoverCurrency_succeeds() public {
+    function test_migrate_noOneSidedPosition_leftoverCurrency_succeeds(bool isVirtual) public {
         migratorParams = createMigratorParams(
             address(0),
             500,
@@ -510,8 +559,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             false, // no one-sided position in tokens
             false // no one-sided position in currency
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -538,7 +586,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -570,15 +618,15 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         lbp.sweepToken();
         assertEq(Currency.wrap(address(0)).balanceOf(address(lbp)), 0);
         assertGt(Currency.wrap(address(0)).balanceOf(lbp.operator()), operatorBalanceBefore);
-        assertEq(Currency.wrap(address(token)).balanceOf(address(lbp)), 0);
-        assertGt(Currency.wrap(address(token)).balanceOf(lbp.operator()), operatorBalanceBefore);
+        assertEq(Currency.wrap(address(lbp.token())).balanceOf(address(lbp)), 0);
+        assertGt(Currency.wrap(address(lbp.token())).balanceOf(lbp.operator()), operatorBalanceBefore);
     }
 
     // ============ One-Sided Position Migration Tests ============
 
-    function test_migrate_withOneSidedPosition_withETH_succeeds() public {
+    function test_migrate_withOneSidedPosition_withETH_succeeds(bool isVirtual) public {
         // Setup
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -608,7 +656,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Take balance snapshot after
         BalanceSnapshot memory afterMigration =
@@ -643,11 +691,11 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), address(0));
+        assertLBPStateAfterMigration(lbp, address(0));
         assertBalancesAfterMigration(before, afterMigration);
     }
 
-    function test_migrate_withOneSidedPosition_withNonETHCurrency_succeeds() public {
+    function test_migrate_withOneSidedPosition_withNonETHCurrency_succeeds(bool isVirtual) public {
         // Setup with DAI and larger tick spacing
         createAuctionParamsWithCurrency(DAI);
         migratorParams = createMigratorParams(
@@ -662,8 +710,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             true,
             true
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -701,7 +748,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Verify main position - token (0x1111...) < DAI (0x6B17...) so token is currency0
         assertPositionCreated(
@@ -728,12 +775,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
 
         // Verify balances
-        assertLBPStateAfterMigration(lbp, address(token), DAI);
+        assertLBPStateAfterMigration(lbp, DAI);
     }
 
     // Fuzz tests
 
-    function test_fuzz_migrate_ensuresTicksAreMultiplesOfTickSpacing_withETH(int24 tickSpacing) public {
+    function test_fuzz_migrate_ensuresTicksAreMultiplesOfTickSpacing_withETH(bool isVirtual, int24 tickSpacing) public {
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 
         //Redeploy with fuzzed tick spacing
@@ -749,9 +796,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             true,
             true
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -775,7 +820,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Check main position
         (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
@@ -815,7 +860,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertLe(oneSidedInfo.tickUpper(), initialTick);
     }
 
-    function test_fuzz_migrate_withNonETHCurrency_ensuresTicksAreMultiplesOfTickSpacing(int24 tickSpacing) public {
+    function test_fuzz_migrate_withNonETHCurrency_ensuresTicksAreMultiplesOfTickSpacing(
+        bool isVirtual,
+        int24 tickSpacing
+    ) public {
         // Bound inputs to reasonable values
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
 
@@ -834,9 +882,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             true,
             true
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -865,7 +911,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         // Migrate
         vm.roll(lbp.migrationBlock());
-        lbp.migrate();
+        _migrate(isVirtual);
 
         // Check main position
         (, PositionInfo info) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(nextTokenId);
@@ -970,9 +1016,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         }
     }
 
-    function test_migrate_withETH_revertsWithPriceTooHigh() public {
+    function test_migrate_withETH_revertsWithPriceTooHigh(bool isVirtual) public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        _deployVirtualLBPStrategyVerifyInitialStateAndSendTokens(isVirtual, DEFAULT_TOTAL_SUPPLY);
 
         // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
         // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
@@ -1016,7 +1062,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, Q192 / veryLowClearingPrice, type(uint160).max)
         );
-        lbp.migrate();
+        _migrate(isVirtual);
     }
 
     function test_fuzz_migrate_withNonETHCurrency(uint128 totalSupply, uint24 tokenSplit) public {
