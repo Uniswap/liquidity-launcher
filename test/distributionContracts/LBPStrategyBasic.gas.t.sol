@@ -15,7 +15,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
     function test_onTokensReceived_gas() public {
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
         lbp.onTokensReceived();
         vm.snapshotGasLastCall("onTokensReceived");
@@ -26,7 +26,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     /// forge-config: ci.isolate = true
     function test_migrate_withETH_gas() public {
         // Setup
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -66,7 +66,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
     function test_migrate_withETH_withOneSidedPosition_gas() public {
         // Setup. Send 20% of the total supply to the auction so we can create a one-sided position in tokens.
         setupWithSupplyAndTokenSplit(DEFAULT_TOTAL_SUPPLY, 2e6, address(0));
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -105,7 +105,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
 
         // Setup for migration
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -166,7 +166,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         // Setup for migration
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));

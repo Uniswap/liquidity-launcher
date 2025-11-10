@@ -284,7 +284,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     // ============ Token Reception Tests ============
 
     function test_onTokenReceived_revertsWithInvalidAmountReceived() public {
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         ERC20(token).transfer(address(lbp), DEFAULT_TOTAL_SUPPLY - 1);
 
         vm.expectRevert(
@@ -296,7 +296,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     }
 
     function test_onTokenReceived_succeeds() public {
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
         console2.logBytes(auctionParams);
         console2.logBytes(lbp.auctionParameters());
@@ -337,7 +337,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), totalSupply);
         lbp.onTokensReceived();
 
@@ -350,7 +350,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         vm.assume(totalSupply > 1);
         setupWithSupply(totalSupply);
 
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), totalSupply);
         lbp.onTokensReceived();
 

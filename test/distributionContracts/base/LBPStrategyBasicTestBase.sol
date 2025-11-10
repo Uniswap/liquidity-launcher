@@ -11,7 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LBPStrategyBasicNoValidation} from "../../mocks/LBPStrategyBasicNoValidation.sol";
-import {TokenLauncher} from "../../../src/TokenLauncher.sol";
+import {LiquidityLauncher} from "../../../src/LiquidityLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -57,7 +57,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // State variables
     LBPStrategyBasic lbp;
-    TokenLauncher tokenLauncher;
+    LiquidityLauncher liquidityLauncher;
     LBPStrategyBasicNoValidation impl;
     MockERC20 token;
     MockERC20 implToken;
@@ -77,7 +77,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     function _setupContracts() internal {
         auctionFactory = new AuctionFactory();
-        tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
+        liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
         // Give test contract some DAI
@@ -100,11 +100,11 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     }
 
     function _deployLBPStrategy(uint128 totalSupply) internal {
-        // Deploy token and give supply to token launcher
+        // Deploy token and give supply to liquidity launcher
         token = MockERC20(TEST_TOKEN_ADDRESS);
-        implToken = new MockERC20("Test Token", "TEST", totalSupply, address(tokenLauncher));
+        implToken = new MockERC20("Test Token", "TEST", totalSupply, address(liquidityLauncher));
         vm.etch(TEST_TOKEN_ADDRESS, address(implToken).code);
-        deal(address(token), address(tokenLauncher), totalSupply);
+        deal(address(token), address(liquidityLauncher), totalSupply);
         // Get hook address with BEFORE_INITIALIZE permission
         address hookAddress = address(
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)

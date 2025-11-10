@@ -58,7 +58,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         IAuction realAuction = lbp.auction();
 
         // Submit bids and checkpoint auction
@@ -101,7 +101,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_reverts_whenNoCurrencyRaised() public {
         // Send tokens but don't submit any bids
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
 
@@ -123,7 +123,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_token_reverts_whenNoCurrencyRaised() public {
         setupWithCurrency(DAI);
         // Send tokens but don't submit any bids
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
 
@@ -148,7 +148,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
 
         // Setup: Send tokens to LBP and create auction
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         uint128 daiAmount = DEFAULT_TOTAL_SUPPLY / 2;
 
@@ -225,7 +225,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_fullRange_withETH_succeeds() public {
         // Setup
         // 1000 total supply, 500 auction supply, 500 reserve supply
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -297,7 +297,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup with DAI
         createAuctionParamsWithCurrency(DAI);
         setupWithCurrency(DAI);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -377,7 +377,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             false // no one-sided position in currency
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -453,7 +453,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             false // no one-sided position in currency
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -516,7 +516,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_withOneSidedPosition_withETH_succeeds() public {
         // Setup
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -601,7 +601,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             true
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -689,7 +689,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -774,7 +774,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -848,7 +848,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 
         // Setup
-        sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, totalSupply);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
@@ -908,7 +908,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_withETH_revertsWithInvalidPrice() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
         // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
@@ -959,7 +959,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_withETH_revertsWithPriceTooHigh() public {
         // This test verifies the handling of prices above MAX_SQRT_PRICE
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         // For ETH, price is inverted, so we need a very LOW clearing price to get a HIGH actual price
         // To get sqrtPrice > MAX_SQRT_PRICE, we need a price that when inverted is very high
@@ -1018,7 +1018,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, DAI);
 
         // Setup
-        sendTokensToLBP(address(tokenLauncher), token, lbp, totalSupply);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, totalSupply);
 
         IAuction realAuction = lbp.auction();
         assertFalse(address(realAuction) == address(0));
