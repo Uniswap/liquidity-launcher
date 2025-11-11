@@ -3,10 +3,15 @@ pragma solidity 0.8.26;
 
 import {LBPStrategyBasic} from "./LBPStrategyBasic.sol";
 import {IVirtualERC20} from "../interfaces/external/IVirtualERC20.sol";
-
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title VirtualLBPStrategyBasic
 /// @notice Strategy for distributing virtual tokens to a v4 pool
@@ -57,11 +62,36 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
         emit MigrationApproved();
     }
 
-    /// @notice Validates that migration is approved and calls the parent _validateMigration function
+    /// @notice Returns the permissions for the hook
+    /// @dev Has permissions for before initialize, before swap and before remove liquidity
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
+            beforeInitialize: true,
+            beforeAddLiquidity: false,
+            beforeSwap: true,
+            beforeSwapReturnDelta: false,
+            afterSwap: false,
+            afterInitialize: false,
+            beforeRemoveLiquidity: false,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
+            beforeDonate: false,
+            afterDonate: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
+        });
+    }
+
+    /// @notice Validates that migration is approved before swapping on the pool and returns a zero delta
     /// @dev Reverts if migration is not approved
-    function _validateMigration() internal override(LBPStrategyBasic) {
+    function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
         if (!isMigrationApproved) revert MigrationNotApproved();
-        super._validateMigration();
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /// @notice Returns the address of the underlying token
