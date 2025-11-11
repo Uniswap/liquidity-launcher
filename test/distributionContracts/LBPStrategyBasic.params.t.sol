@@ -17,6 +17,7 @@ import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {MaxBidPriceLib} from "continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
 
 contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
@@ -47,6 +48,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             .addStep(0, 3600).addStep(138, 3600).addStep(138, 7200).addStep(138, 7200).addStep(138, 7200)
             .addStep(4_024_000, 1);
 
+        uint256 floorPrice = 669_944_021_260_323_000_000_000;
         bytes memory auctionParams = abi.encode(
             AuctionParameters({
                 currency: address(0),
@@ -57,7 +59,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
                 claimBlock: uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1),
                 tickSpacing: 6_699_440_212_603_230_000_000,
                 validationHook: address(0),
-                floorPrice: 669_944_021_260_323_000_000_000,
+                floorPrice: floorPrice,
                 requiredCurrencyRaised: 0,
                 auctionStepsData: auctionStepsData
             })
@@ -82,7 +84,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
 
         uint128 tokenAmount = 1_820_000_000e18 * 0.85e7 / 1e7;
 
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, 2 ** 110));
+        clearingPrice = uint256(bound(clearingPrice, floorPrice, MaxBidPriceLib.maxBidPrice(tokenAmount)));
 
         // Verify auction is created
         assertNotEq(address(lbp.auction()), address(0));
