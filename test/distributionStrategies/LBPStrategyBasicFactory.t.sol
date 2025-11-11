@@ -36,7 +36,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     bytes auctionParams;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
+        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), 23097193);
         factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(liquidityLauncher));
