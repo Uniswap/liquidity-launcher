@@ -25,9 +25,9 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_setUp_params(uint256 clearingPrice) public {
         token = MockERC20(0xA27EC0006e59f245217Ff08CD52A7E8b169E62D2);
-        implToken = new MockERC20("Test Token", "TEST", 1_820_000_000e18, address(tokenLauncher));
+        implToken = new MockERC20("Test Token", "TEST", 1_820_000_000e18, address(liquidityLauncher));
         vm.etch(0xA27EC0006e59f245217Ff08CD52A7E8b169E62D2, address(implToken).code);
-        deal(address(token), address(tokenLauncher), 1_820_000_000e18);
+        deal(address(token), address(liquidityLauncher), 1_820_000_000e18);
         address testOperator = makeAddr("testOperator");
 
         MigratorParameters memory params = createMigratorParams(
@@ -74,7 +74,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
 
         vm.etch(address(lbp), address(impl).code);
 
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), 1_820_000_000e18);
         console2.logBytes(auctionParams);
         console2.logBytes(lbp.auctionParameters());

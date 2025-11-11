@@ -9,17 +9,17 @@ import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
 import {Multicall} from "./Multicall.sol";
 import {Distribution} from "./types/Distribution.sol";
 import {Permit2Forwarder, IAllowanceTransfer} from "./Permit2Forwarder.sol";
-import {ITokenLauncher} from "./interfaces/ITokenLauncher.sol";
+import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
 
-/// @title TokenLauncher
+/// @title LiquidityLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
 /// @custom:security-contact security@uniswap.org
-contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
+contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     using SafeERC20 for IERC20;
 
     constructor(IAllowanceTransfer _permit2) Permit2Forwarder(_permit2) {}
 
-    /// @inheritdoc ITokenLauncher
+    /// @inheritdoc ILiquidityLauncher
     function createToken(
         address factory,
         string calldata name,
@@ -38,7 +38,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         emit TokenCreated(tokenAddress);
     }
 
-    /// @inheritdoc ITokenLauncher
+    /// @inheritdoc ILiquidityLauncher
     function distributeToken(address token, Distribution calldata distribution, bool payerIsUser, bytes32 salt)
         external
         override
@@ -61,7 +61,7 @@ contract TokenLauncher is ITokenLauncher, Multicall, Permit2Forwarder {
         emit TokenDistributed(token, address(distributionContract), distribution.amount);
     }
 
-    /// @inheritdoc ITokenLauncher
+    /// @inheritdoc ILiquidityLauncher
     function getGraffiti(address originalCreator) public pure returns (bytes32 graffiti) {
         graffiti = keccak256(abi.encode(originalCreator));
     }

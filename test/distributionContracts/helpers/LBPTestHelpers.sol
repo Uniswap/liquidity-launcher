@@ -103,8 +103,8 @@ abstract contract LBPTestHelpers is Test {
         vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
     }
 
-    function sendTokensToLBP(address tokenLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
-        vm.prank(tokenLauncher);
+    function sendTokensToLBP(address liquidityLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
+        vm.prank(liquidityLauncher);
         token.transfer(address(lbp), amount);
         lbp.onTokensReceived();
     }

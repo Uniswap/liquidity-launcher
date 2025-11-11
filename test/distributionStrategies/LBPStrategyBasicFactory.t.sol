@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import "forge-std/Test.sol";
 import {LBPStrategyBasicFactory} from "../../src/distributionStrategies/LBPStrategyBasicFactory.sol";
 import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
-import {TokenLauncher} from "../../src/TokenLauncher.sol";
+import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {MigratorParameters} from "../../src/types/MigratorParameters.sol";
@@ -29,7 +29,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
     LBPStrategyBasicFactory public factory;
     MockERC20 token;
-    TokenLauncher tokenLauncher;
+    LiquidityLauncher liquidityLauncher;
     ContinuousClearingAuctionFactory auctionFactory;
     MigratorParameters migratorParams;
     bytes auctionParams;
@@ -37,8 +37,8 @@ contract LBPStrategyBasicFactoryTest is Test {
     function setUp() public {
         vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
         factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
-        tokenLauncher = new TokenLauncher(IAllowanceTransfer(PERMIT2));
-        token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(tokenLauncher));
+        liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
+        token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(liquidityLauncher));
         auctionFactory = new ContinuousClearingAuctionFactory();
 
         migratorParams = MigratorParameters({
