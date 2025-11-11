@@ -230,7 +230,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() internal virtual {
+    function _validateMigration() private {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
@@ -318,7 +318,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         // Create base parameters
         BasePositionParams memory baseParams = BasePositionParams({
             currency: currency,
-            token: poolToken,
+            poolToken: poolToken,
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             initialSqrtPriceX96: data.sqrtPriceX96,

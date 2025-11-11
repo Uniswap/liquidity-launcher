@@ -87,6 +87,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
     /// @dev Reverts if migration is not approved
     function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         internal
+        view
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
