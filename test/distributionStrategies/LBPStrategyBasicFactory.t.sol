@@ -19,6 +19,7 @@ import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/ICon
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+import "forge-std/console2.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -46,10 +47,10 @@ contract LBPStrategyBasicFactoryTest is Test {
             poolLPFee: 500,
             poolTickSpacing: 60,
             positionRecipient: address(3),
-            migrationBlock: uint64(block.number + 1),
+            migrationBlock: uint64(block.number + 101),
             auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000,
-            sweepBlock: uint64(block.number + 2),
+            sweepBlock: uint64(block.number + 102),
             operator: address(this),
             createOneSidedTokenPosition: true,
             createOneSidedCurrencyPosition: true
@@ -75,19 +76,20 @@ contract LBPStrategyBasicFactoryTest is Test {
     function test_initializeDistribution_succeeds() public {
         // mined a salt that when hashed with address(this), gives a valid hook address with beforeInitialize flag set to true
         // uncomment to see the initCodeHash
-        // bytes32 initCodeHash = keccak256(
-        //     abi.encodePacked(
-        //         type(LBPStrategyBasic).creationCode,
-        //         abi.encode(
-        //             address(token),
-        //             TOTAL_SUPPLY,
-        //             migratorParams,
-        //             auctionParams,
-        //             IPositionManager(POSITION_MANAGER),
-        //             IPoolManager(POOL_MANAGER)
-        //         )
-        //     )
-        // );
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(LBPStrategyBasic).creationCode,
+                abi.encode(
+                    address(token),
+                    TOTAL_SUPPLY,
+                    migratorParams,
+                    auctionParams,
+                    IPositionManager(POSITION_MANAGER),
+                    IPoolManager(POOL_MANAGER)
+                )
+            )
+        );
+        console2.logBytes32(initCodeHash);
         LBPStrategyBasic lbp = LBPStrategyBasic(
             payable(address(
                     factory.initializeDistribution(
@@ -99,7 +101,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                             IPositionManager(POSITION_MANAGER),
                             IPoolManager(POOL_MANAGER)
                         ),
-                        0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f
+                        0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf
                     )
                 ))
         );
@@ -109,14 +111,14 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(3));
-        assertEq(lbp.migrationBlock(), block.number + 1);
+        assertEq(lbp.migrationBlock(), block.number + 101);
         assertEq(lbp.poolLPFee(), 500);
         assertEq(lbp.poolTickSpacing(), 60);
         assertEq(lbp.auctionParameters(), auctionParams);
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
@@ -140,7 +142,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_deterministicSender() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
         address sender1 = address(1);
         address sender2 = address(2);
         vm.prank(sender1);
