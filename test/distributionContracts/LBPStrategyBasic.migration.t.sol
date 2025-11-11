@@ -225,18 +225,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         assertEq(sqrtPriceX96, 137227202865029797602485611888);
     }
 
-    function test_migrate_liquidityDoesNotRevert(
-        uint256 clearingPrice,
-        int24 tickSpacing,
-        uint24 tokenSplit,
-        uint128 totalSupply // amount of tokens sent to the auction
-    ) public {
-        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
-        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
-        uint128 tokenAmount = totalSupply.calculateAuctionSupply(tokenSplit);
-        // Assume that token amount is not 0 and not greater than MAX_TOTAL_SUPPLY
-        vm.assume(tokenAmount > 0 && tokenAmount <= ConstantsLib.MAX_TOTAL_SUPPLY);
+    /// forge-config: default.allow_internal_expect_revert = true
+    function test_migrate_liquidityDoesNotRevert(uint256 clearingPrice, uint128 tokenAmount) public {
+        uint256 clearingPrice = 1707848674310029247441293896401783844322354654994505659956191576019465228500;
+        uint128 tokenAmount = 25295521143959821582;
 
+        vm.assume(tokenAmount > 1e7);
         clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, MaxBidPriceLib.maxBidPrice(tokenAmount)));
 
         // Calculate the currency raised at the given clearing price
@@ -247,8 +241,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = TokenPricing.convertToPriceX192(clearingPrice, currencyIsCurrency0);
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
         vm.assume(sqrtPriceX96 > TickMath.MIN_SQRT_PRICE && sqrtPriceX96 < TickMath.MAX_SQRT_PRICE);
+        vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
 
-        // Setup (this doesn't matter since we are mocking the auction)
+        console2.log("clearingPrice", clearingPrice);
+        console2.log("tokenAmount", tokenAmount);
+        // Setup
+        // 1000 total supply, 500 auction supply, 500 reserve supply
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         mockAuctionClearingPrice(lbp, clearingPrice);
@@ -272,7 +270,29 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Migrate
         vm.roll(lbp.migrationBlock());
 
-        lbp.migrate();
+        // Since price is bounded, we know that the amount1 liquidty will not overflow since currency is ETH
+        // Need to check if the amount0 liquidity will overflow
+        if (
+            FullMath.mulDiv(
+                    FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96),
+                    FixedPoint96.Q96,
+                    TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK) - sqrtPriceX96
+                ) > type(uint128).max
+        ) {
+            vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+            lbp.migrate();
+        } else if (FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > type(uint128).max) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBasic.CurrencyAmountTooHigh.selector,
+                    FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96),
+                    type(uint128).max
+                )
+            );
+            lbp.migrate();
+        } else {
+            lbp.migrate();
+        }
     }
 
     // ============ Full Range Migration Tests ============
