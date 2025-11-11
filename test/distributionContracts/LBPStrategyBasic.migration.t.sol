@@ -955,13 +955,18 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             );
             lbp.migrate();
         }
-        // calculate corresponding token amount and if it is 0, the position will be empty and revert
+        // calculate corresponding token amount and corresponding currency amount and if either is 0, the position will be empty and revert
         else if (
             FullMath.mulDiv(
-                    FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice), // priceX192
-                    FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), // currencyAmount
-                    Q192 // Q192
-                ) == 0
+                        FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice), // priceX192
+                        FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), // currencyAmount
+                        Q192 // Q192
+                    ) == 0
+                || FullMath.mulDiv(
+                        totalSupply.calculateReserveSupply(tokenSplit), // reserveSupply
+                        Q192,
+                        FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice) // priceX192
+                    ) == 0
         ) {
             vm.expectRevert(abi.encodeWithSelector(Position.CannotUpdateEmptyPosition.selector));
             lbp.migrate();
