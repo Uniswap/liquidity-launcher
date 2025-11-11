@@ -22,6 +22,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {
@@ -1029,7 +1030,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 1e7);
-        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
+        vm.assume(tokenAmount <= ConstantsLib.MAX_TOTAL_SUPPLY);
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= ConstantsLib.MAX_TOTAL_SUPPLY);
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, DAI);
 
