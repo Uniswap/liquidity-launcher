@@ -22,6 +22,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {MaxBidPriceLib} from "continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
 import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
@@ -236,7 +237,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         amount1 = uint128(bound(amount1, 1, 1e30));
 
         uint128 tokenAmount = uint128(uint256(DEFAULT_TOTAL_SUPPLY) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, MaxBidPriceLib.maxBidPrice(tokenAmount)));
 
         uint256 priceX192 = TokenPricing.convertToPriceX192(clearingPrice, true);
         uint160 sqrtPriceX96 = uint160(Math.sqrt(priceX192));
@@ -904,12 +905,12 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     /// @dev This test checks various price and currency amount combinations
     function test_fuzz_migrate_withETH(uint128 totalSupply, uint24 tokenSplit, uint256 clearingPrice) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
-        totalSupply = uint128(bound(totalSupply, 1, type(uint128).max));
+        totalSupply = uint128(bound(totalSupply, 1, ConstantsLib.MAX_TOTAL_SUPPLY));
 
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 0);
         vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
-        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, (1 << 203) / tokenAmount));
+        clearingPrice = uint256(bound(clearingPrice, 2 ** 32 + 1, MaxBidPriceLib.maxBidPrice(tokenAmount)));
 
         vm.assume(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96) > 0);
 
@@ -1027,7 +1028,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_migrate_withNonETHCurrency(uint128 totalSupply, uint24 tokenSplit) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
-
+        totalSupply = uint128(bound(totalSupply, 1, 1 << 100));
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 1e7);
         vm.assume(tokenAmount <= ConstantsLib.MAX_TOTAL_SUPPLY);
