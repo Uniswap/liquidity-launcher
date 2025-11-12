@@ -131,8 +131,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(token.balanceOf(address(liquidityLauncher)), 0);
     }
 
-    // forge-config: default.isolate = true
-    // forge-config: ci.isolate = true
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_multicall_create_and_distribute_token_gas() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
@@ -173,8 +173,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         vm.snapshotGasLastCall("multicall create and distribute token");
     }
 
-    // forge-config: default.isolate = true
-    // forge-config: ci.isolate = true
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_multicall_permit_and_distribute_token_gas() public {
         uint128 initialSupply = 1e18;
         MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);

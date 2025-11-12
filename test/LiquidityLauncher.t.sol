@@ -185,8 +185,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         assertEq(graffiti, keccak256(abi.encode(address(this))));
     }
 
-    // forge-config: default.isolate = true
-    // forge-config: ci.isolate = true
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_createToken_gas() public {
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
@@ -202,8 +202,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         vm.snapshotGasLastCall("createToken");
     }
 
-    // forge-config: default.isolate = true
-    // forge-config: ci.isolate = true
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_distributeToken_gas() public {
         uint128 initialSupply = 1e18;
         address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, "Test Token", "TEST");
