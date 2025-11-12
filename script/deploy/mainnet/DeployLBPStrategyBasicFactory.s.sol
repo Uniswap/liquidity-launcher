@@ -18,9 +18,8 @@ contract DeployLBPStrategyBasicFactoryMainnetScript is Script {
         // Deploys to 0xbbbb6FFaBCCb1EaFD4F0baeD6764d8aA973316B6
         bytes32 salt = 0x01c060ffc9170f076aaac7c78517249d29a55dc0cb034c43fa6461d737ce198b;
 
-        LBPStrategyBasicFactory factory = new LBPStrategyBasicFactory{salt: salt}(
-            IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
-        );
+        LBPStrategyBasicFactory factory =
+            new LBPStrategyBasicFactory{salt: salt}(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
 
         console.log("LBPStrategyBasicFactory deployed to:", address(factory));
         vm.stopBroadcast();

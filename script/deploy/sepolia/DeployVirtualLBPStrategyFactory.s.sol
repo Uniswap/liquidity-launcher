@@ -20,7 +20,7 @@ contract DeployVirtualLBPStrategyFactorySepoliaScript is Script {
         );
         console.logBytes32(initCodeHash);
 
-        // Deploys to 0x00000010F37b6524617b17e66796058412bbC487
+        // Deploys to 0xC695ee292c39Be6a10119C70Ed783d067fcecfA4
         bytes32 salt = 0x684f68d3f04ef55523dedd9d317f479d09ba3da998d0696023381882adc021ad;
 
         VirtualLBPStrategyFactory factory =
