@@ -51,6 +51,7 @@ contract MockAuctionWithERC20Sweep {
 
 contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     using TokenDistribution for uint128;
+    using TokenPricing for uint256;
     uint256 constant Q192 = 2 ** 192;
 
     // ============ Migration Timing Tests ============
@@ -882,6 +883,19 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
 
+        uint256 priceX192 = clearingPrice.convertToPriceX192(true);
+        uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
+
+        (uint128 initialTokenAmount,, uint128 initialCurrencyAmount) = priceX192.calculateAmounts(
+            uint128(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
+            true,
+            totalSupply.calculateReserveSupply(tokenSplit)
+        );
+
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE, initialCurrencyAmount, initialTokenAmount
+        );
+
         if (
             FullMath.mulDiv(
                         FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice), // priceX192
@@ -892,7 +906,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
                         totalSupply.calculateReserveSupply(tokenSplit), // reserveSupply
                         Q192,
                         FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice) // priceX192
-                    ) == 0
+                    ) == 0 || liquidity == 0
         ) {
             vm.expectRevert(abi.encodeWithSelector(Position.CannotUpdateEmptyPosition.selector));
             lbp.migrate();
