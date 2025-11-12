@@ -65,6 +65,7 @@ The project requires the following environment variable for testing:
 
 | Network | Address | Commit Hash | Version |
 |---------|---------|------------|---------|
+| Mainnet | 0xbbbb6FFaBCCb1EaFD4F0baeD6764d8aA973316B6 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 | Unichain | 0x435DDCFBb7a6741A5Cc962A95d6915EbBf60AE24 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 
 ## Audits
