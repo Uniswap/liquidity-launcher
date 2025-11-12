@@ -11,7 +11,9 @@ contract DeployLiquidityLauncherUnichainScript is Script {
 
     function run() public {
         vm.startBroadcast();
-        LiquidityLauncher liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
+
+        bytes32 salt = 0x9a269ec151cdb4159e40d33648400e3ac814791b0051656925f1f8b53831aab7;
+        LiquidityLauncher liquidityLauncher = new LiquidityLauncher{salt: salt}(IAllowanceTransfer(PERMIT2));
 
         console.log("LiquidityLauncher deployed to:", address(liquidityLauncher));
         vm.stopBroadcast();
