@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {TokenLauncher} from "../src/TokenLauncher.sol";
+import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {UERC20Factory} from "../src/token-factories/uerc20-factory/factories/UERC20Factory.sol";
@@ -15,8 +15,8 @@ import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrat
 import {Permit2Forwarder} from "../src/Permit2Forwarder.sol";
 import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";
 
-contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
-    TokenLauncher public tokenLauncher;
+contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
+    LiquidityLauncher public liquidityLauncher;
     IAllowanceTransfer permit2;
     UERC20Factory public uerc20Factory;
     bytes32 PERMIT2_DOMAIN_SEPARATOR;
@@ -25,7 +25,7 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
 
     function setUp() public {
         permit2 = IAllowanceTransfer(deployPermit2());
-        tokenLauncher = new TokenLauncher(permit2);
+        liquidityLauncher = new LiquidityLauncher(permit2);
         uerc20Factory = new UERC20Factory();
 
         PERMIT2_DOMAIN_SEPARATOR = permit2.DOMAIN_SEPARATOR();
@@ -48,28 +48,28 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         Distribution memory distribution =
             Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
 
-        bytes32 graffiti = tokenLauncher.getGraffiti(address(this));
+        bytes32 graffiti = liquidityLauncher.getGraffiti(address(this));
 
         address precomputedAddress =
-            uerc20Factory.getUERC20Address("Test Token", "TEST", 18, address(tokenLauncher), graffiti);
+            uerc20Factory.getUERC20Address("Test Token", "TEST", 18, address(liquidityLauncher), graffiti);
 
         bytes memory tokenData = abi.encode(metadata);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(
-            TokenLauncher.createToken.selector,
+            LiquidityLauncher.createToken.selector,
             address(uerc20Factory),
             "Test Token",
             "TEST",
             18,
             initialSupply,
-            address(tokenLauncher),
+            address(liquidityLauncher),
             tokenData
         );
         calls[1] =
-            abi.encodeWithSelector(TokenLauncher.distributeToken.selector, precomputedAddress, distribution, false);
+            abi.encodeWithSelector(LiquidityLauncher.distributeToken.selector, precomputedAddress, distribution, false);
 
-        tokenLauncher.multicall(calls);
+        liquidityLauncher.multicall(calls);
 
         // Verify the token was created
         assertNotEq(precomputedAddress, address(0));
@@ -81,8 +81,8 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(token.decimals(), 18);
         assertEq(token.totalSupply(), initialSupply);
 
-        // Verify the creator is set correctly (should be the TokenLauncher since it calls the factory)
-        assertEq(token.creator(), address(tokenLauncher));
+        // Verify the creator is set correctly (should be the LiquidityLauncher since it calls the factory)
+        assertEq(token.creator(), address(liquidityLauncher));
 
         // Verify metadata
         (string memory description, string memory website, string memory image) = token.metadata();
@@ -93,8 +93,8 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         // Verify the distribution was successful
         assertEq(IERC20(precomputedAddress).balanceOf(address(distributionStrategyAndContract)), initialSupply);
 
-        // verify the token launcher has no balance of the token
-        assertEq(token.balanceOf(address(tokenLauncher)), 0);
+        // verify the liquidity launcher has no balance of the token
+        assertEq(token.balanceOf(address(liquidityLauncher)), 0);
     }
 
     function test_multicall_permit_and_distribute_token() public {
@@ -113,25 +113,26 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
 
         IAllowanceTransfer.PermitSingle memory permit =
             defaultERC20PermitAllowance(address(token), type(uint160).max, uint48(block.timestamp + 10e18), 0);
-        permit.spender = address(tokenLauncher);
+        permit.spender = address(liquidityLauncher);
         bytes memory sig = getPermitSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
-        calls[1] = abi.encodeWithSelector(TokenLauncher.distributeToken.selector, address(token), distribution, true);
+        calls[1] =
+            abi.encodeWithSelector(LiquidityLauncher.distributeToken.selector, address(token), distribution, true);
 
         vm.prank(bob);
-        tokenLauncher.multicall(calls);
+        liquidityLauncher.multicall(calls);
 
         // Verify the distribution was successful
         assertEq(IERC20(address(token)).balanceOf(address(distributionStrategyAndContract)), initialSupply);
 
-        // verify the token launcher has no balance of the token
-        assertEq(token.balanceOf(address(tokenLauncher)), 0);
+        // verify the liquidity launcher has no balance of the token
+        assertEq(token.balanceOf(address(liquidityLauncher)), 0);
     }
 
-    // forge-config: default.isolate = true
-    // forge-config: ci.isolate = true
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_multicall_create_and_distribute_token_gas() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
@@ -147,33 +148,33 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         Distribution memory distribution =
             Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
 
-        bytes32 graffiti = tokenLauncher.getGraffiti(address(this));
+        bytes32 graffiti = liquidityLauncher.getGraffiti(address(this));
 
         address precomputedAddress =
-            uerc20Factory.getUERC20Address("Test Token", "TEST", 18, address(tokenLauncher), graffiti);
+            uerc20Factory.getUERC20Address("Test Token", "TEST", 18, address(liquidityLauncher), graffiti);
 
         bytes memory tokenData = abi.encode(metadata);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(
-            TokenLauncher.createToken.selector,
+            LiquidityLauncher.createToken.selector,
             address(uerc20Factory),
             "Test Token",
             "TEST",
             18,
             initialSupply,
-            address(tokenLauncher),
+            address(liquidityLauncher),
             tokenData
         );
         calls[1] =
-            abi.encodeWithSelector(TokenLauncher.distributeToken.selector, precomputedAddress, distribution, false);
+            abi.encodeWithSelector(LiquidityLauncher.distributeToken.selector, precomputedAddress, distribution, false);
 
-        tokenLauncher.multicall(calls);
+        liquidityLauncher.multicall(calls);
         vm.snapshotGasLastCall("multicall create and distribute token");
     }
 
-    // forge-config: default.isolate = true
-    // forge-config: ci.isolate = true
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_multicall_permit_and_distribute_token_gas() public {
         uint128 initialSupply = 1e18;
         MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, bob);
@@ -190,15 +191,16 @@ contract TokenLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
 
         IAllowanceTransfer.PermitSingle memory permit =
             defaultERC20PermitAllowance(address(token), type(uint160).max, uint48(block.timestamp + 10e18), 0);
-        permit.spender = address(tokenLauncher);
+        permit.spender = address(liquidityLauncher);
         bytes memory sig = getPermitSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
-        calls[1] = abi.encodeWithSelector(TokenLauncher.distributeToken.selector, address(token), distribution, true);
+        calls[1] =
+            abi.encodeWithSelector(LiquidityLauncher.distributeToken.selector, address(token), distribution, true);
 
         vm.prank(bob);
-        tokenLauncher.multicall(calls);
+        liquidityLauncher.multicall(calls);
         vm.snapshotGasLastCall("multicall permit and distribute token");
     }
 }

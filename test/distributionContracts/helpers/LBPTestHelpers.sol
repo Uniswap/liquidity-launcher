@@ -12,9 +12,9 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
-import {IAuction} from "twap-auction/src/interfaces/IAuction.sol";
-import {ICheckpointStorage} from "twap-auction/src/interfaces/ICheckpointStorage.sol";
-import {Checkpoint, ValueX7} from "twap-auction/src/libraries/CheckpointLib.sol";
+import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
+import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -25,7 +25,7 @@ abstract contract LBPTestHelpers is Test {
         uint256 wethInRecipient;
     }
 
-    uint256 constant DUST_AMOUNT = 1e18;
+    uint256 constant DUST_AMOUNT = 15e18;
 
     function takeBalanceSnapshot(address token, address currency, address positionManager, address poolManager, address)
         internal
@@ -103,8 +103,8 @@ abstract contract LBPTestHelpers is Test {
         vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
     }
 
-    function sendTokensToLBP(address tokenLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
-        vm.prank(tokenLauncher);
+    function sendTokensToLBP(address liquidityLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
+        vm.prank(liquidityLauncher);
         token.transfer(address(lbp), amount);
         lbp.onTokensReceived();
     }
@@ -120,7 +120,7 @@ abstract contract LBPTestHelpers is Test {
         // Mock the auction's currencyRaised function
         vm.mockCall(
             address(lbp.auction()),
-            abi.encodeWithSelector(ICheckpointStorage.currencyRaised.selector),
+            abi.encodeWithSelector(IContinuousClearingAuction.currencyRaised.selector),
             abi.encode(amount)
         );
     }

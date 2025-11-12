@@ -28,7 +28,7 @@ library StrategyPlanner {
         FullRangeParams memory fullRangeParams,
         uint256 paramsArraySize
     ) internal pure returns (bytes memory actions, bytes[] memory params) {
-        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
 
         // Get tick bounds for full range
         TickBounds memory bounds = TickBounds({
@@ -37,8 +37,8 @@ library StrategyPlanner {
         });
 
         PoolKey memory poolKey = PoolKey({
-            currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.token),
-            currency1: Currency.wrap(currencyIsCurrency0 ? baseParams.token : baseParams.currency),
+            currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken),
+            currency1: Currency.wrap(currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency),
             fee: baseParams.poolLPFee,
             tickSpacing: baseParams.poolTickSpacing,
             hooks: baseParams.hooks
@@ -66,7 +66,7 @@ library StrategyPlanner {
         bytes memory existingActions,
         bytes[] memory existingParams
     ) internal pure returns (bytes memory actions, bytes[] memory params) {
-        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
 
         // Get tick bounds based on position side
         TickBounds memory bounds = currencyIsCurrency0 == oneSidedParams.inToken
@@ -79,7 +79,7 @@ library StrategyPlanner {
             return (existingActions, existingParams.truncateParams());
         }
 
-        // If this exceeds type(uint256).max, the transaction will revert and no position will be created
+        // If this overflows, the transaction will revert and no position will be created
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
@@ -88,13 +88,16 @@ library StrategyPlanner {
             currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
         );
 
-        if (baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()) {
-            return (existingActions, ParamsBuilder.truncateParams(existingParams));
+        if (
+            newLiquidity == 0
+                || baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
+        ) {
+            return (existingActions, existingParams.truncateParams());
         }
 
         PoolKey memory poolKey = PoolKey({
-            currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.token),
-            currency1: Currency.wrap(currencyIsCurrency0 ? baseParams.token : baseParams.currency),
+            currency0: Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken),
+            currency1: Currency.wrap(currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency),
             fee: baseParams.poolLPFee,
             tickSpacing: baseParams.poolTickSpacing,
             hooks: baseParams.hooks
@@ -113,11 +116,11 @@ library StrategyPlanner {
         bytes memory existingActions,
         bytes[] memory existingParams
     ) internal view returns (bytes memory actions, bytes[] memory params) {
-        bool currencyIsCurrency0 = baseParams.currency < baseParams.token;
+        bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
         actions = ActionsBuilder.buildFinalTakePairActions(existingActions);
         params = ParamsBuilder.buildFinalTakePairParams(
-            currencyIsCurrency0 ? baseParams.currency : baseParams.token,
-            currencyIsCurrency0 ? baseParams.token : baseParams.currency,
+            currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken,
+            currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency,
             existingParams
         );
         return (actions, params);

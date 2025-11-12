@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.0;
 
 import {Distribution} from "../types/Distribution.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
 
-/// @title ITokenLauncher
-/// @notice Interface for the TokenLauncher contract
-interface ITokenLauncher {
+/// @title ILiquidityLauncher
+/// @notice Interface for the LiquidityLauncher contract
+interface ILiquidityLauncher {
     /// @notice Thrown when the recipient is the zero address
     error RecipientCannotBeZeroAddress();
 

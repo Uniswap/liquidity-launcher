@@ -20,14 +20,14 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     function test_sweepToken_revertsWithNotOperator() public {
         vm.roll(lbp.sweepBlock());
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(tokenLauncher), lbp.operator())
+            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(liquidityLauncher), lbp.operator())
         );
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         lbp.sweepToken();
     }
 
     function test_sweepToken_succeeds() public {
-        sendTokensToLBP(address(tokenLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
+        sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY / 2);
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), lbp.reserveSupply());
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), 0);
@@ -51,9 +51,9 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     function test_sweepCurrency_revertsWithNotOperator() public {
         vm.roll(lbp.sweepBlock());
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(tokenLauncher), lbp.operator())
+            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(liquidityLauncher), lbp.operator())
         );
-        vm.prank(address(tokenLauncher));
+        vm.prank(address(liquidityLauncher));
         lbp.sweepCurrency();
     }
 

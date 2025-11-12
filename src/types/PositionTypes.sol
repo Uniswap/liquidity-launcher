@@ -6,7 +6,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 /// @notice Base parameters shared by all position types
 struct BasePositionParams {
     address currency;
-    address token;
+    address poolToken;
     uint24 poolLPFee;
     int24 poolTickSpacing;
     uint160 initialSqrtPriceX96;

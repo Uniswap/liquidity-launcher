@@ -52,7 +52,7 @@ contract StrategyPlannerTest is Test {
         (bytes memory actions, bytes[] memory params) = testHelper.planFullRangePosition(
             BasePositionParams({
                 currency: address(0),
-                token: address(1),
+                poolToken: address(1),
                 poolLPFee: 10000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -123,10 +123,10 @@ contract StrategyPlannerTest is Test {
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(
-                        baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token
+                        baseParams.currency < baseParams.poolToken ? baseParams.currency : baseParams.poolToken
                     ),
                     currency1: Currency.wrap(
-                        baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency
+                        baseParams.currency < baseParams.poolToken ? baseParams.poolToken : baseParams.currency
                     ),
                     fee: baseParams.poolLPFee,
                     tickSpacing: baseParams.poolTickSpacing,
@@ -135,8 +135,12 @@ contract StrategyPlannerTest is Test {
                 TickMath.MIN_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing,
                 TickMath.MAX_TICK / baseParams.poolTickSpacing * baseParams.poolTickSpacing,
                 baseParams.liquidity,
-                baseParams.currency < baseParams.token ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount,
-                baseParams.currency < baseParams.token ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount,
+                baseParams.currency < baseParams.poolToken
+                    ? fullRangeParams.currencyAmount
+                    : fullRangeParams.tokenAmount,
+                baseParams.currency < baseParams.poolToken
+                    ? fullRangeParams.tokenAmount
+                    : fullRangeParams.currencyAmount,
                 baseParams.positionRecipient,
                 ParamsBuilder.ZERO_BYTES
             )
@@ -145,7 +149,7 @@ contract StrategyPlannerTest is Test {
         assertEq(
             params[1],
             abi.encode(
-                Currency.wrap(baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token),
+                Currency.wrap(baseParams.currency < baseParams.poolToken ? baseParams.currency : baseParams.poolToken),
                 ActionConstants.CONTRACT_BALANCE,
                 false
             )
@@ -153,7 +157,7 @@ contract StrategyPlannerTest is Test {
         assertEq(
             params[2],
             abi.encode(
-                Currency.wrap(baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency),
+                Currency.wrap(baseParams.currency < baseParams.poolToken ? baseParams.poolToken : baseParams.currency),
                 ActionConstants.CONTRACT_BALANCE,
                 false
             )
@@ -187,7 +191,7 @@ contract StrategyPlannerTest is Test {
         (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
             BasePositionParams({
                 currency: address(0),
-                token: address(1),
+                poolToken: address(1),
                 poolLPFee: 10000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(0),
@@ -282,7 +286,7 @@ contract StrategyPlannerTest is Test {
         (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
             BasePositionParams({
                 currency: address(0),
-                token: address(1),
+                poolToken: address(1),
                 poolLPFee: 10000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(0),
@@ -478,7 +482,7 @@ contract StrategyPlannerTest is Test {
         pure
         returns (TickBounds memory)
     {
-        return baseParams.currency < baseParams.token == oneSidedParams.inToken
+        return baseParams.currency < baseParams.poolToken == oneSidedParams.inToken
             ? getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
             : getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
     }
@@ -494,8 +498,8 @@ contract StrategyPlannerTest is Test {
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            oneSidedParams.inToken == baseParams.currency < baseParams.token ? 0 : oneSidedParams.amount,
-            oneSidedParams.inToken == baseParams.currency < baseParams.token ? oneSidedParams.amount : 0
+            oneSidedParams.inToken == baseParams.currency < baseParams.poolToken ? 0 : oneSidedParams.amount,
+            oneSidedParams.inToken == baseParams.currency < baseParams.poolToken ? oneSidedParams.amount : 0
         ) returns (
             uint128
         ) {
@@ -525,7 +529,7 @@ contract StrategyPlannerTest is Test {
         pure
         returns (bytes memory)
     {
-        bool isLeftSide = baseParams.currency < baseParams.token == oneSidedParams.inToken;
+        bool isLeftSide = baseParams.currency < baseParams.poolToken == oneSidedParams.inToken;
 
         // Use local variables in a scope to reduce stack usage
         int24 lowerTick;
@@ -554,10 +558,10 @@ contract StrategyPlannerTest is Test {
         return abi.encode(
             PoolKey({
                 currency0: Currency.wrap(
-                    baseParams.currency < baseParams.token ? baseParams.currency : baseParams.token
+                    baseParams.currency < baseParams.poolToken ? baseParams.currency : baseParams.poolToken
                 ),
                 currency1: Currency.wrap(
-                    baseParams.currency < baseParams.token ? baseParams.token : baseParams.currency
+                    baseParams.currency < baseParams.poolToken ? baseParams.poolToken : baseParams.currency
                 ),
                 fee: baseParams.poolLPFee,
                 tickSpacing: baseParams.poolTickSpacing,
