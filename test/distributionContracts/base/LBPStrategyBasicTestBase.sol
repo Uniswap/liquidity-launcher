@@ -67,7 +67,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     bytes auctionParams;
 
     function setUp() public virtual {
-        vm.createSelectFork(vm.envString("FORK_URL"), FORK_BLOCK);
+        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
         _setupContracts();
         _setupDefaultMigratorParams();
         _setupDefaultAuctionParams();

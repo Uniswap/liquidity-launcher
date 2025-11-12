@@ -19,6 +19,7 @@ import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
 
 contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     using AuctionStepsBuilder for bytes;
@@ -312,11 +313,14 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_fuzz_totalSupplyAndTokenSplit(uint128 totalSupply, uint24 tokenSplit) public {
         tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
-        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= 1e30);
+        vm.assume(totalSupply.calculateReserveSupply(tokenSplit) <= ConstantsLib.MAX_TOTAL_SUPPLY);
 
         // Skip if auction amount would be 0
-        uint256 auctionAmount = uint256(totalSupply) * uint256(tokenSplit) / 1e7;
+        uint256 auctionAmount = (uint256(totalSupply) * uint256(tokenSplit)) / 1e7;
         vm.assume(auctionAmount > 0);
+        vm.assume(auctionAmount <= ConstantsLib.MAX_TOTAL_SUPPLY);
+
+        assertLe(auctionAmount, totalSupply, "auction amount is greater than total supply");
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 

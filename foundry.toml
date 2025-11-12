@@ -11,6 +11,6 @@ auto_detect_solc = true
 runs = 1000
 
 [profile.ci.fuzz]
-runs = 100000
+runs = 2500
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

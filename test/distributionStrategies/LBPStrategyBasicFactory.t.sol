@@ -35,7 +35,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     bytes auctionParams;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("FORK_URL"), 23097193);
+        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), 23097193);
         factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(liquidityLauncher));
@@ -46,10 +46,10 @@ contract LBPStrategyBasicFactoryTest is Test {
             poolLPFee: 500,
             poolTickSpacing: 60,
             positionRecipient: address(3),
-            migrationBlock: uint64(block.number + 1),
+            migrationBlock: uint64(block.number + 101),
             auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000,
-            sweepBlock: uint64(block.number + 2),
+            sweepBlock: uint64(block.number + 102),
             operator: address(this),
             createOneSidedTokenPosition: true,
             createOneSidedCurrencyPosition: true
@@ -99,7 +99,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                             IPositionManager(POSITION_MANAGER),
                             IPoolManager(POOL_MANAGER)
                         ),
-                        0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f
+                        0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf
                     )
                 ))
         );
@@ -109,14 +109,14 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
         assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(3));
-        assertEq(lbp.migrationBlock(), block.number + 1);
+        assertEq(lbp.migrationBlock(), block.number + 101);
         assertEq(lbp.poolLPFee(), 500);
         assertEq(lbp.poolTickSpacing(), 60);
         assertEq(lbp.auctionParameters(), auctionParams);
     }
 
     function test_getLBPAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
@@ -140,7 +140,7 @@ contract LBPStrategyBasicFactoryTest is Test {
     }
 
     function test_getLBPAddress_deterministicSender() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496481e00c086f6530ec0c5b32f;
+        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
         address sender1 = address(1);
         address sender2 = address(2);
         vm.prank(sender1);

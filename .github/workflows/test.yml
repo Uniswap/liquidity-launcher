@@ -35,4 +35,4 @@ jobs:
         id: test
         env:
           FORGE_SNAPSHOT_CHECK: true
-          FORK_URL: https://mainnet.infura.io/v3/${{ secrets.INFURA_API_KEY }}
+          QUICKNODE_RPC_URL: ${{ secrets.QUICKNODE_RPC_URL }}
