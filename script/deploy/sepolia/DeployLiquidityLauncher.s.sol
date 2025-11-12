@@ -6,7 +6,7 @@ import {console} from "forge-std/console.sol";
 import {LiquidityLauncher} from "../../../src/LiquidityLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-contract DeployLiquidityLauncherMainnetScript is Script {
+contract DeployLiquidityLauncherSepoliaScript is Script {
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     function run() public {

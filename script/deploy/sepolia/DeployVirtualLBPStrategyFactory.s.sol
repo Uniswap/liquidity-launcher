@@ -7,10 +7,10 @@ import {VirtualLBPStrategyFactory} from "../../../src/distributionStrategies/Vir
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-contract DeployVirtualLBPStrategyFactoryMainnetScript is Script {
-    // Mainnet addresses: https://docs.uniswap.org/contracts/v4/deployments#ethereum-1
-    address public constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-    address public constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+contract DeployVirtualLBPStrategyFactorySepoliaScript is Script {
+    // Mainnet addresses: https://docs.uniswap.org/contracts/v4/deployments#sepolia-11155111
+    address public constant POSITION_MANAGER = 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4;
+    address public constant POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
 
     function run() public {
         vm.startBroadcast();
@@ -20,7 +20,7 @@ contract DeployVirtualLBPStrategyFactoryMainnetScript is Script {
         );
         console.logBytes32(initCodeHash);
 
-        // Deploys to 0x00000010F37b6524617b17e66796058412bbC487
+        // Deploys to 0xC695ee292c39Be6a10119C70Ed783d067fcecfA4
         bytes32 salt = 0x684f68d3f04ef55523dedd9d317f479d09ba3da998d0696023381882adc021ad;
 
         VirtualLBPStrategyFactory factory =
