@@ -19,7 +19,6 @@ import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/ICon
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
-import "forge-std/console2.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -76,20 +75,19 @@ contract LBPStrategyBasicFactoryTest is Test {
     function test_initializeDistribution_succeeds() public {
         // mined a salt that when hashed with address(this), gives a valid hook address with beforeInitialize flag set to true
         // uncomment to see the initCodeHash
-        bytes32 initCodeHash = keccak256(
-            abi.encodePacked(
-                type(LBPStrategyBasic).creationCode,
-                abi.encode(
-                    address(token),
-                    TOTAL_SUPPLY,
-                    migratorParams,
-                    auctionParams,
-                    IPositionManager(POSITION_MANAGER),
-                    IPoolManager(POOL_MANAGER)
-                )
-            )
-        );
-        console2.logBytes32(initCodeHash);
+        // bytes32 initCodeHash = keccak256(
+        //     abi.encodePacked(
+        //         type(LBPStrategyBasic).creationCode,
+        //         abi.encode(
+        //             address(token),
+        //             TOTAL_SUPPLY,
+        //             migratorParams,
+        //             auctionParams,
+        //             IPositionManager(POSITION_MANAGER),
+        //             IPoolManager(POOL_MANAGER)
+        //         )
+        //     )
+        // );
         LBPStrategyBasic lbp = LBPStrategyBasic(
             payable(address(
                     factory.initializeDistribution(
