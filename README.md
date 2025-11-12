@@ -62,6 +62,9 @@ The project requires the following environment variable for testing:
 | Unichain | TODO | TODO | TODO |
 | Sepolia | 0xC695ee292c39Be6a10119C70Ed783d067fcecfA4 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 
+## Audits
+- 10/27 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
+
 ## Core Components
 
 ### LiquidityLauncher
