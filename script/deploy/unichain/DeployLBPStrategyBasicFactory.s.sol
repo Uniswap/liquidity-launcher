@@ -14,6 +14,7 @@ contract DeployLBPStrategyBasicFactoryUnichainScript is Script {
 
     function run() public {
         vm.startBroadcast();
+        // Deploys to 0x435DDCFBb7a6741A5Cc962A95d6915EbBf60AE24
         LBPStrategyBasicFactory factory = new LBPStrategyBasicFactory{salt: bytes32(0)}(
             IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
         );
