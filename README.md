@@ -37,12 +37,12 @@ foundryup
 forge build
 
 # Run tests
-forge test
+forge test --isolate -vvv
 ```
 
 The project requires the following environment variable for testing:
 
-- `FORK_URL`: An Ethereum mainnet RPC endpoint for fork testing
+- `QUICKNODE_RPC_URL`: An Ethereum mainnet RPC endpoint for fork testing
 
 ## Deployment Addresses
 
@@ -69,6 +69,7 @@ The project requires the following environment variable for testing:
 | Unichain | 0x435DDCFBb7a6741A5Cc962A95d6915EbBf60AE24 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 
 ## Audits
+- 10/1 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
 - 10/27 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
 
 ## Core Components
