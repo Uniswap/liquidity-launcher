@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.0;
 
 import {Distribution} from "../types/Distribution.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
