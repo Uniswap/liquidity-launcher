@@ -14,7 +14,14 @@ contract DeployVirtualLBPStrategyFactoryMainnetScript is Script {
 
     function run() public {
         vm.startBroadcast();
-        VirtualLBPStrategyFactory factory = new VirtualLBPStrategyFactory{salt: bytes32(0)}(
+
+        bytes32 initCodeHash = keccak256(abi.encodePacked(type(VirtualLBPStrategyFactory).creationCode, abi.encode(POSITION_MANAGER, POOL_MANAGER)));
+        console.logBytes32(initCodeHash);
+
+        // Deploys to 0x00000010F37b6524617b17e66796058412bbC487
+        bytes32 salt = 0x684f68d3f04ef55523dedd9d317f479d09ba3da998d0696023381882adc021ad;
+
+        VirtualLBPStrategyFactory factory = new VirtualLBPStrategyFactory{salt: salt}(
             IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
         );
 
