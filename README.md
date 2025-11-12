@@ -44,6 +44,24 @@ The project requires the following environment variable for testing:
 
 - `FORK_URL`: An Ethereum mainnet RPC endpoint for fork testing
 
+## Deployment Addresses
+
+### Liquidity Launcher
+
+| Network | Address | Commit Hash | Version |
+|---------|---------|------------|---------|
+| Mainnet | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
+| Unichain | TODO | TODO | TODO |
+| Sepolia | 0x00000010F37b6524617b17e66796058412bbC487 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
+
+### VirtualLBPStrategyFactory
+
+| Network | Address | Commit Hash | Version |
+|---------|---------|------------|---------|
+| Mainnet | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
+| Unichain | TODO | TODO | TODO |
+| Sepolia | 0xC695ee292c39Be6a10119C70Ed783d067fcecfA4 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
+
 ## Core Components
 
 ### LiquidityLauncher
