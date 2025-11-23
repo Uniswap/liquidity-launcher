@@ -72,6 +72,7 @@ The project requires the following environment variable for testing:
 
 ## Audits
 - 10/1 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
+- 10/20 [ABDK Consulting](./docs/audit/ABDK_Uniswap_TokenLauncher_v_1_0.pdf)
 - 10/27 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
 
 ## Core Components
