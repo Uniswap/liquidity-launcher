@@ -1,5 +1,7 @@
 # Liquidity Launcher
 
+_A modular system for bootstrapping deep liquidity on Uniswap V4._ 
+
 ## Overview
 
 Liquidity Launcher is a comprehensive launch system built on Uniswap V4 that facilitates token creation, distribution, and liquidity bootstrapping. The system provides a streamlined approach for projects to:
@@ -11,15 +13,13 @@ Liquidity Launcher is a comprehensive launch system built on Uniswap V4 that fac
 
 The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning with immediate trading liquidity.
 
-## Important Safety Notes
+## Warnings to Integrators
 
 ⚠️ **Rebasing Tokens and Fee-on-Transfer Tokens are NOT compatible with LiquidityLauncher.** The system is designed for standard ERC20 tokens and will not function correctly with tokens that have dynamic balances or transfer fees.
 
 ⚠️ **Always use multicall for atomic token creation and distribution.** When creating and distributing tokens, batch both operations in a single transaction with `payerIsUser = false` to prevent tokens from sitting unprotected in the LiquidityLauncher contract where anyone could call `distribute()`.
 
 ## Installation
-
-This project uses Foundry for development and testing. To get started:
 
 ```bash
 # Clone the repository with submodules
@@ -46,7 +46,7 @@ The project requires the following environment variable for testing:
 
 ## Deployment Addresses
 
-### Liquidity Launcher
+### LiquidityLauncher
 
 | Network | Address | Commit Hash | Version |
 |---------|---------|------------|---------|
@@ -74,6 +74,14 @@ The project requires the following environment variable for testing:
 - 10/1 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
 - 10/27 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
 
+### Bug bounty
+
+The files under `src/` are covered under the Uniswap Labs bug bounty program [here](https://cantina.xyz/code/f9df94db-c7b1-434b-bb06-d1360abdd1be/overview), subject to scope and other limitations.
+
+### Security contact
+
+security@uniswap.org
+
 ## Core Components
 
 ### LiquidityLauncher
@@ -99,6 +107,8 @@ The distribution system is modular, allowing different strategies to be implemen
 **LBPStrategyBasic** implements a Liquidity Bootstrapping Pool strategy that splits the token supply between a price discovery auction and liquidity reserves. The auction determines the initial price, which is then used to bootstrap a Uniswap V4 pool. After the auction completes, the contract migrates the liquidity to V4, creating both a full-range position and potentially a one-sided position for optimal capital efficiency.
 
 The strategy validates parameters to ensure reasonable configurations, such as checking tick spacing and fee tier validity.
+
+**VirtualLBPStrategy** is a derived contract inheriting from LBPStrategyBasic which supports token vesting and other advanced features.
 
 ## Warnings
 
@@ -162,3 +172,7 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 **IDistributionStrategy** implemented by factory contracts that deploy distribution contracts. The `initializeDistribution()` function creates new distribution instances.
 
 **ITokenFactory** defines the interface for token creation factories, standardizing how different token types are deployed.
+
+## License
+
+The contracts are covered under the MIT License (`MIT`), see [MIT_LICENSE](./LICENSE).
