@@ -1,15 +1,15 @@
 # Liquidity Launcher
 
-_A modular system for bootstrapping deep liquidity on Uniswap V4._ 
+_A modular system for bootstrapping deep liquidity on Uniswap v4._ 
 
 ## Overview
 
-Liquidity Launcher is a comprehensive launch system built on Uniswap V4 that facilitates token creation, distribution, and liquidity bootstrapping. The system provides a streamlined approach for projects to:
+Liquidity Launcher is a comprehensive launch system built on Uniswap v4 that facilitates token creation, distribution, and liquidity bootstrapping. The system provides a streamlined approach for projects to:
 
 - **Create** new ERC20 tokens with extended metadata and cross-chain capabilities
 - **Distribute** tokens through customizable strategies
 - **Bootstrap** liquidity using price discovery mechanisms
-- **Deploy** automated market making pools on Uniswap V4
+- **Deploy** automated market making pools on Uniswap v4
 
 The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning with immediate trading liquidity.
 
@@ -104,7 +104,7 @@ The system includes two token factory implementations:
 
 The distribution system is modular, allowing different strategies to be implemented. The main implementation is:
 
-**LBPStrategyBasic** implements a Liquidity Bootstrapping Pool strategy that splits the token supply between a price discovery auction and liquidity reserves. The auction determines the initial price, which is then used to bootstrap a Uniswap V4 pool. After the auction completes, the contract migrates the liquidity to V4, creating both a full-range position and potentially a one-sided position for optimal capital efficiency.
+**LBPStrategyBasic** implements a Liquidity Bootstrapping Pool strategy that splits the token supply between a price discovery auction and liquidity reserves. The auction determines the initial price, which is then used to bootstrap a Uniswap v4 pool. After the auction completes, the contract migrates the liquidity to v4, creating both a full-range position and potentially a one-sided position for optimal capital efficiency.
 
 The strategy validates parameters to ensure reasonable configurations, such as checking tick spacing and fee tier validity.
 
@@ -114,7 +114,7 @@ The strategy validates parameters to ensure reasonable configurations, such as c
 
 Users should be aware that it is trivially easy to create a LBPStrategy and corresponding Auction with malicious parameters. This can lead to a loss of funds or a degraded expereience. You must validate all parameters set on each contract in the system before interacting with them.
 
-Since the LBPStrategyBasic cannot control the final price of the Auction, or how much currency is raised, it is possible to create an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters to eventually sweep the currency and tokens from the contract.
+Since the LBPStrategyBasic cannot control the final price of the Auction, or how much currency is raised, it is possible to create an Auction such that it is impossible to migrate the liquidity to v4. Users should be aware that malicious deployers can design such parameters to eventually sweep the currency and tokens from the contract.
 
 We strongly recommend that a token with value such as ETH or USDC is used as the `currency`.
 
@@ -138,7 +138,7 @@ The typical flow for launching a token involves several coordinated steps:
 For the LBP strategy, the distribution configuration includes:
 
 - **Allocation Split**: Division between auction and liquidity reserves
-- **Pool Parameters**: Fee tier and tick spacing for the Uniswap V4 pool
+- **Pool Parameters**: Fee tier and tick spacing for the Uniswap v4 pool
 - **Auction Parameters**: Duration, pricing steps, and reserve price
 - **LP Recipient**: Address that will receive the liquidity position NFT
 
@@ -151,12 +151,12 @@ The distribution strategy deploys an auction contract and transfers the allocate
 Once the auction completes, it transfers the raised funds to the LBP Strategy and the strategy
 grabs the final clearing price.
 
-#### 4. Migration to Uniswap V4
+#### 4. Migration to Uniswap v4
 
 After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 
 - Validate a v4 pool can be created
-- Initialize the Uniswap V4 pool at the discovered price
+- Initialize the Uniswap v4 pool at the discovered price
 - Deploy liquidity as a full-range position
 - Create an optional one-sided position
 - Transfer the LP NFT to the designated recipient
