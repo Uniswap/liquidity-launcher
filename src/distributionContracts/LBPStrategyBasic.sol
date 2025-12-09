@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {
-    IContinuousClearingAuction,
-    AuctionParameters
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
-import {
-    IContinuousClearingAuctionFactory
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
+import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../interfaces/ILBPInitializer.sol";
+import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -73,7 +68,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     IPositionManager public immutable positionManager;
 
     /// @notice The auction that will be used to create the auction
-    IContinuousClearingAuction public auction;
+    ILBPInitializer public auction;
     bytes public auctionParameters;
 
     constructor(
@@ -121,9 +116,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         uint128 auctionSupply = totalSupply - reserveSupply;
 
-        IContinuousClearingAuction _auction = IContinuousClearingAuction(
+        ILBPInitializer _auction = ILBPInitializer(
             address(
-                IContinuousClearingAuctionFactory(auctionFactory)
+                IDistributionStrategy(auctionFactory)
                     .initializeDistribution(token, auctionSupply, auctionParameters, bytes32(0))
             )
         );
@@ -235,9 +230,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
 
-        // call checkpoint to get the final currency raised and clearing price
-        auction.checkpoint();
-        uint256 currencyAmount = auction.currencyRaised();
+        // get the LBP initialization parameters
+        LBPInitializationParams memory lbpParams = auction.lbpInitializationParams();
+        uint256 currencyAmount = lbpParams.currencyRaised;
 
         // cannot create a v4 pool with more than type(uint128).max currency amount
         if (currencyAmount > type(uint128).max) {
@@ -257,10 +252,11 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() private view returns (MigrationData memory data) {
-        uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
+        LBPInitializationParams memory lbpParams = auction.lbpInitializationParams();
+        uint128 currencyRaised = uint128(lbpParams.currencyRaised); // already validated to be less than or equal to type(uint128).max
         address poolToken = getPoolToken();
 
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
+        uint256 priceX192 = lbpParams.initialPriceX96.convertToPriceX192(currency < poolToken);
 
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
