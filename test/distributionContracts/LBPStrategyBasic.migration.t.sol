@@ -66,7 +66,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
 
         // Submit bids and checkpoint auction
         vm.roll(realAuction.startBlock());
@@ -110,7 +110,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Send tokens but don't submit any bids
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
 
         // Move to end of auction without any bids
         vm.roll(realAuction.endBlock());
@@ -132,7 +132,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Send tokens but don't submit any bids
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
 
         // Move to end of auction without any bids
         vm.roll(realAuction.endBlock());
@@ -233,7 +233,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // 1000 total supply, 500 auction supply, 500 reserve supply
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -305,7 +305,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         setupWithCurrency(DAI);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -385,7 +385,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -461,7 +461,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -528,7 +528,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -613,7 +613,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -701,7 +701,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -786,7 +786,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -977,7 +977,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         // Setup
         sendTokensToLBP(address(liquidityLauncher), token, lbp, totalSupply);
 
-        IContinuousClearingAuction realAuction = lbp.auction();
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
