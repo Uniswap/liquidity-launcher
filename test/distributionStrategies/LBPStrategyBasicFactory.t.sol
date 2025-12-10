@@ -81,6 +81,8 @@ contract LBPStrategyBasicFactoryTest is Test {
         //             TOTAL_SUPPLY,
         //             migratorParams,
         //             auctionParams,
+        //             IPositionManager(POSITION_MANAGER),
+        //             IPoolManager(POOL_MANAGER),
         //             true,
         //             true
         //         )
