@@ -50,9 +50,7 @@ contract LBPStrategyBasicFactoryTest is Test {
             auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000,
             sweepBlock: uint64(block.number + 102),
-            operator: address(this),
-            createOneSidedTokenPosition: true,
-            createOneSidedCurrencyPosition: true
+            operator: address(this)
         });
 
         auctionParams = abi.encode(
@@ -84,7 +82,9 @@ contract LBPStrategyBasicFactoryTest is Test {
         //             migratorParams,
         //             auctionParams,
         //             IPositionManager(POSITION_MANAGER),
-        //             IPoolManager(POOL_MANAGER)
+        //             IPoolManager(POOL_MANAGER),
+        //             true,
+        //             true
         //         )
         //     )
         // );
@@ -97,7 +97,9 @@ contract LBPStrategyBasicFactoryTest is Test {
                             migratorParams,
                             auctionParams,
                             IPositionManager(POSITION_MANAGER),
-                            IPoolManager(POOL_MANAGER)
+                            IPoolManager(POOL_MANAGER),
+                            true,
+                            true
                         ),
                         0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf
                     )
@@ -107,7 +109,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
         assertEq(lbp.token(), address(token));
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
-        assertEq(address(lbp.poolManager()), POOL_MANAGER);
+        assertEq(address(LBPStrategyBasic(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(3));
         assertEq(lbp.migrationBlock(), block.number + 101);
         assertEq(lbp.poolLPFee(), 500);
@@ -120,7 +122,14 @@ contract LBPStrategyBasicFactoryTest is Test {
         address lbpAddress = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+            abi.encode(
+                migratorParams,
+                auctionParams,
+                IPositionManager(POSITION_MANAGER),
+                IPoolManager(POOL_MANAGER),
+                true,
+                true
+            ),
             salt,
             address(this)
         );
@@ -131,7 +140,12 @@ contract LBPStrategyBasicFactoryTest is Test {
                     address(token),
                     TOTAL_SUPPLY,
                     abi.encode(
-                        migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
+                        migratorParams,
+                        auctionParams,
+                        IPositionManager(POSITION_MANAGER),
+                        IPoolManager(POOL_MANAGER),
+                        true,
+                        true
                     ),
                     salt
                 )

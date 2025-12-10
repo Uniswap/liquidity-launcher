@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {LBPStrategyBasic} from "./LBPStrategyBasic.sol";
+import {FullRangeLBPStrategy} from "./FullRangeLBPStrategy.sol";
 import {IVirtualERC20} from "../interfaces/external/IVirtualERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -16,7 +16,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @title VirtualLBPStrategyBasic
 /// @notice Strategy for distributing virtual tokens to a v4 pool
 /// Virtual tokens are ERC20 tokens that wrap an underlying token.
-contract VirtualLBPStrategyBasic is LBPStrategyBasic {
+contract VirtualFullRangeLBPStrategyBasic is FullRangeLBPStrategy {
     /// @notice Emitted when migration is approved by the governance address
     event MigrationApproved();
     /// @notice Emitted when the governance address is set
@@ -47,7 +47,7 @@ contract VirtualLBPStrategyBasic is LBPStrategyBasic {
         address _governance
     )
         // Underlying strategy
-        LBPStrategyBasic(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager)
+        FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager)
     {
         UNDERLYING_TOKEN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
         GOVERNANCE = _governance;

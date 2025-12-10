@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
+import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -38,13 +38,11 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this),
-            true,
-            true
+            address(this)
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplitValue, maxTokenSplit)
+            abi.encodeWithSelector(ILBPStrategyBase.TokenSplitTooHigh.selector, tokenSplitValue, maxTokenSplit)
         );
 
         new LBPStrategyBasicNoValidation(
@@ -53,7 +51,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -61,7 +61,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         // Test too low
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                ILBPStrategyBase.InvalidTickSpacing.selector,
                 TickMath.MIN_TICK_SPACING - 1,
                 TickMath.MIN_TICK_SPACING,
                 TickMath.MAX_TICK_SPACING
@@ -79,19 +79,19 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this),
-                true,
-                true
+                address(this)
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
 
         // Test too high
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILBPStrategyBasic.InvalidTickSpacing.selector,
+                ILBPStrategyBase.InvalidTickSpacing.selector,
                 TickMath.MAX_TICK_SPACING + 1,
                 TickMath.MIN_TICK_SPACING,
                 TickMath.MAX_TICK_SPACING
@@ -109,20 +109,20 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this),
-                true,
-                true
+                address(this)
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
     function test_setUp_revertsWithInvalidFee() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILBPStrategyBasic.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1, LPFeeLibrary.MAX_LP_FEE
+                ILBPStrategyBase.InvalidFee.selector, LPFeeLibrary.MAX_LP_FEE + 1, LPFeeLibrary.MAX_LP_FEE
             )
         );
 
@@ -137,13 +137,13 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this),
-                true,
-                true
+                address(this)
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -152,7 +152,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
         for (uint256 i = 0; i < invalidRecipients.length; i++) {
             vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, invalidRecipients[i])
+                abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, invalidRecipients[i])
             );
 
             new LBPStrategyBasicNoValidation(
@@ -166,13 +166,13 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                     invalidRecipients[i],
                     uint64(block.number + 500),
                     uint64(block.number + 1_000),
-                    address(this),
-                    true,
-                    true
+                    address(this)
                 ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER)
+                IPoolManager(POOL_MANAGER),
+                true,
+                true
             );
         }
     }
@@ -180,9 +180,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
     function test_setUp_revertsWithInvalidFundsRecipient() public {
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.InvalidFundsRecipient.selector, address(2), address(1))
-        );
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InvalidFundsRecipient.selector, address(2), address(1)));
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
@@ -194,9 +192,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1000),
-                address(this),
-                true,
-                true
+                address(this)
             ),
             abi.encode(
                 AuctionParameters({
@@ -214,12 +210,14 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 })
             ),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
     function test_setUp_revertsWithInvalidCurrency() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.InvalidCurrency.selector, address(0), address(1)));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InvalidCurrency.selector, address(0), address(1)));
         new LBPStrategyBasicNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
@@ -231,13 +229,13 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1000),
-                address(this),
-                true,
-                true
+                address(this)
             ), // currency is address(1)
             auctionParams, // currency is address(0)
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -254,13 +252,13 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1000),
-                address(this),
-                true,
-                true
+                address(this)
             ),
             "",
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -365,20 +363,20 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
         if (sweepBlock <= migrationBlock) {
             vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBasic.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
+                abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
             );
         }
         // Test token split validation
         else if (tokenSplit >= maxTokenSplit) {
             vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBasic.TokenSplitTooHigh.selector, tokenSplit, maxTokenSplit)
+                abi.encodeWithSelector(ILBPStrategyBase.TokenSplitTooHigh.selector, tokenSplit, maxTokenSplit)
             );
         }
         // Test tick spacing validation
         else if (poolTickSpacing < TickMath.MIN_TICK_SPACING || poolTickSpacing > TickMath.MAX_TICK_SPACING) {
             vm.expectRevert(
                 abi.encodeWithSelector(
-                    ILBPStrategyBasic.InvalidTickSpacing.selector,
+                    ILBPStrategyBase.InvalidTickSpacing.selector,
                     poolTickSpacing,
                     TickMath.MIN_TICK_SPACING,
                     TickMath.MAX_TICK_SPACING
@@ -388,21 +386,21 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         // Test fee validation
         else if (poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
             vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBasic.InvalidFee.selector, poolLPFee, LPFeeLibrary.MAX_LP_FEE)
+                abi.encodeWithSelector(ILBPStrategyBase.InvalidFee.selector, poolLPFee, LPFeeLibrary.MAX_LP_FEE)
             );
         }
         // Test position recipient validation
         else if (positionRecipient == address(0) || positionRecipient == address(1) || positionRecipient == address(2))
         {
             vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBasic.InvalidPositionRecipient.selector, positionRecipient)
+                abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, positionRecipient)
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.AuctionSupplyIsZero.selector));
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
         } else if (auctionParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(
-                    ILBPStrategyBasic.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock
+                    ILBPStrategyBase.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock
                 )
             );
         }
@@ -419,13 +417,13 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 positionRecipient,
                 migrationBlock,
                 sweepBlock,
-                operator,
-                true,
-                true
+                operator
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 }
