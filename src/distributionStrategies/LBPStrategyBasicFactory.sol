@@ -70,15 +70,28 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
 
-        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
-            abi.decode(configData, (MigratorParameters, bytes));
+        (
+            MigratorParameters memory migratorParams,
+            bytes memory auctionParams,
+            bool createOneSidedTokenPosition,
+            bool createOneSidedCurrencyPosition
+        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
 
         bytes32 _salt = keccak256(abi.encode(sender, salt));
 
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
-                abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager)
+                abi.encode(
+                    token,
+                    uint128(totalSupply),
+                    migratorParams,
+                    auctionParams,
+                    positionManager,
+                    poolManager,
+                    createOneSidedTokenPosition,
+                    createOneSidedCurrencyPosition
+                )
             )
         );
         return Create2.computeAddress(_salt, initCodeHash, address(this));
