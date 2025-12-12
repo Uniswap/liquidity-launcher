@@ -13,7 +13,7 @@ import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 /// @title FullRangeLBPStrategy
-/// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @notice Strategy to initialize a Uniswap v4 pool and migrate the tokens and raised funds into a full range position
 /// @custom:security-contact security@uniswap.org
 contract FullRangeLBPStrategy is LBPStrategyBase {
     constructor(
@@ -58,7 +58,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @notice Calculates the amount of tokens to transfer
     /// @param data Migration data
     /// @return The amount of tokens to transfer to the position manager
-    function _getTokenTransferAmount(MigrationData memory data) internal view override returns (uint128) {
+    function _getTokenTransferAmount(MigrationData memory data) internal pure override returns (uint128) {
         return data.initialTokenAmount;
     }
 

@@ -33,6 +33,7 @@ import {TokenDistribution} from "../libraries/TokenDistribution.sol";
 import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
 
 /// @title LBPStrategyBase
+/// @notice Base contract for derived LBPStrategies
 /// @custom:security-contact security@uniswap.org
 abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     using CurrencyLibrary for Currency;
@@ -67,8 +68,9 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
-    /// @notice The auction that will be used to create the auction
+    /// @notice The auction contract
     IContinuousClearingAuction public auction;
+    /// @notice The auction parameters used to initialize the auction via the factory
     bytes public auctionParameters;
 
     constructor(
