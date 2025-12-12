@@ -39,9 +39,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1 + 1),
             uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1 + 1 + 7200),
-            testOperator,
-            false,
-            false
+            testOperator
         );
 
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(0, 129600).addStep(347, 7200)
@@ -72,7 +70,9 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
 
         vm.etch(address(lbp), address(impl).code);

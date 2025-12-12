@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
-import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
+import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
 
 contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     event TokensSwept(address indexed operator, uint256 amount);
@@ -11,7 +11,7 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
 
     function test_sweepToken_revertsWithSweepNotAllowed() public {
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
+            abi.encodeWithSelector(ILBPStrategyBase.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
         );
         vm.prank(migratorParams.operator);
         lbp.sweepToken();
@@ -20,7 +20,7 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     function test_sweepToken_revertsWithNotOperator() public {
         vm.roll(lbp.sweepBlock());
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(liquidityLauncher), lbp.operator())
+            abi.encodeWithSelector(ILBPStrategyBase.NotOperator.selector, address(liquidityLauncher), lbp.operator())
         );
         vm.prank(address(liquidityLauncher));
         lbp.sweepToken();
@@ -42,7 +42,7 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
 
     function test_sweepCurrency_revertsWithSweepNotAllowed() public {
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
+            abi.encodeWithSelector(ILBPStrategyBase.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
         );
         vm.prank(migratorParams.operator);
         lbp.sweepCurrency();
@@ -51,7 +51,7 @@ contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     function test_sweepCurrency_revertsWithNotOperator() public {
         vm.roll(lbp.sweepBlock());
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.NotOperator.selector, address(liquidityLauncher), lbp.operator())
+            abi.encodeWithSelector(ILBPStrategyBase.NotOperator.selector, address(liquidityLauncher), lbp.operator())
         );
         vm.prank(address(liquidityLauncher));
         lbp.sweepCurrency();

@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import "./helpers/LBPTestHelpers.sol";
-import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
+import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -58,7 +58,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
     function test_migrate_revertsWithMigrationNotAllowed() public {
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBasic.MigrationNotAllowed.selector, lbp.migrationBlock(), block.number)
+            abi.encodeWithSelector(ILBPStrategyBase.MigrationNotAllowed.selector, lbp.migrationBlock(), block.number)
         );
         lbp.migrate();
     }
@@ -123,7 +123,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         realAuction.sweepCurrency();
 
         vm.roll(lbp.migrationBlock());
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.NoCurrencyRaised.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.NoCurrencyRaised.selector));
         lbp.migrate();
     }
 
@@ -146,7 +146,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
 
         vm.roll(lbp.migrationBlock());
         // No currency was raised, so auction did not graduate
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBasic.NoCurrencyRaised.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.NoCurrencyRaised.selector));
         lbp.migrate();
     }
 
@@ -378,11 +378,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator,
-            false, // no one-sided position in tokens
-            false // no one-sided position in currency
+            testOperator
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
@@ -454,11 +452,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator,
-            false, // no one-sided position in tokens
-            false // no one-sided position in currency
+            testOperator
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
@@ -606,11 +602,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator,
-            true,
-            true
+            testOperator
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
@@ -693,11 +687,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000), // sweep block
-            address(this), // operator
-            true,
-            true
+            address(this) // operator
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -778,11 +770,9 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this),
-            true,
-            true
+            address(this)
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 

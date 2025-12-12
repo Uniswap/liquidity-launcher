@@ -111,6 +111,12 @@ library StrategyPlanner {
         return (actions, params);
     }
 
+    /// @notice Plans the final take pair action and parameters
+    /// @param baseParams The base parameters for the position
+    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
+    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
+    /// @return actions The actions needed to take the pair using the position manager
+    /// @return params The parameters needed to take the pair using the position manager
     function planFinalTakePair(
         BasePositionParams memory baseParams,
         bytes memory existingActions,

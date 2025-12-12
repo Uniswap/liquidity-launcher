@@ -50,9 +50,7 @@ contract LBPStrategyBasicFactoryTest is Test {
             auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000,
             sweepBlock: uint64(block.number + 102),
-            operator: address(this),
-            createOneSidedTokenPosition: true,
-            createOneSidedCurrencyPosition: true
+            operator: address(this)
         });
 
         auctionParams = abi.encode(
@@ -84,7 +82,9 @@ contract LBPStrategyBasicFactoryTest is Test {
         //             migratorParams,
         //             auctionParams,
         //             IPositionManager(POSITION_MANAGER),
-        //             IPoolManager(POOL_MANAGER)
+        //             IPoolManager(POOL_MANAGER),
+        //             true,
+        //             true
         //         )
         //     )
         // );
@@ -93,12 +93,7 @@ contract LBPStrategyBasicFactoryTest is Test {
                     factory.initializeDistribution(
                         address(token),
                         TOTAL_SUPPLY,
-                        abi.encode(
-                            migratorParams,
-                            auctionParams,
-                            IPositionManager(POSITION_MANAGER),
-                            IPoolManager(POOL_MANAGER)
-                        ),
+                        abi.encode(migratorParams, auctionParams, true, true),
                         0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf
                     )
                 ))
@@ -107,7 +102,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
         assertEq(lbp.token(), address(token));
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
-        assertEq(address(lbp.poolManager()), POOL_MANAGER);
+        assertEq(address(LBPStrategyBasic(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(3));
         assertEq(lbp.migrationBlock(), block.number + 101);
         assertEq(lbp.poolLPFee(), 500);
@@ -118,22 +113,13 @@ contract LBPStrategyBasicFactoryTest is Test {
     function test_getLBPAddress_succeeds() public {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
         address lbpAddress = factory.getLBPAddress(
-            address(token),
-            TOTAL_SUPPLY,
-            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
-            salt,
-            address(this)
+            address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, address(this)
         );
         assertEq(
             lbpAddress,
             address(
                 factory.initializeDistribution(
-                    address(token),
-                    TOTAL_SUPPLY,
-                    abi.encode(
-                        migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)
-                    ),
-                    salt
+                    address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt
                 )
             )
         );
@@ -145,19 +131,11 @@ contract LBPStrategyBasicFactoryTest is Test {
         address sender2 = address(2);
         vm.prank(sender1);
         address lbpAddress1 = factory.getLBPAddress(
-            address(token),
-            TOTAL_SUPPLY,
-            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
-            salt,
-            sender1
+            address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender1
         );
         vm.prank(sender2);
         address lbpAddress2 = factory.getLBPAddress(
-            address(token),
-            TOTAL_SUPPLY,
-            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
-            salt,
-            sender2
+            address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender2
         );
         assertNotEq(lbpAddress1, lbpAddress2);
     }

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -15,6 +14,7 @@ import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {ILBPStrategyBase} from "../../../src/interfaces/ILBPStrategyBase.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -80,7 +80,7 @@ abstract contract LBPTestHelpers is Test {
         vm.assertEq(info.tickUpper(), 0);
     }
 
-    function assertLBPStateAfterMigration(LBPStrategyBasic lbp, address token, address currency) internal view {
+    function assertLBPStateAfterMigration(ILBPStrategyBase lbp, address token, address currency) internal view {
         // Assert LBP is empty (with dust)
         vm.assertLe(address(lbp).balance, DUST_AMOUNT);
         vm.assertLe(IERC20(token).balanceOf(address(lbp)), DUST_AMOUNT);
@@ -103,20 +103,20 @@ abstract contract LBPTestHelpers is Test {
         vm.assertGt(afterMigration.currencyInPoolm, before.currencyInPoolm);
     }
 
-    function sendTokensToLBP(address liquidityLauncher, IERC20 token, LBPStrategyBasic lbp, uint256 amount) internal {
+    function sendTokensToLBP(address liquidityLauncher, IERC20 token, ILBPStrategyBase lbp, uint256 amount) internal {
         vm.prank(liquidityLauncher);
         token.transfer(address(lbp), amount);
         lbp.onTokensReceived();
     }
 
-    function mockAuctionClearingPrice(LBPStrategyBasic lbp, uint256 price) internal {
+    function mockAuctionClearingPrice(ILBPStrategyBase lbp, uint256 price) internal {
         // Mock the auction's clearingPrice function
         vm.mockCall(
             address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
         );
     }
 
-    function mockCurrencyRaised(LBPStrategyBasic lbp, uint256 amount) internal {
+    function mockCurrencyRaised(ILBPStrategyBase lbp, uint256 amount) internal {
         // Mock the auction's currencyRaised function
         vm.mockCall(
             address(lbp.auction()),
@@ -125,12 +125,12 @@ abstract contract LBPTestHelpers is Test {
         );
     }
 
-    function mockAuctionEndBlock(LBPStrategyBasic lbp, uint64 blockNumber) internal {
+    function mockAuctionEndBlock(ILBPStrategyBase lbp, uint64 blockNumber) internal {
         // Mock the auction's endBlock function
         vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
     }
 
-    function mockAuctionCheckpoint(LBPStrategyBasic lbp, Checkpoint memory checkpoint) internal {
+    function mockAuctionCheckpoint(ILBPStrategyBase lbp, Checkpoint memory checkpoint) internal {
         // Mock the auction's checkpoint function
         vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
     }
