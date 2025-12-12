@@ -16,6 +16,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 /// @notice Strategy to initialize a Uniswap v4 pool and migrate the tokens and raised funds into a full range position
 /// @custom:security-contact security@uniswap.org
 contract FullRangeLBPStrategy is LBPStrategyBase {
+    using StrategyPlanner for BasePositionParams;
+
     constructor(
         address _token,
         uint128 _totalSupply,
@@ -50,7 +52,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
             baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
         );
 
-        (actions, params) = _createFinalTakePairPlan(baseParams, actions, params);
+        (actions, params) = baseParams.planFinalTakePair(actions, params);
 
         return abi.encode(actions, params);
     }

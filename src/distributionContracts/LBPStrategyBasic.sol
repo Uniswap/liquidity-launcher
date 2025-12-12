@@ -80,7 +80,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, LBPStrategyBase {
             );
         }
 
-        (actions, params) = _createFinalTakePairPlan(baseParams, actions, params);
+        (actions, params) = baseParams.planFinalTakePair(actions, params);
 
         return abi.encode(actions, params);
     }

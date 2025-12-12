@@ -339,19 +339,6 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
         return baseParams.planFullRangePosition(fullRangeParams, paramsArraySize);
     }
 
-    /// @notice Creates the plan for taking the pair using the position manager
-    /// @param baseParams The base parameters for the position
-    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
-    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
-    /// @return The actions and parameters needed to take the pair using the position manager
-    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
-        internal
-        view
-        returns (bytes memory, bytes[] memory)
-    {
-        return baseParams.planFinalTakePair(actions, params);
-    }
-
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
