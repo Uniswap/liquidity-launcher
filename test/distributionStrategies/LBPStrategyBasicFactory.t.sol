@@ -133,7 +133,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         address lbpAddress1 = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+            abi.encode(migratorParams, auctionParams, true, true),
             salt,
             sender1
         );
@@ -141,7 +141,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         address lbpAddress2 = factory.getLBPAddress(
             address(token),
             TOTAL_SUPPLY,
-            abi.encode(migratorParams, auctionParams, IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER)),
+            abi.encode(migratorParams, auctionParams, true, true),
             salt,
             sender2
         );
