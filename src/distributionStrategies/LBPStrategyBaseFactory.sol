@@ -4,15 +4,16 @@ pragma solidity 0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
+import {IStrategyFactory} from "../interfaces/IStrategyFactory.sol";
 import {LBPStrategyBase} from "../distributionContracts/LBPStrategyBase.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 
 /// @title LBPStrategyBaseFactory
 /// @notice Base factory for LBPStrategy contracts with overridable deployment logic
 /// @custom:security-contact security@uniswap.org
-abstract contract LBPStrategyBaseFactory is IDistributionStrategy {
+abstract contract LBPStrategyBaseFactory is IStrategyFactory {
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
     /// @notice The pool manager that will be used to create the pool
@@ -48,10 +49,10 @@ abstract contract LBPStrategyBaseFactory is IDistributionStrategy {
         return IDistributionContract(Create2.deploy(0, _salt, deployedBytecode));
     }
 
-    /// @notice Precomputes the address of the deployed strategy contract via Create2
-    /// @dev The `sender` should be the same as the one used to initialize the distribution
+    /// @inheritdoc IStrategyFactory
     function getAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
+        view
         virtual
         returns (address)
     {
