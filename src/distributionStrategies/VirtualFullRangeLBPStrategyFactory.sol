@@ -5,11 +5,11 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
-import {VirtualFullRangeLBPStrategyBasic} from "../distributionContracts/VirtualLBPStrategyBasic.sol";
+import {VirtualFullRangeLBPStrategy} from "../distributionContracts/VirtualFullRangeLBPStrategy.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 
 /// @title VirtualLBPStrategyFactory
-/// @notice Factory for the VirtualFullRangeLBPStrategyBasic contract
+/// @notice Factory for the VirtualFullRangeLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
 contract VirtualFullRangeLBPStrategyFactory is LBPStrategyBaseFactory {
     constructor(IPositionManager _positionManager, IPoolManager _poolManager)
@@ -30,7 +30,7 @@ contract VirtualFullRangeLBPStrategyFactory is LBPStrategyBaseFactory {
             abi.decode(configData, (address, MigratorParameters, bytes));
 
         deployedBytecode = abi.encodePacked(
-            type(VirtualFullRangeLBPStrategyBasic).creationCode,
+            type(VirtualFullRangeLBPStrategy).creationCode,
             abi.encode(
                 token,
                 uint128(totalSupply),
