@@ -8,7 +8,7 @@ import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
 import {VirtualFullRangeLBPStrategy} from "../distributionContracts/VirtualFullRangeLBPStrategy.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 
-/// @title VirtualLBPStrategyFactory
+/// @title VirtualFullRangeLBPStrategyFactory
 /// @notice Factory for the VirtualFullRangeLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
 contract VirtualFullRangeLBPStrategyFactory is LBPStrategyBaseFactory {
