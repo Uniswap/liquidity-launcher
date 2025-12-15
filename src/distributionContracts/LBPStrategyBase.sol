@@ -319,26 +319,6 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
         }
     }
 
-    /// @notice Creates the plan for creating a full range v4 position using the position manager
-    /// @param baseParams The base parameters for the position
-    /// @param tokenAmount The amount of token to be used to create the position
-    /// @param currencyAmount The amount of currency to be used to create the position
-    /// @param paramsArraySize The size of the parameters array (either 5 or 8)
-    /// @return The actions and parameters for the position
-    function _createFullRangePositionPlan(
-        BasePositionParams memory baseParams,
-        uint128 tokenAmount,
-        uint128 currencyAmount,
-        uint256 paramsArraySize
-    ) internal pure returns (bytes memory, bytes[] memory) {
-        // Create full range specific parameters
-        FullRangeParams memory fullRangeParams =
-            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount});
-
-        // Plan the full range position
-        return baseParams.planFullRangePosition(fullRangeParams, paramsArraySize);
-    }
-
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan

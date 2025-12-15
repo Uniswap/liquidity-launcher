@@ -3,7 +3,7 @@ pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {BasePositionParams, OneSidedParams} from "../types/PositionTypes.sol";
+import {BasePositionParams, FullRangeParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {LBPStrategyBase} from "./LBPStrategyBase.sol";
@@ -48,8 +48,9 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        (actions, params) = _createFullRangePositionPlan(
-            baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
+        (actions, params) = baseParams.planFullRangePosition(
+            FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount}),
+            ParamsBuilder.FULL_RANGE_SIZE
         );
 
         (actions, params) = baseParams.planFinalTakePair(actions, params);
