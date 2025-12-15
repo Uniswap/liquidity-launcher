@@ -73,7 +73,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         _setupContracts();
         _setupDefaultMigratorParams();
         _setupDefaultAuctionParams();
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         _verifyInitialState();
     }
 
@@ -120,9 +120,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            createOneSidedTokenPosition,
-            createOneSidedCurrencyPosition
+            IPoolManager(POOL_MANAGER)
         );
         vm.etch(address(lbp), address(impl).code);
 
@@ -228,8 +226,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {
-        // Use the default one-sided position settings (true, true)
-        _deployLBPStrategy(totalSupply, true, true);
+        _deployLBPStrategy(totalSupply);
     }
 
     // Helper to setup with custom currency (e.g., DAI)
@@ -245,7 +242,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.operator
         );
         createAuctionParamsWithCurrency(currency);
-        // Use the default one-sided position settings (true, true)
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
     }
 
@@ -262,7 +258,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             testOperator // operator
         );
         createAuctionParamsWithCurrency(currency);
-        _deployLBPStrategy(totalSupply, true, true);
+        _deployLBPStrategy(totalSupply);
     }
 
     // ============ Core Bid Submission Helpers ============

@@ -32,10 +32,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
 
         (
             MigratorParameters memory migratorParams,
-            bytes memory auctionParams,
-            bool createOneSidedTokenPosition,
-            bool createOneSidedCurrencyPosition
-        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
+            bytes memory auctionParams
+        ) = abi.decode(configData, (MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
         lbp = IDistributionContract(
@@ -46,9 +44,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
                     migratorParams,
                     auctionParams,
                     positionManager,
-                    poolManager,
-                    createOneSidedTokenPosition,
-                    createOneSidedCurrencyPosition
+                    poolManager
                 )
             )
         );
@@ -72,10 +68,8 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
 
         (
             MigratorParameters memory migratorParams,
-            bytes memory auctionParams,
-            bool createOneSidedTokenPosition,
-            bool createOneSidedCurrencyPosition
-        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
+            bytes memory auctionParams
+        ) = abi.decode(configData, (MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(sender, salt));
 
@@ -88,9 +82,7 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
                     migratorParams,
                     auctionParams,
                     positionManager,
-                    poolManager,
-                    createOneSidedTokenPosition,
-                    createOneSidedCurrencyPosition
+                    poolManager
                 )
             )
         );

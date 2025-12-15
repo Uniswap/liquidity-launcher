@@ -16,9 +16,7 @@ contract LBPStrategyBasicNoValidation is LBPStrategyBasic {
         MigratorParameters memory migratorParams,
         bytes memory auctionParams,
         IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        bool _createOneSidedTokenPosition,
-        bool _createOneSidedCurrencyPosition
+        IPoolManager _poolManager
     )
         LBPStrategyBasic(
             _tokenAddress,
@@ -26,9 +24,7 @@ contract LBPStrategyBasicNoValidation is LBPStrategyBasic {
             migratorParams,
             auctionParams,
             _positionManager,
-            _poolManager,
-            _createOneSidedTokenPosition,
-            _createOneSidedCurrencyPosition
+            _poolManager
         )
     {}
 

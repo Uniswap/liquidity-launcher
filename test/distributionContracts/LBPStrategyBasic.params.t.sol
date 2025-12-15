@@ -68,9 +68,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            false,
-            false
+            IPoolManager(POOL_MANAGER)
         );
 
         vm.etch(address(lbp), address(impl).code);

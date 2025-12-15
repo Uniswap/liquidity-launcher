@@ -604,7 +604,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 1_000),
             testOperator
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
@@ -689,7 +689,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 1_000), // sweep block
             address(this) // operator
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -772,7 +772,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             uint64(block.number + 1_000),
             address(this)
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
