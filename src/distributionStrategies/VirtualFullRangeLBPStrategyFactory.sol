@@ -6,7 +6,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {VirtualFullRangeLBPStrategy} from "../distributionContracts/VirtualFullRangeLBPStrategyBasic.sol";
+import {VirtualFullRangeLBPStrategy} from "../distributionContracts/VirtualFullRangeLBPStrategy.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 
 /// @title VirtualFullRangeLBPStrategyFactory
