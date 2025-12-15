@@ -63,7 +63,7 @@ The project requires the following environment variable for testing:
 | Base | 0xC46143aE2801b21B8C08A753f9F6b52bEaD9C134 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 | Unichain | 0x435DDCFBb7a6741A5Cc962A95d6915EbBf60AE24 | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 
-### VirtualFullRangeLBPStrategyFactory
+### VirtualLBPStrategyFactory 
 
 | Network | Address | Commit Hash | Version |
 |---------|---------|------------|---------|
