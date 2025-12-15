@@ -24,20 +24,6 @@ abstract contract LBPStrategyBaseFactory is IStrategyFactory {
         poolManager = _poolManager;
     }
 
-    /// @notice Overridable function to validate the deployment params and return the deployed bytecode for the strategy
-    /// @dev This function MUST revert if the given params are invalid
-    function _validateParamsAndReturnDeployedBytecode(address token, uint256 totalSupply, bytes calldata configData)
-        internal
-        view
-        virtual
-        returns (bytes memory);
-
-    /// @notice Derives the salt for deployment given the sender and a provided salt
-    /// @param _salt The caller provided salt
-    function _hashSenderAndSalt(address _sender, bytes32 _salt) internal pure returns (bytes32) {
-        return keccak256(abi.encode(_sender, _salt));
-    }
-
     /// @inheritdoc IDistributionStrategy
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
@@ -59,5 +45,25 @@ abstract contract LBPStrategyBaseFactory is IStrategyFactory {
         bytes32 _salt = _hashSenderAndSalt(sender, salt);
         bytes32 initCodeHash = keccak256(_validateParamsAndReturnDeployedBytecode(token, totalSupply, configData));
         return Create2.computeAddress(_salt, initCodeHash, address(this));
+    }
+
+    /// @notice Overridable function to validate the deployment params and return the deployed bytecode for the strategy
+    /// @dev This function MUST revert if the given params are invalid
+    /// @param token The address of the token to be distributed
+    /// @param totalSupply The total supply of the token to be distributed
+    /// @param configData The configData used to initialize the strategy
+    /// @return The deployed bytecode for the strategy
+    function _validateParamsAndReturnDeployedBytecode(address token, uint256 totalSupply, bytes calldata configData)
+        internal
+        view
+        virtual
+        returns (bytes memory);
+
+    /// @notice Derives the salt for deployment given the sender and a provided salt
+    /// @param _sender The msg.sender of the initializeDistribution transaction
+    /// @param _salt The caller provided salt
+    /// @return The hash of the sender's address and the salt
+    function _hashSenderAndSalt(address _sender, bytes32 _salt) internal pure virtual returns (bytes32) {
+        return keccak256(abi.encode(_sender, _salt));
     }
 }
