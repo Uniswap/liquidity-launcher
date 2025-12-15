@@ -16,7 +16,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 /// @title VirtualLBPStrategyBasic
 /// @notice Strategy for distributing virtual tokens to a v4 pool
 /// Virtual tokens are ERC20 tokens that wrap an underlying token.
-contract VirtualFullRangeLBPStrategyBasic is FullRangeLBPStrategy {
+contract VirtualFullRangeLBPStrategy is FullRangeLBPStrategy {
     /// @notice Emitted when migration is approved by the governance address
     event MigrationApproved();
     /// @notice Emitted when the governance address is set
