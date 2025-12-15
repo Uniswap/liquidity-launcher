@@ -8,7 +8,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
@@ -69,7 +68,9 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
 
         vm.etch(address(lbp), address(impl).code);

@@ -51,7 +51,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -81,7 +83,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
 
         // Test too high
@@ -109,7 +113,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -135,7 +141,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -162,7 +170,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER)
+                IPoolManager(POOL_MANAGER),
+                true,
+                true
             );
         }
     }
@@ -200,7 +210,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 })
             ),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -221,7 +233,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             ), // currency is address(1)
             auctionParams, // currency is address(0)
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -242,7 +256,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             ),
             "",
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -405,7 +421,9 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 }

@@ -161,7 +161,7 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
             address(this)
         );
         createAuctionParamsWithCurrency(DAI);
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
 
         // Setup for migration
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
