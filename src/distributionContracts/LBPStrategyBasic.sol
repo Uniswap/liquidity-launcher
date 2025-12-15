@@ -11,12 +11,11 @@ import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategyBasic is ILBPStrategyBasic, LBPStrategyBase {
+contract LBPStrategyBasic is LBPStrategyBase {
     using StrategyPlanner for BasePositionParams;
 
     /// @notice Whether to create a one sided position in the token after the full range position

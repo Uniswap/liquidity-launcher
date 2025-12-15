@@ -140,7 +140,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
 
         bytes memory plan = _createPositionPlan(data);
 
-        _transferAssetsAndExecutePlan(data, plan);
+        _transferAssetsAndExecutePlan(_getTokenTransferAmount(data), _getCurrencyTransferAmount(data), plan);
 
         emit Migrated(key, data.sqrtPriceX96);
     }
@@ -310,18 +310,16 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     }
 
     /// @notice Transfers assets to position manager and executes the position plan
-    /// @param data Migration data with amounts and flags
+    /// @param tokenTransferAmount The amount of tokens to transfer to the position manager
+    /// @param currencyTransferAmount The amount of currency to transfer to the position manager
     /// @param plan The encoded position plan to execute
-    function _transferAssetsAndExecutePlan(MigrationData memory data, bytes memory plan) private {
-        // Calculate token amount to transfer
-        uint128 tokenTransferAmount = _getTokenTransferAmount(data);
-
+    function _transferAssetsAndExecutePlan(
+        uint128 tokenTransferAmount,
+        uint128 currencyTransferAmount,
+        bytes memory plan
+    ) private {
         // Transfer tokens to position manager
         Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
-
-        // Calculate currency amount and execute plan
-        uint128 currencyTransferAmount = _getCurrencyTransferAmount(data);
-
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
             positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp);

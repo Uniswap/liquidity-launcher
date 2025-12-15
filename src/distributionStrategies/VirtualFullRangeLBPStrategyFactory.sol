@@ -6,11 +6,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {VirtualFullRangeLBPStrategyBasic} from "../distributionContracts/VirtualLBPStrategyBasic.sol";
+import {VirtualFullRangeLBPStrategy} from "../distributionContracts/VirtualFullRangeLBPStrategy.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 
-/// @title VirtualLBPStrategyFactory
-/// @notice Factory for the VirtualFullRangeLBPStrategyBasic contract
+/// @title VirtualFullRangeLBPStrategyFactory
+/// @notice Factory for the VirtualFullRangeLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
 contract VirtualFullRangeLBPStrategyFactory is IDistributionStrategy {
     /// @notice The position manager that will be used to create the position
@@ -36,7 +36,7 @@ contract VirtualFullRangeLBPStrategyFactory is IDistributionStrategy {
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
         virtualLBP = IDistributionContract(
             address(
-                new VirtualFullRangeLBPStrategyBasic{salt: _salt}(
+                new VirtualFullRangeLBPStrategy{salt: _salt}(
                     token,
                     uint128(totalSupply),
                     migratorParams,
@@ -51,13 +51,13 @@ contract VirtualFullRangeLBPStrategyFactory is IDistributionStrategy {
         emit DistributionInitialized(address(virtualLBP), token, totalSupply);
     }
 
-    /// @notice Gets the address of the VirtualFullRangeLBPStrategyBasic contract
+    /// @notice Gets the address of the VirtualFullRangeLBPStrategy contract
     /// @param token The token that is being distributed
     /// @param totalSupply The supply of the token that will be distributed
-    /// @param configData The config data for the VirtualFullRangeLBPStrategyBasic contract
-    /// @param salt The salt to deterministicly deploy the VirtualFullRangeLBPStrategyBasic contract
+    /// @param configData The config data for the VirtualFullRangeLBPStrategy contract
+    /// @param salt The salt to deterministicly deploy the VirtualFullRangeLBPStrategy contract
     /// @param sender The address to be concatenated with the salt parameter before being hashed
-    /// @return The address of the VirtualFullRangeLBPStrategyBasic contract
+    /// @return The address of the VirtualFullRangeLBPStrategy contract
     function getVirtualLBPAddress(
         address token,
         uint256 totalSupply,
@@ -74,7 +74,7 @@ contract VirtualFullRangeLBPStrategyFactory is IDistributionStrategy {
 
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
-                type(VirtualFullRangeLBPStrategyBasic).creationCode,
+                type(VirtualFullRangeLBPStrategy).creationCode,
                 abi.encode(
                     token,
                     uint128(totalSupply),
