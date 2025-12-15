@@ -17,16 +17,7 @@ contract LBPStrategyBasicNoValidation is LBPStrategyBasic {
         bytes memory auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    )
-        LBPStrategyBasic(
-            _tokenAddress,
-            _totalSupply,
-            migratorParams,
-            auctionParams,
-            _positionManager,
-            _poolManager
-        )
-    {}
+    ) LBPStrategyBasic(_tokenAddress, _totalSupply, migratorParams, auctionParams, _positionManager, _poolManager) {}
 
     /// @dev Override to skip hook address validation during testing
     function validateHookAddress(BaseHook) internal pure override {}

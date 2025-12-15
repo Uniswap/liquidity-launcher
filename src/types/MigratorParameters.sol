@@ -13,4 +13,5 @@ struct MigratorParameters {
     address positionRecipient; // the address that will receive the position
     uint64 sweepBlock; // the block number when the operator can sweep currency and tokens from the pool
     address operator; // the address that is able to sweep currency and tokens from the pool
+    uint128 maxCurrencyAmountForLP; // the maximum amount of currency that can be used for LP
 }

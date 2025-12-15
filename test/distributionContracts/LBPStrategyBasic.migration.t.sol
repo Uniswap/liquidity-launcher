@@ -378,7 +378,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -452,7 +453,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -602,7 +604,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -687,7 +690,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000), // sweep block
-            address(this) // operator
+            address(this), // operator
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
@@ -770,7 +774,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this)
+            address(this),
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 

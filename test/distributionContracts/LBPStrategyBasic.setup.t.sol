@@ -38,7 +38,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this)
+            address(this),
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
 
         vm.expectRevert(
@@ -77,7 +78,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -105,7 +107,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -131,7 +134,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1_000),
-                address(this)
+                address(this),
+                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
@@ -158,7 +162,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                     invalidRecipients[i],
                     uint64(block.number + 500),
                     uint64(block.number + 1_000),
-                    address(this)
+                    address(this),
+                    DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
                 ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
@@ -182,7 +187,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1000),
-                address(this)
+                address(this),
+                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
             abi.encode(
                 AuctionParameters({
@@ -217,7 +223,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1000),
-                address(this)
+                address(this),
+                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ), // currency is address(1)
             auctionParams, // currency is address(0)
             IPositionManager(POSITION_MANAGER),
@@ -238,7 +245,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 address(3),
                 uint64(block.number + 500),
                 uint64(block.number + 1000),
-                address(this)
+                address(this),
+                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
             "",
             IPositionManager(POSITION_MANAGER),
@@ -341,7 +349,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         address positionRecipient,
         uint64 sweepBlock,
         uint64 migrationBlock,
-        address operator
+        address operator,
+        uint128 maxCurrencyAmountForLP
     ) public {
         uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
         AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
@@ -401,7 +410,8 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 positionRecipient,
                 migrationBlock,
                 sweepBlock,
-                operator
+                operator,
+                maxCurrencyAmountForLP
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),

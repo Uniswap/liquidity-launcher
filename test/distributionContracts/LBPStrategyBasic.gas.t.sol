@@ -158,7 +158,8 @@ contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this)
+            address(this),
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         createAuctionParamsWithCurrency(DAI);
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);

@@ -48,7 +48,8 @@ contract LBPStrategyBasicFactoryTest is Test {
             auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000,
             sweepBlock: uint64(block.number + 102),
-            operator: address(this)
+            operator: address(this),
+            maxCurrencyAmountForLP: type(uint128).max
         });
 
         auctionParams = abi.encode(

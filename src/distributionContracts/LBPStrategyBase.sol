@@ -31,6 +31,7 @@ import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {TokenDistribution} from "../libraries/TokenDistribution.sol";
 import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @title LBPStrategyBase
 /// @notice Base contract for derived LBPStrategies
@@ -55,6 +56,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     uint128 public immutable totalSupply;
     /// @notice The remaining supply of the token that was not sent to the auction
     uint128 public immutable reserveSupply;
+    /// @notice The maximum amount of currency that can be used for LP
+    uint128 public immutable maxCurrencyAmountForLP;
     /// @notice The address that will receive the position
     address public immutable positionRecipient;
     /// @notice The block number at which migration is allowed
@@ -92,6 +95,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
         reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
+        maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;
@@ -252,17 +256,16 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() internal view returns (MigrationData memory) {
-        uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
+        uint128 currencyAmount = uint128(FixedPointMathLib.min(auction.currencyRaised(), maxCurrencyAmountForLP)); // already validated to be less than or equal to type(uint128).max
         address poolToken = getPoolToken();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
-
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
+            priceX192.calculateAmounts(currencyAmount, currency < poolToken, reserveSupply);
 
-        uint128 leftoverCurrency = currencyRaised - initialCurrencyAmount;
+        uint128 leftoverCurrency = currencyAmount - initialCurrencyAmount;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,

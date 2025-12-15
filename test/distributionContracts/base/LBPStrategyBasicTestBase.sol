@@ -42,6 +42,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     uint256 constant FORK_BLOCK = 23097193;
     uint256 public constant FLOOR_PRICE = 1000 << FixedPoint96.RESOLUTION;
     uint256 public constant TICK_SPACING = 100 << FixedPoint96.RESOLUTION;
+    uint128 constant DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP = type(uint128).max;
 
     // Test token address (make it > address(0) but < DAI)
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
@@ -95,7 +96,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator // operator (receive function for checking ETH balance)
+            testOperator, // operator (receive function for checking ETH balance)
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP // maxCurrencyAmountForLP
         );
     }
 
@@ -169,7 +171,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address positionRecipient,
         uint64 migrationBlock,
         uint64 sweepBlock,
-        address operator
+        address operator,
+        uint128 maxCurrencyAmountForLP
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
@@ -180,7 +183,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             positionRecipient: positionRecipient,
             migrationBlock: migrationBlock,
             sweepBlock: sweepBlock,
-            operator: operator
+            operator: operator,
+            maxCurrencyAmountForLP: maxCurrencyAmountForLP
         });
     }
 
@@ -239,7 +243,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.positionRecipient,
             migratorParams.migrationBlock,
             migratorParams.sweepBlock,
-            migratorParams.operator
+            migratorParams.operator,
+            migratorParams.maxCurrencyAmountForLP
         );
         createAuctionParamsWithCurrency(currency);
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
@@ -255,7 +260,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient (same as default),
             uint64(block.number + 500), // migration block
             uint64(block.number + 1_000), // sweep block
-            testOperator // operator
+            testOperator, // operator
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP // maxCurrencyAmountForLP
         );
         createAuctionParamsWithCurrency(currency);
         _deployLBPStrategy(totalSupply);

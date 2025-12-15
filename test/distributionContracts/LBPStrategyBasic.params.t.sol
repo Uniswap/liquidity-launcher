@@ -37,7 +37,8 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1 + 1),
             uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1 + 1 + 7200),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
 
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(0, 129600).addStep(347, 7200)
