@@ -3,10 +3,12 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 
-/// @title ILBPStrategyBasic
-/// @notice Interface for the LBPStrategyBasic contract
-interface ILBPStrategyBasic is IDistributionContract {
+/// @title ILBPStrategyBase
+/// @notice Base interface for derived LBPStrategy contracts
+interface ILBPStrategyBase is IDistributionContract {
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
@@ -121,4 +123,19 @@ interface ILBPStrategyBasic is IDistributionContract {
     /// @notice Allows the operator to sweep currency from the contract
     /// @dev Can only be called after sweepBlock by the operator
     function sweepCurrency() external;
+
+    /// Getters
+    function token() external view returns (address);
+    function currency() external view returns (address);
+    function totalSupply() external view returns (uint128);
+    function reserveSupply() external view returns (uint128);
+    function positionManager() external view returns (IPositionManager);
+    function positionRecipient() external view returns (address);
+    function migrationBlock() external view returns (uint64);
+    function sweepBlock() external view returns (uint64);
+    function operator() external view returns (address);
+    function auction() external view returns (IContinuousClearingAuction);
+    function auctionParameters() external view returns (bytes memory);
+    function poolLPFee() external view returns (uint24);
+    function poolTickSpacing() external view returns (int24);
 }

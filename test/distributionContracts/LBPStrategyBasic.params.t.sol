@@ -2,14 +2,12 @@
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
 import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
@@ -39,9 +37,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1 + 1),
             uint64(23791222 + 129600 + 7200 + 3600 + 3600 + 7200 + 7200 + 7200 + 1 + 1 + 7200),
-            testOperator,
-            false,
-            false
+            testOperator
         );
 
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(0, 129600).addStep(347, 7200)
@@ -72,7 +68,9 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
 
         vm.etch(address(lbp), address(impl).code);
