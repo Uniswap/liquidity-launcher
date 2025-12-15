@@ -10,8 +10,9 @@ import {GovernedLBPStrategy} from "./GovernedLBPStrategy.sol";
 
 /// @title VirtualGovernedLBPStrategy
 /// @notice Strategy for distributing virtual tokens to a v4 pool requiring governance approval
-/// Virtual tokens are ERC20 tokens that wrap an underlying token.
-/// @dev A version of this strategy was used in the Aztec CCA sale
+/// @notice Virtual tokens are ERC20 tokens that wrap an underlying token.
+/// @dev A version of this strategy was used in the inagural CCA token sale with the Aztec Network
+///      deployed on mainnet: https://etherscan.io/address/0xd53006d1e3110fd319a79aeec4c527a0d265e080
 contract VirtualGovernedLBPStrategy is GovernedLBPStrategy {
     /// @notice The address of the underlying token that is being distributed - used in the migrated pool
     address public immutable UNDERLYING_TOKEN;
