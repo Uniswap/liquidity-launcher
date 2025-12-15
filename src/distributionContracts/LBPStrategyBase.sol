@@ -26,7 +26,7 @@ import {MigratorParameters} from "../types/MigratorParameters.sol";
 import {HookBasic} from "../utils/HookBasic.sol";
 import {TokenPricing} from "../libraries/TokenPricing.sol";
 import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
+import {BasePositionParams, FullRangeParams} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
 import {MigrationData} from "../types/MigrationData.sol";
 import {TokenDistribution} from "../libraries/TokenDistribution.sol";
@@ -259,8 +259,10 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
 
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
+        (data.initialTokenAmount, data.initialCurrencyAmount) =
             priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
+
+        data.leftoverCurrency = currencyRaised - data.initialCurrencyAmount;
 
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,

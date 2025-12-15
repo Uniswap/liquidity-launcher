@@ -30,25 +30,14 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
 
-        (
-            MigratorParameters memory migratorParams,
-            bytes memory auctionParams,
-            bool createOneSidedTokenPosition,
-            bool createOneSidedCurrencyPosition
-        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
         lbp = IDistributionContract(
             address(
                 new LBPStrategyBasic{salt: _salt}(
-                    token,
-                    uint128(totalSupply),
-                    migratorParams,
-                    auctionParams,
-                    positionManager,
-                    poolManager,
-                    createOneSidedTokenPosition,
-                    createOneSidedCurrencyPosition
+                    token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager
                 )
             )
         );
@@ -70,28 +59,15 @@ contract LBPStrategyBasicFactory is IDistributionStrategy {
     {
         if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
 
-        (
-            MigratorParameters memory migratorParams,
-            bytes memory auctionParams,
-            bool createOneSidedTokenPosition,
-            bool createOneSidedCurrencyPosition
-        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
 
         bytes32 _salt = keccak256(abi.encode(sender, salt));
 
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(LBPStrategyBasic).creationCode,
-                abi.encode(
-                    token,
-                    uint128(totalSupply),
-                    migratorParams,
-                    auctionParams,
-                    positionManager,
-                    poolManager,
-                    createOneSidedTokenPosition,
-                    createOneSidedCurrencyPosition
-                )
+                abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager)
             )
         );
         return Create2.computeAddress(_salt, initCodeHash, address(this));

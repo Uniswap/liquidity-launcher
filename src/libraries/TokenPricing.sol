@@ -86,14 +86,13 @@ library TokenPricing {
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
     /// @param reserveSupply The reserve supply of the token
     /// @return tokenAmount The calculated token amount
-    /// @return leftoverCurrency The leftover currency amount
     /// @return correspondingCurrencyAmount The corresponding currency amount
     function calculateAmounts(
         uint256 priceX192,
         uint128 currencyAmount,
         bool currencyIsCurrency0,
         uint128 reserveSupply
-    ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
+    ) internal pure returns (uint128 tokenAmount, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
         uint256 tokenAmountUint256 = currencyIsCurrency0
             ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
@@ -111,8 +110,6 @@ library TokenPricing {
 
             correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
 
-            // currencyAmount is already validated to be less than or equal to type(uint128).max so leftoverCurrency is also less than or equal to type(uint128).max
-            leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
             tokenAmount = reserveSupply; // tokenAmount will never be greater than reserveSupply
         } else {
             correspondingCurrencyAmount = currencyAmount;
@@ -120,6 +117,6 @@ library TokenPricing {
             tokenAmount = uint128(tokenAmountUint256);
         }
 
-        return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
+        return (tokenAmount, correspondingCurrencyAmount);
     }
 }

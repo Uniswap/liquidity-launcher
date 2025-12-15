@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-import {ILBPStrategyBasic} from "../../src/interfaces/ILBPStrategyBasic.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -70,9 +69,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            false,
-            false
+            IPoolManager(POOL_MANAGER)
         );
 
         vm.etch(address(lbp), address(impl).code);
