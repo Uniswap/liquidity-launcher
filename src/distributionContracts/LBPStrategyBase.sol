@@ -251,28 +251,34 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() internal view returns (MigrationData memory data) {
+    function _prepareMigrationData() internal view returns (MigrationData memory) {
         uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
         address poolToken = getPoolToken();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
 
-        data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
+        uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (data.initialTokenAmount, data.initialCurrencyAmount) =
+        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
             priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
 
-        data.leftoverCurrency = currencyRaised - data.initialCurrencyAmount;
+        uint128 leftoverCurrency = currencyRaised - initialCurrencyAmount;
 
-        data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            data.sqrtPriceX96,
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
+            currency < poolToken ? initialCurrencyAmount : initialTokenAmount,
+            currency < poolToken ? initialTokenAmount : initialCurrencyAmount
         );
 
-        return data;
+        return MigrationData({
+            sqrtPriceX96: sqrtPriceX96,
+            initialTokenAmount: initialTokenAmount,
+            initialCurrencyAmount: initialCurrencyAmount,
+            leftoverCurrency: leftoverCurrency,
+            liquidity: liquidity
+        });
     }
 
     /// @notice Initializes the pool with the calculated price
