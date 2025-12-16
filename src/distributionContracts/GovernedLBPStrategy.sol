@@ -2,7 +2,6 @@
 pragma solidity 0.8.26;
 
 import {FullRangeLBPStrategy} from "./FullRangeLBPStrategy.sol";
-import {IVirtualERC20} from "../interfaces/external/IVirtualERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
@@ -13,10 +12,10 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-/// @title VirtualFullRangeLBPStrategyBasic
+/// @title GovernedLBPStrategy
 /// @notice Strategy for distributing virtual tokens to a v4 pool
 /// Virtual tokens are ERC20 tokens that wrap an underlying token.
-contract VirtualFullRangeLBPStrategy is FullRangeLBPStrategy {
+contract GovernedLBPStrategy is FullRangeLBPStrategy {
     /// @notice Emitted when migration is approved by the governance address
     event MigrationApproved();
     /// @notice Emitted when the governance address is set
@@ -28,11 +27,9 @@ contract VirtualFullRangeLBPStrategy is FullRangeLBPStrategy {
     /// @notice Error thrown when the caller is not the governance address
     error NotGovernance();
 
-    /// @notice The address of Aztec Governance
+    /// @notice The address of Governance who must approve migration
+    /// @dev This can be a bridge messenger, multi-sig, EOA, or contract
     address public immutable GOVERNANCE;
-
-    /// @notice The address of the underlying token that is being distributed - used in the migrated pool
-    address public immutable UNDERLYING_TOKEN;
 
     /// @notice Whether migration is approved by Governance
     bool public isMigrationApproved = false;
@@ -49,13 +46,12 @@ contract VirtualFullRangeLBPStrategy is FullRangeLBPStrategy {
         // Underlying strategy
         FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager)
     {
-        UNDERLYING_TOKEN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
         GOVERNANCE = _governance;
         emit GovernanceSet(_governance);
     }
 
     /// @notice Approves migration of the virtual token to the v4 pool
-    /// @dev Only callable by the governance address
+    /// @dev Only callable by the set address
     function approveMigration() external {
         if (msg.sender != GOVERNANCE) revert NotGovernance();
         isMigrationApproved = true;
@@ -93,10 +89,5 @@ contract VirtualFullRangeLBPStrategy is FullRangeLBPStrategy {
     {
         if (!isMigrationApproved) revert MigrationNotApproved();
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-    }
-
-    /// @notice Returns the address of the underlying token
-    function getPoolToken() internal view override returns (address) {
-        return UNDERLYING_TOKEN;
     }
 }

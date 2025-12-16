@@ -4,14 +4,16 @@ pragma solidity 0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
-import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
-import {VirtualFullRangeLBPStrategy} from "../distributionContracts/VirtualFullRangeLBPStrategy.sol";
+import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
+import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import {GovernedLBPStrategy} from "../distributionContracts/GovernedLBPStrategy.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
+import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
 
-/// @title VirtualFullRangeLBPStrategyFactory
-/// @notice Factory for the VirtualFullRangeLBPStrategy contract
+/// @title GovernedLBPStrategyFactory
+/// @notice Factory for the GovernedLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
-contract VirtualFullRangeLBPStrategyFactory is LBPStrategyBaseFactory {
+contract GovernedLBPStrategyFactory is LBPStrategyBaseFactory {
     constructor(IPositionManager _positionManager, IPoolManager _poolManager)
         LBPStrategyBaseFactory(_positionManager, _poolManager)
     {}
@@ -30,7 +32,7 @@ contract VirtualFullRangeLBPStrategyFactory is LBPStrategyBaseFactory {
             abi.decode(configData, (address, MigratorParameters, bytes));
 
         deployedBytecode = abi.encodePacked(
-            type(VirtualFullRangeLBPStrategy).creationCode,
+            type(GovernedLBPStrategy).creationCode,
             abi.encode(
                 token,
                 uint128(totalSupply),
