@@ -169,6 +169,21 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
         }
     }
 
+    /// @notice Get the currency0 of the pool
+    function _currency0() internal view returns (Currency) {
+        return Currency.wrap(_currencyIsCurrency0() ? currency : getPoolToken());
+    }
+
+    /// @notice Get the currency1 of the pool
+    function _currency1() internal view returns (Currency) {
+        return Currency.wrap(_currencyIsCurrency0() ? getPoolToken() : currency);
+    }
+
+    /// @notice Returns true if the currency is currency0 of the pool
+    function _currencyIsCurrency0() internal view returns (bool) {
+        return currency < getPoolToken();
+    }
+
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
@@ -253,21 +268,21 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() internal view returns (MigrationData memory data) {
         uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
-        address poolToken = getPoolToken();
+        bool currencyIsCurrency0 = _currencyIsCurrency0();
 
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currencyIsCurrency0);
 
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
+            priceX192.calculateAmounts(currencyRaised, currencyIsCurrency0, reserveSupply);
 
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
+            currencyIsCurrency0 ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currencyIsCurrency0 ? data.initialTokenAmount : data.initialCurrencyAmount
         );
 
         return data;
@@ -277,11 +292,9 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     /// @param data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
     function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
-        address poolToken = getPoolToken();
-
         key = PoolKey({
-            currency0: Currency.wrap(currency < poolToken ? currency : poolToken),
-            currency1: Currency.wrap(currency < poolToken ? poolToken : currency),
+            currency0: _currency0(),
+            currency1: _currency1(),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
