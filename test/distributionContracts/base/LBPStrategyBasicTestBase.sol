@@ -3,26 +3,28 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
-import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
-import {MigratorParameters} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {MigratorParameters} from "@lbp/strategies/LBPStrategyBase.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LBPStrategyBasicNoValidation} from "../../mocks/LBPStrategyBasicNoValidation.sol";
+import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
+import {FullRangeLBPStrategyNoValidation} from "../../mocks/FullRangeLBPStrategyNoValidation.sol";
 import {LiquidityLauncher} from "../../../src/LiquidityLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {ILBPStrategyBasic} from "../../../src/interfaces/ILBPStrategyBasic.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {ILBPStrategyBase} from "../../../src/interfaces/ILBPStrategyBase.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
@@ -56,9 +58,9 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     // State variables
-    LBPStrategyBasic lbp;
+    ILBPStrategyBase lbp;
     LiquidityLauncher liquidityLauncher;
-    LBPStrategyBasicNoValidation impl;
+    ILBPStrategyBase impl;
     MockERC20 token;
     MockERC20 implToken;
     ContinuousClearingAuctionFactory auctionFactory;
@@ -71,7 +73,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         _setupContracts();
         _setupDefaultMigratorParams();
         _setupDefaultAuctionParams();
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
         _verifyInitialState();
     }
 
@@ -93,18 +95,23 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator, // operator (receive function for checking ETH balance)
-            true, // createOneSidedTokenPosition,
-            true // createOneSidedCurrencyPosition
+            testOperator // operator (receive function for checking ETH balance)
         );
     }
 
-    function _deployLBPStrategy(uint128 totalSupply) internal {
-        // Deploy token and give supply to liquidity launcher
+    function _setUpToken(uint128 totalSupply) internal {
         token = MockERC20(TEST_TOKEN_ADDRESS);
         implToken = new MockERC20("Test Token", "TEST", totalSupply, address(liquidityLauncher));
         vm.etch(TEST_TOKEN_ADDRESS, address(implToken).code);
         deal(address(token), address(liquidityLauncher), totalSupply);
+    }
+
+    function _deployLBPStrategy(
+        uint128 totalSupply,
+        bool createOneSidedTokenPosition,
+        bool createOneSidedCurrencyPosition
+    ) internal {
+        _setUpToken(totalSupply);
         // Get hook address with BEFORE_INITIALIZE permission
         address hookAddress = address(
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
@@ -117,11 +124,32 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            createOneSidedTokenPosition,
+            createOneSidedCurrencyPosition
         );
         vm.etch(address(lbp), address(impl).code);
 
         LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
+    }
+
+    function _deployFullRangeLBPStrategy(uint128 totalSupply) internal {
+        _setUpToken(totalSupply);
+        // Get hook address with BEFORE_INITIALIZE permission
+        address hookAddress = address(
+            uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
+        );
+        lbp = FullRangeLBPStrategy(payable(hookAddress));
+        impl = new FullRangeLBPStrategyNoValidation(
+            address(token),
+            totalSupply,
+            migratorParams,
+            auctionParams,
+            IPositionManager(POSITION_MANAGER),
+            IPoolManager(POOL_MANAGER)
+        );
+        vm.etch(address(lbp), address(impl).code);
+        FullRangeLBPStrategyNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
     }
 
     function _verifyInitialState() internal view {
@@ -129,10 +157,10 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         assertEq(lbp.currency(), migratorParams.currency);
         assertEq(lbp.totalSupply(), DEFAULT_TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
+        assertEq(address(LBPStrategyBasic(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), migratorParams.positionRecipient);
         assertEq(lbp.migrationBlock(), uint64(block.number + 500));
         assertEq(address(lbp.auction()), address(0));
-        assertEq(address(lbp.poolManager()), POOL_MANAGER);
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
         assertEq(lbp.poolTickSpacing(), migratorParams.poolTickSpacing);
         assertEq(lbp.auctionParameters(), auctionParams);
@@ -147,9 +175,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address positionRecipient,
         uint64 migrationBlock,
         uint64 sweepBlock,
-        address operator,
-        bool createOneSidedTokenPosition,
-        bool createOneSidedCurrencyPosition
+        address operator
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
@@ -160,9 +186,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             positionRecipient: positionRecipient,
             migrationBlock: migrationBlock,
             sweepBlock: sweepBlock,
-            operator: operator,
-            createOneSidedTokenPosition: createOneSidedTokenPosition,
-            createOneSidedCurrencyPosition: createOneSidedCurrencyPosition
+            operator: operator
         });
     }
 
@@ -208,7 +232,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {
-        _deployLBPStrategy(totalSupply);
+        // Use the default one-sided position settings (true, true)
+        _deployLBPStrategy(totalSupply, true, true);
     }
 
     // Helper to setup with custom currency (e.g., DAI)
@@ -221,12 +246,11 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.positionRecipient,
             migratorParams.migrationBlock,
             migratorParams.sweepBlock,
-            migratorParams.operator,
-            migratorParams.createOneSidedTokenPosition,
-            migratorParams.createOneSidedCurrencyPosition
+            migratorParams.operator
         );
         createAuctionParamsWithCurrency(currency);
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
+        // Use the default one-sided position settings (true, true)
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
     }
 
     // Helper to setup with custom total supply and token split
@@ -239,12 +263,10 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient (same as default),
             uint64(block.number + 500), // migration block
             uint64(block.number + 1_000), // sweep block
-            testOperator, // operator
-            true, // createOneSidedTokenPosition
-            true // createOneSidedCurrencyPosition
+            testOperator // operator
         );
         createAuctionParamsWithCurrency(currency);
-        _deployLBPStrategy(totalSupply);
+        _deployLBPStrategy(totalSupply, true, true);
     }
 
     // ============ Core Bid Submission Helpers ============

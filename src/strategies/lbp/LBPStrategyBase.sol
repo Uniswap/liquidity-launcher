@@ -1,41 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {
-    IContinuousClearingAuction,
-    AuctionParameters
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
+import {
+    AuctionParameters,
+    IContinuousClearingAuction
+} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {
     IContinuousClearingAuctionFactory
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {ILBPStrategyBasic} from "../interfaces/ILBPStrategyBasic.sol";
-import {HookBasic} from "../utils/HookBasic.sol";
-import {TokenPricing} from "../libraries/TokenPricing.sol";
-import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
-import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
-import {MigrationData} from "../types/MigrationData.sol";
-import {TokenDistribution} from "../libraries/TokenDistribution.sol";
+import {HookBasic} from "../../utils/HookBasic.sol";
+import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
+import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
+import {MigrationData} from "../../types/MigrationData.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
+import {BasePositionParams, FullRangeParams, OneSidedParams} from "../../types/PositionTypes.sol";
+import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
+import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
+import {TokenDistribution} from "../../libraries/TokenDistribution.sol";
+import {TokenPricing} from "../../libraries/TokenPricing.sol";
 
-/// @title LBPStrategyBasic
-/// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
+/// @title LBPStrategyBase
+/// @notice Base contract for derived LBPStrategies
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
+abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
@@ -65,15 +65,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     address public immutable operator;
     /// @notice The block number at which the operator can sweep currency and tokens from the pool
     uint64 public immutable sweepBlock;
-    /// @notice Whether to create a one sided position in the token after the full range position
-    bool public immutable createOneSidedTokenPosition;
-    /// @notice Whether to create a one sided position in the currency after the full range position
-    bool public immutable createOneSidedCurrencyPosition;
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
-    /// @notice The auction that will be used to create the auction
+    /// @notice The auction contract
     IContinuousClearingAuction public auction;
+    /// @notice The auction parameters used to initialize the auction via the factory
     bytes public auctionParameters;
 
     constructor(
@@ -103,8 +100,6 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         poolTickSpacing = _migratorParams.poolTickSpacing;
         operator = _migratorParams.operator;
         sweepBlock = _migratorParams.sweepBlock;
-        createOneSidedTokenPosition = _migratorParams.createOneSidedTokenPosition;
-        createOneSidedCurrencyPosition = _migratorParams.createOneSidedCurrencyPosition;
     }
 
     /// @notice Gets the address of the token that will be used to create the pool
@@ -135,7 +130,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         emit AuctionCreated(address(_auction));
     }
 
-    /// @inheritdoc ILBPStrategyBasic
+    /// @inheritdoc ILBPStrategyBase
     function migrate() external {
         _validateMigration();
 
@@ -145,12 +140,12 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
         bytes memory plan = _createPositionPlan(data);
 
-        _transferAssetsAndExecutePlan(data, plan);
+        _transferAssetsAndExecutePlan(_getTokenTransferAmount(data), _getCurrencyTransferAmount(data), plan);
 
         emit Migrated(key, data.sqrtPriceX96);
     }
 
-    /// @inheritdoc ILBPStrategyBasic
+    /// @inheritdoc ILBPStrategyBase
     function sweepToken() external {
         if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
@@ -162,7 +157,7 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
-    /// @inheritdoc ILBPStrategyBasic
+    /// @inheritdoc ILBPStrategyBase
     function sweepCurrency() external {
         if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
@@ -172,6 +167,21 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
             Currency.wrap(currency).transfer(operator, currencyBalance);
             emit CurrencySwept(operator, currencyBalance);
         }
+    }
+
+    /// @notice Get the currency0 of the pool
+    function _currency0() internal view returns (Currency) {
+        return Currency.wrap(_currencyIsCurrency0() ? currency : getPoolToken());
+    }
+
+    /// @notice Get the currency1 of the pool
+    function _currency1() internal view returns (Currency) {
+        return Currency.wrap(_currencyIsCurrency0() ? getPoolToken() : currency);
+    }
+
+    /// @notice Returns true if the currency is currency0 of the pool
+    function _currencyIsCurrency0() internal view returns (bool) {
+        return currency < getPoolToken();
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
@@ -256,29 +266,24 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() private view returns (MigrationData memory data) {
+    function _prepareMigrationData() internal view returns (MigrationData memory data) {
         uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
-        address poolToken = getPoolToken();
+        bool currencyIsCurrency0 = _currencyIsCurrency0();
 
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currencyIsCurrency0);
 
         data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currency < poolToken, reserveSupply);
+            priceX192.calculateAmounts(currencyRaised, currencyIsCurrency0, reserveSupply);
 
         data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
             data.sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < poolToken ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currency < poolToken ? data.initialTokenAmount : data.initialCurrencyAmount
+            currencyIsCurrency0 ? data.initialCurrencyAmount : data.initialTokenAmount,
+            currencyIsCurrency0 ? data.initialTokenAmount : data.initialCurrencyAmount
         );
-
-        // Determine if we should create a one-sided position in tokens if createOneSidedTokenPosition is set OR
-        // if we should create a one-sided position in currency if createOneSidedCurrencyPosition is set and there is leftover currency
-        data.shouldCreateOneSided = createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount
-            || createOneSidedCurrencyPosition && data.leftoverCurrency > 0;
 
         return data;
     }
@@ -287,11 +292,9 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
     /// @param data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
     function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
-        address poolToken = getPoolToken();
-
         key = PoolKey({
-            currency0: Currency.wrap(currency < poolToken ? currency : poolToken),
-            currency1: Currency.wrap(currency < poolToken ? poolToken : currency),
+            currency0: _currency0(),
+            currency1: _currency1(),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
@@ -306,63 +309,17 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         return key;
     }
 
-    /// @notice Creates the position plan based on migration data
-    /// @param data Migration data with all necessary parameters
-    /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) private view returns (bytes memory plan) {
-        bytes memory actions;
-        bytes[] memory params;
-
-        address poolToken = getPoolToken();
-
-        // Create base parameters
-        BasePositionParams memory baseParams = BasePositionParams({
-            currency: currency,
-            poolToken: poolToken,
-            poolLPFee: poolLPFee,
-            poolTickSpacing: poolTickSpacing,
-            initialSqrtPriceX96: data.sqrtPriceX96,
-            liquidity: data.liquidity,
-            positionRecipient: positionRecipient,
-            hooks: IHooks(address(this))
-        });
-
-        if (data.shouldCreateOneSided) {
-            (actions, params) = _createFullRangePositionPlan(
-                baseParams,
-                data.initialTokenAmount,
-                data.initialCurrencyAmount,
-                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
-            );
-            (actions, params) = _createOneSidedPositionPlan(
-                baseParams, actions, params, data.initialTokenAmount, data.leftoverCurrency
-            );
-            // shouldCreatedOneSided could be true, but if the one sided position is not valid, only a full range position will be created and there will be no one sided params
-            data.hasOneSidedParams = params.length == ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE;
-        } else {
-            (actions, params) = _createFullRangePositionPlan(
-                baseParams, data.initialTokenAmount, data.initialCurrencyAmount, ParamsBuilder.FULL_RANGE_SIZE
-            );
-        }
-
-        (actions, params) = _createFinalTakePairPlan(baseParams, actions, params);
-
-        return abi.encode(actions, params);
-    }
-
     /// @notice Transfers assets to position manager and executes the position plan
-    /// @param data Migration data with amounts and flags
+    /// @param tokenTransferAmount The amount of tokens to transfer to the position manager
+    /// @param currencyTransferAmount The amount of currency to transfer to the position manager
     /// @param plan The encoded position plan to execute
-    function _transferAssetsAndExecutePlan(MigrationData memory data, bytes memory plan) private {
-        // Calculate token amount to transfer
-        uint128 tokenTransferAmount = _getTokenTransferAmount(data);
-
+    function _transferAssetsAndExecutePlan(
+        uint128 tokenTransferAmount,
+        uint128 currencyTransferAmount,
+        bytes memory plan
+    ) private {
         // Transfer tokens to position manager
         Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
-
-        // Calculate currency amount and execute plan
-        uint128 currencyTransferAmount = _getCurrencyTransferAmount(data);
-
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
             positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp);
@@ -373,84 +330,20 @@ contract LBPStrategyBasic is ILBPStrategyBasic, HookBasic {
         }
     }
 
+    /// @notice Creates the position plan based on migration data
+    /// @param data Migration data with all necessary parameters
+    /// @return plan The encoded position plan
+    function _createPositionPlan(MigrationData memory data) internal view virtual returns (bytes memory plan);
+
     /// @notice Calculates the amount of tokens to transfer
     /// @param data Migration data
     /// @return The amount of tokens to transfer to the position manager
-    function _getTokenTransferAmount(MigrationData memory data) private view returns (uint128) {
-        // hasOneSidedParams can only be true if shouldCreateOneSided is true
-        return
-            (reserveSupply > data.initialTokenAmount && data.hasOneSidedParams)
-                ? reserveSupply
-                : data.initialTokenAmount;
-    }
+    function _getTokenTransferAmount(MigrationData memory data) internal view virtual returns (uint128);
 
     /// @notice Calculates the amount of currency to transfer
     /// @param data Migration data
     /// @return The amount of currency to transfer to the position manager
-    function _getCurrencyTransferAmount(MigrationData memory data) private pure returns (uint128) {
-        // hasOneSidedParams can only be true if shouldCreateOneSided is true
-        return (data.leftoverCurrency > 0 && data.hasOneSidedParams)
-            ? data.initialCurrencyAmount + data.leftoverCurrency
-            : data.initialCurrencyAmount;
-    }
-
-    /// @notice Creates the plan for creating a full range v4 position using the position manager
-    /// @param baseParams The base parameters for the position
-    /// @param tokenAmount The amount of token to be used to create the position
-    /// @param currencyAmount The amount of currency to be used to create the position
-    /// @param paramsArraySize The size of the parameters array (either 5 or 8)
-    /// @return The actions and parameters for the position
-    function _createFullRangePositionPlan(
-        BasePositionParams memory baseParams,
-        uint128 tokenAmount,
-        uint128 currencyAmount,
-        uint256 paramsArraySize
-    ) private pure returns (bytes memory, bytes[] memory) {
-        // Create full range specific parameters
-        FullRangeParams memory fullRangeParams =
-            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount});
-
-        // Plan the full range position
-        return baseParams.planFullRangePosition(fullRangeParams, paramsArraySize);
-    }
-
-    /// @notice Creates the plan for creating a one sided v4 position using the position manager along with the full range position
-    /// @param baseParams The base parameters for the position
-    /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
-    /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
-    /// @param tokenAmount The amount of token to be used to create the position
-    /// @param leftoverCurrency The amount of currency that was leftover from the full range position
-    /// @return The actions and parameters needed to create the full range position and the one sided position
-    function _createOneSidedPositionPlan(
-        BasePositionParams memory baseParams,
-        bytes memory actions,
-        bytes[] memory params,
-        uint128 tokenAmount,
-        uint128 leftoverCurrency
-    ) private view returns (bytes memory, bytes[] memory) {
-        // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
-        uint128 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
-        bool inToken = leftoverCurrency == 0;
-
-        // Create one-sided specific parameters
-        OneSidedParams memory oneSidedParams = OneSidedParams({amount: amount, inToken: inToken});
-
-        // Plan the one-sided position
-        return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
-    }
-
-    /// @notice Creates the plan for taking the pair using the position manager
-    /// @param baseParams The base parameters for the position
-    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
-    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
-    /// @return The actions and parameters needed to take the pair using the position manager
-    function _createFinalTakePairPlan(BasePositionParams memory baseParams, bytes memory actions, bytes[] memory params)
-        private
-        view
-        returns (bytes memory, bytes[] memory)
-    {
-        return baseParams.planFinalTakePair(actions, params);
-    }
+    function _getCurrencyTransferAmount(MigrationData memory data) internal view virtual returns (uint128);
 
     /// @notice Receives native currency
     receive() external payable {}
