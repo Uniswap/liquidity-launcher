@@ -28,11 +28,12 @@ abstract contract LBPStrategyBaseFactory is IStrategyFactory {
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         virtual
-        returns (IDistributionContract)
+        returns (IDistributionContract distributionContract)
     {
         bytes32 _salt = _hashSenderAndSalt(msg.sender, salt);
         bytes memory deployedBytecode = _validateParamsAndReturnDeployedBytecode(token, totalSupply, configData);
-        return IDistributionContract(Create2.deploy(0, _salt, deployedBytecode));
+        distributionContract = IDistributionContract(Create2.deploy(0, _salt, deployedBytecode));
+        emit DistributionInitialized(address(distributionContract), token, totalSupply);
     }
 
     /// @inheritdoc IStrategyFactory
