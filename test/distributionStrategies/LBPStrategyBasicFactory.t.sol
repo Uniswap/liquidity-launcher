@@ -110,7 +110,7 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function test_getLBPAddress_succeeds() public {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
-        address lbpAddress = factory.getLBPAddress(
+        address lbpAddress = factory.getAddress(
             address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, address(this)
         );
         assertEq(
@@ -128,11 +128,11 @@ contract LBPStrategyBasicFactoryTest is Test {
         address sender1 = address(1);
         address sender2 = address(2);
         vm.prank(sender1);
-        address lbpAddress1 = factory.getLBPAddress(
+        address lbpAddress1 = factory.getAddress(
             address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender1
         );
         vm.prank(sender2);
-        address lbpAddress2 = factory.getLBPAddress(
+        address lbpAddress2 = factory.getAddress(
             address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender2
         );
         assertNotEq(lbpAddress1, lbpAddress2);
