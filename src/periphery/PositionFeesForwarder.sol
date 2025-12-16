@@ -5,13 +5,13 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
+import {Multicall} from "../Multicall.sol";
 import {IERC721} from "../interfaces/external/IERC721.sol";
-import {Multicallable} from "solady/utils/Multicallable.sol";
 
 /// @title PositionFeesForwarder
 /// @notice Utility contract for forwarding the fees from v4 LP positions to a recipient
 /// @custom:security-contact security@uniswap.org
-contract PositionFeesForwarder is TimelockedPositionRecipient, Multicallable {
+contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
     using CurrencyLibrary for Currency;
 
     /// @notice Thrown when this contract is not the owner of the position
