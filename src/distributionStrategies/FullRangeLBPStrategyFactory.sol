@@ -5,13 +5,13 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
-import {LBPStrategyBasic} from "../distributionContracts/LBPStrategyBasic.sol";
+import {FullRangeLBPStrategy} from "../distributionContracts/FullRangeLBPStrategy.sol";
 import {MigratorParameters} from "../types/MigratorParameters.sol";
 
-/// @title LBPStrategyBasicFactory
-/// @notice Factory for the LBPStrategyBasic contract
+/// @title FullRangeLBPStrategyFactory
+/// @notice Factory for the FullRangeLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategyBasicFactory is LBPStrategyBaseFactory {
+contract FullRangeLBPStrategyFactory is LBPStrategyBaseFactory {
     constructor(IPositionManager _positionManager, IPoolManager _poolManager)
         LBPStrategyBaseFactory(_positionManager, _poolManager)
     {}
@@ -26,25 +26,12 @@ contract LBPStrategyBasicFactory is LBPStrategyBaseFactory {
     {
         if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
 
-        (
-            MigratorParameters memory migratorParams,
-            bytes memory auctionParams,
-            bool createOneSidedTokenPosition,
-            bool createOneSidedCurrencyPosition
-        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
+        (MigratorParameters memory migratorParams, bytes memory auctionParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
 
         deployedBytecode = abi.encodePacked(
-            type(LBPStrategyBasic).creationCode,
-            abi.encode(
-                token,
-                uint128(totalSupply),
-                migratorParams,
-                auctionParams,
-                positionManager,
-                poolManager,
-                createOneSidedTokenPosition,
-                createOneSidedCurrencyPosition
-            )
+            type(FullRangeLBPStrategy).creationCode,
+            abi.encode(token, uint128(totalSupply), migratorParams, auctionParams, positionManager, poolManager)
         );
     }
 }
