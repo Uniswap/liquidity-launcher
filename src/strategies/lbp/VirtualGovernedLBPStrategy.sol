@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {FullRangeLBPStrategy} from "./FullRangeLBPStrategy.sol";
-import {IVirtualERC20} from "../interfaces/external/IVirtualERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {GovernedLBPStrategy} from "./GovernedLBPStrategy.sol";
+import {GovernedLBPStrategy} from "@lbp/strategies/GovernedLBPStrategy.sol";
+import {IVirtualERC20} from "../../interfaces/external/IVirtualERC20.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
 
 /// @title VirtualGovernedLBPStrategy
 /// @notice Strategy for distributing virtual tokens to a v4 pool requiring governance approval

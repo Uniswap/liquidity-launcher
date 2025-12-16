@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {LBPStrategyBasicFactory} from "../../src/distributionStrategies/LBPStrategyBasicFactory.sol";
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {LBPStrategyBasicFactory} from "@lbp/factories/LBPStrategyBasicFactory.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
 import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";

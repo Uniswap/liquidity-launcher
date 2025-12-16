@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
-import {IStrategyFactory} from "../interfaces/IStrategyFactory.sol";
-import {LBPStrategyBase} from "../distributionContracts/LBPStrategyBase.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
+import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
+import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
+import {IStrategyFactory} from "../../interfaces/IStrategyFactory.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
 
 /// @title LBPStrategyBaseFactory
 /// @notice Base factory for LBPStrategy contracts with overridable deployment logic

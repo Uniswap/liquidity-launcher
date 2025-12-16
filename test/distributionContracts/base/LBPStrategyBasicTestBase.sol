@@ -3,15 +3,15 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
-import {LBPStrategyBasic} from "../../../src/distributionContracts/LBPStrategyBasic.sol";
-import {MigratorParameters} from "../../../src/distributionContracts/LBPStrategyBase.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {MigratorParameters} from "@lbp/strategies/LBPStrategyBase.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LBPStrategyBasicNoValidation} from "../../mocks/LBPStrategyBasicNoValidation.sol";
-import {FullRangeLBPStrategy} from "../../../src/distributionContracts/FullRangeLBPStrategy.sol";
+import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
 import {FullRangeLBPStrategyNoValidation} from "../../mocks/FullRangeLBPStrategyNoValidation.sol";
 import {LiquidityLauncher} from "../../../src/LiquidityLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";

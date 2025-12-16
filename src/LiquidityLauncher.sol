@@ -3,13 +3,13 @@ pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin-latest/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ITokenFactory} from "./token-factories/uerc20-factory/interfaces/ITokenFactory.sol";
-import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
 import {Multicall} from "./Multicall.sol";
-import {Distribution} from "./types/Distribution.sol";
-import {Permit2Forwarder, IAllowanceTransfer} from "./Permit2Forwarder.sol";
+import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
+import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
+import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
 import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
+import {ITokenFactory} from "./token-factories/uerc20-factory/interfaces/ITokenFactory.sol";
+import {Distribution} from "./types/Distribution.sol";
 
 /// @title LiquidityLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
