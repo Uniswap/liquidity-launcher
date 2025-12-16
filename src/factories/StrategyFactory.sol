@@ -6,10 +6,10 @@ import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IStrategyFactory} from "../interfaces/IStrategyFactory.sol";
 
-/// @title BaseStrategyFactory
-/// @notice Base factory for strategy contracts with overridable deployment logic
+/// @title StrategyFactory
+/// @notice Abstract base factory for strategies with overridable deployment logic
 /// @custom:security-contact security@uniswap.org
-abstract contract BaseStrategyFactory is IStrategyFactory {
+abstract contract StrategyFactory is IStrategyFactory {
     /// @inheritdoc IDistributionStrategy
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
