@@ -6,10 +6,12 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 import {IERC721} from "../interfaces/external/IERC721.sol";
+import {Multicallable} from "solady/utils/Multicallable.sol";
 
 /// @title PositionFeesForwarder
-/// @notice Utility contract for forwarding the fees from a v4 LP position to a recipient
-contract PositionFeesForwarder is TimelockedPositionRecipient {
+/// @notice Utility contract for forwarding the fees from v4 LP positions to a recipient
+/// @custom:security-contact security@uniswap.org
+contract PositionFeesForwarder is TimelockedPositionRecipient, Multicallable {
     using CurrencyLibrary for Currency;
 
     /// @notice Thrown when this contract is not the owner of the position
@@ -31,8 +33,11 @@ contract PositionFeesForwarder is TimelockedPositionRecipient {
     }
 
     /// @notice Collect any fees from the position and forward them to the set recipient
-    /// @param tokenId The token ID of the position
+    /// @param tokenId the token ID of the position
+    /// @param token0 the address of token0 on the pool
+    /// @param token1 the address of token1 on the pool
     function collectFees(uint256 tokenId, address token0, address token1) external nonReentrant {
+        // Check if the caller is the owner of the position
         if (IERC721(address(POSITION_MANAGER)).ownerOf(tokenId) != address(this)) revert NotPositionOwner();
 
         // Collect the fees from the position
