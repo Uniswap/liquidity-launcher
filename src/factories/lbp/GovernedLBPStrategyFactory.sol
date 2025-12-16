@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {GovernedLBPStrategy} from "@lbp/strategies/GovernedLBPStrategy.sol";
-import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
-import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
+import {BaseLBPStrategyFactory} from "./BaseLBPStrategyFactory.sol";
+import {BaseStrategyFactory} from "../BaseStrategyFactory.sol";
 
 /// @title GovernedLBPStrategyFactory
 /// @notice Factory for the GovernedLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
-contract GovernedLBPStrategyFactory is LBPStrategyBaseFactory {
+contract GovernedLBPStrategyFactory is BaseLBPStrategyFactory {
     constructor(IPositionManager _positionManager, IPoolManager _poolManager)
-        LBPStrategyBaseFactory(_positionManager, _poolManager)
+        BaseLBPStrategyFactory(_positionManager, _poolManager)
     {}
 
-    /// @inheritdoc LBPStrategyBaseFactory
+    /// @inheritdoc BaseStrategyFactory
     /// @dev Reverts if the total supply is greater than uint128.max
     function _validateParamsAndReturnDeployedBytecode(address token, uint256 totalSupply, bytes calldata configData)
         internal
