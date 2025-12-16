@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.17;
 
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {MerkleClaim} from "../distributionContracts/MerkleClaim.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {MerkleClaim} from "../strategies/MerkleClaim.sol";
+import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 
 /// @title MerkleClaimFactory
 /// @notice Factory for the MerkleClaim contract

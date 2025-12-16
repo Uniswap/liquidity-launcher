@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
-import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {GovernedLBPStrategy} from "../distributionContracts/GovernedLBPStrategy.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
 import {LBPStrategyBaseFactory} from "./LBPStrategyBaseFactory.sol";
 
-/// @title GovernedLBPStrategyFactory
-/// @notice Factory for the GovernedLBPStrategy contract
+/// @title LBPStrategyBasicFactory
+/// @notice Factory for the LBPStrategyBasic contract
 /// @custom:security-contact security@uniswap.org
-contract GovernedLBPStrategyFactory is LBPStrategyBaseFactory {
+contract LBPStrategyBasicFactory is LBPStrategyBaseFactory {
     constructor(IPositionManager _positionManager, IPoolManager _poolManager)
         LBPStrategyBaseFactory(_positionManager, _poolManager)
     {}
@@ -28,11 +26,15 @@ contract GovernedLBPStrategyFactory is LBPStrategyBaseFactory {
     {
         if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
 
-        (address governanceAddress, MigratorParameters memory migratorParams, bytes memory auctionParams) =
-            abi.decode(configData, (address, MigratorParameters, bytes));
+        (
+            MigratorParameters memory migratorParams,
+            bytes memory auctionParams,
+            bool createOneSidedTokenPosition,
+            bool createOneSidedCurrencyPosition
+        ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
 
         deployedBytecode = abi.encodePacked(
-            type(GovernedLBPStrategy).creationCode,
+            type(LBPStrategyBasic).creationCode,
             abi.encode(
                 token,
                 uint128(totalSupply),
@@ -40,7 +42,8 @@ contract GovernedLBPStrategyFactory is LBPStrategyBaseFactory {
                 auctionParams,
                 positionManager,
                 poolManager,
-                governanceAddress
+                createOneSidedTokenPosition,
+                createOneSidedCurrencyPosition
             )
         );
     }

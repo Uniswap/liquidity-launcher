@@ -2,8 +2,8 @@
 pragma solidity =0.8.17;
 
 import "forge-std/Test.sol";
-import {MerkleClaimFactory} from "../../src/distributionStrategies/MerkleClaimFactory.sol";
-import {MerkleClaim} from "../../src/distributionContracts/MerkleClaim.sol";
+import {MerkleClaimFactory} from "../../src/factories/MerkleClaimFactory.sol";
+import {MerkleClaim} from "../../src/strategies/MerkleClaim.sol";
 import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
 
 contract MerkleClaimFactoryTest is Test {

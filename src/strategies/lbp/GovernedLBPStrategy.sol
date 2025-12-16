@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {FullRangeLBPStrategy} from "./FullRangeLBPStrategy.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
 
 /// @title GovernedLBPStrategy
 /// @notice Strategy for distributing virtual tokens to a v4 pool
