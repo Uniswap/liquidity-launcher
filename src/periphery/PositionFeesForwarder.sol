@@ -2,29 +2,18 @@
 pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
-
-interface IERC721 {
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function approve(address to, uint256 tokenId) external;
-}
+import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
+import {IERC721} from "../interfaces/external/IERC721.sol";
 
 /// @title PositionFeesForwarder
 /// @notice Utility contract for forwarding the fees from a v4 LP position to a recipient
-contract PositionFeesForwarder is ReentrancyGuardTransient {
+contract PositionFeesForwarder is TimelockedPositionRecipient {
     using CurrencyLibrary for Currency;
 
-    error PositionIsTimelocked();
+    /// @notice Thrown when this contract is not the owner of the position
     error NotPositionOwner();
-
-    /// @notice Emitted when the operator is approved to transfer the position
-    /// @param tokenId The token ID of the position
-    /// @param operator The configured operator
-    event OperatorApproved(uint256 indexed tokenId, address indexed operator);
 
     /// @notice Emitted when fees are forwarded
     /// @param recipient The recipient of the fees
@@ -32,23 +21,16 @@ contract PositionFeesForwarder is ReentrancyGuardTransient {
     /// @param token1Fees The amount of token1 fees forwarded
     event FeesForwarded(address indexed recipient, uint256 token0Fees, uint256 token1Fees);
 
-    /// @notice The position manager that will be used to create the position
-    IPositionManager public immutable POSITION_MANAGER;
-    /// @notice The operator that will be approved to transfer the position
-    address public immutable OPERATOR;
-    /// @notice The block number at which the operator will be approved to transfer the position
-    uint256 public immutable TIMELOCK_BLOCK_NUMBER;
     /// @notice The recipient of collected fees
     address public immutable RECIPIENT;
 
-    constructor(IPositionManager positionManager, address operator, uint256 timelockBlockNumber, address recipient) {
-        POSITION_MANAGER = positionManager;
-        OPERATOR = operator;
-        TIMELOCK_BLOCK_NUMBER = timelockBlockNumber;
+    constructor(IPositionManager positionManager, address operator, uint256 timelockBlockNumber, address recipient)
+        TimelockedPositionRecipient(positionManager, operator, timelockBlockNumber)
+    {
         RECIPIENT = recipient;
     }
 
-    /// @notice Claim any fees from the position and burn the `tokens` portion
+    /// @notice Collect any fees from the position and forward them to the set recipient
     /// @param tokenId The token ID of the position
     function collectFees(uint256 tokenId, address token0, address token1) external nonReentrant {
         if (IERC721(address(POSITION_MANAGER)).ownerOf(tokenId) != address(this)) revert NotPositionOwner();
@@ -70,17 +52,4 @@ contract PositionFeesForwarder is ReentrancyGuardTransient {
 
         emit FeesForwarded(RECIPIENT, token0Fees, token1Fees);
     }
-
-    /// @notice Approves the operator to transfer the position
-    /// @dev Can be called by anyone after the timelock period has passed
-    /// @param tokenId The token ID of the position
-    function approveOperator(uint256 tokenId) external {
-        if (block.number < TIMELOCK_BLOCK_NUMBER) revert PositionIsTimelocked();
-
-        IERC721(address(POSITION_MANAGER)).approve(OPERATOR, tokenId);
-
-        emit OperatorApproved(tokenId, OPERATOR);
-    }
-
-    receive() external payable {}
 }

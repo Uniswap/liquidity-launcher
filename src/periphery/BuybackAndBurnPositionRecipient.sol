@@ -6,50 +6,34 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
-
-interface IERC721 {
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function approve(address to, uint256 tokenId) external;
-}
+import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
+import {IERC721} from "../interfaces/external/IERC721.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
 /// @dev Fees can be collected once the value of the currency portion exceeds the configured minimum burn amount
-contract BuybackAndBurnPositionRecipient is ReentrancyGuardTransient {
+contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     using CurrencyLibrary for Currency;
 
     error InvalidToken();
     error TokenAndCurrencyCannotBeTheSame();
-    error PositionIsTimelocked();
     error NotPositionOwner();
 
     /// @notice Emitted when tokens are burned
     /// @param amount The amount of tokens burned
     event TokensBurned(uint256 amount);
 
-    /// @notice Emitted when the operator is approved to transfer the position
-    /// @param tokenId The token ID of the position
-    /// @param operator The configured operator
-    event OperatorApproved(uint256 indexed tokenId, address indexed operator);
-
     /// @notice Emitted when fees are collected
     /// @param recipient The recipient of the currency fees
     /// @param amount The amount of currency fees collected
     event CurrencyFeesCollected(address indexed recipient, uint256 amount);
 
-    /// @notice The block number at which the operator will be approved to transfer the position
-    uint256 public immutable TIMELOCK_BLOCK_NUMBER;
     /// @notice The minimum amount of `token` which must be burned each time fees are collected
     uint256 public immutable MIN_TOKEN_BURN_AMOUNT;
     /// @notice The token that will be burned
     address public immutable TOKEN;
     /// @notice The currency that will be used to collect fees
     address public immutable CURRENCY;
-    /// @notice The operator that will be approved to transfer the position
-    address public immutable OPERATOR;
-    /// @notice The position manager that will be used to create the position
-    IPositionManager public immutable POSITION_MANAGER;
 
     constructor(
         address token,
@@ -58,14 +42,11 @@ contract BuybackAndBurnPositionRecipient is ReentrancyGuardTransient {
         IPositionManager positionManager,
         uint256 timelockBlockNumber,
         uint256 minTokenBurnAmount
-    ) {
+    ) TimelockedPositionRecipient(positionManager, operator, timelockBlockNumber) {
         if (token == address(0)) revert InvalidToken();
         if (token == currency) revert TokenAndCurrencyCannotBeTheSame();
         TOKEN = token;
         CURRENCY = currency;
-        OPERATOR = operator;
-        POSITION_MANAGER = positionManager;
-        TIMELOCK_BLOCK_NUMBER = timelockBlockNumber;
         MIN_TOKEN_BURN_AMOUNT = minTokenBurnAmount;
     }
 
@@ -99,17 +80,6 @@ contract BuybackAndBurnPositionRecipient is ReentrancyGuardTransient {
         emit CurrencyFeesCollected(msg.sender, accruedCurrencyFees);
     }
 
-    /// @notice Approves the operator to transfer the position
-    /// @dev Can be called by anyone after the timelock period has passed
-    /// @param tokenId The token ID of the position
-    function approveOperator(uint256 tokenId) external {
-        if (block.number < TIMELOCK_BLOCK_NUMBER) revert PositionIsTimelocked();
-
-        IERC721(address(POSITION_MANAGER)).approve(OPERATOR, tokenId);
-
-        emit OperatorApproved(tokenId, OPERATOR);
-    }
-
     /// @notice Burns the tokens by transferring them to the burn address
     /// @dev Ensure that the `token` ERC20 contract allows transfers to address(0xdead)
     /// @param amount The amount of tokens to burn
@@ -123,6 +93,4 @@ contract BuybackAndBurnPositionRecipient is ReentrancyGuardTransient {
         }
         emit TokensBurned(amount);
     }
-
-    receive() external payable {}
 }

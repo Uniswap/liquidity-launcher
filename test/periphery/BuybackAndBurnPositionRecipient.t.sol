@@ -7,16 +7,13 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IERC721} from "../../src/interfaces/external/IERC721.sol";
+import {TimelockedPositionRecipient} from "../../src/periphery/TimelockedPositionRecipient.sol";
 
 // Minimal interfaces for testing
 interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
     function transfer(address to, uint256 amount) external returns (bool);
-}
-
-interface IERC721 {
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function transferFrom(address from, address to, uint256 tokenId) external;
 }
 
 contract BuybackAndBurnPositionRecipientTest is Test {
@@ -134,8 +131,8 @@ contract BuybackAndBurnPositionRecipientTest is Test {
 
         uint256 blockNumber = _bound(_blockNumber, 0, _timelockBlockNumber - 1);
         vm.roll(blockNumber);
-        vm.expectRevert(BuybackAndBurnPositionRecipient.PositionIsTimelocked.selector);
-        positionRecipient.approveOperator(0);
+        vm.expectRevert(TimelockedPositionRecipient.Timelocked.selector);
+        positionRecipient.approveOperator();
     }
 
     function test_approveOperator(uint64 _timelockBlockNumber) public {
@@ -152,8 +149,8 @@ contract BuybackAndBurnPositionRecipientTest is Test {
 
         // Approve the operator to transfer the position
         vm.expectEmit(true, true, true, true);
-        emit BuybackAndBurnPositionRecipient.OperatorApproved(FORK_TOKEN_ID, operator);
-        positionRecipient.approveOperator(FORK_TOKEN_ID);
+        emit TimelockedPositionRecipient.OperatorApproved(operator);
+        positionRecipient.approveOperator();
     }
 
     function test_collectFees_revertsIfPositionIsNotOwner() public {
