@@ -37,6 +37,7 @@ abstract contract LBPTestHelpers is Test {
     address testOperator = makeAddr("testOperator");
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
+    address tokensRecipient = makeAddr("tokensRecipient");
 
     uint256 constant DUST_AMOUNT = 15e18;
 
