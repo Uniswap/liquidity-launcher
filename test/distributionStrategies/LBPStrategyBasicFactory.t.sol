@@ -17,6 +17,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -86,6 +87,15 @@ contract LBPStrategyBasicFactoryTest is Test {
         //         )
         //     )
         // );
+        address expectedAddress = factory.getAddress(
+            address(token),
+            TOTAL_SUPPLY,
+            abi.encode(migratorParams, auctionParams, true, true),
+            0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf,
+            address(this)
+        );
+        vm.expectEmit(true, true, true, true);
+        emit IDistributionStrategy.DistributionInitialized(expectedAddress, address(token), TOTAL_SUPPLY);
         LBPStrategyBasic lbp = LBPStrategyBasic(
             payable(address(
                     factory.initializeDistribution(
