@@ -11,7 +11,7 @@ import {HookBasic} from "../../src/utils/HookBasic.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";

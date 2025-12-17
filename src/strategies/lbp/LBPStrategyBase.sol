@@ -1,37 +1,37 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {
-    IContinuousClearingAuction,
-    AuctionParameters
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
+import {
+    AuctionParameters,
+    IContinuousClearingAuction
+} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {
     IContinuousClearingAuctionFactory
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {HookBasic} from "../utils/HookBasic.sol";
-import {TokenPricing} from "../libraries/TokenPricing.sol";
-import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
-import {BasePositionParams, FullRangeParams} from "../types/PositionTypes.sol";
-import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
-import {MigrationData} from "../types/MigrationData.sol";
-import {TokenDistribution} from "../libraries/TokenDistribution.sol";
-import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {HookBasic} from "../../utils/HookBasic.sol";
+import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
+import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
+import {MigrationData} from "../../types/MigrationData.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
+import {BasePositionParams, FullRangeParams, OneSidedParams} from "../../types/PositionTypes.sol";
+import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
+import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
+import {TokenDistribution} from "../../libraries/TokenDistribution.sol";
+import {TokenPricing} from "../../libraries/TokenPricing.sol";
 
 /// @title LBPStrategyBase
 /// @notice Base contract for derived LBPStrategies
@@ -173,6 +173,21 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
         }
     }
 
+    /// @notice Get the currency0 of the pool
+    function _currency0() internal view returns (Currency) {
+        return Currency.wrap(_currencyIsCurrency0() ? currency : getPoolToken());
+    }
+
+    /// @notice Get the currency1 of the pool
+    function _currency1() internal view returns (Currency) {
+        return Currency.wrap(_currencyIsCurrency0() ? getPoolToken() : currency);
+    }
+
+    /// @notice Returns true if the currency is currency0 of the pool
+    function _currencyIsCurrency0() internal view returns (bool) {
+        return currency < getPoolToken();
+    }
+
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
@@ -255,15 +270,15 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() internal view returns (MigrationData memory) {
+    function _prepareMigrationData() internal view returns (MigrationData memory data) {
         uint128 currencyAmount = uint128(FixedPointMathLib.min(auction.currencyRaised(), maxCurrencyAmountForLP)); // already validated to be less than or equal to type(uint128).max
-        address poolToken = getPoolToken();
+        bool currencyIsCurrency0 = _currencyIsCurrency0();
 
-        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currency < poolToken);
+        uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currencyIsCurrency0);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyAmount, currency < poolToken, reserveSupply);
+            priceX192.calculateAmounts(currencyAmount, currencyIsCurrency0, reserveSupply);
 
         uint128 leftoverCurrency = currencyAmount - initialCurrencyAmount;
 
@@ -271,8 +286,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currency < poolToken ? initialCurrencyAmount : initialTokenAmount,
-            currency < poolToken ? initialTokenAmount : initialCurrencyAmount
+            currencyIsCurrency0 ? initialCurrencyAmount : initialTokenAmount,
+            currencyIsCurrency0 ? initialTokenAmount : initialCurrencyAmount
         );
 
         return MigrationData({
@@ -288,11 +303,9 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
     /// @param data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
     function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
-        address poolToken = getPoolToken();
-
         key = PoolKey({
-            currency0: Currency.wrap(currency < poolToken ? currency : poolToken),
-            currency1: Currency.wrap(currency < poolToken ? poolToken : currency),
+            currency0: _currency0(),
+            currency1: _currency1(),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))

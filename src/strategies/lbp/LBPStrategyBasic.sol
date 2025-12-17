@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "../types/PositionTypes.sol";
-import {ParamsBuilder} from "../libraries/ParamsBuilder.sol";
-import {MigrationData} from "../types/MigrationData.sol";
-import {LBPStrategyBase} from "./LBPStrategyBase.sol";
-import {MigratorParameters} from "../types/MigratorParameters.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {StrategyPlanner} from "../libraries/StrategyPlanner.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
+import {MigrationData} from "../../types/MigrationData.sol";
+import {MigratorParameters} from "../../types/MigratorParameters.sol";
+import {BasePositionParams, OneSidedParams, FullRangeParams} from "../../types/PositionTypes.sol";
+import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
+import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 
 /// @title LBPStrategyBasic
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool

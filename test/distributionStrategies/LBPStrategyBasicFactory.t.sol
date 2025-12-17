@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {LBPStrategyBasicFactory} from "../../src/distributionStrategies/LBPStrategyBasicFactory.sol";
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {LBPStrategyBasicFactory} from "@lbp/factories/LBPStrategyBasicFactory.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
 import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -17,6 +17,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -87,6 +88,15 @@ contract LBPStrategyBasicFactoryTest is Test {
         //         )
         //     )
         // );
+        address expectedAddress = factory.getAddress(
+            address(token),
+            TOTAL_SUPPLY,
+            abi.encode(migratorParams, auctionParams, true, true),
+            0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf,
+            address(this)
+        );
+        vm.expectEmit(true, true, true, true);
+        emit IDistributionStrategy.DistributionInitialized(expectedAddress, address(token), TOTAL_SUPPLY);
         LBPStrategyBasic lbp = LBPStrategyBasic(
             payable(address(
                     factory.initializeDistribution(
@@ -111,7 +121,7 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function test_getLBPAddress_succeeds() public {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
-        address lbpAddress = factory.getLBPAddress(
+        address lbpAddress = factory.getAddress(
             address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, address(this)
         );
         assertEq(
@@ -129,11 +139,11 @@ contract LBPStrategyBasicFactoryTest is Test {
         address sender1 = address(1);
         address sender2 = address(2);
         vm.prank(sender1);
-        address lbpAddress1 = factory.getLBPAddress(
+        address lbpAddress1 = factory.getAddress(
             address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender1
         );
         vm.prank(sender2);
-        address lbpAddress2 = factory.getLBPAddress(
+        address lbpAddress2 = factory.getAddress(
             address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender2
         );
         assertNotEq(lbpAddress1, lbpAddress2);

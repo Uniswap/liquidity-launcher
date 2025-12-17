@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {LBPStrategyBasic} from "../../src/distributionContracts/LBPStrategyBasic.sol";
+import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {MigratorParameters} from "../../src/types/MigratorParameters.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
