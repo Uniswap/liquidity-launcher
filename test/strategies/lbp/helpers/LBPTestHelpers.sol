@@ -14,7 +14,7 @@ import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {ILBPStrategyBase} from "../../../src/interfaces/ILBPStrategyBase.sol";
+import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
