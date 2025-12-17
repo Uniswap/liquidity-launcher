@@ -119,6 +119,7 @@ abstract contract BttBase is LBPTestHelpers {
             int24(_bound(_mParameters.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         _mParameters.poolLPFee = uint24(_bound(_mParameters.poolLPFee, 1, LPFeeLibrary.MAX_LP_FEE - 1));
         _mParameters.auctionFactory = address(auctionFactory);
+        _mParameters.operator = testOperator;
         vm.assume(
             _mParameters.positionRecipient != address(0) && _mParameters.positionRecipient != ActionConstants.MSG_SENDER
                 && _mParameters.positionRecipient != ActionConstants.ADDRESS_THIS
