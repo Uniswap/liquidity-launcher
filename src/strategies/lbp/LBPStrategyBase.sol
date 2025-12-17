@@ -21,7 +21,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {HookBasic} from "../../utils/HookBasic.sol";
+import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
 import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
 import {MigrationData} from "../../types/MigrationData.sol";
@@ -35,7 +35,7 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 /// @title LBPStrategyBase
 /// @notice Base contract for derived LBPStrategies
 /// @custom:security-contact security@uniswap.org
-abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
+abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     using CurrencyLibrary for Currency;
     using StrategyPlanner for BasePositionParams;
     using TokenDistribution for uint128;
@@ -80,7 +80,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, HookBasic {
         bytes memory _auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    ) HookBasic(_poolManager) {
+    ) SelfInitializerHook(_poolManager) {
         _validateMigratorParams(_totalSupply, _migratorParams);
         _validateAuctionParams(_auctionParams, _migratorParams);
 

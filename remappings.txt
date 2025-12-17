@@ -9,3 +9,4 @@ merkle-distributor/=lib/merkle-distributor/
 continuous-clearing-auction/=lib/continuous-clearing-auction/
 @lbp/factories=src/factories/lbp
 @lbp/strategies=src/strategies/lbp
+periphery=src/periphery

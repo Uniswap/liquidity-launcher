@@ -112,7 +112,7 @@ We strongly recommend that a token with value such as ETH or USDC is used as the
 
 **Permit2Forwarder** handles token approvals through the Permit2 protocol, providing a unified approval interface that reduces the number of transactions users need to sign.
 
-**HookBasic** provides Uniswap v4 hook functionality, allowing the LBP strategy to act as a hook for the pools it creates.
+**SelfInitializerHook** provides Uniswap v4 hook functionality, allowing the LBP strategy to act as a hook for the pools it creates.
 
 ## Contract Interactions
 

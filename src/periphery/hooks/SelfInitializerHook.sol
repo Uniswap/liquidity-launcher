@@ -7,9 +7,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
-/// @title HookBasic
+/// @title SelfInitializerHook
 /// @notice Hook contract that only allows itself to initialize the pool
-abstract contract HookBasic is BaseHook {
+abstract contract SelfInitializerHook is BaseHook {
     /// @notice Error thrown when the caller of `initializePool` is not address(this)
     /// @param caller The invalid address attempting to initialize the pool
     /// @param expected address(this)
