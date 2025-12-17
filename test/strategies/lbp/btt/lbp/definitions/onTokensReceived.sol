@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BttBase} from "./BttBase.sol";
+import {BttBase, FuzzConstructorParameters} from "../BttBase.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
-import {FuzzConstructorParameters} from "../Base.sol";
 import {FullRangeLBPStrategyNoValidation} from "test/mocks/FullRangeLBPStrategyNoValidation.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {
@@ -11,7 +10,7 @@ import {
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
-contract OnTokensReceivedTest is BttBase {
+abstract contract OnTokensReceivedTest is BttBase {
     function test_WhenTokensReceivedIsLessThanTotalSupply(
         FuzzConstructorParameters memory _parameters,
         uint256 _tokensReceived

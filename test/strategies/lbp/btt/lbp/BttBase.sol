@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
+import {LBPTestHelpers} from "../../helpers/LBPTestHelpers.sol";
 import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -20,6 +20,7 @@ import {
     IContinuousClearingAuctionFactory
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 struct FuzzConstructorParameters {
     address token;
@@ -30,7 +31,7 @@ struct FuzzConstructorParameters {
     IPoolManager poolManager;
 }
 
-abstract contract Base is LBPTestHelpers {
+abstract contract BttBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
 
     uint256 constant FORK_BLOCK = 23097193;
@@ -56,8 +57,14 @@ abstract contract Base is LBPTestHelpers {
         vm.label(address(auctionFactory), "auctionFactory");
     }
 
-    /// @dev Override with the desired hook address w/ permissions
-    function _getHookAddress() internal pure virtual returns (address);
+    /// @dev Override with the desired hook address w/ permissions/// @inheritdoc Base
+    function _getHookAddress() internal pure virtual returns (address) {
+        return
+            address(
+                uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
+            );
+    }
+
     /// @dev Override with the desired contract name
     function _contractName() internal pure virtual returns (string memory);
 
