@@ -25,6 +25,19 @@ abstract contract LBPTestHelpers is Test {
         uint256 wethInRecipient;
     }
 
+    // Constants
+    address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
+    uint160 constant HOOK_PERMISSION_COUNT = 14;
+
+    address testOperator = makeAddr("testOperator");
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+
     uint256 constant DUST_AMOUNT = 15e18;
 
     function takeBalanceSnapshot(address token, address currency, address positionManager, address poolManager, address)

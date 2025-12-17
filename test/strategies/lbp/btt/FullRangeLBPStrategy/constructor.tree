@@ -1,0 +1,29 @@
+ConstructorTest
+├── when sweep block is LTE migration block
+│   └── it reverts with {InvalidSweepBlock}
+├── when sweep block is GT migration block
+│   ├── when token split to auction is GTE max token split
+│   │   └── it reverts with {TokenSplitTooHigh}
+│   └── when token split to auction is LT max token split
+│       ├── when pool tick spacing is GT max or LT min tick spacing
+│       │   └── it reverts with {InvalidTickSpacing}
+│       └── when pool tick spacing is within min or max tick spacing
+│           ├── when pool lp fee is GT fee max
+│           │   └── it reverts with {InvalidFee}
+│           └── when pool lp fee is LTE max lp fee
+│               ├── when position recipient is reserved address
+│               │   └── it reverts with {InvalidPositionRecipient}
+│               └── when position recipient is not a reserved address
+│                   └── when auction supply is zero
+│                       └── it reverts with {AuctionSupplyIsZero}
+└── when migration parameters are valid
+    ├── when funds recipient is not MSG_SENDER
+    │   └── it reverts with {InvalidFundsRecipient}
+    └── when funds recipient is MSG_SENDER
+        ├── when end block is GTE migration block
+        │   └── it reverts with {InvalidEndBlock}
+        └── when end block is LT migration block
+            ├── when currency is not the same as the migration currency
+            │   └── it reverts with {InvalidCurrency}
+            └── when currency is the same as migration currency
+                └── it can be constructed
