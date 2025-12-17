@@ -9,6 +9,8 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IERC721} from "../../src/interfaces/external/IERC721.sol";
 import {TimelockedPositionRecipient} from "../../src/periphery/TimelockedPositionRecipient.sol";
+import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
+import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
 
 // Minimal interfaces for testing
 interface IERC20 {
@@ -16,15 +18,11 @@ interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
 }
 
-contract BuybackAndBurnPositionRecipientTest is Test {
+contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest {
     using CurrencyLibrary for Currency;
 
-    BuybackAndBurnPositionRecipient public positionRecipient;
+    BuybackAndBurnPositionRecipient internal positionRecipient;
 
-    // Constants
-    address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     // Fork testing vars
     // Position created here: https://etherscan.io/tx/0x03dafd828c6b47362b1f53d7a692f8f52b8bc44b513f8c9caa9195e1061113a4
     // And the fork block is a few blocks after, allowing the position to have non zero fees
@@ -35,18 +33,30 @@ contract BuybackAndBurnPositionRecipientTest is Test {
 
     MockERC20 token;
     MockERC20 currency;
-    address operator;
-    address searcher;
 
-    function setUp() public virtual {
+    function setUp() public virtual override {
+        // Setups up fork and operator/searcher
+        super.setUp();
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
         token = new MockERC20("Test Token", "TEST", 1_000e18, address(this));
         currency = new MockERC20("Test Currency", "TESTC", 1_000e18, address(this));
-        operator = makeAddr("operator");
-        searcher = makeAddr("searcher");
+    }
 
-        vm.label(operator, "operator");
-        vm.label(searcher, "searcher");
+    // Return a basic BuybackAndBurnPositionRecipient for compatibility with TimelockedPositionRecipientTest
+    function _getPositionRecipient(uint64 _timelockBlockNumber)
+        internal
+        virtual
+        override
+        returns (ITimelockedPositionRecipient)
+    {
+        return new BuybackAndBurnPositionRecipient(
+            address(token),
+            address(currency),
+            operator,
+            IPositionManager(POSITION_MANAGER),
+            _timelockBlockNumber,
+            0 // 0 as min token burn amount, doesn't matter
+        );
     }
 
     // Transfer a v4 position from one owner to another
@@ -107,50 +117,6 @@ contract BuybackAndBurnPositionRecipientTest is Test {
             _timelockBlockNumber,
             _minTokenBurnAmount
         );
-    }
-
-    function test_CanReceiveETH() public {
-        positionRecipient = new BuybackAndBurnPositionRecipient(
-            address(token), address(currency), operator, IPositionManager(POSITION_MANAGER), 0, 0
-        );
-        assertEq(address(positionRecipient).balance, 0);
-        vm.deal(address(this), 1 ether);
-        (bool success,) = address(positionRecipient).call{value: 1 ether}("");
-        assertTrue(success);
-        assertEq(address(positionRecipient).balance, 1 ether);
-    }
-
-    function test_approveOperator_revertsIfPositionIsTimelocked(uint256 _blockNumber, uint256 _timelockBlockNumber)
-        public
-    {
-        vm.assume(_timelockBlockNumber > 0);
-
-        positionRecipient = new BuybackAndBurnPositionRecipient(
-            address(token), address(currency), operator, IPositionManager(POSITION_MANAGER), _timelockBlockNumber, 0
-        );
-
-        uint256 blockNumber = _bound(_blockNumber, 0, _timelockBlockNumber - 1);
-        vm.roll(blockNumber);
-        vm.expectRevert(TimelockedPositionRecipient.Timelocked.selector);
-        positionRecipient.approveOperator();
-    }
-
-    function test_approveOperator(uint64 _timelockBlockNumber) public {
-        vm.assume(_timelockBlockNumber > 0);
-
-        positionRecipient = new BuybackAndBurnPositionRecipient(
-            address(token), address(currency), operator, IPositionManager(POSITION_MANAGER), _timelockBlockNumber, 0
-        );
-
-        // Transfer the position to the position recipient
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
-
-        vm.roll(uint256(_timelockBlockNumber) + 1);
-
-        // Approve the operator to transfer the position
-        vm.expectEmit(true, true, true, true);
-        emit TimelockedPositionRecipient.OperatorApproved(operator);
-        positionRecipient.approveOperator();
     }
 
     function test_collectFees_revertsIfPositionIsNotOwner() public {
