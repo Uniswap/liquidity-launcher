@@ -5,15 +5,15 @@ import "forge-std/Test.sol";
 import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
 import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
 import {MigratorParameters} from "@lbp/strategies/LBPStrategyBase.sol";
-import {MockERC20} from "../../mocks/MockERC20.sol";
+import {MockERC20} from "../../../mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {LBPStrategyBasicNoValidation} from "../../mocks/LBPStrategyBasicNoValidation.sol";
+import {LBPStrategyBasicNoValidation} from "../../../mocks/LBPStrategyBasicNoValidation.sol";
 import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
-import {FullRangeLBPStrategyNoValidation} from "../../mocks/FullRangeLBPStrategyNoValidation.sol";
-import {LiquidityLauncher} from "../../../src/LiquidityLauncher.sol";
+import {FullRangeLBPStrategyNoValidation} from "../../../mocks/FullRangeLBPStrategyNoValidation.sol";
+import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -24,7 +24,7 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {ILBPStrategyBase} from "../../../src/interfaces/ILBPStrategyBase.sol";
+import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
 abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;

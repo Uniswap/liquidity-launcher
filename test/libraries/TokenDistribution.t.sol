@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
+import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
 
 contract TokenDistributionHelper is Test {
     function calculateAuctionSupply(uint128 totalSupply, uint24 tokenSplitToAuction)

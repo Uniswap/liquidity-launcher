@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import "./base/LBPStrategyBasicTestBase.sol";
-import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
-import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
+import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
+import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
@@ -14,8 +14,8 @@ import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/Auctio
 import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {TokenDistribution} from "../../src/libraries/TokenDistribution.sol";
-import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
+import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
+import {TokenPricing} from "src/libraries/TokenPricing.sol";
 import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";

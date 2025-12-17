@@ -2,8 +2,8 @@
 pragma solidity 0.8.26;
 
 import "forge-std/Test.sol";
-import {MerkleClaimFactory} from "../../src/factories/periphery/MerkleClaimFactory.sol";
-import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
+import {MerkleClaimFactory} from "src/factories/periphery/MerkleClaimFactory.sol";
+import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 
 interface IMerkleClaim {
     function token() external view returns (address);

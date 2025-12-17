@@ -10,3 +10,4 @@ continuous-clearing-auction/=lib/continuous-clearing-auction/
 @lbp/factories=src/factories/lbp
 @lbp/strategies=src/strategies/lbp
 periphery=src/periphery
+src=src

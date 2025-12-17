@@ -4,10 +4,10 @@ pragma solidity ^0.8.26;
 import "forge-std/Test.sol";
 import {LBPStrategyBasicFactory} from "@lbp/factories/LBPStrategyBasicFactory.sol";
 import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
-import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
-import {MockERC20} from "../mocks/MockERC20.sol";
+import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
+import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {MigratorParameters} from "../../src/types/MigratorParameters.sol";
+import {MigratorParameters} from "src/types/MigratorParameters.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
@@ -17,7 +17,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
-import {IDistributionStrategy} from "../../src/interfaces/IDistributionStrategy.sol";
+import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 
 contract LBPStrategyBasicFactoryTest is Test {
     using AuctionStepsBuilder for bytes;

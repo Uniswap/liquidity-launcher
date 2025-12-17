@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
-import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
+import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
 contract LBPStrategyBasicSweepTest is LBPStrategyBasicTestBase {
     event TokensSwept(address indexed operator, uint256 amount);

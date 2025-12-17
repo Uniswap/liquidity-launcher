@@ -2,11 +2,11 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {USUPERC20Factory} from "../../../src/token-factories/uerc20-factory/factories/USUPERC20Factory.sol";
-import {USUPERC20} from "../../../src/token-factories/uerc20-factory/tokens/USUPERC20.sol";
-import {UERC20Metadata} from "../../../src/token-factories/uerc20-factory/libraries/UERC20MetadataLibrary.sol";
-import {IUSUPERC20Factory} from "../../../src/token-factories/uerc20-factory/interfaces/IUSUPERC20Factory.sol";
-import {ITokenFactory} from "../../../src/token-factories/uerc20-factory/interfaces/ITokenFactory.sol";
+import {USUPERC20Factory} from "src/token-factories/uerc20-factory/factories/USUPERC20Factory.sol";
+import {USUPERC20} from "src/token-factories/uerc20-factory/tokens/USUPERC20.sol";
+import {UERC20Metadata} from "src/token-factories/uerc20-factory/libraries/UERC20MetadataLibrary.sol";
+import {IUSUPERC20Factory} from "src/token-factories/uerc20-factory/interfaces/IUSUPERC20Factory.sol";
+import {ITokenFactory} from "src/token-factories/uerc20-factory/interfaces/ITokenFactory.sol";
 
 contract USUPERC20FactoryTest is Test {
     USUPERC20Factory public factory;
