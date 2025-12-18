@@ -148,4 +148,10 @@ abstract contract LBPTestHelpers is Test {
         // Mock the auction's checkpoint function
         vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
     }
+
+    /// @dev Mock the auction's checkpoint function with an empty checkpoint
+    function mockAuctionCheckpoint(ILBPStrategyBase lbp) internal {
+        Checkpoint memory checkpoint;
+        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
+    }
 }

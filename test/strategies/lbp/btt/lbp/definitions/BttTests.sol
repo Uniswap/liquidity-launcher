@@ -5,7 +5,8 @@ import {ConstructorTest} from "./Constructor.sol";
 import {OnTokensReceivedTest} from "./onTokensReceived.sol";
 import {SweepTokenTest} from "./sweepToken.sol";
 import {SweepCurrencyTest} from "./sweepCurrency.sol";
+import {MigrateTests} from "./migrate/MigrateTests.sol";
 
 /// @title BttTests
 /// @notice All btt tests
-abstract contract BttTests is ConstructorTest, OnTokensReceivedTest, SweepTokenTest, SweepCurrencyTest {}
+abstract contract BttTests is ConstructorTest, OnTokensReceivedTest, SweepTokenTest, SweepCurrencyTest, MigrateTests {}
