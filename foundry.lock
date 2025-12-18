@@ -14,12 +14,6 @@
   "lib/openzeppelin-contracts": {
     "rev": "21c8312b022f495ebe3621d5daeed20552b43ff9"
   },
-  "lib/openzeppelin-contracts-4.7": {
-    "branch": {
-      "name": "v4.7.3",
-      "rev": "ecd2ca2cd7cac116f7a37d0e474bbb3d7d5e1c4d"
-    }
-  },
   "lib/optimism": {
     "rev": "576843af39fbf9c65f73df17958a0633f41343a1"
   },

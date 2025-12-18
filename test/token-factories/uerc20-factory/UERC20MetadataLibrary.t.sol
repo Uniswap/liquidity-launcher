@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from "forge-std/Test.sol";
 import {UERC20MetadataLibrary, UERC20Metadata} from "uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
-import {Base64} from "@openzeppelin-latest/contracts/utils/Base64.sol";
+import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 
 contract UERC20MetadataLibraryTest is Test {
     using UERC20MetadataLibrary for UERC20Metadata;

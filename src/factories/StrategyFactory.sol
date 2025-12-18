@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
 import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
 import {IStrategyFactory} from "../interfaces/IStrategyFactory.sol";
