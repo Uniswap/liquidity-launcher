@@ -25,9 +25,7 @@ contract LBPStrategyBasicTest is BttTests {
             _parameters.migratorParams,
             _parameters.auctionParameters,
             _parameters.positionManager,
-            _parameters.poolManager,
-            true,
-            true
+            _parameters.poolManager
         );
     }
 }
