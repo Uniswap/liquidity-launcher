@@ -30,12 +30,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
     using FixedPointMathLib for *;
 
-    // Constants
-    address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
-    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    address constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-
     // Default values
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
     uint24 constant DEFAULT_TOKEN_SPLIT = 5e6;
@@ -45,13 +39,6 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Test token address (make it > address(0) but < DAI)
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
-
-    uint160 constant HOOK_PERMISSION_COUNT = 14;
-    uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
-
-    address testOperator = makeAddr("testOperator");
-    address alice = makeAddr("alice");
-    address bob = makeAddr("bob");
 
     // Events
     event Notified(bytes data);
