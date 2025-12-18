@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 import {Multicall} from "../Multicall.sol";
@@ -35,11 +36,11 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
 
     /// @notice Collect any fees from the position and forward them to the set recipient
     /// @param _tokenId the token ID of the position
-    /// @param _token0 the address of token0 on the pool
-    /// @param _token1 the address of token1 on the pool
-    function collectFees(uint256 _tokenId, address _token0, address _token1) external nonReentrant {
+    function collectFees(uint256 _tokenId) external nonReentrant {
         // Check if this contract is the owner of the position
         if (IERC721(address(positionManager)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner();
+
+        (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
 
         // Collect the fees from the position
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
@@ -47,7 +48,7 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
         // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
         params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
         // Call TAKE_PAIR to close the open deltas and send the fees to the fee recipient
-        params[1] = abi.encode(_token0, _token1, feeRecipient);
+        params[1] = abi.encode(poolKey.currency0, poolKey.currency1, feeRecipient);
 
         // Call modifyLiquidity with the actions and params, setting the deadline to the current block
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);

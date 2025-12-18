@@ -89,16 +89,7 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
     function test_collectFees_revertsIfPositionIsNotOwner() public {
         positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
         vm.expectRevert(PositionFeesForwarder.NotPositionOwner.selector);
-        positionRecipient.collectFees(FORK_TOKEN_ID, USDC, NATIVE);
-    }
-
-    function test_collectFees_revertsIfTokenOrCurrencyAreWrong(address _token, address _currency) public {
-        vm.assume((_token != USDC && _token != NATIVE) || (_currency != USDC && _currency != NATIVE));
-        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
-
-        vm.expectRevert(bytes4(keccak256("CurrencyNotSettled()")));
-        positionRecipient.collectFees(FORK_TOKEN_ID, _token, _currency);
+        positionRecipient.collectFees(FORK_TOKEN_ID);
     }
 
     /// forge-config: default.isolate = true
@@ -113,7 +104,7 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         vm.prank(searcher);
         vm.expectEmit(true, true, true, true);
         emit PositionFeesForwarder.FeesForwarded(feeRecipient);
-        positionRecipient.collectFees(FORK_TOKEN_ID, USDC, NATIVE);
+        positionRecipient.collectFees(FORK_TOKEN_ID);
         vm.snapshotGasLastCall("collectFees"); // This gas snap isn't super accurate bc its forked but good enough for now
         assertGt(
             Currency.wrap(USDC).balanceOf(feeRecipient),
