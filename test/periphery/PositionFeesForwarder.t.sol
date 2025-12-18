@@ -101,6 +101,8 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         positionRecipient.collectFees(FORK_TOKEN_ID, _token, _currency);
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_collectFees_transfersBothFeesToCaller() public {
         positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
@@ -110,9 +112,9 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
 
         vm.prank(searcher);
         vm.expectEmit(true, true, true, true);
-        // Hardcoded fees owed from the forked position
         emit PositionFeesForwarder.FeesForwarded(feeRecipient);
         positionRecipient.collectFees(FORK_TOKEN_ID, USDC, NATIVE);
+        vm.snapshotGasLastCall("collectFees"); // This gas snap isn't super accurate bc its forked but good enough for now
         assertGt(
             Currency.wrap(USDC).balanceOf(feeRecipient),
             feeRecipientUSDCBalanceBefore,
