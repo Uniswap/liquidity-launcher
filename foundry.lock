@@ -29,6 +29,12 @@
   "lib/solady": {
     "rev": "33b4b98e350bbcba6aa85642957c313e98b5f911"
   },
+  "lib/uerc20-factory": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "09ae130f7a10f7c1b96e0dc7d9724d567080c4ef"
+    }
+  },
   "lib/v4-core": {
     "rev": "59d3ecf53afa9264a16bba0e38f4c5d2231f80bc"
   },

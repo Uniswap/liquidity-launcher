@@ -6,6 +6,7 @@ merkle-distributor/=lib/merkle-distributor/
 @openzeppelin-latest=lib/openzeppelin-contracts/
 @solady/=lib/solady/
 @optimism/=lib/optimism/packages/contracts-bedrock/
+uerc20-factory/=lib/uerc20-factory/
 continuous-clearing-auction/=lib/continuous-clearing-auction/
 @lbp/factories=src/factories/lbp
 @lbp/strategies=src/strategies/lbp
