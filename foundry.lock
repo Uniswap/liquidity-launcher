@@ -8,17 +8,8 @@
   "lib/forge-std": {
     "rev": "3b20d60d14b343ee4f908cb8079495c07f5e8981"
   },
-  "lib/merkle-distributor": {
-    "rev": "25a79e8ec8c22076a735b1a675b961c8184e7931"
-  },
   "lib/openzeppelin-contracts": {
     "rev": "21c8312b022f495ebe3621d5daeed20552b43ff9"
-  },
-  "lib/openzeppelin-contracts-4.7": {
-    "branch": {
-      "name": "v4.7.3",
-      "rev": "ecd2ca2cd7cac116f7a37d0e474bbb3d7d5e1c4d"
-    }
   },
   "lib/optimism": {
     "rev": "576843af39fbf9c65f73df17958a0633f41343a1"
@@ -28,6 +19,12 @@
   },
   "lib/solady": {
     "rev": "33b4b98e350bbcba6aa85642957c313e98b5f911"
+  },
+  "lib/uerc20-factory": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "09ae130f7a10f7c1b96e0dc7d9724d567080c4ef"
+    }
   },
   "lib/v4-core": {
     "rev": "59d3ecf53afa9264a16bba0e38f4c5d2231f80bc"

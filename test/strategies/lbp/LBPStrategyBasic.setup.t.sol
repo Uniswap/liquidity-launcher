@@ -6,7 +6,7 @@ import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
@@ -16,7 +16,7 @@ import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/ICon
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
 import {TokenPricing} from "src/libraries/TokenPricing.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
