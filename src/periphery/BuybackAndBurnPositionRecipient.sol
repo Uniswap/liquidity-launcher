@@ -60,8 +60,10 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
         // Collect the fees from the position
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes("")); // decreaseLiquidityParams
-        params[1] = abi.encode(token, currency, address(this), 0); // takeParams
+        // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
+        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
+        // Call TAKE_PAIR to close the open deltas and send the fees to the caller
+        params[1] = abi.encode(token, currency, address(this));
 
         uint256 tokenBalanceBefore = Currency.wrap(token).balanceOfSelf();
         uint256 currencyBalanceBefore = Currency.wrap(currency).balanceOfSelf();

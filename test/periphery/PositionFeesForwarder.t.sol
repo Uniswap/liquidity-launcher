@@ -34,7 +34,7 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
     MockERC20 token;
     MockERC20 currency;
 
-    address recipient;
+    address feeRecipient;
 
     function setUp() public virtual override {
         // Setups up fork and operator/searcher
@@ -43,8 +43,8 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         token = new MockERC20("Test Token", "TEST", 1_000e18, address(this));
         currency = new MockERC20("Test Currency", "TESTC", 1_000e18, address(this));
 
-        recipient = makeAddr("recipient");
-        vm.label(recipient, "recipient");
+        feeRecipient = makeAddr("feeRecipient");
+        vm.label(feeRecipient, "feeRecipient");
     }
 
     // Return a basic BuybackAndBurnPositionRecipient for compatibility with TimelockedPositionRecipientTest
@@ -54,7 +54,9 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         override
         returns (ITimelockedPositionRecipient)
     {
-        return new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, recipient);
+        return new PositionFeesForwarder(
+            IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, feeRecipient
+        );
     }
 
     // Transfer a v4 position from one owner to another
@@ -73,25 +75,26 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         assertTrue(success);
     }
 
-    function test_CanBeConstructed(uint256 _timelockBlockNumber, address _recipient) public {
-        positionRecipient =
-            new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, _recipient);
+    function test_CanBeConstructed(uint256 _timelockBlockNumber, address _feeRecipient) public {
+        positionRecipient = new PositionFeesForwarder(
+            IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, _feeRecipient
+        );
 
         assertEq(positionRecipient.timelockBlockNumber(), _timelockBlockNumber);
         assertEq(positionRecipient.operator(), operator);
         assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
-        assertEq(positionRecipient.recipient(), _recipient);
+        assertEq(positionRecipient.feeRecipient(), _feeRecipient);
     }
 
     function test_collectFees_revertsIfPositionIsNotOwner() public {
-        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, recipient);
+        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
         vm.expectRevert(PositionFeesForwarder.NotPositionOwner.selector);
         positionRecipient.collectFees(FORK_TOKEN_ID, USDC, NATIVE);
     }
 
     function test_collectFees_revertsIfTokenOrCurrencyAreWrong(address _token, address _currency) public {
         vm.assume((_token != USDC && _token != NATIVE) || (_currency != USDC && _currency != NATIVE));
-        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, recipient);
+        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
 
         vm.expectRevert(bytes4(keccak256("CurrencyNotSettled()")));
@@ -99,26 +102,26 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
     }
 
     function test_collectFees_transfersBothFeesToCaller() public {
-        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, recipient);
+        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
 
-        uint256 recipientUSDCBalanceBefore = Currency.wrap(USDC).balanceOf(recipient);
-        uint256 recipientNATIVEBalanceBefore = Currency.wrap(NATIVE).balanceOf(recipient);
+        uint256 feeRecipientUSDCBalanceBefore = Currency.wrap(USDC).balanceOf(feeRecipient);
+        uint256 feeRecipientNATIVEBalanceBefore = Currency.wrap(NATIVE).balanceOf(feeRecipient);
 
         vm.prank(searcher);
         vm.expectEmit(true, true, true, true);
         // Hardcoded fees owed from the forked position
-        emit PositionFeesForwarder.FeesForwarded(recipient, 12508370, 709706242928);
+        emit PositionFeesForwarder.FeesForwarded(feeRecipient, 12508370, 709706242928);
         positionRecipient.collectFees(FORK_TOKEN_ID, USDC, NATIVE);
         assertGt(
-            Currency.wrap(USDC).balanceOf(recipient),
-            recipientUSDCBalanceBefore,
-            "Recipient USDC balance did not increase"
+            Currency.wrap(USDC).balanceOf(feeRecipient),
+            feeRecipientUSDCBalanceBefore,
+            "Fee recipient USDC balance did not increase"
         );
         assertGt(
-            Currency.wrap(NATIVE).balanceOf(recipient),
-            recipientNATIVEBalanceBefore,
-            "Recipient NATIVE balance did not increase"
+            Currency.wrap(NATIVE).balanceOf(feeRecipient),
+            feeRecipientNATIVEBalanceBefore,
+            "Fee recipient currency balance did not increase"
         );
         assertEq(
             Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0, "Position recipient USDC balance is not 0"
