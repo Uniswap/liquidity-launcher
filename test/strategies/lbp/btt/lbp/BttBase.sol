@@ -36,11 +36,13 @@ abstract contract BttBase is LBPTestHelpers {
 
     uint256 constant FORK_BLOCK = 23097193;
     address constant TOKEN = 0x1111111111111111111111111111111111111111;
+    address constant ERC20_CURRENCY = 0x2222222222222222222222222222222222222222;
 
     LiquidityLauncher liquidityLauncher;
     ILBPStrategyBase lbp;
     uint256 nextTokenId;
     MockERC20 token;
+    MockERC20 erc20Currency;
     IContinuousClearingAuctionFactory auctionFactory;
 
     function setUp() public virtual {
@@ -52,6 +54,8 @@ abstract contract BttBase is LBPTestHelpers {
 
         token = MockERC20(TOKEN);
         vm.label(TOKEN, "token");
+        erc20Currency = MockERC20(ERC20_CURRENCY);
+        vm.label(ERC20_CURRENCY, "erc20 currency");
 
         auctionFactory = IContinuousClearingAuctionFactory(address(new ContinuousClearingAuctionFactory()));
         vm.label(address(auctionFactory), "auctionFactory");
@@ -89,26 +93,42 @@ abstract contract BttBase is LBPTestHelpers {
         deployCodeTo("MockERC20", abi.encode("Test Token", "TEST", _totalSupply, address(liquidityLauncher)), TOKEN);
     }
 
+    function _deployMockCurrency(uint128 _totalSupply) internal {
+        deployCodeTo(
+            "MockERC20", abi.encode("Test Currency", "TEST", _totalSupply, address(liquidityLauncher)), ERC20_CURRENCY
+        );
+    }
+
+    /// @dev Default to using native currency
     function _toValidConstructorParameters(FuzzConstructorParameters memory _parameters)
+        internal
+        view
+        returns (FuzzConstructorParameters memory)
+    {
+        return _toValidConstructorParameters(_parameters, true);
+    }
+
+    function _toValidConstructorParameters(FuzzConstructorParameters memory _parameters, bool _useNativeCurrency)
         internal
         view
         returns (FuzzConstructorParameters memory)
     {
         _parameters.token = address(token);
         _parameters.totalSupply = uint128(_bound(_parameters.totalSupply, TokenDistribution.MAX_TOKEN_SPLIT, 1e30));
-        _parameters.migratorParams = _toValidMigrationParameters(_parameters.migratorParams);
+        _parameters.migratorParams = _toValidMigrationParameters(_parameters.migratorParams, _useNativeCurrency);
         _parameters.positionManager = IPositionManager(POSITION_MANAGER); // dont need to fuzz
         _parameters.poolManager = IPoolManager(POOL_MANAGER);
-        _parameters.auctionParameters = _validAuctionParameters(_parameters);
+        _parameters.auctionParameters = _validAuctionParameters(_parameters, _useNativeCurrency);
         return _parameters;
     }
 
-    function _toValidMigrationParameters(MigratorParameters memory _mParameters)
+    function _toValidMigrationParameters(MigratorParameters memory _mParameters, bool _useNativeCurrency)
         internal
         view
         returns (MigratorParameters memory)
     {
         vm.assume(_mParameters.migrationBlock < type(uint64).max);
+        _mParameters.currency = _useNativeCurrency ? address(0) : address(erc20Currency);
         _mParameters.migrationBlock =
             uint64(_bound(_mParameters.migrationBlock, block.number + 2, type(uint64).max - 1));
         _mParameters.sweepBlock =
@@ -127,13 +147,13 @@ abstract contract BttBase is LBPTestHelpers {
         return _mParameters;
     }
 
-    function _validAuctionParameters(FuzzConstructorParameters memory _parameters)
+    function _validAuctionParameters(FuzzConstructorParameters memory _parameters, bool _useNativeCurrency)
         internal
         view
         returns (bytes memory)
     {
         AuctionParameters memory auctionParameters;
-        auctionParameters.currency = _parameters.migratorParams.currency;
+        auctionParameters.currency = _useNativeCurrency ? address(0) : address(erc20Currency);
         vm.assume(auctionParameters.currency != _parameters.token);
         auctionParameters.fundsRecipient = ActionConstants.MSG_SENDER;
         auctionParameters.tokensRecipient = tokensRecipient;

@@ -6,10 +6,12 @@ import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FuzzConstructorParameters} from "../BttBase.sol";
 
+// Tests have to be namespaced since it would conflict with the SweepCurrencyTest
 abstract contract SweepTokenTest is BttBase {
-    function test_WhenBlockNumberLTSweepBlock(FuzzConstructorParameters memory _parameters, uint64 _blockNumber)
-        public
-    {
+    function test_SweepToken_WhenBlockNumberLTSweepBlock(
+        FuzzConstructorParameters memory _parameters,
+        uint64 _blockNumber
+    ) public {
         // it reverts with {SweepNotAllowed}
 
         _parameters = _toValidConstructorParameters(_parameters);
@@ -28,15 +30,15 @@ abstract contract SweepTokenTest is BttBase {
         lbp.sweepToken();
     }
 
-    modifier whenBlockNumberIsGTESweepBlock() {
+    modifier sweepToken_whenBlockNumberIsGTESweepBlock() {
         _;
     }
 
-    function test_WhenMsgSenderIsNotOperator(
+    function test_SweepToken_WhenMsgSenderIsNotOperator(
         FuzzConstructorParameters memory _parameters,
         uint64 _blockNumber,
         address _caller
-    ) public whenBlockNumberIsGTESweepBlock {
+    ) public sweepToken_whenBlockNumberIsGTESweepBlock {
         // it reverts with {NotOperator}
 
         _parameters = _toValidConstructorParameters(_parameters);
@@ -56,13 +58,13 @@ abstract contract SweepTokenTest is BttBase {
         lbp.sweepToken();
     }
 
-    modifier whenMsgSenderIsOperator() {
+    modifier sweepToken_whenMsgSenderIsOperator() {
         _;
     }
 
-    function test_WhenTokenBalanceIsZero(FuzzConstructorParameters memory _parameters, uint64 _blockNumber)
+    function test_SweepToken_WhenTokenBalanceIsZero(FuzzConstructorParameters memory _parameters, uint64 _blockNumber)
         public
-        whenMsgSenderIsOperator
+        sweepToken_whenMsgSenderIsOperator
     {
         // it does not sweep the tokens
 
@@ -82,14 +84,14 @@ abstract contract SweepTokenTest is BttBase {
         assertEq(operatorTokenBalanceAfter, operatorTokenBalanceBefore, "Operator token balance should not change");
     }
 
-    modifier whenTokenBalanceIsGreaterThanZero() {
+    modifier SweepToken_whenTokenBalanceIsGreaterThanZero() {
         _;
     }
 
-    function test_WhenTokenBalanceIsGreaterThanZero(FuzzConstructorParameters memory _parameters, uint64 _blockNumber)
-        public
-        whenTokenBalanceIsGreaterThanZero
-    {
+    function test_SweepToken_WhenTokenBalanceIsGreaterThanZero(
+        FuzzConstructorParameters memory _parameters,
+        uint64 _blockNumber
+    ) public SweepToken_whenTokenBalanceIsGreaterThanZero {
         // it sweeps the tokens
         // it emits {TokensSwept}
 
