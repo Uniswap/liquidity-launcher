@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.17;
+pragma solidity 0.8.26;
 
 import "forge-std/Test.sol";
-import {MerkleClaimFactory} from "../../src/factories/MerkleClaimFactory.sol";
-import {MerkleClaim} from "../../src/strategies/MerkleClaim.sol";
-import {IDistributionContract} from "../../src/interfaces/IDistributionContract.sol";
+import {MerkleClaimFactory} from "src/factories/periphery/MerkleClaimFactory.sol";
+import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+
+interface IMerkleClaim {
+    function token() external view returns (address);
+    function merkleRoot() external view returns (bytes32);
+    function owner() external view returns (address);
+    function endTime() external view returns (uint256);
+}
 
 contract MerkleClaimFactoryTest is Test {
     uint128 constant TOTAL_SUPPLY = 1000e18;
@@ -31,8 +37,8 @@ contract MerkleClaimFactoryTest is Test {
     function test_initializeDistribution_succeeds() public {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
 
-        MerkleClaim merkleClaim =
-            MerkleClaim(address(factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt)));
+        IMerkleClaim merkleClaim =
+            IMerkleClaim(address(factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt)));
 
         assertEq(merkleClaim.token(), token);
         assertEq(merkleClaim.merkleRoot(), merkleRoot);
@@ -40,11 +46,11 @@ contract MerkleClaimFactoryTest is Test {
         assertEq(merkleClaim.endTime(), endTime);
     }
 
-    function test_getMerkleClaimAddress_succeeds() public {
+    function test_getAddress_succeeds() public {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
 
         // Get the predicted address
-        address predictedAddress = factory.getMerkleClaimAddress(token, configData, salt, address(this));
+        address predictedAddress = factory.getAddress(token, TOTAL_SUPPLY, configData, salt, address(this));
 
         // Deploy the actual contract
         IDistributionContract deployedContract = factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt);

@@ -9,12 +9,12 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
-import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {ILBPStrategyBase} from "../../../src/interfaces/ILBPStrategyBase.sol";
+import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {

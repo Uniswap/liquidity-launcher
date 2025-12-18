@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {ERC20} from "@openzeppelin-latest/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";

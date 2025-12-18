@@ -1,29 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Create2} from "@openzeppelin-latest/contracts/utils/Create2.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
-import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
-import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
-import {IStrategyFactory} from "../../interfaces/IStrategyFactory.sol";
-import {MigratorParameters} from "../../types/MigratorParameters.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import {IDistributionStrategy} from "../interfaces/IDistributionStrategy.sol";
+import {IStrategyFactory} from "../interfaces/IStrategyFactory.sol";
 
-/// @title LBPStrategyBaseFactory
-/// @notice Base factory for LBPStrategy contracts with overridable deployment logic
+/// @title StrategyFactory
+/// @notice Abstract base factory for strategies with overridable deployment logic
 /// @custom:security-contact security@uniswap.org
-abstract contract LBPStrategyBaseFactory is IStrategyFactory {
-    /// @notice The position manager that will be used to create the position
-    IPositionManager public immutable positionManager;
-    /// @notice The pool manager that will be used to create the pool
-    IPoolManager public immutable poolManager;
-
-    constructor(IPositionManager _positionManager, IPoolManager _poolManager) {
-        positionManager = _positionManager;
-        poolManager = _poolManager;
-    }
-
+abstract contract StrategyFactory is IStrategyFactory {
     /// @inheritdoc IDistributionStrategy
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
