@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ConstructorTest} from "./Constructor.sol";
+import {ConstructorTest} from "./constructor.sol";
 import {OnTokensReceivedTest} from "./onTokensReceived.sol";
 import {SweepTokenTest} from "./sweepToken.sol";
 import {SweepCurrencyTest} from "./sweepCurrency.sol";
