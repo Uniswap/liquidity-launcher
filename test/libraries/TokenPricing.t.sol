@@ -2,9 +2,9 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {TokenPricing} from "../../src/libraries/TokenPricing.sol";
+import {TokenPricing} from "src/libraries/TokenPricing.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
