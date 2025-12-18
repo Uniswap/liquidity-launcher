@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /// @dev This file has been flattened to easily support multiple versions of OpenZeppelin contracts
 ///      in the same repository. MerkleClaim uses MerkleDistributorWithDeadline from merkle-distributor,
-///      which is pinned to 0.8.17 and unfortunately does not fix its open-zeppelin import which conflicts
+///      which is pinned to 0.8.17 and unfortunately does not fix its OpenZeppelin import which conflicts
 ///      with the version used in this repository. The bytecode has been confirmed to be equal to the original,
 ///      and `MerkleClaimFactory` deploys via bytecode.
 /// Dependency links:
