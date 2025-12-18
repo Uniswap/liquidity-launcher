@@ -19,9 +19,6 @@
 [submodule "lib/optimism"]
 	path = lib/optimism
 	url = https://github.com/ethereum-optimism/optimism
-[submodule "lib/merkle-distributor"]
-	path = lib/merkle-distributor
-	url = https://github.com/Uniswap/merkle-distributor
 [submodule "lib/continuous-clearing-auction"]
 	path = lib/continuous-clearing-auction
 	url = https://github.com/Uniswap/continuous-clearing-auction

@@ -8,9 +8,6 @@
   "lib/forge-std": {
     "rev": "3b20d60d14b343ee4f908cb8079495c07f5e8981"
   },
-  "lib/merkle-distributor": {
-    "rev": "25a79e8ec8c22076a735b1a675b961c8184e7931"
-  },
   "lib/openzeppelin-contracts": {
     "rev": "21c8312b022f495ebe3621d5daeed20552b43ff9"
   },
