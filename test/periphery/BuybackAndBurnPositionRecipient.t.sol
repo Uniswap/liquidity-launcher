@@ -122,7 +122,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     function test_collectFees_revertsIfPositionIsNotOwner() public {
         positionRecipient =
             new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 0);
-        vm.expectRevert(BuybackAndBurnPositionRecipient.NotPositionOwner.selector);
+        vm.expectRevert(TimelockedPositionRecipient.NotPositionOwner.selector);
         positionRecipient.collectFees(FORK_TOKEN_ID);
     }
 

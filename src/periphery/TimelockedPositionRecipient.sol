@@ -9,6 +9,9 @@ import {ITimelockedPositionRecipient} from "../interfaces/ITimelockedPositionRec
 /// @title TimelockedPositionRecipient
 /// @notice Utility contract for holding v4 LP positions until a timelock period has passed
 contract TimelockedPositionRecipient is ITimelockedPositionRecipient, ReentrancyGuardTransient {
+    /// @notice Thrown when this contract is not the owner of the position
+    error NotPositionOwner();
+
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
     /// @notice The operator that will be approved to transfer the position
@@ -20,6 +23,13 @@ contract TimelockedPositionRecipient is ITimelockedPositionRecipient, Reentrancy
         positionManager = _positionManager;
         operator = _operator;
         timelockBlockNumber = _timelockBlockNumber;
+    }
+
+    /// @notice Reverts if this contract is not the owner of the position
+    /// @param _tokenId the token ID of the position
+    modifier requireOwned(uint256 _tokenId) {
+        if (IERC721(address(positionManager)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner();
+        _;
     }
 
     /// @inheritdoc ITimelockedPositionRecipient

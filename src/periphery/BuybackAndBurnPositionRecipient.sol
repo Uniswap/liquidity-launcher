@@ -14,9 +14,10 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     using CurrencyLibrary for Currency;
 
+    /// @notice Thrown when the token is address(0)
     error InvalidToken();
+    /// @notice Thrown when the token and currency are the same address
     error TokenAndCurrencyCannotBeTheSame();
-    error NotPositionOwner();
 
     /// @notice Emitted when tokens are burned
     /// @param amount The amount of tokens burned
@@ -51,9 +52,7 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
 
     /// @notice Claim any fees from the position and burn the `tokens` portion
     /// @param _tokenId The token ID of the position
-    function collectFees(uint256 _tokenId) external nonReentrant {
-        if (IERC721(address(positionManager)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner();
-
+    function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
         // Require the caller to burn at least the minimum amount of `token`
         _burnTokensFrom(msg.sender, minTokenBurnAmount);
 

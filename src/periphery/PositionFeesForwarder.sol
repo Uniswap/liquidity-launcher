@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 import {Multicall} from "../Multicall.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -13,11 +12,6 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 /// @notice Utility contract for holding v4 LP positions and forwarding fees to a recipient
 /// @custom:security-contact security@uniswap.org
 contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
-    using CurrencyLibrary for Currency;
-
-    /// @notice Thrown when this contract is not the owner of the position
-    error NotPositionOwner();
-
     /// @notice Emitted when fees are forwarded
     /// @param feeRecipient The recipient of the fees
     event FeesForwarded(address indexed feeRecipient);
@@ -36,10 +30,7 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
 
     /// @notice Collect any fees from the position and forward them to the set recipient
     /// @param _tokenId the token ID of the position
-    function collectFees(uint256 _tokenId) external nonReentrant {
-        // Check if this contract is the owner of the position
-        if (IERC721(address(positionManager)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner();
-
+    function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
         (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
 
         // Collect the fees from the position
