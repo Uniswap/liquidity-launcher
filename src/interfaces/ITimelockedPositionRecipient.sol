@@ -16,7 +16,7 @@ interface ITimelockedPositionRecipient {
     function approveOperator() external;
 
     // Getters
-    function TIMELOCK_BLOCK_NUMBER() external view returns (uint256);
-    function OPERATOR() external view returns (address);
-    function POSITION_MANAGER() external view returns (IPositionManager);
+    function timelockBlockNumber() external view returns (uint256);
+    function operator() external view returns (address);
+    function positionManager() external view returns (IPositionManager);
 }

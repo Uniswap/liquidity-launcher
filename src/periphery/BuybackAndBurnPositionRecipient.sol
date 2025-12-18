@@ -6,7 +6,7 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
-import {IERC721} from "../interfaces/external/IERC721.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
@@ -28,68 +28,68 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     event CurrencyFeesCollected(address indexed recipient, uint256 amount);
 
     /// @notice The minimum amount of `token` which must be burned each time fees are collected
-    uint256 public immutable MIN_TOKEN_BURN_AMOUNT;
+    uint256 public immutable minTokenBurnAmount;
     /// @notice The token that will be burned
-    address public immutable TOKEN;
+    address public immutable token;
     /// @notice The currency that will be used to collect fees
-    address public immutable CURRENCY;
+    address public immutable currency;
 
     constructor(
-        address token,
-        address currency,
-        address operator,
-        IPositionManager positionManager,
-        uint256 timelockBlockNumber,
-        uint256 minTokenBurnAmount
-    ) TimelockedPositionRecipient(positionManager, operator, timelockBlockNumber) {
-        if (token == address(0)) revert InvalidToken();
-        if (token == currency) revert TokenAndCurrencyCannotBeTheSame();
-        TOKEN = token;
-        CURRENCY = currency;
-        MIN_TOKEN_BURN_AMOUNT = minTokenBurnAmount;
+        address _token,
+        address _currency,
+        address _operator,
+        IPositionManager _positionManager,
+        uint256 _timelockBlockNumber,
+        uint256 _minTokenBurnAmount
+    ) TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+        if (_token == address(0)) revert InvalidToken();
+        if (_token == _currency) revert TokenAndCurrencyCannotBeTheSame();
+        token = _token;
+        currency = _currency;
+        minTokenBurnAmount = _minTokenBurnAmount;
     }
 
     /// @notice Claim any fees from the position and burn the `tokens` portion
-    /// @param tokenId The token ID of the position
-    function collectFees(uint256 tokenId) external nonReentrant {
-        if (IERC721(address(POSITION_MANAGER)).ownerOf(tokenId) != address(this)) revert NotPositionOwner();
+    /// @param _tokenId The token ID of the position
+    function collectFees(uint256 _tokenId) external nonReentrant {
+        if (IERC721(address(positionManager)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner();
 
         // Require the caller to burn at least the minimum amount of `token`
-        _burnTokensFrom(msg.sender, MIN_TOKEN_BURN_AMOUNT);
+        _burnTokensFrom(msg.sender, minTokenBurnAmount);
 
         // Collect the fees from the position
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(tokenId, 0, 0, 0, bytes("")); // decreaseLiquidityParams
-        params[1] = abi.encode(TOKEN, CURRENCY, address(this), 0); // takeParams
+        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes("")); // decreaseLiquidityParams
+        params[1] = abi.encode(token, currency, address(this), 0); // takeParams
 
-        uint256 tokenBalanceBefore = Currency.wrap(TOKEN).balanceOfSelf();
-        uint256 currencyBalanceBefore = Currency.wrap(CURRENCY).balanceOfSelf();
+        uint256 tokenBalanceBefore = Currency.wrap(token).balanceOfSelf();
+        uint256 currencyBalanceBefore = Currency.wrap(currency).balanceOfSelf();
         // Set deadline to the current block
-        POSITION_MANAGER.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
-        uint256 accruedTokenFees = Currency.wrap(TOKEN).balanceOfSelf() - tokenBalanceBefore;
-        uint256 accruedCurrencyFees = Currency.wrap(CURRENCY).balanceOfSelf() - currencyBalanceBefore;
+        uint256 accruedTokenFees = Currency.wrap(token).balanceOfSelf() - tokenBalanceBefore;
+        uint256 accruedCurrencyFees = Currency.wrap(currency).balanceOfSelf() - currencyBalanceBefore;
 
         // Burn the tokens from the collected fees
         _burnTokensFrom(address(this), accruedTokenFees);
         // Transfer the currency fees to the caller
-        Currency.wrap(CURRENCY).transfer(msg.sender, accruedCurrencyFees);
+        Currency.wrap(currency).transfer(msg.sender, accruedCurrencyFees);
 
         emit CurrencyFeesCollected(msg.sender, accruedCurrencyFees);
     }
 
     /// @notice Burns the tokens by transferring them to the burn address
     /// @dev Ensure that the `token` ERC20 contract allows transfers to address(0xdead)
-    /// @param amount The amount of tokens to burn
-    function _burnTokensFrom(address from, uint256 amount) internal {
-        if (amount > 0) {
-            if (from == address(this)) {
-                Currency.wrap(TOKEN).transfer(address(0xdead), amount);
+    /// @param _amount The amount of tokens to burn
+    function _burnTokensFrom(address _from, uint256 _amount) internal {
+        if (_amount > 0) {
+            if (_from == address(this)) {
+                Currency.wrap(token).transfer(address(0xdead), _amount);
             } else {
-                SafeTransferLib.safeTransferFrom(TOKEN, from, address(0xdead), amount);
+                SafeTransferLib.safeTransferFrom(token, _from, address(0xdead), _amount);
             }
         }
-        emit TokensBurned(amount);
+        emit TokensBurned(_amount);
     }
 }

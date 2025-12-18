@@ -7,7 +7,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IERC721} from "../../src/interfaces/external/IERC721.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {TimelockedPositionRecipient} from "../../src/periphery/TimelockedPositionRecipient.sol";
 import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
 import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
@@ -77,10 +77,10 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         positionRecipient =
             new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, _recipient);
 
-        assertEq(positionRecipient.TIMELOCK_BLOCK_NUMBER(), _timelockBlockNumber);
-        assertEq(positionRecipient.OPERATOR(), operator);
-        assertEq(address(positionRecipient.POSITION_MANAGER()), POSITION_MANAGER);
-        assertEq(positionRecipient.RECIPIENT(), _recipient);
+        assertEq(positionRecipient.timelockBlockNumber(), _timelockBlockNumber);
+        assertEq(positionRecipient.operator(), operator);
+        assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
+        assertEq(positionRecipient.recipient(), _recipient);
     }
 
     function test_collectFees_revertsIfPositionIsNotOwner() public {

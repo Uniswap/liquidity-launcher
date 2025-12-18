@@ -36,9 +36,9 @@ contract TimelockedPositionRecipientTest is Test {
     function test_CanBeConstructed(uint64 _timelockBlockNumber) public {
         ITimelockedPositionRecipient positionRecipient = _getPositionRecipient(_timelockBlockNumber);
 
-        assertEq(positionRecipient.TIMELOCK_BLOCK_NUMBER(), _timelockBlockNumber);
-        assertEq(positionRecipient.OPERATOR(), operator);
-        assertEq(address(positionRecipient.POSITION_MANAGER()), POSITION_MANAGER);
+        assertEq(positionRecipient.timelockBlockNumber(), _timelockBlockNumber);
+        assertEq(positionRecipient.operator(), operator);
+        assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
     }
 
     function test_CanReceiveETH(uint64 _timelockBlockNumber) public {
