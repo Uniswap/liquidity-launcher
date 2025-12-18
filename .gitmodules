@@ -29,3 +29,6 @@
 [submodule "lib/continuous-clearing-auction"]
 	path = lib/continuous-clearing-auction
 	url = https://github.com/Uniswap/continuous-clearing-auction
+[submodule "lib/uerc20-factory"]
+	path = lib/uerc20-factory
+	url = https://github.com/Uniswap/uerc20-factory
