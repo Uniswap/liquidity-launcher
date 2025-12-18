@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.17;
 
-import {MerkleDistributorWithDeadline} from "merkle-distributor/contracts/MerkleDistributorWithDeadline.sol";
-import {IDistributionContract} from "../interfaces/IDistributionContract.sol";
+import "src/libraries/external/MerkleClaimHelpers.sol";
 
 /// @title MerkleClaim
 /// @notice A contract that allows users to claim tokens from a merkle distribution
@@ -21,3 +20,4 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract {
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {}
 }
+

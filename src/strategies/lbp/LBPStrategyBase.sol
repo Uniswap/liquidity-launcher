@@ -9,7 +9,7 @@ import {
 import {
     IContinuousClearingAuctionFactory
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
-import {IERC20} from "@openzeppelin-latest/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
