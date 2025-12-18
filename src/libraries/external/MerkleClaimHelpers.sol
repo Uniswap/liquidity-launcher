@@ -5,8 +5,10 @@
 ///      with the version used in this repository. The bytecode has been confirmed to be equal to the original,
 ///      and `MerkleClaimFactory` deploys via bytecode.
 /// Dependency links:
-/// - openzeppelin-contracts: https://github.com/OpenZeppelin/openzeppelin-contracts/tree/ecd2ca2cd7cac116f7a37d0e474bbb3d7d5e1c4d
+/// - openzeppelin-contracts v4.7.0: https://github.com/OpenZeppelin/openzeppelin-contracts/tree/ecd2ca2cd7cac116f7a37d0e474bbb3d7d5e1c4d
 /// - merkle-distributor: https://github.com/Uniswap/merkle-distributor/tree/25a79e8ec8c22076a735b1a675b961c8184e7931
+/// These depedencies have been removed from the repository and any following comments refer to the original sources
+
 pragma solidity =0.8.17 >=0.5.0 ^0.8.0 ^0.8.1;
 
 // lib/openzeppelin-contracts-4.7/contracts/utils/Address.sol
