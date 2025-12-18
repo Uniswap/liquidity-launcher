@@ -111,7 +111,7 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         vm.prank(searcher);
         vm.expectEmit(true, true, true, true);
         // Hardcoded fees owed from the forked position
-        emit PositionFeesForwarder.FeesForwarded(feeRecipient, 12508370, 709706242928);
+        emit PositionFeesForwarder.FeesForwarded(feeRecipient);
         positionRecipient.collectFees(FORK_TOKEN_ID, USDC, NATIVE);
         assertGt(
             Currency.wrap(USDC).balanceOf(feeRecipient),

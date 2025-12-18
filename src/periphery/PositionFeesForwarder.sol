@@ -19,9 +19,7 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
 
     /// @notice Emitted when fees are forwarded
     /// @param feeRecipient The recipient of the fees
-    /// @param token0Fees The amount of token0 fees forwarded
-    /// @param token1Fees The amount of token1 fees forwarded
-    event FeesForwarded(address indexed feeRecipient, uint256 token0Fees, uint256 token1Fees);
+    event FeesForwarded(address indexed feeRecipient);
 
     /// @notice The recipient of collected fees. If set to a contract, it must be able to receive ETH.
     address public immutable feeRecipient;
@@ -48,18 +46,12 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
         bytes[] memory params = new bytes[](2);
         // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
         params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
-        // Call TAKE_PAIR to close the open deltas
-        params[1] = abi.encode(_token0, _token1, address(this));
+        // Call TAKE_PAIR to close the open deltas and send the fees to the fee recipient
+        params[1] = abi.encode(_token0, _token1, feeRecipient);
 
         // Call modifyLiquidity with the actions and params, setting the deadline to the current block
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
-        // Transfer all collected fees to the fee recipient
-        uint256 token0Fees = Currency.wrap(_token0).balanceOfSelf();
-        uint256 token1Fees = Currency.wrap(_token1).balanceOfSelf();
-        Currency.wrap(_token0).transfer(feeRecipient, token0Fees);
-        Currency.wrap(_token1).transfer(feeRecipient, token1Fees);
-
-        emit FeesForwarded(feeRecipient, token0Fees, token1Fees);
+        emit FeesForwarded(feeRecipient);
     }
 }
