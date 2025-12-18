@@ -56,7 +56,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     uint128 public immutable totalSupply;
     /// @notice The remaining supply of the token that was not sent to the auction
     uint128 public immutable reserveSupply;
-    /// @notice The maximum amount of currency that can be used for LP
+    /// @notice The maximum amount of currency that can be used to mint the initial liquidity position in the v4 pool
     uint128 public immutable maxCurrencyAmountForLP;
     /// @notice The address that will receive the position
     address public immutable positionRecipient;
@@ -270,8 +270,9 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() internal view returns (MigrationData memory data) {
-        uint128 currencyAmount = uint128(FixedPointMathLib.min(auction.currencyRaised(), maxCurrencyAmountForLP)); // already validated to be less than or equal to type(uint128).max
+    function _prepareMigrationData() internal view returns (MigrationData memory) {
+        // Both currencyRaised and maxCurrencyAmountForLP are validated to be less than or equal to type(uint128).max
+        uint128 currencyAmount = uint128(FixedPointMathLib.min(auction.currencyRaised(), maxCurrencyAmountForLP));
         bool currencyIsCurrency0 = _currencyIsCurrency0();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currencyIsCurrency0);

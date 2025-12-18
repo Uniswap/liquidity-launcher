@@ -64,7 +64,7 @@ contract LBPStrategyBasic is LBPStrategyBase {
             );
         }
 
-        // We encode a take pair action to ensure that we sweep all excess tokens and currency back
+        // We encode a take pair action back to this contract for eventual sweeping by the operator
         (actions, params) = baseParams.planFinalTakePair(actions, params);
 
         return abi.encode(actions, params);
