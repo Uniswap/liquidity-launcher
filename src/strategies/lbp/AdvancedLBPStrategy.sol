@@ -56,10 +56,10 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        bytes memory actions = ActionsBuilder.init().addMint().addSettle();
+        bytes memory actions = ActionsBuilder.init().addMint().addSettle().addSettle();
         bytes[] memory params = DynamicArrayLib.init()
-            .append(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount));
-        params = params.append(ParamsBuilder.addSettleParam(currency)).append(ParamsBuilder.addSettleParam(poolToken));
+            .append(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount))
+            .append(ParamsBuilder.addSettleParam(currency)).append(ParamsBuilder.addSettleParam(poolToken));
 
         if (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount) {
             // Attempt to extend the position plan with a one sided token position

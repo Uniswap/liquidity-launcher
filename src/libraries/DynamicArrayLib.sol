@@ -27,7 +27,7 @@ library DynamicArrayLib {
     function init() internal returns (bytes[] memory params) {
         params = new bytes[](MAX_PARAMS);
         assembly {
-            if eq(iszero(tload(LENGTH_SLOT)), 1) {
+            if gt(tload(LENGTH_SLOT), 0) {
                 mstore(0x00, 0x0dc149f0) // AlreadyInitialized() selector
                 revert(0x1c, 0x04)
             }

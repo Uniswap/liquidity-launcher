@@ -363,53 +363,71 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         bool createOneSidedTokenPosition,
         bool createOneSidedCurrencyPosition
     ) public {
-        {
-            uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
-            AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
-            if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, migratorParams.sweepBlock, migratorParams.migrationBlock)
-                );
-            }
-            // Test token split validation
-            else if (migratorParams.tokenSplitToAuction >= maxTokenSplit) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(ILBPStrategyBase.TokenSplitTooHigh.selector, migratorParams.tokenSplitToAuction, maxTokenSplit)
-                );
-            }
-            // Test tick spacing validation
-            else if (migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING || migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(
-                        ILBPStrategyBase.InvalidTickSpacing.selector,
-                        migratorParams.poolTickSpacing,
-                        TickMath.MIN_TICK_SPACING,
-                        TickMath.MAX_TICK_SPACING
-                    )
-                );
-            }
-            // Test fee validation
-            else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(ILBPStrategyBase.InvalidFee.selector, migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE)
-                );
-            }
-            // Test position recipient validation
-            else if (
-                migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1) || migratorParams.positionRecipient == address(2)
-            ) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, migratorParams.positionRecipient)
-                );
-            } else if (FullMath.mulDiv(totalSupply, migratorParams.tokenSplitToAuction, maxTokenSplit) == 0) {
-                vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
-            } else if (auctionParameters.endBlock >= migratorParams.migrationBlock) {
-                vm.expectRevert(
-                    abi.encodeWithSelector(
-                        ILBPStrategyBase.InvalidEndBlock.selector, auctionParameters.endBlock, migratorParams.migrationBlock
-                    )
-                );
-            }
+        uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
+        AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
+        if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.InvalidSweepBlock.selector,
+                    migratorParams.sweepBlock,
+                    migratorParams.migrationBlock
+                )
+            );
+        }
+        // Test token split validation
+        else if (migratorParams.tokenSplitToAuction >= maxTokenSplit) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.TokenSplitTooHigh.selector, migratorParams.tokenSplitToAuction, maxTokenSplit
+                )
+            );
+        }
+        // Test tick spacing validation
+        else if (
+            migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
+                || migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
+        ) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.InvalidTickSpacing.selector,
+                    migratorParams.poolTickSpacing,
+                    TickMath.MIN_TICK_SPACING,
+                    TickMath.MAX_TICK_SPACING
+                )
+            );
+        }
+        // Test fee validation
+        else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.InvalidFee.selector, migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE
+                )
+            );
+        }
+        // Test position recipient validation
+        else if (
+            migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1)
+                || migratorParams.positionRecipient == address(2)
+        ) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.InvalidPositionRecipient.selector, migratorParams.positionRecipient
+                )
+            );
+        } else if (FullMath.mulDiv(totalSupply, migratorParams.tokenSplitToAuction, maxTokenSplit) == 0) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
+        } else if (auctionParameters.endBlock >= migratorParams.migrationBlock) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.InvalidEndBlock.selector, auctionParameters.endBlock, migratorParams.migrationBlock
+                )
+            );
+        } else if (auctionParameters.currency != migratorParams.currency) {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    ILBPStrategyBase.InvalidCurrency.selector, auctionParameters.currency, migratorParams.currency
+                )
+            );
         }
 
         // Should succeed with valid params

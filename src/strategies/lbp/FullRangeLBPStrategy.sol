@@ -34,9 +34,6 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
     function _createPositionPlan(MigrationData memory data) internal override returns (bytes memory plan) {
-        bytes memory actions = ActionsBuilder.init();
-        bytes[] memory params = DynamicArrayLib.init();
-
         address poolToken = getPoolToken();
 
         // Create base parameters
@@ -51,12 +48,13 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        actions = actions.addMint().addSettle().addTakePair();
-        params = params.append(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount));
-        params = params.append(ParamsBuilder.addSettleParam(currency)).append(ParamsBuilder.addSettleParam(poolToken));
-        params = params.append(baseParams.planFinalTakePair());
+        bytes memory actions = ActionsBuilder.init().addMint().addSettle().addSettle().addTakePair();
+        bytes[] memory params = DynamicArrayLib.init()
+            .append(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount))
+            .append(ParamsBuilder.addSettleParam(currency)).append(ParamsBuilder.addSettleParam(poolToken))
+            .append(baseParams.planFinalTakePair()).truncate();
 
-        return abi.encode(actions, params.truncate());
+        return abi.encode(actions, params);
     }
 
     /// @notice Calculates the amount of tokens to transfer
