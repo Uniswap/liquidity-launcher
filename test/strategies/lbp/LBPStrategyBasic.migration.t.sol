@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
+import {AdvancedLBPStrategyTestBase} from "./base/AdvancedLBPStrategyTestBase.sol";
 import "./helpers/LBPTestHelpers.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
@@ -49,7 +49,7 @@ contract MockAuctionWithERC20Sweep {
     }
 }
 
-contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
+contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
     using TokenDistribution for uint128;
     using TokenPricing for uint256;
     uint256 constant Q192 = 2 ** 192;

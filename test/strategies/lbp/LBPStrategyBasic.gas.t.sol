@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
+import {AdvancedLBPStrategyTestBase} from "./base/AdvancedLBPStrategyTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
@@ -10,7 +10,7 @@ import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICh
 import {ITickStorage} from "continuous-clearing-auction/src/interfaces/ITickStorage.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-contract LBPStrategyBasicGasTest is LBPStrategyBasicTestBase {
+contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
     /// @notice Test gas consumption for onTokensReceived
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "./base/LBPStrategyBasicTestBase.sol";
+import "./base/AdvancedLBPStrategyTestBase.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -11,7 +11,7 @@ import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
@@ -21,7 +21,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
 
-contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
+contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
     using AuctionStepsBuilder for bytes;
     using TokenDistribution for uint128;
     // ============ Constructor Validation Tests ============
@@ -46,7 +46,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             abi.encodeWithSelector(ILBPStrategyBase.TokenSplitTooHigh.selector, tokenSplitValue, maxTokenSplit)
         );
 
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             params,
@@ -67,7 +67,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             )
         );
 
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(
@@ -96,7 +96,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             )
         );
 
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(
@@ -123,7 +123,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
             )
         );
 
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(
@@ -151,7 +151,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
                 abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, invalidRecipients[i])
             );
 
-            new LBPStrategyBasicNoValidation(
+            new AdvancedLBPStrategyNoValidation(
                 address(token),
                 DEFAULT_TOTAL_SUPPLY,
                 createMigratorParams(
@@ -176,7 +176,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InvalidFundsRecipient.selector, address(2), address(1)));
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(
@@ -212,7 +212,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_setUp_revertsWithInvalidCurrency() public {
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InvalidCurrency.selector, address(0), address(1)));
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(
@@ -234,7 +234,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
 
     function test_setUp_reverts_auctionParametersEncodedImproperly() public {
         vm.expectRevert();
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             DEFAULT_TOTAL_SUPPLY,
             createMigratorParams(
@@ -399,7 +399,7 @@ contract LBPStrategyBasicSetupTest is LBPStrategyBasicTestBase {
         }
 
         // Should succeed with valid params
-        new LBPStrategyBasicNoValidation(
+        new AdvancedLBPStrategyNoValidation(
             address(token),
             totalSupply,
             createMigratorParams(

@@ -4,12 +4,12 @@ pragma solidity ^0.8.26;
 import {BttTests} from "../definitions/BttTests.sol";
 import {BttBase, FuzzConstructorParameters} from "../BttBase.sol";
 
-/// @title LBPStrategyBasicTest
-/// @notice Contract for testing the LBPStrategyBasic contract
-contract LBPStrategyBasicTest is BttTests {
+/// @title AdvancedLBPStrategyTest
+/// @notice Contract for testing the AdvancedLBPStrategy contract
+contract AdvancedLBPStrategyTest is BttTests {
     /// @inheritdoc BttBase
     function _contractName() internal pure override returns (string memory) {
-        return "LBPStrategyBasic";
+        return "AdvancedLBPStrategy";
     }
 
     /// @inheritdoc BttBase

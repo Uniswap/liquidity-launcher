@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /// @title MigratorParameters
-/// @notice Parameters for the LBPStrategyBasic contract
+/// @notice Parameters for the AdvancedLBPStrategy contract
 struct MigratorParameters {
     uint64 migrationBlock; // block number when the migration can begin
     address currency; // the currency that the token will be paired with in the v4 pool (currency that the auction raised funds in)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "./base/LBPStrategyBasicTestBase.sol";
+import "./base/AdvancedLBPStrategyTestBase.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -17,7 +17,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {MaxBidPriceLib} from "continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
 
-contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
+contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
     using AuctionStepsBuilder for bytes;
     using TokenDistribution for uint128;
     // ============ Constructor Validation Tests ============
@@ -63,7 +63,7 @@ contract LBPStrategyBasicParamsTest is LBPStrategyBasicTestBase {
             })
         );
 
-        impl = new LBPStrategyBasicNoValidation(
+        impl = new AdvancedLBPStrategyNoValidation(
             address(0xA27EC0006e59f245217Ff08CD52A7E8b169E62D2),
             1_820_000_000e18,
             params,

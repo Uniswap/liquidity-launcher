@@ -3,14 +3,14 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
-import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
 import {MigratorParameters} from "@lbp/strategies/LBPStrategyBase.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {LBPStrategyBasicNoValidation} from "../../../mocks/LBPStrategyBasicNoValidation.sol";
+import {AdvancedLBPStrategyNoValidation} from "../../../mocks/AdvancedLBPStrategyNoValidation.sol";
 import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
 import {FullRangeLBPStrategyNoValidation} from "../../../mocks/FullRangeLBPStrategyNoValidation.sol";
 import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
@@ -26,7 +26,7 @@ import {ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.s
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
-abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
+abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
     using FixedPointMathLib for *;
 
@@ -101,9 +101,9 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address hookAddress = address(
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
         );
-        lbp = LBPStrategyBasic(payable(hookAddress));
+        lbp = AdvancedLBPStrategy(payable(hookAddress));
         // Deploy implementation
-        impl = new LBPStrategyBasicNoValidation(
+        impl = new AdvancedLBPStrategyNoValidation(
             address(token),
             totalSupply,
             migratorParams,
@@ -113,7 +113,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         );
         vm.etch(address(lbp), address(impl).code);
 
-        LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
+        AdvancedLBPStrategyNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
     }
 
     function _deployFullRangeLBPStrategy(uint128 totalSupply) internal {
@@ -140,7 +140,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         assertEq(lbp.currency(), migratorParams.currency);
         assertEq(lbp.totalSupply(), DEFAULT_TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
-        assertEq(address(LBPStrategyBasic(payable(address(lbp))).poolManager()), POOL_MANAGER);
+        assertEq(address(AdvancedLBPStrategy(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), migratorParams.positionRecipient);
         assertEq(lbp.migrationBlock(), uint64(block.number + 500));
         assertEq(address(lbp.auction()), address(0));

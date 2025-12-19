@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {MigratorParameters} from "src/types/MigratorParameters.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-/// @title LBPStrategyBasicNoValidation
-/// @notice Test version of LBPStrategyBasic that skips hook address validation
-contract LBPStrategyBasicNoValidation is LBPStrategyBasic {
+/// @title AdvancedLBPStrategyNoValidation
+/// @notice Test version of AdvancedLBPStrategy that skips hook address validation
+contract AdvancedLBPStrategyNoValidation is AdvancedLBPStrategy {
     constructor(
         address _tokenAddress,
         uint128 _totalSupply,
@@ -17,7 +17,7 @@ contract LBPStrategyBasicNoValidation is LBPStrategyBasic {
         bytes memory auctionParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    ) LBPStrategyBasic(_tokenAddress, _totalSupply, migratorParams, auctionParams, _positionManager, _poolManager) {}
+    ) AdvancedLBPStrategy(_tokenAddress, _totalSupply, migratorParams, auctionParams, _positionManager, _poolManager) {}
 
     /// @dev Override to skip hook address validation during testing
     function validateHookAddress(BaseHook) internal pure override {}

@@ -11,11 +11,14 @@ import {BasePositionParams, OneSidedParams, FullRangeParams} from "../../types/P
 import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 
-/// @title LBPStrategyBasic
+/// @title AdvancedLBPStrategy
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategyBasic is LBPStrategyBase {
+contract AdvancedLBPStrategy is LBPStrategyBase {
     using StrategyPlanner for BasePositionParams;
+
+    bool public immutable createOneSidedTokenPosition;
+    bool public immutable createOneSidedCurrencyPosition;
 
     constructor(
         address _token,
@@ -23,8 +26,13 @@ contract LBPStrategyBasic is LBPStrategyBase {
         MigratorParameters memory _migratorParams,
         bytes memory _auctionParams,
         IPositionManager _positionManager,
-        IPoolManager _poolManager
-    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {}
+        IPoolManager _poolManager,
+        bool _createOneSidedTokenPosition,
+        bool _createOneSidedCurrencyPosition
+    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {
+        createOneSidedTokenPosition = _createOneSidedTokenPosition;
+        createOneSidedCurrencyPosition = _createOneSidedCurrencyPosition;
+    }
 
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
@@ -47,7 +55,7 @@ contract LBPStrategyBasic is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        if (reserveSupply > data.initialTokenAmount) {
+        if (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount) {
             (actions, params) = baseParams.planFullRangePosition(
                 FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount}),
                 ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE

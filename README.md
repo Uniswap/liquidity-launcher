@@ -55,7 +55,7 @@ The project requires the following environment variable for testing:
 | Base | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 | Sepolia | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 
-### LBPStrategyBasicFactory
+### AdvancedLBPStrategyFactory
 
 | Network | Address | Commit Hash | Version |
 |---------|---------|------------|---------|
@@ -96,7 +96,7 @@ The system includes two token factory implementations:
 
 The distribution system is modular, allowing different strategies to be implemented. The main implementation is:
 
-**LBPStrategyBasic** implements a Liquidity Bootstrapping Pool strategy that splits the token supply between a price discovery auction and liquidity reserves. The auction determines the initial price, which is then used to bootstrap a Uniswap V4 pool. After the auction completes, the contract migrates the liquidity to V4, creating both a full-range position and potentially a one-sided position for optimal capital efficiency.
+**AdvancedLBPStrategy** implements a Liquidity Bootstrapping Pool strategy that splits the token supply between a price discovery auction and liquidity reserves. The auction determines the initial price, which is then used to bootstrap a Uniswap V4 pool. After the auction completes, the contract migrates the liquidity to V4, creating both a full-range position and potentially a one-sided position for optimal capital efficiency.
 
 The strategy validates parameters to ensure reasonable configurations, such as checking tick spacing and fee tier validity.
 
@@ -104,7 +104,7 @@ The strategy validates parameters to ensure reasonable configurations, such as c
 
 Users should be aware that it is trivially easy to create a LBPStrategy and corresponding Auction with malicious parameters. This can lead to a loss of funds or a degraded expereience. You must validate all parameters set on each contract in the system before interacting with them.
 
-Since the LBPStrategyBasic cannot control the final price of the Auction, or how much currency is raised, it is possible to create an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters to eventually sweep the currency and tokens from the contract.
+Since the AdvancedLBPStrategy cannot control the final price of the Auction, or how much currency is raised, it is possible to create an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters to eventually sweep the currency and tokens from the contract.
 
 We strongly recommend that a token with value such as ETH or USDC is used as the `currency`.
 
