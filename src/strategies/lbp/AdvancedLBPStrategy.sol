@@ -41,7 +41,7 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal view override returns (bytes memory plan) {
+    function _createPositionPlan(MigrationData memory data) internal override returns (bytes memory plan) {
         address poolToken = getPoolToken();
 
         // Create base parameters

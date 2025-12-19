@@ -109,7 +109,9 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
             migratorParams,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
         vm.etch(address(lbp), address(impl).code);
 

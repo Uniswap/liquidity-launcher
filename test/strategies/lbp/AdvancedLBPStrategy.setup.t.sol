@@ -52,7 +52,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
     }
 
@@ -83,7 +85,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
 
         // Test too high
@@ -112,7 +116,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
     }
 
@@ -139,7 +145,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
     }
 
@@ -167,7 +175,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER)
+                IPoolManager(POOL_MANAGER),
+                false,
+                false
             );
         }
     }
@@ -206,7 +216,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 })
             ),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
     }
 
@@ -228,7 +240,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ), // currency is address(1)
             auctionParams, // currency is address(0)
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
     }
 
@@ -250,7 +264,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             "",
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            false,
+            false
         );
     }
 
@@ -343,79 +359,69 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
 
     function test_fuzz_constructor_validation(
         uint128 totalSupply,
-        uint24 poolLPFee,
-        int24 poolTickSpacing,
-        uint24 tokenSplit,
-        address positionRecipient,
-        uint64 sweepBlock,
-        uint64 migrationBlock,
-        address operator,
-        uint128 maxCurrencyAmountForLP
+        MigratorParameters memory migratorParams,
+        bool createOneSidedTokenPosition,
+        bool createOneSidedCurrencyPosition
     ) public {
-        uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
-        AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
-        if (sweepBlock <= migrationBlock) {
-            vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
-            );
-        }
-        // Test token split validation
-        else if (tokenSplit >= maxTokenSplit) {
-            vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBase.TokenSplitTooHigh.selector, tokenSplit, maxTokenSplit)
-            );
-        }
-        // Test tick spacing validation
-        else if (poolTickSpacing < TickMath.MIN_TICK_SPACING || poolTickSpacing > TickMath.MAX_TICK_SPACING) {
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBase.InvalidTickSpacing.selector,
-                    poolTickSpacing,
-                    TickMath.MIN_TICK_SPACING,
-                    TickMath.MAX_TICK_SPACING
-                )
-            );
-        }
-        // Test fee validation
-        else if (poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBase.InvalidFee.selector, poolLPFee, LPFeeLibrary.MAX_LP_FEE)
-            );
-        }
-        // Test position recipient validation
-        else if (positionRecipient == address(0) || positionRecipient == address(1) || positionRecipient == address(2))
         {
-            vm.expectRevert(
-                abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, positionRecipient)
-            );
-        } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
-        } else if (auctionParameters.endBlock >= migrationBlock) {
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBase.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock
-                )
-            );
+            uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
+            AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
+            if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, migratorParams.sweepBlock, migratorParams.migrationBlock)
+                );
+            }
+            // Test token split validation
+            else if (migratorParams.tokenSplitToAuction >= maxTokenSplit) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(ILBPStrategyBase.TokenSplitTooHigh.selector, migratorParams.tokenSplitToAuction, maxTokenSplit)
+                );
+            }
+            // Test tick spacing validation
+            else if (migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING || migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(
+                        ILBPStrategyBase.InvalidTickSpacing.selector,
+                        migratorParams.poolTickSpacing,
+                        TickMath.MIN_TICK_SPACING,
+                        TickMath.MAX_TICK_SPACING
+                    )
+                );
+            }
+            // Test fee validation
+            else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(ILBPStrategyBase.InvalidFee.selector, migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE)
+                );
+            }
+            // Test position recipient validation
+            else if (
+                migratorParams.positionRecipient == address(0) || migratorParams.positionRecipient == address(1) || migratorParams.positionRecipient == address(2)
+            ) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, migratorParams.positionRecipient)
+                );
+            } else if (FullMath.mulDiv(totalSupply, migratorParams.tokenSplitToAuction, maxTokenSplit) == 0) {
+                vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
+            } else if (auctionParameters.endBlock >= migratorParams.migrationBlock) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(
+                        ILBPStrategyBase.InvalidEndBlock.selector, auctionParameters.endBlock, migratorParams.migrationBlock
+                    )
+                );
+            }
         }
 
         // Should succeed with valid params
         new AdvancedLBPStrategyNoValidation(
             address(token),
             totalSupply,
-            createMigratorParams(
-                address(0),
-                poolLPFee,
-                poolTickSpacing,
-                tokenSplit,
-                positionRecipient,
-                migrationBlock,
-                sweepBlock,
-                operator,
-                maxCurrencyAmountForLP
-            ),
+            migratorParams,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            createOneSidedTokenPosition,
+            createOneSidedCurrencyPosition
         );
     }
 }
