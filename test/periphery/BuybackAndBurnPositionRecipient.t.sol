@@ -144,6 +144,8 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         uint256 searcherCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(searcher);
 
         vm.prank(searcher);
+        vm.expectEmit(true, true, true, true);
+        emit BuybackAndBurnPositionRecipient.FeesCollected(searcher);
         positionRecipient.collectFees(FORK_TOKEN_ID);
         assertGt(
             Currency.wrap(NATIVE).balanceOf(searcher),

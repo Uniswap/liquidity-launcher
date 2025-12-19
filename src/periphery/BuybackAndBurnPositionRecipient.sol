@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -24,9 +25,8 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     event TokensBurned(uint256 amount);
 
     /// @notice Emitted when fees are collected
-    /// @param recipient The recipient of the currency fees
-    /// @param amount The amount of currency fees collected
-    event CurrencyFeesCollected(address indexed recipient, uint256 amount);
+    /// @param caller The caller of the collectFees function
+    event FeesCollected(address indexed caller);
 
     /// @notice The minimum amount of `token` which must be burned each time fees are collected
     uint256 public immutable minTokenBurnAmount;
@@ -34,6 +34,8 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     address public immutable token;
     /// @notice The currency that will be used to collect fees
     address public immutable currency;
+    /// @notice The address to send tokens to be burned
+    address constant BURN_ADDRESS = address(0xdead);
 
     constructor(
         address _token,
@@ -54,43 +56,23 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     /// @param _tokenId The token ID of the position
     function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
         // Require the caller to burn at least the minimum amount of `token`
-        _burnTokensFrom(msg.sender, minTokenBurnAmount);
+        SafeTransferLib.safeTransferFrom(token, msg.sender, BURN_ADDRESS, minTokenBurnAmount);
+        emit TokensBurned(minTokenBurnAmount);
 
         // Collect the fees from the position
-        bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
-        bytes[] memory params = new bytes[](2);
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE), uint8(Actions.TAKE));
+        bytes[] memory params = new bytes[](3);
         // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
         params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
-        // Call TAKE_PAIR to close the open deltas and send the fees to the caller
-        params[1] = abi.encode(token, currency, address(this));
+        // Call TAKE to send the tokens to the burn address
+        params[1] = abi.encode(token, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
+        // Call TAKE to send the currency to the caller
+        params[2] = abi.encode(currency, msg.sender, ActionConstants.OPEN_DELTA);
 
-        uint256 tokenBalanceBefore = Currency.wrap(token).balanceOfSelf();
-        uint256 currencyBalanceBefore = Currency.wrap(currency).balanceOfSelf();
         // Set deadline to the current block
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
-        uint256 accruedTokenFees = Currency.wrap(token).balanceOfSelf() - tokenBalanceBefore;
-        uint256 accruedCurrencyFees = Currency.wrap(currency).balanceOfSelf() - currencyBalanceBefore;
-
-        // Burn the tokens from the collected fees
-        _burnTokensFrom(address(this), accruedTokenFees);
-        // Transfer the currency fees to the caller
-        Currency.wrap(currency).transfer(msg.sender, accruedCurrencyFees);
-
-        emit CurrencyFeesCollected(msg.sender, accruedCurrencyFees);
-    }
-
-    /// @notice Burns the tokens by transferring them to the burn address
-    /// @dev Ensure that the `token` ERC20 contract allows transfers to address(0xdead)
-    /// @param _amount The amount of tokens to burn
-    function _burnTokensFrom(address _from, uint256 _amount) internal {
-        if (_amount > 0) {
-            if (_from == address(this)) {
-                Currency.wrap(token).transfer(address(0xdead), _amount);
-            } else {
-                SafeTransferLib.safeTransferFrom(token, _from, address(0xdead), _amount);
-            }
-        }
-        emit TokensBurned(_amount);
+        emit FeesCollected(msg.sender);
     }
 }
