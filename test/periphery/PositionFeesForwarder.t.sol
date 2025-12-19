@@ -106,4 +106,21 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
             "Position recipient currency balance is not 0"
         );
     }
+
+    function test_multicall() public {
+        positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
+
+        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+
+        bytes[] memory data = new bytes[](2);
+        data[0] = abi.encodeWithSelector(PositionFeesForwarder.collectFees.selector, FORK_TOKEN_ID);
+        data[1] = abi.encodeWithSelector(ITimelockedPositionRecipient.approveOperator.selector);
+
+        vm.prank(searcher);
+        vm.expectEmit(true, true, true, true);
+        emit PositionFeesForwarder.FeesForwarded(feeRecipient);
+        vm.expectEmit(true, true, true, true);
+        emit ITimelockedPositionRecipient.OperatorApproved(operator);
+        positionRecipient.multicall(data);
+    }
 }
