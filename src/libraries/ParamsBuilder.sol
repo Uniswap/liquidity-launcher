@@ -37,7 +37,7 @@ library ParamsBuilder {
         );
     }
 
-    function addSettleParam(Currency currency) internal pure returns (bytes memory param) {
+    function addSettleParam(address currency) internal pure returns (bytes memory param) {
         // Send the position manager's full balance of both currencies to cover both positions
         // This includes any pre-existing tokens in the position manager, which will be sent to the pool manager
         // and ultimately transferred to the LBP contract at the end.
@@ -45,9 +45,10 @@ library ParamsBuilder {
     }
 
     /// @notice Adds the parameter needed to take the pair using the position manager
-    /// @param poolKey The pool key
+    /// @param currency0 The address of the first currency
+    /// @param currency1 The address of the second currency
     /// @return param The parameter needed to take the pair using the position manager
-    function addTakePairParam(Currency currency0, Currency currency1) internal view returns (bytes memory param) {
+    function addTakePairParam(address currency0, address currency1) internal view returns (bytes memory param) {
         // Take any open deltas from the pool manager and send back to the lbp
         param = abi.encode(currency0, currency1, address(this));
     }

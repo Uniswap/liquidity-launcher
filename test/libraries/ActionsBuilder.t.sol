@@ -9,27 +9,27 @@ contract ActionsBuilderTest is Test {
 
     function test_addMint_succeeds() public view {
         bytes memory actions = ActionsBuilder.init();
-        actions = actions.addMint(actions);
+        actions = actions.addMint();
         assertEq(actions.length, 1);
     }
 
     function test_addSettle_succeeds() public view {
         bytes memory actions = ActionsBuilder.init();
-        actions = actions.addSettle(actions);
+        actions = actions.addSettle();
         assertEq(actions.length, 1);
     }
 
     function test_addTakePair_succeeds() public view {
         bytes memory actions = ActionsBuilder.init();
-        actions = actions.addTakePair(actions);
+        actions = actions.addTakePair();
         assertEq(actions.length, 1);
     }
 
     function test_addMint_addSettle_addTakePair_succeeds() public view {
         bytes memory actions = ActionsBuilder.init();
-        actions = actions.addMint(actions);
-        actions = actions.addSettle(actions);
-        actions = actions.addTakePair(actions);
+        actions = actions.addMint();
+        actions = actions.addSettle();
+        actions = actions.addTakePair();
         assertEq(actions.length, 3);
     }
 }

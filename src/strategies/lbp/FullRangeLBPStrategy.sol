@@ -11,12 +11,14 @@ import {BasePositionParams} from "../../types/PositionTypes.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 import {ActionsBuilder} from "../../libraries/ActionsBuilder.sol";
 import {DynamicArrayLib} from "../../libraries/DynamicArrayLib.sol";
+import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
 
 /// @title FullRangeLBPStrategy
 /// @notice Strategy to initialize a Uniswap v4 pool and migrate the tokens and raised funds into a full range position
 /// @custom:security-contact security@uniswap.org
 contract FullRangeLBPStrategy is LBPStrategyBase {
     using StrategyPlanner for BasePositionParams;
+    using ActionsBuilder for bytes;
     using DynamicArrayLib for bytes[];
 
     constructor(
@@ -32,7 +34,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
     function _createPositionPlan(MigrationData memory data) internal view override returns (bytes memory plan) {
-        bytes memory actions = ActionsBuilder.addMint();
+        bytes memory actions = ActionsBuilder.init();
         bytes[] memory params = DynamicArrayLib.init();
 
         address poolToken = getPoolToken();
@@ -49,10 +51,10 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        params = params.merge(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount));
-
-        actions = ActionsBuilder.addTakePair(actions);
-        params = params.merge(baseParams.planFinalTakePair());
+        actions = actions.addMint().addSettle().addTakePair();
+        params = params.append(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount));
+        params = params.append(ParamsBuilder.addSettleParam(currency)).append(ParamsBuilder.addSettleParam(poolToken));
+        params = params.append(baseParams.planFinalTakePair());
 
         return abi.encode(actions, params.truncate());
     }

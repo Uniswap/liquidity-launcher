@@ -52,11 +52,10 @@ library StrategyPlanner {
     }
 
     /// @notice Creates the actions and parameters needed to mint a one-sided position on the position manager
-    /// @param params The existing parameters needed to mint a full range position on the position manager
     /// @param baseParams The base parameters for the position
     /// @param tokenAmount The amount of token to mint
     /// @param currencyAmount The amount of currency to mint
-    /// @return params The parameters needed to mint a full range position with one-sided position on the position manager
+    /// @return param The parameters needed to mint a full range position with one-sided position on the position manager
     function planOneSidedPosition(BasePositionParams memory baseParams, uint128 tokenAmount, uint128 currencyAmount)
         internal
         pure
@@ -114,8 +113,8 @@ library StrategyPlanner {
     function planFinalTakePair(BasePositionParams memory baseParams) internal view returns (bytes memory param) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
         param = ParamsBuilder.addTakePairParam(
-            Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken),
-            Currency.wrap(currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency)
+            address(currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken),
+            address(currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency)
         );
     }
 

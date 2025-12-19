@@ -25,8 +25,16 @@ contract ParamsBuilderTestHelper {
         uint128 tokenAmount,
         uint128 currencyAmount,
         address positionRecipient
-    ) external pure returns (bytes[] memory) {
+    ) external pure returns (bytes memory) {
         return ParamsBuilder.addMintParam(poolKey, bounds, liquidity, tokenAmount, currencyAmount, positionRecipient);
+    }
+
+    function addSettleParam(address currency) external pure returns (bytes memory) {
+        return ParamsBuilder.addSettleParam(currency);
+    }
+
+    function addTakePairParam(address currency0, address currency1) external view returns (bytes memory) {
+        return ParamsBuilder.addTakePairParam(currency0, currency1);
     }
 }
 
@@ -47,15 +55,22 @@ contract ParamsBuilderTest is Test {
             100e18,
             10e18
         );
-        bytes[] memory params = testHelper.addMintParam(
-            PoolKey({ currency0: Currency.wrap(address(0)), currency1: Currency.wrap(address(1)), fee: 10000, tickSpacing: 1, hooks: IHooks(address(0)) }),
-            TickBounds({ lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK }),
-            100e18,
+        bytes memory param = testHelper.addMintParam(
+            PoolKey({
+                currency0: Currency.wrap(address(0)),
+                currency1: Currency.wrap(address(1)),
+                fee: 10000,
+                tickSpacing: 1,
+                hooks: IHooks(address(0))
+            }),
+            TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
+            liquidity,
             10e18,
+            100e18,
             address(3)
         );
         assertEq(
-            params[0],
+            param,
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -73,8 +88,6 @@ contract ParamsBuilderTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
     }
 
     function test_fuzz_addMintParam_succeeds(
@@ -94,34 +107,26 @@ contract ParamsBuilderTest is Test {
             currencyIsCurrency0 ? currencyAmount : tokenAmount,
             currencyIsCurrency0 ? tokenAmount : currencyAmount
         );
-        bytes[] memory params = testHelper.addMintParam(
-            poolKey,
-            bounds,
-            liquidity,
-            tokenAmount,
-            currencyAmount,
-            address(3)
-        );
+        bytes memory param =
+            testHelper.addMintParam(poolKey, bounds, liquidity, tokenAmount, currencyAmount, address(3));
 
+        bool actualCurrencyIsCurrency0 = poolKey.currency0 < poolKey.currency1;
         assertEq(
-            params[0],
+            param,
             abi.encode(
                 poolKey,
                 bounds.lowerTick,
                 bounds.upperTick,
                 liquidity,
-                currencyIsCurrency0 ? currencyAmount : tokenAmount,
-                currencyIsCurrency0 ? tokenAmount : currencyAmount,
+                actualCurrencyIsCurrency0 ? currencyAmount : tokenAmount,
+                actualCurrencyIsCurrency0 ? tokenAmount : currencyAmount,
                 address(3),
                 ParamsBuilder.ZERO_BYTES
             )
         );
-
-        assertEq(params[1], abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false));
     }
 
-    function test_buildOneSidedParams_inToken_succeeds() public view {
+    function test_addMintParam_inToken_succeeds() public view {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -129,8 +134,7 @@ contract ParamsBuilderTest is Test {
             100e18,
             10e18
         );
-        bytes[] memory fullRangeParams = testHelper.addMintParam(
-            FullRangeParams({tokenAmount: 10e18, currencyAmount: 100e18}),
+        bytes memory fullRangeParam = testHelper.addMintParam(
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -139,9 +143,10 @@ contract ParamsBuilderTest is Test {
                 hooks: IHooks(address(0))
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
-            true,
-            address(3),
-            liquidity
+            liquidity,
+            10e18,
+            100e18,
+            address(3)
         );
 
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -152,8 +157,7 @@ contract ParamsBuilderTest is Test {
             10e18
         );
 
-        bytes memory params = testHelper.buildOneSidedParams(
-            OneSidedParams({amount: 10e18, inToken: true}),
+        bytes memory oneSidedParam = testHelper.addMintParam(
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -162,13 +166,14 @@ contract ParamsBuilderTest is Test {
                 hooks: IHooks(address(0))
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
-            true,
-            address(3),
-            oneSidedLiquidity
+            oneSidedLiquidity,
+            10e18,
+            0,
+            address(3)
         );
 
         assertEq(
-            params,
+            fullRangeParam,
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -187,11 +192,8 @@ contract ParamsBuilderTest is Test {
             )
         );
 
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
-
         assertEq(
-            params[3],
+            oneSidedParam,
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -211,7 +213,7 @@ contract ParamsBuilderTest is Test {
         );
     }
 
-    function test_buildOneSidedParams_inCurrency_succeeds() public view {
+    function test_addMintParam_inCurrency_succeeds() public view {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -219,8 +221,7 @@ contract ParamsBuilderTest is Test {
             100e18,
             10e18
         );
-        bytes[] memory fullRangeParams = testHelper.addMintParam(
-            FullRangeParams({tokenAmount: 10e18, currencyAmount: 100e18}),
+        bytes memory fullRangeParam = testHelper.addMintParam(
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -229,9 +230,10 @@ contract ParamsBuilderTest is Test {
                 hooks: IHooks(address(0))
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
-            true,
-            address(3),
-            liquidity
+            liquidity,
+            10e18,
+            100e18,
+            address(3)
         );
 
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -241,8 +243,7 @@ contract ParamsBuilderTest is Test {
             0,
             10e18
         );
-        bytes[] memory params = testHelper.buildOneSidedParams(
-            OneSidedParams({amount: 10e18, inToken: false}),
+        bytes memory oneSidedParam = testHelper.addMintParam(
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
@@ -251,13 +252,14 @@ contract ParamsBuilderTest is Test {
                 hooks: IHooks(address(0))
             }),
             TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
-            true,
-            address(3),
-            oneSidedLiquidity
+            oneSidedLiquidity,
+            0,
+            10e18,
+            address(3)
         );
 
         assertEq(
-            params[0],
+            fullRangeParam,
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -276,11 +278,8 @@ contract ParamsBuilderTest is Test {
             )
         );
 
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
-
         assertEq(
-            params[3],
+            oneSidedParam,
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -300,7 +299,7 @@ contract ParamsBuilderTest is Test {
         );
     }
 
-    function test_fuzz_buildOneSidedParams_succeeds(
+    function test_fuzz_addMintParam_withOneSided_succeeds(
         PoolKey memory poolKey,
         TickBounds memory bounds,
         uint128 tokenAmount,
@@ -319,14 +318,8 @@ contract ParamsBuilderTest is Test {
             currencyIsCurrency0 ? currencyAmount : tokenAmount,
             currencyIsCurrency0 ? tokenAmount : currencyAmount
         );
-        bytes[] memory fullRangeParams = testHelper.addMintParam(
-            FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
-            poolKey,
-            bounds,
-            currencyIsCurrency0,
-            address(3),
-            liquidity
-        );
+        bytes memory fullRangeParam =
+            testHelper.addMintParam(poolKey, bounds, liquidity, tokenAmount, currencyAmount, address(3));
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -334,17 +327,17 @@ contract ParamsBuilderTest is Test {
             0,
             10e18
         );
-        bytes[] memory params = testHelper.buildOneSidedParams(
-            OneSidedParams({amount: 10e18, inToken: inToken}),
+        bytes memory oneSidedParam = testHelper.addMintParam(
             poolKey,
             bounds,
-            currencyIsCurrency0,
-            address(3),
-            oneSidedLiquidity
+            oneSidedLiquidity,
+            useAmountInCurrency1 ? 0 : 10e18,
+            useAmountInCurrency1 ? 10e18 : 0,
+            address(3)
         );
 
         assertEq(
-            params[0],
+            fullRangeParam,
             abi.encode(
                 poolKey,
                 bounds.lowerTick,
@@ -357,11 +350,8 @@ contract ParamsBuilderTest is Test {
             )
         );
 
-        assertEq(params[1], abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false));
-
         assertEq(
-            params[3],
+            oneSidedParam,
             abi.encode(
                 poolKey,
                 bounds.lowerTick,
@@ -373,6 +363,31 @@ contract ParamsBuilderTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
+    }
+
+    function test_addSettleParam_succeeds(address currencyAddress) public view {
+        bytes memory param = testHelper.addSettleParam(currencyAddress);
+
+        assertEq(param, abi.encode(currencyAddress, ActionConstants.CONTRACT_BALANCE, false));
+    }
+
+    function test_fuzz_addSettleParam_succeeds(address currencyAddress) public view {
+        bytes memory param = testHelper.addSettleParam(currencyAddress);
+
+        assertEq(param, abi.encode(currencyAddress, ActionConstants.CONTRACT_BALANCE, false));
+    }
+
+    function test_addTakePairParam_withZeroAddresses_succeeds(address currency0) public view {
+        address currency1 = address(0);
+        bytes memory param = testHelper.addTakePairParam(currency0, currency1);
+
+        assertEq(param, abi.encode(currency0, currency1, address(testHelper)));
+    }
+
+    function test_fuzz_addTakePairParam_succeeds(address addr0, address addr1) public view {
+        bytes memory param = testHelper.addTakePairParam(addr0, addr1);
+
+        assertEq(param, abi.encode(addr0, addr1, address(testHelper)));
     }
 
     // Helper function to check if liquidity calculation should revert
