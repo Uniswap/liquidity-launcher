@@ -2,13 +2,13 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {ParamsBuilderV2} from "src/libraries/ParamsBuilderV2.sol";
+import {DynamicArrayLib} from "src/libraries/DynamicArrayLib.sol";
 
-contract MockParamsBuilderV2 {
-    using ParamsBuilderV2 for bytes[];
+contract MockDynamicArrayLib {
+    using DynamicArrayLib for bytes[];
 
     function init() external returns (bytes[] memory) {
-        return ParamsBuilderV2.init();
+        return DynamicArrayLib.init();
     }
 
     function append(bytes[] memory params, bytes memory param) external returns (bytes[] memory) {
@@ -24,21 +24,21 @@ contract MockParamsBuilderV2 {
     }
 
     function getLength() external view returns (uint8) {
-        return ParamsBuilderV2.getLength();
+        return DynamicArrayLib.getLength();
     }
 }
 
-contract ParamsBuilderV2Test is Test {
-    MockParamsBuilderV2 mockParamsBuilder;
+contract DynamicArrayLibTest is Test {
+    MockDynamicArrayLib mockParamsBuilder;
 
     function setUp() public {
-        mockParamsBuilder = new MockParamsBuilderV2();
+        mockParamsBuilder = new MockDynamicArrayLib();
     }
 
     function test_init_succeeds_gas() public {
         bytes[] memory params = mockParamsBuilder.init();
         vm.snapshotGasLastCall("init");
-        assertEq(params.length, ParamsBuilderV2.MAX_PARAMS);
+        assertEq(params.length, DynamicArrayLib.MAX_PARAMS);
         assertEq(mockParamsBuilder.getLength(), 0);
     }
 
@@ -69,16 +69,16 @@ contract ParamsBuilderV2Test is Test {
 
     function test_append_overflow_reverts() public {
         bytes[] memory params = mockParamsBuilder.init();
-        for (uint256 i = 0; i < ParamsBuilderV2.MAX_PARAMS; i++) {
+        for (uint256 i = 0; i < DynamicArrayLib.MAX_PARAMS; i++) {
             params = mockParamsBuilder.append(params, abi.encode(i));
         }
-        vm.expectRevert(ParamsBuilderV2.LengthOverflow.selector);
-        mockParamsBuilder.append(params, abi.encode(uint256(ParamsBuilderV2.MAX_PARAMS)));
+        vm.expectRevert(DynamicArrayLib.LengthOverflow.selector);
+        mockParamsBuilder.append(params, abi.encode(uint256(DynamicArrayLib.MAX_PARAMS)));
     }
 
     function test_merge_succeeds(uint8 initialLength, uint8 otherLength) public {
-        vm.assume(initialLength > 0 && initialLength < ParamsBuilderV2.MAX_PARAMS);
-        otherLength = uint8(_bound(otherLength, 1, ParamsBuilderV2.MAX_PARAMS - initialLength));
+        vm.assume(initialLength > 0 && initialLength < DynamicArrayLib.MAX_PARAMS);
+        otherLength = uint8(_bound(otherLength, 1, DynamicArrayLib.MAX_PARAMS - initialLength));
         bytes[] memory params = mockParamsBuilder.init();
         for (uint256 i = 0; i < initialLength; i++) {
             params = mockParamsBuilder.append(params, abi.encodePacked("initial", i));
@@ -99,14 +99,14 @@ contract ParamsBuilderV2Test is Test {
     }
 
     function test_merge_overflow_revert_fuzz(uint8 otherLength) public {
-        vm.assume(otherLength > ParamsBuilderV2.MAX_PARAMS);
+        vm.assume(otherLength > DynamicArrayLib.MAX_PARAMS);
         bytes[] memory params = mockParamsBuilder.init();
-        vm.expectRevert(ParamsBuilderV2.LengthOverflow.selector);
+        vm.expectRevert(DynamicArrayLib.LengthOverflow.selector);
         mockParamsBuilder.merge(params, new bytes[](otherLength));
     }
 
     function test_merge_succeeds_fuzz(bytes[] memory otherParams) public {
-        vm.assume(otherParams.length > 0 && otherParams.length <= ParamsBuilderV2.MAX_PARAMS);
+        vm.assume(otherParams.length > 0 && otherParams.length <= DynamicArrayLib.MAX_PARAMS);
         bytes[] memory params = mockParamsBuilder.init();
         params = mockParamsBuilder.merge(params, otherParams);
         vm.snapshotGasLastCall("merge");
@@ -132,15 +132,15 @@ contract ParamsBuilderV2Test is Test {
 
     function test_truncate_full_succeeds() public {
         bytes[] memory params = mockParamsBuilder.init();
-        for (uint256 i = 0; i < ParamsBuilderV2.MAX_PARAMS; i++) {
+        for (uint256 i = 0; i < DynamicArrayLib.MAX_PARAMS; i++) {
             params = mockParamsBuilder.append(params, abi.encode(i));
         }
         params = mockParamsBuilder.truncate(params);
-        assertEq(params.length, ParamsBuilderV2.MAX_PARAMS);
+        assertEq(params.length, DynamicArrayLib.MAX_PARAMS);
     }
 
     function test_fuzz_append_and_truncate(uint8 numParams) public {
-        vm.assume(numParams > 0 && numParams <= ParamsBuilderV2.MAX_PARAMS);
+        vm.assume(numParams > 0 && numParams <= DynamicArrayLib.MAX_PARAMS);
         bytes[] memory params = mockParamsBuilder.init();
         for (uint256 i = 0; i < numParams; i++) {
             params = mockParamsBuilder.append(params, abi.encode(i));

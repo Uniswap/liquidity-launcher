@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @title ParamsBuilderV2
+/// @title DynamicArrayLib
 /// @notice Library for dynamically building position parameters. Uses transient storage and truncates unused elements.
-library ParamsBuilderV2 {
-    using ParamsBuilderV2 for bytes[];
+library DynamicArrayLib {
+    using DynamicArrayLib for bytes[];
 
-    /// @dev Slot for the length of the parameters in transient storage: `keccak256("ParamsBuilderV2.length")`
+    /// @dev Slot for the length of the parameters in transient storage: `keccak256("DynamicArrayLib.length")`
     uint256 constant LENGTH_SLOT = 0x459e104ef556d0580f187381981773d0447fdbbca325472288740d540c65960b;
 
     /// @notice Maximum number of parameters allowed to prevent expensive memory expansion
@@ -14,6 +14,7 @@ library ParamsBuilderV2 {
 
     /// @notice Error thrown when the number of parameters exceeds the maximum allowed
     error LengthOverflow();
+    error AlreadyInitialized();
 
     /// @notice Getter function for the current length from transient storage
     function getLength() internal view returns (uint8 length) {
@@ -26,13 +27,17 @@ library ParamsBuilderV2 {
     function init() internal returns (bytes[] memory params) {
         params = new bytes[](MAX_PARAMS);
         assembly {
+            if eq(iszero(tload(LENGTH_SLOT)), 1) {
+                mstore(0x00, 0x0dc149f0) // AlreadyInitialized() selector
+                revert(0x1c, 0x04)
+            }
             tstore(LENGTH_SLOT, 0)
         }
     }
 
     /// @notice Append a parameter to existing params
     /// @dev Using `merge` is more gas efficient for appending multiple values at once
-    /// @param params The existing parameters. MUST be initialized via ParamsBuilderV2.init()
+    /// @param params The existing parameters. MUST be initialized via DynamicArrayLib.init()
     /// @param param The parameter to append
     /// @return The appended parameters
     function append(bytes[] memory params, bytes memory param) internal returns (bytes[] memory) {
@@ -51,7 +56,7 @@ library ParamsBuilderV2 {
     }
 
     /// @notice Merges another set of parameters to the end of the current parameters
-    /// @param params The existing parameters. MUST be initialized via ParamsBuilderV2.init()
+    /// @param params The existing parameters. MUST be initialized via DynamicArrayLib.init()
     /// @param otherParams The parameters to merge. CAN be any bytes[] array.
     /// @return The merged parameters
     function merge(bytes[] memory params, bytes[] memory otherParams) internal returns (bytes[] memory) {

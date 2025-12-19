@@ -27,7 +27,7 @@ import {IDistributionContract} from "../../interfaces/IDistributionContract.sol"
 import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
 import {MigrationData} from "../../types/MigrationData.sol";
 import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "../../types/PositionTypes.sol";
+import {BasePositionParams} from "../../types/PositionTypes.sol";
 import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 import {TokenDistribution} from "../../libraries/TokenDistribution.sol";

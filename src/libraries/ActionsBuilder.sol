@@ -7,24 +7,23 @@ import {ParamsBuilder} from "./ParamsBuilder.sol";
 /// @title ActionsBuilder
 /// @notice Library for building position actions and parameters
 library ActionsBuilder {
-    error InvalidActionsLength(uint256 invalidLength);
-
-    /// @notice Builds full range position actions without final take pair action
-    function buildFullRangeActions() internal pure returns (bytes memory) {
-        return abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE));
+    /// @notice Initializes empty actions
+    function init() internal pure returns (bytes memory) {
+        return bytes("");
     }
 
-    /// @notice Builds one-sided position actions to append without final take pair action
-    function buildOneSidedActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        if (existingActions.length != ParamsBuilder.FULL_RANGE_SIZE - 1) {
-            revert InvalidActionsLength(existingActions.length);
-        }
-
-        return abi.encodePacked(existingActions, uint8(Actions.MINT_POSITION));
+    /// @notice Adds mint action to existing actions
+    function addMint(bytes memory actions) internal pure returns (bytes memory) {
+        return abi.encodePacked(actions, uint8(Actions.MINT_POSITION));
     }
 
-    /// @notice Builds final take pair action
-    function buildFinalTakePairActions(bytes memory existingActions) internal pure returns (bytes memory) {
-        return abi.encodePacked(existingActions, uint8(Actions.TAKE_PAIR));
+    /// @notice Adds settle action to existing actions
+    function addSettle(bytes memory actions) internal pure returns (bytes memory) {
+        return abi.encodePacked(actions, uint8(Actions.SETTLE));
+    }
+
+    /// @notice Adds take pair action to existing actions
+    function addTakePair(bytes memory actions) internal pure returns (bytes memory) {
+        return abi.encodePacked(actions, uint8(Actions.TAKE_PAIR));
     }
 }

@@ -15,18 +15,6 @@ struct BasePositionParams {
     IHooks hooks;
 }
 
-/// @notice Parameters specific to full-range positions
-struct FullRangeParams {
-    uint128 tokenAmount;
-    uint128 currencyAmount;
-}
-
-/// @notice Parameters specific to one-sided positions
-struct OneSidedParams {
-    uint128 amount;
-    bool inToken;
-}
-
 /// @notice Tick boundaries for a position
 struct TickBounds {
     int24 lowerTick;

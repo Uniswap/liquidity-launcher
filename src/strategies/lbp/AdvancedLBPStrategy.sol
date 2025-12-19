@@ -7,15 +7,17 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
 import {MigrationData} from "../../types/MigrationData.sol";
 import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {BasePositionParams, OneSidedParams, FullRangeParams} from "../../types/PositionTypes.sol";
-import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
+import {BasePositionParams} from "../../types/PositionTypes.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
+import {ActionsBuilder} from "../../libraries/ActionsBuilder.sol";
+import {DynamicArrayLib} from "../../libraries/DynamicArrayLib.sol";
 
 /// @title AdvancedLBPStrategy
 /// @notice Basic Strategy to distribute tokens and raise funds from an auction to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract AdvancedLBPStrategy is LBPStrategyBase {
     using StrategyPlanner for BasePositionParams;
+    using DynamicArrayLib for bytes[];
 
     bool public immutable createOneSidedTokenPosition;
     bool public immutable createOneSidedCurrencyPosition;
@@ -39,7 +41,7 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @return plan The encoded position plan
     function _createPositionPlan(MigrationData memory data) internal view override returns (bytes memory plan) {
         bytes memory actions;
-        bytes[] memory params;
+        bytes[] memory params = DynamicArrayLib.init();
 
         address poolToken = getPoolToken();
 
@@ -55,27 +57,23 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        if (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount) {
-            (actions, params) = baseParams.planFullRangePosition(
-                FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount}),
-                ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE
-            );
+        actions = ActionsBuilder.addMint();
+        params = params.merge(baseParams.planFullRangePosition(data.initialTokenAmount, data.initialCurrencyAmount));
 
+        if (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount) {
             // Attempt to extend the position plan with a one sided token position
             // This will silently fail if the one sided position is invalid due to tick bounds or liquidity constraints
             // However, it will not revert the transaction as we sitll want to ensure the full range position can be created
-            (actions, params) = _createOneSidedTokenPositionPlan(baseParams, actions, params, data.initialTokenAmount);
-        } else {
-            (actions, params) = baseParams.planFullRangePosition(
-                FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount}),
-                ParamsBuilder.FULL_RANGE_SIZE
-            );
+            actions = ActionsBuilder.addMint(actions);
+            params =
+                params.append(baseParams.planOneSidedPosition(baseParams, reserveSupply - data.initialTokenAmount, 0));
         }
 
         // We encode a take pair action back to this contract for eventual sweeping by the operator
-        (actions, params) = baseParams.planFinalTakePair(actions, params);
+        actions = ActionsBuilder.addTakePair(actions);
+        params = params.append(baseParams.planFinalTakePair());
 
-        return abi.encode(actions, params);
+        return abi.encode(actions, params.truncate());
     }
 
     /// @notice Calculates the amount of tokens to transfer to the position manager
@@ -92,26 +90,5 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @return The amount of currency to transfer
     function _getCurrencyTransferAmount(MigrationData memory data) internal pure override returns (uint128) {
         return data.initialCurrencyAmount;
-    }
-
-    /// @notice Creates the plan for creating a one sided v4 position using the position manager along with the full range position
-    /// @param baseParams The base parameters for the position
-    /// @param actions The existing actions for the full range position which may be extended with the new actions for the one sided position
-    /// @param params The existing parameters for the full range position which may be extended with the new parameters for the one sided position
-    /// @param tokenAmount The amount of token to be used to create the position
-    /// @return The actions and parameters needed to create the full range position and the one sided position
-    function _createOneSidedTokenPositionPlan(
-        BasePositionParams memory baseParams,
-        bytes memory actions,
-        bytes[] memory params,
-        uint128 tokenAmount
-    ) private view returns (bytes memory, bytes[] memory) {
-        // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
-        uint128 amount = reserveSupply - tokenAmount;
-        // Create one-sided specific parameters
-        OneSidedParams memory oneSidedParams = OneSidedParams({amount: amount, inToken: true});
-
-        // Plan the one-sided position
-        return baseParams.planOneSidedPosition(oneSidedParams, actions, params);
     }
 }

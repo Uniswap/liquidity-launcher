@@ -5,29 +5,31 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams, TickBounds} from "../types/PositionTypes.sol";
+import {BasePositionParams, TickBounds} from "../types/PositionTypes.sol";
 import {ParamsBuilder} from "./ParamsBuilder.sol";
 import {ActionsBuilder} from "./ActionsBuilder.sol";
 import {TickCalculations} from "./TickCalculations.sol";
+import {DynamicArrayLib} from "./DynamicArrayLib.sol";
 
 /// @title PositionPlanner
 /// @notice Simplified library that orchestrates position planning using helper libraries
 library StrategyPlanner {
+    using DynamicArrayLib for bytes[];
     using TickCalculations for int24;
     using ParamsBuilder for *;
 
+    error InvalidOneSidedPosition(uint128 tokenAmount, uint128 currencyAmount);
+
     /// @notice Creates the actions and parameters needed to mint a full range position on the position manager
     /// @param baseParams The base parameters for the position
-    /// @param fullRangeParams The amounts of currency and token that will be used to mint the position
-    /// @param paramsArraySize The size of the parameters array (either 5 if it's a standalone full range position,
-    ///                        or 8 if it's a full range position with one sided position)
-    /// @return actions The actions needed to mint a full range position on the position manager
-    /// @return params The parameters needed to mint a full range position on the position manager
-    function planFullRangePosition(
-        BasePositionParams memory baseParams,
-        FullRangeParams memory fullRangeParams,
-        uint256 paramsArraySize
-    ) internal pure returns (bytes memory actions, bytes[] memory params) {
+    /// @param tokenAmount The amount of token to mint
+    /// @param currencyAmount The amount of currency to mint
+    /// @return param The parameter needed to mint a full range position on the position manager
+    function planFullRangePosition(BasePositionParams memory baseParams, uint128 tokenAmount, uint128 currencyAmount)
+        internal
+        pure
+        returns (bytes memory param)
+    {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
 
         // Get tick bounds for full range
@@ -44,39 +46,37 @@ library StrategyPlanner {
             hooks: baseParams.hooks
         });
 
-        actions = ActionsBuilder.buildFullRangeActions();
-        params = fullRangeParams.buildFullRangeParams(
-            poolKey, bounds, currencyIsCurrency0, paramsArraySize, baseParams.positionRecipient, baseParams.liquidity
+        param = ParamsBuilder.addMintParam(
+            poolKey, bounds, baseParams.liquidity, tokenAmount, currencyAmount, baseParams.positionRecipient
         );
-
-        // Build actions
-        return (actions, params);
     }
 
     /// @notice Creates the actions and parameters needed to mint a one-sided position on the position manager
+    /// @param params The existing parameters needed to mint a full range position on the position manager
     /// @param baseParams The base parameters for the position
-    /// @param oneSidedParams The amounts of token that will be used to mint the position
-    /// @param existingActions The existing actions needed to mint a full range position on the position manager (Output of planFullRangePosition())
-    /// @param existingParams The existing parameters needed to mint a full range position on the position manager (Output of planFullRangePosition())
-    /// @return actions The actions needed to mint a full range position with one-sided position on the position manager
+    /// @param tokenAmount The amount of token to mint
+    /// @param currencyAmount The amount of currency to mint
     /// @return params The parameters needed to mint a full range position with one-sided position on the position manager
-    function planOneSidedPosition(
-        BasePositionParams memory baseParams,
-        OneSidedParams memory oneSidedParams,
-        bytes memory existingActions,
-        bytes[] memory existingParams
-    ) internal pure returns (bytes memory actions, bytes[] memory params) {
+    function planOneSidedPosition(BasePositionParams memory baseParams, uint128 tokenAmount, uint128 currencyAmount)
+        internal
+        pure
+        returns (bytes memory param)
+    {
+        // Require either tokenAmount or currencyAmount to be 0, but not both
+        if ((tokenAmount != 0 && currencyAmount != 0) || tokenAmount == currencyAmount) {
+            revert InvalidOneSidedPosition(tokenAmount, currencyAmount);
+        }
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
+        bool inToken = currencyAmount == 0;
 
         // Get tick bounds based on position side
-        TickBounds memory bounds = currencyIsCurrency0 == oneSidedParams.inToken
+        TickBounds memory bounds = currencyIsCurrency0 == inToken
             ? getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
             : getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
 
-        // If the tick bounds are 0,0 (which means the current tick is too close to MIN_TICK or MAX_TICK), return the existing actions and parameters
-        // that will build a full range position
+        // If the tick bounds are 0,0 (which means the current tick is too close to MIN_TICK or MAX_TICK) do not create a one-sided position
         if (bounds.lowerTick == 0 && bounds.upperTick == 0) {
-            return (existingActions, existingParams.truncateParams());
+            return bytes("");
         }
 
         // If this overflows, the transaction will revert and no position will be created
@@ -84,15 +84,15 @@ library StrategyPlanner {
             baseParams.initialSqrtPriceX96,
             TickMath.getSqrtPriceAtTick(bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(bounds.upperTick),
-            currencyIsCurrency0 == oneSidedParams.inToken ? 0 : oneSidedParams.amount,
-            currencyIsCurrency0 == oneSidedParams.inToken ? oneSidedParams.amount : 0
+            currencyIsCurrency0 == inToken ? 0 : tokenAmount,
+            currencyIsCurrency0 == inToken ? currencyAmount : 0
         );
 
         if (
             newLiquidity == 0
                 || baseParams.liquidity + newLiquidity > baseParams.poolTickSpacing.tickSpacingToMaxLiquidityPerTick()
         ) {
-            return (existingActions, existingParams.truncateParams());
+            return bytes("");
         }
 
         PoolKey memory poolKey = PoolKey({
@@ -103,33 +103,20 @@ library StrategyPlanner {
             hooks: baseParams.hooks
         });
 
-        actions = ActionsBuilder.buildOneSidedActions(existingActions);
-        params = oneSidedParams.buildOneSidedParams(
-            poolKey, bounds, currencyIsCurrency0, existingParams, baseParams.positionRecipient, newLiquidity
+        param = ParamsBuilder.addMintParam(
+            poolKey, bounds, newLiquidity, tokenAmount, currencyAmount, baseParams.positionRecipient
         );
-
-        return (actions, params);
     }
 
     /// @notice Plans the final take pair action and parameters
     /// @param baseParams The base parameters for the position
-    /// @param actions The existing actions for the position which may be extended with the new actions for the final take pair
-    /// @param params The existing parameters for the position which may be extended with the new parameters for the final take pair
-    /// @return actions The actions needed to take the pair using the position manager
-    /// @return params The parameters needed to take the pair using the position manager
-    function planFinalTakePair(
-        BasePositionParams memory baseParams,
-        bytes memory existingActions,
-        bytes[] memory existingParams
-    ) internal view returns (bytes memory actions, bytes[] memory params) {
+    /// @return param The parameter needed to take the pair using the position manager
+    function planFinalTakePair(BasePositionParams memory baseParams) internal view returns (bytes memory param) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
-        actions = ActionsBuilder.buildFinalTakePairActions(existingActions);
-        params = ParamsBuilder.buildFinalTakePairParams(
-            currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken,
-            currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency,
-            existingParams
+        param = ParamsBuilder.addTakePairParam(
+            Currency.wrap(currencyIsCurrency0 ? baseParams.currency : baseParams.poolToken),
+            Currency.wrap(currencyIsCurrency0 ? baseParams.poolToken : baseParams.currency)
         );
-        return (actions, params);
     }
 
     /// @notice Gets tick bounds for a left-side position (below current tick)
