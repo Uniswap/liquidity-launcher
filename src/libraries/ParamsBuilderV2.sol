@@ -1,50 +1,71 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-type POSMParams is bytes;
-
 /// @title ParamsBuilderV2
-/// @notice Library for building position parameters
+/// @notice Library for building position parameters, using transient storage for the length
 library ParamsBuilderV2 {
-    using ParamsBuilderV2 for POSMParams;
+    using ParamsBuilderV2 for bytes[];
 
-    uint8 constant MAX_PARAMS = type(uint8).max;
+    // keccak256("ParamsBuilderV2.length")
+    uint256 constant LENGTH_SLOT = 0x459e104ef556d0580f187381981773d0447fdbbca325472288740d540c65960b;
+
+    uint8 constant MAX_PARAMS = 24;
 
     error LengthOverflow();
 
-    function pack(uint8 length, bytes[] memory params) internal pure returns (bytes memory) {
-        return abi.encodePacked(length, params);
-    }
-
-    /// @notice Unpacks the parameters from the data
-    /// @dev data is abi.encodePacked(length, params)
-    function unpack(bytes memory data) internal pure returns (uint8 length, bytes[] memory params) {
-        assembly {
-            length := mload(add(data, 0x20))
-            params := mload(add(data, 0x40))
-        }
-    }
-
     /// @notice Return the first byte of the parameters, which is the length
-    function num(POSMParams params) internal pure returns (uint8 length) {
+    function getLength() internal view returns (uint8 length) {
         assembly {
-            length := mload(add(params, 0x20))
+            length := tload(LENGTH_SLOT)
         }
     }
 
-    /// @notice Initializes the parameters, allocating memory for maximum number of params    
-    function init() internal pure returns (POSMParams) {
-        return abi.encodePacked(0, new bytes(MAX_PARAMS));
+    function setLength(uint8 length) internal {
+        assembly {
+            tstore(LENGTH_SLOT, length)
+        }
+    }
+
+    /// @notice Initializes the parameters, allocating memory for maximum number of params
+    function init() internal returns (bytes[] memory params) {
+        params = new bytes[](MAX_PARAMS);
+        setLength(0);
     }
 
     /// @notice Append a parameter to the parameters
-    function append(POSMParams params, bytes memory param) internal pure returns (POSMParams) {
-        (uint8 length, bytes[] memory params) = params.unpack();
+    function append(bytes[] memory params, bytes memory param) internal returns (bytes[] memory) {
+        uint8 length = getLength();
         if (length >= MAX_PARAMS) {
             revert LengthOverflow();
         }
         // Assign at length since its 0 indexed
         params[length] = param;
-        return pack(length + 1, params);
+        setLength(length + 1);
+        return params;
+    }
+
+    /// @notice Merges another set of parameters to the end of the current parameters
+    function merge(bytes[] memory params, bytes[] memory otherParams) internal returns (bytes[] memory) {
+        uint8 length = getLength();
+        uint256 addt = otherParams.length;
+        if (addt > MAX_PARAMS - length) {
+            revert LengthOverflow();
+        }
+
+        for (uint256 i = 0; i < addt; i++) {
+            params[length++] = otherParams[i];
+        }
+        setLength(length);
+        return params;
+    }
+
+    /// @notice Truncates the parameters to the length
+    /// @dev this is a one-way operation and should only be used after all parameters have been appended
+    function truncate(bytes[] memory params) internal view returns (bytes[] memory) {
+        uint8 length = getLength();
+        assembly {
+            mstore(params, length)
+        }
+        return params;
     }
 }
