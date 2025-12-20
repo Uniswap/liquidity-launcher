@@ -52,7 +52,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -83,7 +85,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
 
         // Test too high
@@ -112,7 +116,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -139,7 +145,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -167,7 +175,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 ),
                 auctionParams,
                 IPositionManager(POSITION_MANAGER),
-                IPoolManager(POOL_MANAGER)
+                IPoolManager(POOL_MANAGER),
+                true,
+                true
             );
         }
     }
@@ -206,7 +216,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 })
             ),
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -228,7 +240,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ), // currency is address(1)
             auctionParams, // currency is address(0)
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -250,7 +264,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             "",
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 
@@ -415,7 +431,9 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             ),
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
     }
 }

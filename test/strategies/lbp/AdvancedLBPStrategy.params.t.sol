@@ -69,7 +69,9 @@ contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
             params,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER)
+            IPoolManager(POOL_MANAGER),
+            true,
+            true
         );
 
         vm.etch(address(lbp), address(impl).code);
