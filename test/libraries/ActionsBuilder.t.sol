@@ -3,41 +3,43 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
-import {FullRangeParams, OneSidedParams} from "src/types/PositionTypes.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickBounds} from "src/types/PositionTypes.sol";
 
 // Test helper contract to expose internal library functions for testing
 contract ActionsBuilderTestHelper {
-    function buildFullRangeActions() external pure returns (bytes memory) {
-        return ActionsBuilder.buildFullRangeActions();
+    function init() external pure returns (bytes memory) {
+        return ActionsBuilder.init();
     }
 
-    function buildOneSidedActions(bytes memory existingActions) external pure returns (bytes memory) {
-        return ActionsBuilder.buildOneSidedActions(existingActions);
+    function addMint(bytes memory existingActions) external pure returns (bytes memory) {
+        return ActionsBuilder.addMint(existingActions);
+    }
+
+    function addSettle(bytes memory existingActions) external pure returns (bytes memory) {
+        return ActionsBuilder.addSettle(existingActions);
+    }
+
+    function addTakePair(bytes memory existingActions) external pure returns (bytes memory) {
+        return ActionsBuilder.addTakePair(existingActions);
     }
 }
 
 contract ActionsBuilderTest is Test {
     ActionsBuilderTestHelper testHelper;
+    using ActionsBuilder for *;
 
     function setUp() public {
         testHelper = new ActionsBuilderTestHelper();
     }
 
-    function test_buildFullRangeActions_succeeds() public view {
-        bytes memory actions = testHelper.buildFullRangeActions();
-        assertEq(actions.length, 3);
-    }
-
-    function test_buildOneSidedActions_revertsWithInvalidActionsLength() public {
+    function test_addMint_revertsWithInvalidActionsLength() public {
         vm.expectRevert(abi.encodeWithSelector(ActionsBuilder.InvalidActionsLength.selector, 1));
-        testHelper.buildOneSidedActions(new bytes(1));
+        testHelper.addMint(new bytes(1));
     }
 
-    function test_buildOneSidedActions_succeeds() public view {
-        bytes memory actions = testHelper.buildFullRangeActions();
-        bytes memory oneSidedActions = testHelper.buildOneSidedActions(actions);
-        assertEq(oneSidedActions.length, 4);
+    function test_addMint_succeeds() public view {
+        bytes memory actions = testHelper.init().addMint();
+        assertEq(actions.length, 1);
     }
 }

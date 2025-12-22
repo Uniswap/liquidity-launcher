@@ -25,7 +25,10 @@ contract AdvancedLBPStrategyTest is BttTests {
             _parameters.migratorParams,
             _parameters.auctionParameters,
             _parameters.positionManager,
-            _parameters.poolManager
+            _parameters.poolManager,
+            // Defaults for backwards compatiblity
+            false,
+            false
         );
     }
 }

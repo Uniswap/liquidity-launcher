@@ -18,29 +18,35 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
+import {ParamsBuilderTestHelper} from "test/libraries/ParamsBuilder.t.sol";
+import {DynamicArray} from "src/libraries/DynamicArray.sol";
 
-contract StrategyPlannerHelper is Test {
+contract StrategyPlannerHelper is ParamsBuilderTestHelper {
     function planFullRangePosition(
+        bytes memory actions,
+        bytes[] memory params,
         BasePositionParams memory baseParams,
-        FullRangeParams memory fullRangeParams,
-        uint256 paramsArraySize
-    ) public pure returns (bytes memory actions, bytes[] memory params) {
-        return StrategyPlanner.planFullRangePosition(baseParams, fullRangeParams, paramsArraySize);
+        FullRangeParams memory fullRangeParams
+    ) public returns (bytes memory, bytes[] memory) {
+        return StrategyPlanner.planFullRangePosition(actions, params, baseParams, fullRangeParams);
     }
 
     function planOneSidedPosition(
+        bytes memory actions,
+        bytes[] memory params,
         BasePositionParams memory baseParams,
-        OneSidedParams memory oneSidedParams,
-        bytes memory existingActions,
-        bytes[] memory existingParams
-    ) public pure returns (bytes memory actions, bytes[] memory params) {
-        return StrategyPlanner.planOneSidedPosition(baseParams, oneSidedParams, existingActions, existingParams);
+        OneSidedParams memory oneSidedParams
+    ) public returns (bytes memory, bytes[] memory) {
+        return StrategyPlanner.planOneSidedPosition(actions, params, baseParams, oneSidedParams);
     }
 }
 
 contract StrategyPlannerTest is Test {
     using TickCalculations for int24;
     using SafeCast for uint256;
+    using ActionsBuilder for *;
+    using ParamsBuilder for *;
 
     StrategyPlannerHelper testHelper;
 
@@ -48,8 +54,10 @@ contract StrategyPlannerTest is Test {
         testHelper = new StrategyPlannerHelper();
     }
 
-    function test_planFullRangePosition_succeeds() public view {
+    function test_planFullRangePosition_succeeds() public {
         (bytes memory actions, bytes[] memory params) = testHelper.planFullRangePosition(
+            ActionsBuilder.init(),
+            ParamsBuilder.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
@@ -60,12 +68,13 @@ contract StrategyPlannerTest is Test {
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
-            FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000}),
-            5
+            FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000})
         );
         assertEq(actions.length, 3);
-        assertEq(params.length, 5);
-        assertEq(actions, ActionsBuilder.buildFullRangeActions());
+        assertEq(testHelper.getLength(), 3);
+        assertEq(actions.length, testHelper.getLength());
+        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(actions, ActionsBuilder.init().addMint().addSettle().addSettle());
 
         assertEq(
             params[0],
@@ -100,7 +109,7 @@ contract StrategyPlannerTest is Test {
     function test_fuzz_planFullRangePosition_succeeds(
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams
-    ) public view {
+    ) public {
         baseParams.poolTickSpacing = int24(
             bound(baseParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING)
         );
@@ -111,12 +120,15 @@ contract StrategyPlannerTest is Test {
         fullRangeParams.tokenAmount = uint128(bound(fullRangeParams.tokenAmount, 0, type(uint128).max));
         fullRangeParams.currencyAmount = uint128(bound(fullRangeParams.currencyAmount, 0, type(uint128).max));
 
-        uint256 arraySize = 5;
-        (bytes memory actions, bytes[] memory params) =
-            testHelper.planFullRangePosition(baseParams, fullRangeParams, arraySize);
+        bytes memory actions = ActionsBuilder.init();
+        bytes[] memory params = ParamsBuilder.init();
+
+        (actions, params) = testHelper.planFullRangePosition(actions, params, baseParams, fullRangeParams);
         assertEq(actions.length, 3);
-        assertEq(params.length, arraySize);
-        assertEq(actions, ActionsBuilder.buildFullRangeActions());
+        assertEq(testHelper.getLength(), 3);
+        assertEq(actions.length, testHelper.getLength());
+        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(actions, ActionsBuilder.init().addMint().addSettle().addSettle());
 
         assertEq(
             params[0],
@@ -164,7 +176,7 @@ contract StrategyPlannerTest is Test {
         );
     }
 
-    function test_planOneSidedPosition_inToken_succeeds() public view {
+    function test_planOneSidedPosition_inToken_succeeds() public {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -172,23 +184,9 @@ contract StrategyPlannerTest is Test {
             1000000000000000000,
             1000000000000000000
         );
-        bytes memory existingActions = ActionsBuilder.buildFullRangeActions();
-        bytes[] memory existingParams = ParamsBuilder.buildFullRangeParams(
-            FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000}),
-            PoolKey({
-                currency0: Currency.wrap(address(0)),
-                currency1: Currency.wrap(address(1)),
-                fee: 10000,
-                tickSpacing: 1,
-                hooks: IHooks(address(0))
-            }),
-            TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
-            true,
-            5,
-            address(0),
-            liquidity
-        );
         (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
+            ActionsBuilder.init(),
+            ParamsBuilder.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
@@ -199,13 +197,13 @@ contract StrategyPlannerTest is Test {
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
-            OneSidedParams({amount: 1000000000000000000, inToken: true}),
-            existingActions,
-            existingParams
+            OneSidedParams({amount: 1000000000000000000, inToken: true})
         );
-        assertEq(actions.length, 4);
-        assertEq(params.length, 5);
-        assertEq(actions, ActionsBuilder.buildOneSidedActions(existingActions));
+        assertEq(actions.length, 1);
+        assertEq(testHelper.getLength(), 1);
+        assertEq(actions.length, testHelper.getLength());
+        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(actions, ActionsBuilder.init().addMint());
 
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
@@ -226,29 +224,6 @@ contract StrategyPlannerTest is Test {
                     hooks: IHooks(address(0))
                 }),
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK,
-                liquidity,
-                1000000000000000000,
-                1000000000000000000,
-                address(0),
-                ParamsBuilder.ZERO_BYTES
-            )
-        );
-
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
-
-        assertEq(
-            params[3],
-            abi.encode(
-                PoolKey({
-                    currency0: Currency.wrap(address(0)),
-                    currency1: Currency.wrap(address(1)),
-                    fee: 10000,
-                    tickSpacing: 1,
-                    hooks: IHooks(address(0))
-                }),
-                TickMath.MIN_TICK,
                 0,
                 oneSidedLiquidity,
                 0,
@@ -257,9 +232,11 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
+
+        assertEq(testHelper.truncate(params).length, 1);
     }
 
-    function test_planOneSidedPosition_inCurrency_succeeds() public view {
+    function test_planOneSidedPosition_inCurrency_succeeds() public {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -267,23 +244,9 @@ contract StrategyPlannerTest is Test {
             1000000000000000000,
             1000000000000000000
         );
-        bytes memory existingActions = ActionsBuilder.buildFullRangeActions();
-        bytes[] memory existingParams = ParamsBuilder.buildFullRangeParams(
-            FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000}),
-            PoolKey({
-                currency0: Currency.wrap(address(0)),
-                currency1: Currency.wrap(address(1)),
-                fee: 10000,
-                tickSpacing: 1,
-                hooks: IHooks(address(0))
-            }),
-            TickBounds({lowerTick: TickMath.MIN_TICK, upperTick: TickMath.MAX_TICK}),
-            true,
-            ParamsBuilder.FULL_RANGE_WITH_ONE_SIDED_SIZE,
-            address(0),
-            liquidity
-        );
         (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
+            ActionsBuilder.init(),
+            ParamsBuilder.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
@@ -294,37 +257,15 @@ contract StrategyPlannerTest is Test {
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
-            OneSidedParams({amount: 1000000000000000000, inToken: false}),
-            existingActions,
-            existingParams
+            OneSidedParams({amount: 1000000000000000000, inToken: false})
         );
-        assertEq(actions.length, 4);
-        assertEq(params.length, 5);
-        assertEq(actions, ActionsBuilder.buildOneSidedActions(existingActions));
+        assertEq(actions.length, 1);
+        assertEq(testHelper.getLength(), 1);
+        assertEq(actions.length, testHelper.getLength());
+        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(actions, ActionsBuilder.init().addMint());
         assertEq(
             params[0],
-            abi.encode(
-                PoolKey({
-                    currency0: Currency.wrap(address(0)),
-                    currency1: Currency.wrap(address(1)),
-                    fee: 10000,
-                    tickSpacing: 1,
-                    hooks: IHooks(address(0))
-                }),
-                TickMath.MIN_TICK,
-                TickMath.MAX_TICK,
-                liquidity,
-                1000000000000000000,
-                1000000000000000000,
-                address(0),
-                ParamsBuilder.ZERO_BYTES
-            )
-        );
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
-
-        assertEq(
-            params[3],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -348,6 +289,7 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
+        assertEq(testHelper.truncate(params).length, 1);
     }
 
     function calculateLiquidity(
@@ -420,9 +362,12 @@ contract StrategyPlannerTest is Test {
         _boundOneSidedParams(oneSidedParams, fullRangeParams);
 
         OneSidedTestData memory testData;
+        testData.fullActions = ActionsBuilder.init();
+        testData.fullParams = ParamsBuilder.init();
 
         // Plan full range position
-        (testData.fullActions, testData.fullParams) = testHelper.planFullRangePosition(baseParams, fullRangeParams, 5);
+        (testData.fullActions, testData.fullParams) =
+            testHelper.planFullRangePosition(testData.fullActions, testData.fullParams, baseParams, fullRangeParams);
 
         // Get tick bounds
         testData.bounds = _getTickBounds(baseParams, oneSidedParams);
@@ -433,18 +378,18 @@ contract StrategyPlannerTest is Test {
         // Check if should revert
         if (_shouldRevertOnLiquidity(baseParams, oneSidedParams, testData.bounds)) {
             vm.expectRevert();
-            testHelper.planOneSidedPosition(baseParams, oneSidedParams, testData.fullActions, testData.fullParams);
+            testHelper.planOneSidedPosition(testData.fullActions, testData.fullParams, baseParams, oneSidedParams);
             return;
         }
 
         // Plan one-sided position
         (testData.actions, testData.params) =
-            testHelper.planOneSidedPosition(baseParams, oneSidedParams, testData.fullActions, testData.fullParams);
+            testHelper.planOneSidedPosition(testData.fullActions, testData.fullParams, baseParams, oneSidedParams);
 
         // Assert results
         if (testData.actions.length == 3) {
             assertEq(testData.actions, testData.fullActions);
-            assertEq(testData.params, ParamsBuilder.truncateParams(testData.fullParams));
+            assertEq(testHelper.truncate(testData.fullParams).length, 3);
         } else {
             _assertOneSidedPositionParams(baseParams, oneSidedParams, testData);
         }
@@ -514,10 +459,10 @@ contract StrategyPlannerTest is Test {
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams,
         OneSidedTestData memory testData
-    ) private pure {
+    ) private {
         assertEq(testData.actions.length, 4);
-        assertEq(testData.params.length, 5);
-        assertEq(testData.actions, ActionsBuilder.buildOneSidedActions(testData.fullActions));
+        assertEq(testHelper.truncate(testData.params).length, 4);
+        assertEq(testData.actions, ActionsBuilder.addMint(testData.fullActions));
 
         // Assert params[3] - extract to separate function to reduce complexity
         assertEq(testData.params[3], _buildParam3(baseParams, oneSidedParams));

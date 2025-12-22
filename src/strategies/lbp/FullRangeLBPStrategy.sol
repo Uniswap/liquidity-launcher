@@ -10,12 +10,15 @@ import {MigratorParameters} from "../../types/MigratorParameters.sol";
 import {BasePositionParams, FullRangeParams} from "../../types/PositionTypes.sol";
 import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
+import {DynamicArray} from "../../libraries/DynamicArray.sol";
 
 /// @title FullRangeLBPStrategy
 /// @notice Strategy to initialize a Uniswap v4 pool and migrate the tokens and raised funds into a full range position
 /// @custom:security-contact security@uniswap.org
 contract FullRangeLBPStrategy is LBPStrategyBase {
     using StrategyPlanner for BasePositionParams;
+    using ParamsBuilder for bytes[];
+    using DynamicArray for bytes[];
 
     constructor(
         address _token,
@@ -29,7 +32,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal view override returns (bytes memory plan) {
+    function _createPositionPlan(MigrationData memory data) internal override returns (bytes memory plan) {
         bytes memory actions;
         bytes[] memory params;
 
@@ -47,14 +50,16 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
             hooks: IHooks(address(this))
         });
 
-        (actions, params) = baseParams.planFullRangePosition(
-            FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount}),
-            ParamsBuilder.FULL_RANGE_SIZE
+        (actions, params) = StrategyPlanner.planFullRangePosition(
+            actions,
+            params,
+            baseParams,
+            FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount})
         );
 
-        (actions, params) = baseParams.planFinalTakePair(actions, params);
+        (actions, params) = StrategyPlanner.planFinalTakePair(actions, params, baseParams);
 
-        return abi.encode(actions, params);
+        return abi.encode(actions, params.truncate());
     }
 
     /// @notice Calculates the amount of tokens to transfer
