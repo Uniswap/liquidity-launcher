@@ -13,7 +13,7 @@ library DynamicArray {
 
     /// @notice Slot used to store the transient length of the params array
     /// @dev Calculated via: keccak256("ParamsBuilder.length")
-    uint256 constant TRANSIENT_LENGTH_SLOT = 0x5be00963ec28506abc874f8add5a774bd4087736adfe0f8323b65472017fe098;
+    uint256 constant TRANSIENT_LENGTH_SLOT = 0x3b121418eecc62b0b37a09983886b735e81c86dfb56f33d6782c650a44453f5e;
 
     /// @notice Maximum size of the params array
     /// @dev Supports full range (mint + settle + settle) and two one sided positions (mint + mint) and take pair

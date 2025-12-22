@@ -64,7 +64,6 @@ library ParamsBuilder {
     /// @param poolKey The pool key
     /// @param bounds The tick bounds for the one-sided position
     /// @param currencyIsCurrency0 Whether the currency address is less than the token address
-    /// @param currencyIsCurrency0 Whether the currency address is less than the token address
     /// @param positionRecipient The recipient of the position
     /// @return params The parameters needed to mint a one-sided position using the position manager
     function addOneSidedParams(

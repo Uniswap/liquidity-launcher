@@ -100,7 +100,7 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @param data Migration data
     /// @return The amount of tokens to transfer
     function _getTokenTransferAmount(MigrationData memory data) internal view override returns (uint128) {
-        return (createOneSidedCurrencyPosition && reserveSupply > data.initialTokenAmount)
+        return (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount)
             ? reserveSupply
             : data.initialTokenAmount;
     }

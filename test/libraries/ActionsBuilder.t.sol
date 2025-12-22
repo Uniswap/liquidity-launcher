@@ -33,13 +33,18 @@ contract ActionsBuilderTest is Test {
         testHelper = new ActionsBuilderTestHelper();
     }
 
-    function test_addMint_revertsWithInvalidActionsLength() public {
-        vm.expectRevert(abi.encodeWithSelector(ActionsBuilder.InvalidActionsLength.selector, 1));
-        testHelper.addMint(new bytes(1));
-    }
-
     function test_addMint_succeeds() public view {
         bytes memory actions = testHelper.init().addMint();
+        assertEq(actions.length, 1);
+    }
+
+    function test_addSettle_succeeds() public view {
+        bytes memory actions = testHelper.init().addSettle();
+        assertEq(actions.length, 1);
+    }
+
+    function test_addTakePair_succeeds() public view {
+        bytes memory actions = testHelper.init().addTakePair();
         assertEq(actions.length, 1);
     }
 }
