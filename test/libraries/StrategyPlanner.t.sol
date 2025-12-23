@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {StrategyPlanner} from "src/libraries/StrategyPlanner.sol";
+import {Plan, StrategyPlanner} from "src/libraries/StrategyPlanner.sol";
 import {BasePositionParams, FullRangeParams, OneSidedParams} from "src/types/PositionTypes.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
@@ -24,21 +24,19 @@ import {DynamicArray} from "src/libraries/DynamicArray.sol";
 
 contract StrategyPlannerHelper is ParamsBuilderTestHelper {
     function planFullRangePosition(
-        bytes memory actions,
-        bytes[] memory params,
+        Plan memory plan,
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams
-    ) public returns (bytes memory, bytes[] memory) {
-        return StrategyPlanner.planFullRangePosition(actions, params, baseParams, fullRangeParams);
+    ) public returns (Plan memory) {
+        return StrategyPlanner.planFullRangePosition(plan, baseParams, fullRangeParams);
     }
 
     function planOneSidedPosition(
-        bytes memory actions,
-        bytes[] memory params,
+        Plan memory plan,
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams
-    ) public returns (bytes memory, bytes[] memory) {
-        return StrategyPlanner.planOneSidedPosition(actions, params, baseParams, oneSidedParams);
+    ) public returns (Plan memory) {
+        return StrategyPlanner.planOneSidedPosition(plan, baseParams, oneSidedParams);
     }
 }
 
@@ -55,9 +53,8 @@ contract StrategyPlannerTest is Test {
     }
 
     function test_planFullRangePosition_succeeds() public {
-        (bytes memory actions, bytes[] memory params) = testHelper.planFullRangePosition(
-            ActionsBuilder.init(),
-            ParamsBuilder.init(),
+        Plan memory plan = testHelper.planFullRangePosition(
+            StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
@@ -70,14 +67,14 @@ contract StrategyPlannerTest is Test {
             }),
             FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000})
         );
-        assertEq(actions.length, 3);
+        assertEq(plan.actions.length, 3);
         assertEq(testHelper.getLength(), 3);
-        assertEq(actions.length, testHelper.getLength());
-        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
-        assertEq(actions, ActionsBuilder.init().addMint().addSettle().addSettle());
+        assertEq(plan.actions.length, testHelper.getLength());
+        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.actions, ActionsBuilder.init().addMint().addSettle().addSettle());
 
         assertEq(
-            params[0],
+            plan.params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -102,8 +99,8 @@ contract StrategyPlannerTest is Test {
             )
         );
 
-        assertEq(params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
-        assertEq(params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(plan.params[1], abi.encode(Currency.wrap(address(0)), ActionConstants.CONTRACT_BALANCE, false));
+        assertEq(plan.params[2], abi.encode(Currency.wrap(address(1)), ActionConstants.CONTRACT_BALANCE, false));
     }
 
     function test_fuzz_planFullRangePosition_succeeds(
@@ -120,18 +117,15 @@ contract StrategyPlannerTest is Test {
         fullRangeParams.tokenAmount = uint128(bound(fullRangeParams.tokenAmount, 0, type(uint128).max));
         fullRangeParams.currencyAmount = uint128(bound(fullRangeParams.currencyAmount, 0, type(uint128).max));
 
-        bytes memory actions = ActionsBuilder.init();
-        bytes[] memory params = ParamsBuilder.init();
-
-        (actions, params) = testHelper.planFullRangePosition(actions, params, baseParams, fullRangeParams);
-        assertEq(actions.length, 3);
+        Plan memory plan = testHelper.planFullRangePosition(StrategyPlanner.init(), baseParams, fullRangeParams);
+        assertEq(plan.actions.length, 3);
         assertEq(testHelper.getLength(), 3);
-        assertEq(actions.length, testHelper.getLength());
-        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
-        assertEq(actions, ActionsBuilder.init().addMint().addSettle().addSettle());
+        assertEq(plan.actions.length, testHelper.getLength());
+        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.actions, ActionsBuilder.init().addMint().addSettle().addSettle());
 
         assertEq(
-            params[0],
+            plan.params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(
@@ -159,7 +153,7 @@ contract StrategyPlannerTest is Test {
         );
 
         assertEq(
-            params[1],
+            plan.params[1],
             abi.encode(
                 Currency.wrap(baseParams.currency < baseParams.poolToken ? baseParams.currency : baseParams.poolToken),
                 ActionConstants.CONTRACT_BALANCE,
@@ -167,7 +161,7 @@ contract StrategyPlannerTest is Test {
             )
         );
         assertEq(
-            params[2],
+            plan.params[2],
             abi.encode(
                 Currency.wrap(baseParams.currency < baseParams.poolToken ? baseParams.poolToken : baseParams.currency),
                 ActionConstants.CONTRACT_BALANCE,
@@ -184,9 +178,8 @@ contract StrategyPlannerTest is Test {
             1000000000000000000,
             1000000000000000000
         );
-        (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
-            ActionsBuilder.init(),
-            ParamsBuilder.init(),
+        Plan memory plan = testHelper.planOneSidedPosition(
+            StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
@@ -199,11 +192,11 @@ contract StrategyPlannerTest is Test {
             }),
             OneSidedParams({amount: 1000000000000000000, inToken: true})
         );
-        assertEq(actions.length, 1);
+        assertEq(plan.actions.length, 1);
         assertEq(testHelper.getLength(), 1);
-        assertEq(actions.length, testHelper.getLength());
-        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
-        assertEq(actions, ActionsBuilder.init().addMint());
+        assertEq(plan.actions.length, testHelper.getLength());
+        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.actions, ActionsBuilder.init().addMint());
 
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
@@ -214,7 +207,7 @@ contract StrategyPlannerTest is Test {
         );
 
         assertEq(
-            params[0],
+            plan.params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -233,7 +226,7 @@ contract StrategyPlannerTest is Test {
             )
         );
 
-        assertEq(testHelper.truncate(params).length, 1);
+        assertEq(testHelper.truncate(plan.params).length, 1);
     }
 
     function test_planOneSidedPosition_inCurrency_succeeds() public {
@@ -244,9 +237,8 @@ contract StrategyPlannerTest is Test {
             1000000000000000000,
             1000000000000000000
         );
-        (bytes memory actions, bytes[] memory params) = testHelper.planOneSidedPosition(
-            ActionsBuilder.init(),
-            ParamsBuilder.init(),
+        Plan memory plan = testHelper.planOneSidedPosition(
+            StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
@@ -259,13 +251,13 @@ contract StrategyPlannerTest is Test {
             }),
             OneSidedParams({amount: 1000000000000000000, inToken: false})
         );
-        assertEq(actions.length, 1);
+        assertEq(plan.actions.length, 1);
         assertEq(testHelper.getLength(), 1);
-        assertEq(actions.length, testHelper.getLength());
-        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
-        assertEq(actions, ActionsBuilder.init().addMint());
+        assertEq(plan.actions.length, testHelper.getLength());
+        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.actions, ActionsBuilder.init().addMint());
         assertEq(
-            params[0],
+            plan.params[0],
             abi.encode(
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
@@ -289,7 +281,7 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(testHelper.truncate(params).length, 1);
+        assertEq(testHelper.truncate(plan.params).length, 1);
     }
 
     function calculateLiquidity(
@@ -344,10 +336,8 @@ contract StrategyPlannerTest is Test {
     }
 
     struct OneSidedTestData {
-        bytes fullActions;
-        bytes[] fullParams;
-        bytes actions;
-        bytes[] params;
+        Plan fullPlan;
+        Plan plan;
         TickBounds bounds;
     }
 
@@ -362,12 +352,10 @@ contract StrategyPlannerTest is Test {
         _boundOneSidedParams(oneSidedParams, fullRangeParams);
 
         OneSidedTestData memory testData;
-        testData.fullActions = ActionsBuilder.init();
-        testData.fullParams = ParamsBuilder.init();
+        testData.fullPlan = StrategyPlanner.init();
 
         // Plan full range position
-        (testData.fullActions, testData.fullParams) =
-            testHelper.planFullRangePosition(testData.fullActions, testData.fullParams, baseParams, fullRangeParams);
+        testData.fullPlan = testHelper.planFullRangePosition(testData.fullPlan, baseParams, fullRangeParams);
 
         // Get tick bounds
         testData.bounds = _getTickBounds(baseParams, oneSidedParams);
@@ -378,18 +366,17 @@ contract StrategyPlannerTest is Test {
         // Check if should revert
         if (_shouldRevertOnLiquidity(baseParams, oneSidedParams, testData.bounds)) {
             vm.expectRevert();
-            testHelper.planOneSidedPosition(testData.fullActions, testData.fullParams, baseParams, oneSidedParams);
+            testHelper.planOneSidedPosition(testData.fullPlan, baseParams, oneSidedParams);
             return;
         }
 
         // Plan one-sided position
-        (testData.actions, testData.params) =
-            testHelper.planOneSidedPosition(testData.fullActions, testData.fullParams, baseParams, oneSidedParams);
+        testData.plan = testHelper.planOneSidedPosition(testData.fullPlan, baseParams, oneSidedParams);
 
         // Assert results
-        if (testData.actions.length == 3) {
-            assertEq(testData.actions, testData.fullActions);
-            assertEq(testHelper.truncate(testData.fullParams).length, 3);
+        if (testData.plan.actions.length == 3) {
+            assertEq(testData.plan.actions, testData.fullPlan.actions);
+            assertEq(testHelper.truncate(testData.fullPlan.params).length, 3);
         } else {
             _assertOneSidedPositionParams(baseParams, oneSidedParams, testData);
         }
@@ -459,13 +446,13 @@ contract StrategyPlannerTest is Test {
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams,
         OneSidedTestData memory testData
-    ) private {
-        assertEq(testData.actions.length, 4);
-        assertEq(testHelper.truncate(testData.params).length, 4);
-        assertEq(testData.actions, ActionsBuilder.addMint(testData.fullActions));
+    ) private view {
+        assertEq(testData.plan.actions.length, 4);
+        assertEq(testHelper.truncate(testData.plan.params).length, 4);
+        assertEq(testData.plan.actions, ActionsBuilder.addMint(testData.fullPlan.actions));
 
         // Assert params[3] - extract to separate function to reduce complexity
-        assertEq(testData.params[3], _buildParam3(baseParams, oneSidedParams));
+        assertEq(testData.plan.params[3], _buildParam3(baseParams, oneSidedParams));
     }
 
     // Helper function to build parameter 6

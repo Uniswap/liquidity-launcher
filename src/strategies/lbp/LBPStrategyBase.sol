@@ -38,7 +38,7 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 /// @custom:security-contact security@uniswap.org
 abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     using CurrencyLibrary for Currency;
-    using StrategyPlanner for BasePositionParams;
+    using StrategyPlanner for *;
     using TokenDistribution for uint128;
     using TokenPricing for uint256;
 
