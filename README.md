@@ -55,7 +55,7 @@ The project requires the following environment variable for testing:
 | Base | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 | Sepolia | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d | v1.0.0-candidate |
 
-### AdvancedLBPStrategyFactory
+### LBPStrategyBasicFactory
 
 | Network | Address | Commit Hash | Version |
 |---------|---------|------------|---------|
