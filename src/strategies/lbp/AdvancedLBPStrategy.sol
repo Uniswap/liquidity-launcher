@@ -39,19 +39,8 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     function _createPositionPlan(MigrationData memory data) internal override returns (bytes memory) {
         Plan memory plan = StrategyPlanner.init();
 
-        address poolToken = getPoolToken();
-
         // Create base parameters
-        BasePositionParams memory baseParams = BasePositionParams({
-            currency: currency,
-            poolToken: poolToken,
-            poolLPFee: poolLPFee,
-            poolTickSpacing: poolTickSpacing,
-            initialSqrtPriceX96: data.sqrtPriceX96,
-            liquidity: data.liquidity,
-            positionRecipient: positionRecipient,
-            hooks: IHooks(address(this))
-        });
+        BasePositionParams memory baseParams = _basePositionParams(data);
 
         plan = plan.planFullRangePosition(
             baseParams,
