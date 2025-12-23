@@ -117,7 +117,7 @@ contract LBPStrategyBasic is LBPStrategyBase {
         bytes[] memory params,
         uint128 tokenAmount,
         uint128 leftoverCurrency
-    ) private view returns (bytes memory, bytes[] memory) {
+    ) internal view returns (bytes memory, bytes[] memory) {
         // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
         uint128 amount = leftoverCurrency > 0 ? leftoverCurrency : reserveSupply - tokenAmount;
         bool inToken = leftoverCurrency == 0;
