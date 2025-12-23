@@ -148,6 +148,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
         assertEq(address(lbp.auction()), address(0));
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
         assertEq(lbp.poolTickSpacing(), migratorParams.poolTickSpacing);
+        assertEq(lbp.maxCurrencyAmountForLP(), migratorParams.maxCurrencyAmountForLP);
         assertEq(lbp.auctionParameters(), auctionParams);
     }
 

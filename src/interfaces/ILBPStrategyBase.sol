@@ -138,4 +138,5 @@ interface ILBPStrategyBase is IDistributionContract {
     function auctionParameters() external view returns (bytes memory);
     function poolLPFee() external view returns (uint24);
     function poolTickSpacing() external view returns (int24);
+    function maxCurrencyAmountForLP() external view returns (uint128);
 }
