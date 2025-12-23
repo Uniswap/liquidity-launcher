@@ -14,7 +14,7 @@ library DynamicArray {
     error AlreadyInitialized();
 
     /// @notice Slot used to store the transient length of the params array
-    /// @dev Calculated via: keccak256("ParamsBuilder.length")
+    /// @dev Calculated via: keccak256("DynamicArray.length")
     uint256 constant TRANSIENT_LENGTH_SLOT = 0x3b121418eecc62b0b37a09983886b735e81c86dfb56f33d6782c650a44453f5e;
 
     /// @notice Maximum size of the params array
