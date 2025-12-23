@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {ParamsBuilder} from "./ParamsBuilder.sol";
 
 /// @title ActionsBuilder
 /// @notice Library for building position actions and parameters

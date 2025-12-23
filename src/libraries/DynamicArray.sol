@@ -1,8 +1,10 @@
 // // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.26;
 
 /// @title DynamicArray
-/// @notice Library for building dynamic arrays
+/// @notice Library for building dynamic byte arrays. Increase the MAX_PARAMS_SIZE to support more parameters.
+/// @dev Will revert if more than one array is initialized in the same transaction call frame to prevent overwriting the length slot.
+///      Do NOT use `append` and `truncate` on arrays not created via this library as the behavior will be undefined.
 library DynamicArray {
     using DynamicArray for *;
 
@@ -39,7 +41,7 @@ library DynamicArray {
     }
 
     /// @notice Appends a parameter to the params array
-    /// @param params The parameters array to append to
+    /// @param params The parameters array to append to. This MUST be created via `init()`
     /// @param param The parameter to append
     function append(bytes[] memory params, bytes memory param) internal returns (bytes[] memory) {
         assembly {
@@ -57,7 +59,7 @@ library DynamicArray {
     }
 
     /// @notice Truncates parameters array to the actual length
-    /// @param params The parameters to truncate
+    /// @param params The parameters to truncate. This MUST be created via `init()`
     function truncate(bytes[] memory params) internal view returns (bytes[] memory) {
         uint256 length = getLength();
         assembly {
