@@ -346,7 +346,7 @@ contract AdvancedLBPStrategyTest is BttTests {
         uint128 _tokenAmount,
         uint128 _currencyAmount
     ) public givenCreateOneSidedTokenPositionIsFalse givenCreateOneSidedCurrencyPositionIsFalse {
-        // it transfers pool token to the position manager
+        // it transfers token to the position manager
         // it calls modifyLiquidities with the plan with non zero value and the current block timestamp
 
         _parameters = _toValidConstructorParameters(_parameters, true);
@@ -386,7 +386,7 @@ contract AdvancedLBPStrategyTest is BttTests {
         uint128 _tokenAmount,
         uint128 _currencyAmount
     ) public givenCreateOneSidedTokenPositionIsFalse givenCreateOneSidedCurrencyPositionIsFalse {
-        // it transfers pool token to the position manager
+        // it transfers token to the position manager
         // it transfers currency to the position manager
         // it calls modifyLiquidities with the plan with zero value and the current block timestamp
 

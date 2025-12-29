@@ -35,6 +35,7 @@ abstract contract BttBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
 
     uint256 constant FORK_BLOCK = 23097193;
+    address constant LIQUIDITY_LAUNCHER = 0x3333333333333333333333333333333333333333;
     address constant TOKEN = 0x1111111111111111111111111111111111111111;
     address constant ERC20_CURRENCY = 0x2222222222222222222222222222222222222222;
 
@@ -47,8 +48,9 @@ abstract contract BttBase is LBPTestHelpers {
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
-        liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
-        vm.label(address(liquidityLauncher), "liquidityLauncher");
+        liquidityLauncher = LiquidityLauncher(LIQUIDITY_LAUNCHER);
+        deployCodeTo("LiquidityLauncher", abi.encode(IAllowanceTransfer(PERMIT2)), LIQUIDITY_LAUNCHER);
+        vm.label(LIQUIDITY_LAUNCHER, "liquidityLauncher");
 
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 

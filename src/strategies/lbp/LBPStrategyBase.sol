@@ -338,7 +338,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         bytes memory plan
     ) internal {
         // Transfer tokens to position manager
-        Currency.wrap(_getPoolToken()).transfer(address(positionManager), tokenTransferAmount);
+        Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
 
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call

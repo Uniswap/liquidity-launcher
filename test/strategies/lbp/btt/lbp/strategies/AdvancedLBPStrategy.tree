@@ -21,9 +21,9 @@ AdvancedLBPStrategyTest
 │           └── it adds a take pair action and params
 └── transferAssetsAndExecutePlan
     ├── when currency is native
-    │   ├── it transfers pool token to the position manager
+    │   ├── it transfers token to the position manager
     │   └── it calls modifyLiquidities with the plan with value and the current block timestamp
     └── when currency is not native
-        ├── it transfers pool token to the position manager
+        ├── it transfers token to the position manager
         ├── it transfers currency to the position manager
         └── it calls modifyLiquidities with the plan with zero value and the current block timestamp
