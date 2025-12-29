@@ -1,6 +1,8 @@
 OnTokensReceivedTest
 ├── when tokens received is LT supply
-│   └── it reverts with {InvalidAmountReceived}
+│   ├── it reverts with {InvalidAmountReceived}
+│   └── when auction already created
+│       └── it reverts with {AuctionAlreadyCreated}
 └── when tokens received is GTE supply
     ├── it deploys an auction via the factory
     ├── it emits {AuctionCreated}

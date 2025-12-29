@@ -118,6 +118,10 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
+        if (address(auction) != address(0)) {
+            revert AuctionAlreadyCreated();
+        }
+
         uint128 auctionSupply = totalSupply - reserveSupply;
 
         IContinuousClearingAuction _auction = IContinuousClearingAuction(
@@ -334,7 +338,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         bytes memory plan
     ) internal {
         // Transfer tokens to position manager
-        Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
+        Currency.wrap(getPoolToken()).transfer(address(positionManager), tokenTransferAmount);
+
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
             positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp);

@@ -35,10 +35,30 @@ abstract contract OnTokensReceivedTest is BttBase {
         lbp.onTokensReceived();
     }
 
-    function test_WhenTokensReceivedGTETotalSupply(
-        FuzzConstructorParameters memory _parameters,
-        uint256 _tokensReceived
-    ) public {
+    function test_WhenAuctionAlreadyCreated(FuzzConstructorParameters memory _parameters, uint256 _tokensReceived)
+        public
+    {
+        // it reverts with {AuctionAlreadyCreated}
+
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        deal(address(token), address(liquidityLauncher), type(uint256).max);
+        _deployStrategy(_parameters);
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        lbp.onTokensReceived();
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionAlreadyCreated.selector));
+        lbp.onTokensReceived();
+    }
+
+    function test_WhenTokensReceivedGTETotalSupply(FuzzConstructorParameters memory _parameters) public {
         // it deploys an auction via the factory
         // it emits {AuctionCreated}
         // it sets the auction to the correct address
@@ -47,7 +67,6 @@ abstract contract OnTokensReceivedTest is BttBase {
         _deployMockToken(_parameters.totalSupply);
 
         deal(address(token), address(liquidityLauncher), type(uint256).max);
-        vm.assume(_tokensReceived >= _parameters.totalSupply);
 
         _deployStrategy(_parameters);
 
@@ -58,7 +77,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         );
 
         vm.prank(address(liquidityLauncher));
-        token.transfer(address(lbp), _tokensReceived);
+        token.transfer(address(lbp), _parameters.totalSupply);
 
         vm.expectEmit(true, true, true, true);
         emit ILBPStrategyBase.AuctionCreated(auctionAddress);
