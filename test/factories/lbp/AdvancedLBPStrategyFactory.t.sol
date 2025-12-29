@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {LBPStrategyBasicFactory} from "@lbp/factories/LBPStrategyBasicFactory.sol";
-import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {AdvancedLBPStrategyFactory} from "@lbp/factories/AdvancedLBPStrategyFactory.sol";
+import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
 import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -19,14 +19,14 @@ import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/Auctio
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 
-contract LBPStrategyBasicFactoryTest is Test {
+contract AdvancedLBPStrategyFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
 
     uint128 constant TOTAL_SUPPLY = 1000e18;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
-    LBPStrategyBasicFactory public factory;
+    AdvancedLBPStrategyFactory public factory;
     MockERC20 token;
     LiquidityLauncher liquidityLauncher;
     ContinuousClearingAuctionFactory auctionFactory;
@@ -35,7 +35,7 @@ contract LBPStrategyBasicFactoryTest is Test {
 
     function setUp() public {
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), 23097193);
-        factory = new LBPStrategyBasicFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
+        factory = new AdvancedLBPStrategyFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(liquidityLauncher));
         auctionFactory = new ContinuousClearingAuctionFactory();
@@ -49,7 +49,8 @@ contract LBPStrategyBasicFactoryTest is Test {
             auctionFactory: address(auctionFactory),
             tokenSplitToAuction: 5000,
             sweepBlock: uint64(block.number + 102),
-            operator: address(this)
+            operator: address(this),
+            maxCurrencyAmountForLP: type(uint128).max
         });
 
         auctionParams = abi.encode(
@@ -74,7 +75,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         // uncomment to see the initCodeHash
         // bytes32 initCodeHash = keccak256(
         //     abi.encodePacked(
-        //         type(LBPStrategyBasic).creationCode,
+        //         type(AdvancedLBPStrategy).creationCode,
         //         abi.encode(
         //             address(token),
         //             TOTAL_SUPPLY,
@@ -96,7 +97,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         );
         vm.expectEmit(true, true, true, true);
         emit IDistributionStrategy.DistributionInitialized(expectedAddress, address(token), TOTAL_SUPPLY);
-        LBPStrategyBasic lbp = LBPStrategyBasic(
+        AdvancedLBPStrategy lbp = AdvancedLBPStrategy(
             payable(address(
                     factory.initializeDistribution(
                         address(token),
@@ -110,7 +111,7 @@ contract LBPStrategyBasicFactoryTest is Test {
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
         assertEq(lbp.token(), address(token));
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
-        assertEq(address(LBPStrategyBasic(payable(address(lbp))).poolManager()), POOL_MANAGER);
+        assertEq(address(AdvancedLBPStrategy(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), address(3));
         assertEq(lbp.migrationBlock(), block.number + 101);
         assertEq(lbp.poolLPFee(), 500);

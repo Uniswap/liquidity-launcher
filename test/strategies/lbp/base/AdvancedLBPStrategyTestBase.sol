@@ -3,14 +3,14 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
-import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
 import {MigratorParameters} from "@lbp/strategies/LBPStrategyBase.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {LBPStrategyBasicNoValidation} from "../../../mocks/LBPStrategyBasicNoValidation.sol";
+import {AdvancedLBPStrategyNoValidation} from "../../../mocks/AdvancedLBPStrategyNoValidation.sol";
 import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
 import {FullRangeLBPStrategyNoValidation} from "../../../mocks/FullRangeLBPStrategyNoValidation.sol";
 import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
@@ -26,7 +26,7 @@ import {ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.s
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
-abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
+abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
     using FixedPointMathLib for *;
 
@@ -36,6 +36,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
     uint256 constant FORK_BLOCK = 23097193;
     uint256 public constant FLOOR_PRICE = 1000 << FixedPoint96.RESOLUTION;
     uint256 public constant TICK_SPACING = 100 << FixedPoint96.RESOLUTION;
+    uint128 constant DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP = type(uint128).max;
 
     // Test token address (make it > address(0) but < DAI)
     address constant TEST_TOKEN_ADDRESS = 0x1111111111111111111111111111111111111111;
@@ -60,7 +61,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         _setupContracts();
         _setupDefaultMigratorParams();
         _setupDefaultAuctionParams();
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         _verifyInitialState();
     }
 
@@ -82,7 +83,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator // operator (receive function for checking ETH balance)
+            testOperator, // operator (receive function for checking ETH balance)
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP // maxCurrencyAmountForLP
         );
     }
 
@@ -93,31 +95,27 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         deal(address(token), address(liquidityLauncher), totalSupply);
     }
 
-    function _deployLBPStrategy(
-        uint128 totalSupply,
-        bool createOneSidedTokenPosition,
-        bool createOneSidedCurrencyPosition
-    ) internal {
+    function _deployLBPStrategy(uint128 totalSupply) internal {
         _setUpToken(totalSupply);
         // Get hook address with BEFORE_INITIALIZE permission
         address hookAddress = address(
             uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | Hooks.BEFORE_INITIALIZE_FLAG)
         );
-        lbp = LBPStrategyBasic(payable(hookAddress));
+        lbp = AdvancedLBPStrategy(payable(hookAddress));
         // Deploy implementation
-        impl = new LBPStrategyBasicNoValidation(
+        impl = new AdvancedLBPStrategyNoValidation(
             address(token),
             totalSupply,
             migratorParams,
             auctionParams,
             IPositionManager(POSITION_MANAGER),
             IPoolManager(POOL_MANAGER),
-            createOneSidedTokenPosition,
-            createOneSidedCurrencyPosition
+            true,
+            true
         );
         vm.etch(address(lbp), address(impl).code);
 
-        LBPStrategyBasicNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
+        AdvancedLBPStrategyNoValidation(payable(address(lbp))).setAuctionParameters(auctionParams);
     }
 
     function _deployFullRangeLBPStrategy(uint128 totalSupply) internal {
@@ -144,12 +142,13 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         assertEq(lbp.currency(), migratorParams.currency);
         assertEq(lbp.totalSupply(), DEFAULT_TOTAL_SUPPLY);
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
-        assertEq(address(LBPStrategyBasic(payable(address(lbp))).poolManager()), POOL_MANAGER);
+        assertEq(address(AdvancedLBPStrategy(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), migratorParams.positionRecipient);
         assertEq(lbp.migrationBlock(), uint64(block.number + 500));
         assertEq(address(lbp.auction()), address(0));
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
         assertEq(lbp.poolTickSpacing(), migratorParams.poolTickSpacing);
+        assertEq(lbp.maxCurrencyAmountForLP(), migratorParams.maxCurrencyAmountForLP);
         assertEq(lbp.auctionParameters(), auctionParams);
     }
 
@@ -162,7 +161,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
         address positionRecipient,
         uint64 migrationBlock,
         uint64 sweepBlock,
-        address operator
+        address operator,
+        uint128 maxCurrencyAmountForLP
     ) internal view returns (MigratorParameters memory) {
         return MigratorParameters({
             currency: currency,
@@ -173,7 +173,8 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             positionRecipient: positionRecipient,
             migrationBlock: migrationBlock,
             sweepBlock: sweepBlock,
-            operator: operator
+            operator: operator,
+            maxCurrencyAmountForLP: maxCurrencyAmountForLP
         });
     }
 
@@ -219,8 +220,7 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
 
     // Helper to setup with custom total supply
     function setupWithSupply(uint128 totalSupply) internal {
-        // Use the default one-sided position settings (true, true)
-        _deployLBPStrategy(totalSupply, true, true);
+        _deployLBPStrategy(totalSupply);
     }
 
     // Helper to setup with custom currency (e.g., DAI)
@@ -233,11 +233,11 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             migratorParams.positionRecipient,
             migratorParams.migrationBlock,
             migratorParams.sweepBlock,
-            migratorParams.operator
+            migratorParams.operator,
+            migratorParams.maxCurrencyAmountForLP
         );
         createAuctionParamsWithCurrency(currency);
-        // Use the default one-sided position settings (true, true)
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
     }
 
     // Helper to setup with custom total supply and token split
@@ -250,10 +250,11 @@ abstract contract LBPStrategyBasicTestBase is LBPTestHelpers {
             address(3), // position recipient (same as default),
             uint64(block.number + 500), // migration block
             uint64(block.number + 1_000), // sweep block
-            testOperator // operator
+            testOperator, // operator
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP // maxCurrencyAmountForLP
         );
         createAuctionParamsWithCurrency(currency);
-        _deployLBPStrategy(totalSupply, true, true);
+        _deployLBPStrategy(totalSupply);
     }
 
     // ============ Core Bid Submission Helpers ============

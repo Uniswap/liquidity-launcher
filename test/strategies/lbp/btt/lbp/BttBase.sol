@@ -75,7 +75,6 @@ abstract contract BttBase is LBPTestHelpers {
     /// @dev Override and return the constructor arguments for the contract
     function _encodeConstructorArgs(FuzzConstructorParameters memory _parameters)
         internal
-        view
         virtual
         returns (bytes memory)
     {
@@ -140,6 +139,7 @@ abstract contract BttBase is LBPTestHelpers {
         _mParameters.poolLPFee = uint24(_bound(_mParameters.poolLPFee, 1, LPFeeLibrary.MAX_LP_FEE - 1));
         _mParameters.auctionFactory = address(auctionFactory);
         _mParameters.operator = testOperator;
+        _mParameters.maxCurrencyAmountForLP = uint128(_bound(_mParameters.maxCurrencyAmountForLP, 1, type(uint128).max));
         vm.assume(
             _mParameters.positionRecipient != address(0) && _mParameters.positionRecipient != ActionConstants.MSG_SENDER
                 && _mParameters.positionRecipient != ActionConstants.ADDRESS_THIS

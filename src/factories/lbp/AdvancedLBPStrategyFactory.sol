@@ -3,14 +3,14 @@ pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {LBPStrategyBasic} from "@lbp/strategies/LBPStrategyBasic.sol";
+import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
 import {MigratorParameters} from "../../types/MigratorParameters.sol";
 import {StrategyFactory} from "../StrategyFactory.sol";
 
-/// @title LBPStrategyBasicFactory
-/// @notice Factory for the LBPStrategyBasic contract
+/// @title AdvancedLBPStrategyFactory
+/// @notice Factory for the AdvancedLBPStrategy contract
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategyBasicFactory is StrategyFactory {
+contract AdvancedLBPStrategyFactory is StrategyFactory {
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
     /// @notice The pool manager that will be used to create the pool
@@ -39,7 +39,7 @@ contract LBPStrategyBasicFactory is StrategyFactory {
         ) = abi.decode(configData, (MigratorParameters, bytes, bool, bool));
 
         deployedBytecode = abi.encodePacked(
-            type(LBPStrategyBasic).creationCode,
+            type(AdvancedLBPStrategy).creationCode,
             abi.encode(
                 token,
                 uint128(totalSupply),

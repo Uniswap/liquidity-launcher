@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {LBPStrategyBasicTestBase} from "./base/LBPStrategyBasicTestBase.sol";
+import {AdvancedLBPStrategyTestBase} from "./base/AdvancedLBPStrategyTestBase.sol";
 import "./helpers/LBPTestHelpers.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
@@ -49,7 +49,7 @@ contract MockAuctionWithERC20Sweep {
     }
 }
 
-contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
+contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
     using TokenDistribution for uint128;
     using TokenPricing for uint256;
     uint256 constant Q192 = 2 ** 192;
@@ -378,7 +378,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -452,7 +453,8 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
         _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
@@ -602,9 +604,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            testOperator
+            testOperator,
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
         IContinuousClearingAuction realAuction = lbp.auction();
@@ -687,9 +690,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3), // position recipient
             uint64(block.number + 500),
             uint64(block.number + 1_000), // sweep block
-            address(this) // operator
+            address(this), // operator
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -770,9 +774,10 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
             address(3),
             uint64(block.number + 500),
             uint64(block.number + 1_000),
-            address(this)
+            address(this),
+            DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
-        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY, true, true);
+        _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
@@ -876,7 +881,7 @@ contract LBPStrategyBasicMigrationTest is LBPStrategyBasicTestBase {
         uint256 priceX192 = clearingPrice.convertToPriceX192(true);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (uint128 initialTokenAmount,, uint128 initialCurrencyAmount) = priceX192.calculateAmounts(
+        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) = priceX192.calculateAmounts(
             uint128(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
             true,
             totalSupply.calculateReserveSupply(tokenSplit)

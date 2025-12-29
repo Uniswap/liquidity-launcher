@@ -21,6 +21,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
 import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
@@ -37,7 +38,7 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 /// @custom:security-contact security@uniswap.org
 abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     using CurrencyLibrary for Currency;
-    using StrategyPlanner for BasePositionParams;
+    using StrategyPlanner for *;
     using TokenDistribution for uint128;
     using TokenPricing for uint256;
 
@@ -55,6 +56,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     uint128 public immutable totalSupply;
     /// @notice The remaining supply of the token that was not sent to the auction
     uint128 public immutable reserveSupply;
+    /// @notice The maximum amount of currency that can be used to mint the initial liquidity position in the v4 pool
+    uint128 public immutable maxCurrencyAmountForLP;
     /// @notice The address that will receive the position
     address public immutable positionRecipient;
     /// @notice The block number at which migration is allowed
@@ -92,6 +95,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
         reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
+        maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;
@@ -269,26 +273,34 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() internal view returns (MigrationData memory data) {
-        uint128 currencyRaised = uint128(auction.currencyRaised()); // already validated to be less than or equal to type(uint128).max
+    function _prepareMigrationData() internal view returns (MigrationData memory) {
+        // Both currencyRaised and maxCurrencyAmountForLP are validated to be less than or equal to type(uint128).max
+        uint128 currencyAmount = uint128(FixedPointMathLib.min(auction.currencyRaised(), maxCurrencyAmountForLP));
         bool currencyIsCurrency0 = _currencyIsCurrency0();
 
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currencyIsCurrency0);
+        uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        data.sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
+        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
+            priceX192.calculateAmounts(currencyAmount, currencyIsCurrency0, reserveSupply);
 
-        (data.initialTokenAmount, data.leftoverCurrency, data.initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyRaised, currencyIsCurrency0, reserveSupply);
+        uint128 leftoverCurrency = currencyAmount - initialCurrencyAmount;
 
-        data.liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            data.sqrtPriceX96,
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currencyIsCurrency0 ? data.initialCurrencyAmount : data.initialTokenAmount,
-            currencyIsCurrency0 ? data.initialTokenAmount : data.initialCurrencyAmount
+            currencyIsCurrency0 ? initialCurrencyAmount : initialTokenAmount,
+            currencyIsCurrency0 ? initialTokenAmount : initialCurrencyAmount
         );
 
-        return data;
+        return MigrationData({
+            sqrtPriceX96: sqrtPriceX96,
+            initialTokenAmount: initialTokenAmount,
+            initialCurrencyAmount: initialCurrencyAmount,
+            leftoverCurrency: leftoverCurrency,
+            liquidity: liquidity
+        });
     }
 
     /// @notice Initializes the pool with the calculated price
@@ -333,10 +345,26 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         }
     }
 
+    /// @notice Creates the base position parameters
+    /// @param data Migration data with all necessary parameters
+    /// @return baseParams The base position parameters
+    function _basePositionParams(MigrationData memory data) internal view virtual returns (BasePositionParams memory) {
+        return BasePositionParams({
+            currency: currency,
+            poolToken: getPoolToken(),
+            poolLPFee: poolLPFee,
+            poolTickSpacing: poolTickSpacing,
+            initialSqrtPriceX96: data.sqrtPriceX96,
+            liquidity: data.liquidity,
+            positionRecipient: positionRecipient,
+            hooks: IHooks(address(this))
+        });
+    }
+
     /// @notice Creates the position plan based on migration data
     /// @param data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal view virtual returns (bytes memory plan);
+    function _createPositionPlan(MigrationData memory data) internal virtual returns (bytes memory plan);
 
     /// @notice Calculates the amount of tokens to transfer
     /// @param data Migration data
