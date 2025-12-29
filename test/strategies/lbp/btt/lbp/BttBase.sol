@@ -75,7 +75,6 @@ abstract contract BttBase is LBPTestHelpers {
     /// @dev Override and return the constructor arguments for the contract
     function _encodeConstructorArgs(FuzzConstructorParameters memory _parameters)
         internal
-        view
         virtual
         returns (bytes memory)
     {
