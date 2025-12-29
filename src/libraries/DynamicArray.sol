@@ -18,13 +18,20 @@ library DynamicArray {
     uint256 constant TRANSIENT_LENGTH_SLOT = 0x3b121418eecc62b0b37a09983886b735e81c86dfb56f33d6782c650a44453f5e;
 
     /// @notice Maximum size of the params array
+    /// @dev Can be extended to type(uint24).max if desired which will increase initialization gas
     /// @dev Supports full range (mint + settle + settle) and two one sided positions (mint + mint) and take pair
-    uint256 constant MAX_PARAMS_SIZE = 6;
+    uint24 constant MAX_PARAMS_SIZE = 6;
+
+    /// @notice Mask to extract the length of the params array (type(uint24).max)
+    uint24 constant LENGTH_MASK = 0xffffff;
+
+    /// @notice Mask to extract the MSB which is used to store whether an array has been initialized
+    uint256 constant INITIALIZED_MASK = 1 << 255;
 
     /// @notice Transiently gets the actual length of the params array
-    function getLength() internal view returns (uint256 length) {
+    function getLength() internal view returns (uint24 length) {
         assembly {
-            length := tload(TRANSIENT_LENGTH_SLOT)
+            length := and(tload(TRANSIENT_LENGTH_SLOT), LENGTH_MASK)
         }
     }
 
@@ -32,11 +39,11 @@ library DynamicArray {
     function init() internal returns (bytes[] memory params) {
         params = new bytes[](MAX_PARAMS_SIZE);
         assembly {
-            if gt(tload(TRANSIENT_LENGTH_SLOT), 0) {
+            if gt(and(tload(TRANSIENT_LENGTH_SLOT), INITIALIZED_MASK), 0) {
                 mstore(0x00, 0x0dc149f0) // AlreadyInitialized() selector
                 revert(0x1c, 0x04)
             }
-            tstore(TRANSIENT_LENGTH_SLOT, 0)
+            tstore(TRANSIENT_LENGTH_SLOT, INITIALIZED_MASK)
         }
     }
 
@@ -45,7 +52,7 @@ library DynamicArray {
     /// @param param The parameter to append
     function append(bytes[] memory params, bytes memory param) internal returns (bytes[] memory) {
         assembly {
-            let length := tload(TRANSIENT_LENGTH_SLOT)
+            let length := and(tload(TRANSIENT_LENGTH_SLOT), LENGTH_MASK)
             if eq(length, MAX_PARAMS_SIZE) {
                 mstore(0x00, 0x8ecbb27e) // LengthOverflow() selector
                 revert(0x1c, 0x04)
@@ -53,7 +60,7 @@ library DynamicArray {
             // Calculate slot: params + 0x20 (skip length) + length * 0x20
             let slot := add(add(params, 0x20), mul(length, 0x20))
             mstore(slot, param) // Store pointer to param
-            tstore(TRANSIENT_LENGTH_SLOT, add(length, 1))
+            tstore(TRANSIENT_LENGTH_SLOT, or(add(length, 1), INITIALIZED_MASK))
         }
         return params;
     }
@@ -61,7 +68,7 @@ library DynamicArray {
     /// @notice Truncates parameters array to the actual length
     /// @param params The parameters to truncate. This MUST be created via `init()`
     function truncate(bytes[] memory params) internal view returns (bytes[] memory) {
-        uint256 length = getLength();
+        uint24 length = getLength();
         assembly {
             mstore(params, length)
         }
