@@ -16,7 +16,7 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
         IPoolManager _poolManager
     ) FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {}
 
-    function prepareMigrationData() external returns (MigrationData memory) {
+    function prepareMigrationData() external view returns (MigrationData memory) {
         return _prepareMigrationData();
     }
 
@@ -24,11 +24,11 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
         return _createPositionPlan(data);
     }
 
-    function getTokenTransferAmount(MigrationData memory data) external view returns (uint128) {
+    function getTokenTransferAmount(MigrationData memory data) external pure returns (uint128) {
         return _getTokenTransferAmount(data);
     }
 
-    function getCurrencyTransferAmount(MigrationData memory data) external view returns (uint128) {
+    function getCurrencyTransferAmount(MigrationData memory data) external pure returns (uint128) {
         return _getCurrencyTransferAmount(data);
     }
 

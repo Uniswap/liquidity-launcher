@@ -36,7 +36,7 @@ contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTe
         )
     {}
 
-    function prepareMigrationData() external returns (MigrationData memory) {
+    function prepareMigrationData() external view returns (MigrationData memory) {
         return _prepareMigrationData();
     }
 
@@ -101,6 +101,7 @@ contract AdvancedLBPStrategyTest is BttTests {
     /// @inheritdoc BttBase
     function _encodeConstructorArgs(FuzzConstructorParameters memory _parameters)
         internal
+        view
         override
         returns (bytes memory)
     {
@@ -363,7 +364,6 @@ contract AdvancedLBPStrategyTest is BttTests {
         address poolToken = ILBPStrategyTestExtension(address(lbp)).getPoolToken();
 
         uint256 posmTokenBalanceBefore = Currency.wrap(poolToken).balanceOf(positionManager);
-        uint256 posmCurrencyBalanceBefore = positionManager.balance;
 
         vm.mockCall(
             positionManager,

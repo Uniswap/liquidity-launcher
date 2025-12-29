@@ -31,7 +31,7 @@ contract VirtualGovernedLBPStrategyTestExtension is VirtualGovernedLBPStrategy, 
         )
     {}
 
-    function prepareMigrationData() external returns (MigrationData memory) {
+    function prepareMigrationData() external view returns (MigrationData memory) {
         return _prepareMigrationData();
     }
 
@@ -39,11 +39,11 @@ contract VirtualGovernedLBPStrategyTestExtension is VirtualGovernedLBPStrategy, 
         return _createPositionPlan(data);
     }
 
-    function getTokenTransferAmount(MigrationData memory data) external view returns (uint128) {
+    function getTokenTransferAmount(MigrationData memory data) external pure returns (uint128) {
         return _getTokenTransferAmount(data);
     }
 
-    function getCurrencyTransferAmount(MigrationData memory data) external view returns (uint128) {
+    function getCurrencyTransferAmount(MigrationData memory data) external pure returns (uint128) {
         return _getCurrencyTransferAmount(data);
     }
 
@@ -65,23 +65,6 @@ contract VirtualGovernedLBPStrategyTestExtension is VirtualGovernedLBPStrategy, 
 contract VirtualGovernedLBPStrategyTest is BttTests {
     // TODO: dummy governance address
     address governance = makeAddr("governance");
-
-    address immutable UNDERLYING_TOKEN;
-    address immutable MOCK_VIRTUAL_TOKEN;
-
-    constructor() {
-        UNDERLYING_TOKEN = makeAddr("underlyingToken");
-        MOCK_VIRTUAL_TOKEN = makeAddr("mockVirtualToken");
-    }
-
-    function _deployMockVirtualToken(uint128 _totalSupply) internal {
-        deployCodeTo("MockERC20", abi.encode("Test Token", "TEST", _totalSupply, LIQUIDITY_LAUNCHER), UNDERLYING_TOKEN);
-        deployCodeTo(
-            "MockVirtualERC20",
-            abi.encode("Virtual Token", "VTKN", _totalSupply, LIQUIDITY_LAUNCHER, UNDERLYING_TOKEN),
-            MOCK_VIRTUAL_TOKEN
-        );
-    }
 
     /// @inheritdoc BttBase
     function _contractName() internal pure override returns (string memory) {
@@ -142,7 +125,6 @@ contract VirtualGovernedLBPStrategyTest is BttTests {
         address poolToken = ILBPStrategyTestExtension(address(lbp)).getPoolToken();
 
         uint256 posmTokenBalanceBefore = Currency.wrap(poolToken).balanceOf(positionManager);
-        uint256 posmCurrencyBalanceBefore = positionManager.balance;
 
         vm.mockCall(
             positionManager,

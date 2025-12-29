@@ -35,9 +35,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         lbp.onTokensReceived();
     }
 
-    function test_WhenAuctionAlreadyCreated(FuzzConstructorParameters memory _parameters, uint256 _tokensReceived)
-        public
-    {
+    function test_WhenAuctionAlreadyCreated(FuzzConstructorParameters memory _parameters) public {
         // it reverts with {AuctionAlreadyCreated}
 
         _parameters = _toValidConstructorParameters(_parameters);
