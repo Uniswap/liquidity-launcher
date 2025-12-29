@@ -187,7 +187,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters memory migratorParams) private pure {
+    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters memory migratorParams) internal pure {
         // sweep block validation (cannot be before or equal to the migration block)
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
@@ -228,7 +228,10 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     ///      and that the auction concludes before the configured migration block.
     /// @param auctionParams The auction parameters that will be used to create the auction
     /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams) private pure {
+    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
+        internal
+        pure
+    {
         AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
         if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
             revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
@@ -240,7 +243,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() private {
+    function _validateMigration() internal {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
@@ -291,7 +294,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     /// @notice Initializes the pool with the calculated price
     /// @param data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
-    function _initializePool(MigrationData memory data) private returns (PoolKey memory key) {
+    function _initializePool(MigrationData memory data) internal returns (PoolKey memory key) {
         key = PoolKey({
             currency0: _currency0(),
             currency1: _currency1(),
@@ -317,7 +320,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         uint128 tokenTransferAmount,
         uint128 currencyTransferAmount,
         bytes memory plan
-    ) private {
+    ) internal {
         // Transfer tokens to position manager
         Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
         if (Currency.wrap(currency).isAddressZero()) {
