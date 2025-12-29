@@ -10,4 +10,10 @@ interface ILBPStrategyTestExtension {
     function createPositionPlan(MigrationData memory data) external returns (bytes memory);
     function getTokenTransferAmount(MigrationData memory data) external view returns (uint128);
     function getCurrencyTransferAmount(MigrationData memory data) external view returns (uint128);
+    function getPoolToken() external view returns (address);
+    function transferAssetsAndExecutePlan(
+        uint128 tokenTransferAmount,
+        uint128 currencyTransferAmount,
+        bytes memory plan
+    ) external;
 }

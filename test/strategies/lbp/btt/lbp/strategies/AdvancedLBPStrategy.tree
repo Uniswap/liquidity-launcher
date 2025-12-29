@@ -1,0 +1,29 @@
+AdvancedLBPStrategyTest
+├── createPositionPlan
+│   ├── When Create One Sided Token Position And Create One Sided Currency Position Are False
+│   │   ├── it creates a full range position
+│   │   └── it adds a take pair action and params
+│   ├── when create one sided token position is true
+│   │   ├── When Reserve Supply Is Greater Than Initial Token Amount
+│   │   │   └── it does not create a one sided token position
+│   │   └── when Reserve Supply Is Greater Than Initial Token Amount
+│   │       └── when Reserve Supply Is Less Than Or Equal To Initial Token Amount
+│   │           ├── it creates a full range position
+│   │           ├── it creates a one sided token position
+│   │           └── it adds a take pair action and params
+│   └── When Create One Sided Currency Position Is True
+│       ├── when Leftover Currency Is Equal To 0
+│       │   ├── it creates a full range position
+│       │   └── it does not create a one sided currency position
+│       └── when Leftover Currency Is Greater Than 0
+│           ├── it creates a full range position
+│           ├── it creates a one sided currency position
+│           └── it adds a take pair action and params
+└── transferAssetsAndExecutePlan
+    ├── when currency is native
+    │   ├── it transfers pool token to the position manager
+    │   └── it calls modifyLiquidities with the plan with value and the current block timestamp
+    └── when currency is not native
+        ├── it transfers pool token to the position manager
+        ├── it transfers currency to the position manager
+        └── it calls modifyLiquidities with the plan with zero value and the current block timestamp

@@ -108,7 +108,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Gets the address of the token that will be used to create the pool
     /// @return The address of the token that will be used to create the pool
-    function getPoolToken() internal view virtual returns (address) {
+    function _getPoolToken() internal view virtual returns (address) {
         return token;
     }
 
@@ -179,17 +179,17 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Get the currency0 of the pool
     function _currency0() internal view returns (Currency) {
-        return Currency.wrap(_currencyIsCurrency0() ? currency : getPoolToken());
+        return Currency.wrap(_currencyIsCurrency0() ? currency : _getPoolToken());
     }
 
     /// @notice Get the currency1 of the pool
     function _currency1() internal view returns (Currency) {
-        return Currency.wrap(_currencyIsCurrency0() ? getPoolToken() : currency);
+        return Currency.wrap(_currencyIsCurrency0() ? _getPoolToken() : currency);
     }
 
     /// @notice Returns true if the currency is currency0 of the pool
     function _currencyIsCurrency0() internal view returns (bool) {
-        return currency < getPoolToken();
+        return currency < _getPoolToken();
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
@@ -338,7 +338,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         bytes memory plan
     ) internal {
         // Transfer tokens to position manager
-        Currency.wrap(getPoolToken()).transfer(address(positionManager), tokenTransferAmount);
+        Currency.wrap(_getPoolToken()).transfer(address(positionManager), tokenTransferAmount);
 
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
@@ -356,7 +356,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     function _basePositionParams(MigrationData memory data) internal view virtual returns (BasePositionParams memory) {
         return BasePositionParams({
             currency: currency,
-            poolToken: getPoolToken(),
+            poolToken: _getPoolToken(),
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             initialSqrtPriceX96: data.sqrtPriceX96,

@@ -8,8 +8,12 @@ import {ILBPStrategyTestExtension} from "./ILBPStrategyTestExtension.sol";
 import {Plan} from "src/libraries/StrategyPlanner.sol";
 import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
 contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTestExtension {
+    using CurrencyLibrary for Currency;
+
     constructor(
         address _token,
         uint128 _totalSupply,
@@ -46,6 +50,18 @@ contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTe
 
     function getCurrencyTransferAmount(MigrationData memory data) external view returns (uint128) {
         return _getCurrencyTransferAmount(data);
+    }
+
+    function getPoolToken() external view returns (address) {
+        return _getPoolToken();
+    }
+
+    function transferAssetsAndExecutePlan(
+        uint128 tokenTransferAmount,
+        uint128 currencyTransferAmount,
+        bytes memory plan
+    ) external {
+        return _transferAssetsAndExecutePlan(tokenTransferAmount, currencyTransferAmount, plan);
     }
 }
 
@@ -323,5 +339,89 @@ contract AdvancedLBPStrategyTest is BttTests {
         assertEq(actions.length, 3 + 1 + 1 + 1);
         assertEq(actions, ActionsBuilder.init().addMint().addSettle().addSettle().addMint().addMint().addTakePair());
         assertEq(params.length, 3 + 1 + 1 + 1);
+    }
+
+    function test_transferAssetsAndExecutePlan_WhenCurrencyIsNative(
+        FuzzConstructorParameters memory _parameters,
+        uint128 _tokenAmount,
+        uint128 _currencyAmount
+    ) public givenCreateOneSidedTokenPositionIsFalse givenCreateOneSidedCurrencyPositionIsFalse {
+        // it transfers pool token to the position manager
+        // it calls modifyLiquidities with the plan with non zero value and the current block timestamp
+
+        _parameters = _toValidConstructorParameters(_parameters, true);
+        _deployMockToken(_parameters.totalSupply);
+
+        _deployStrategy(_parameters);
+        deal(address(token), address(lbp), _parameters.totalSupply);
+        _tokenAmount = uint128(_bound(_tokenAmount, 1, _parameters.totalSupply));
+
+        bytes memory mockPlan = bytes("");
+
+        address positionManager = address(AdvancedLBPStrategy(payable(address(lbp))).positionManager());
+
+        address poolToken = ILBPStrategyTestExtension(address(lbp)).getPoolToken();
+
+        uint256 posmTokenBalanceBefore = Currency.wrap(poolToken).balanceOf(positionManager);
+        uint256 posmCurrencyBalanceBefore = positionManager.balance;
+
+        vm.mockCall(
+            positionManager,
+            _currencyAmount,
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mockPlan, block.timestamp),
+            bytes("")
+        );
+        vm.expectCall(
+            positionManager,
+            _currencyAmount,
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mockPlan, block.timestamp)
+        );
+        ILBPStrategyTestExtension(address(lbp)).transferAssetsAndExecutePlan(_tokenAmount, _currencyAmount, mockPlan);
+
+        assertEq(Currency.wrap(poolToken).balanceOf(positionManager), posmTokenBalanceBefore + _tokenAmount);
+    }
+
+    function test_transferAssetsAndExecutePlan_WhenCurrencyIsNotNative(
+        FuzzConstructorParameters memory _parameters,
+        uint128 _tokenAmount,
+        uint128 _currencyAmount
+    ) public givenCreateOneSidedTokenPositionIsFalse givenCreateOneSidedCurrencyPositionIsFalse {
+        // it transfers pool token to the position manager
+        // it transfers currency to the position manager
+        // it calls modifyLiquidities with the plan with zero value and the current block timestamp
+
+        _parameters = _toValidConstructorParameters(_parameters, false);
+        _deployMockToken(_parameters.totalSupply);
+        _deployMockCurrency(_parameters.totalSupply);
+
+        address currency = _parameters.migratorParams.currency;
+
+        _deployStrategy(_parameters);
+        deal(address(token), address(lbp), _parameters.totalSupply);
+        deal(address(currency), address(lbp), _parameters.totalSupply);
+        _tokenAmount = uint128(_bound(_tokenAmount, 1, _parameters.totalSupply));
+        _currencyAmount = uint128(_bound(_currencyAmount, 1, _parameters.totalSupply));
+
+        bytes memory mockPlan = bytes("");
+
+        address positionManager = address(AdvancedLBPStrategy(payable(address(lbp))).positionManager());
+        address poolToken = ILBPStrategyTestExtension(address(lbp)).getPoolToken();
+
+        uint256 posmTokenBalanceBefore = Currency.wrap(poolToken).balanceOf(positionManager);
+        uint256 posmCurrencyBalanceBefore = Currency.wrap(currency).balanceOf(positionManager);
+
+        vm.mockCall(
+            positionManager,
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mockPlan, block.timestamp),
+            bytes("")
+        );
+        vm.expectCall(
+            positionManager,
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mockPlan, block.timestamp)
+        );
+        ILBPStrategyTestExtension(address(lbp)).transferAssetsAndExecutePlan(_tokenAmount, _currencyAmount, mockPlan);
+
+        assertEq(Currency.wrap(poolToken).balanceOf(positionManager), posmTokenBalanceBefore + _tokenAmount);
+        assertEq(Currency.wrap(currency).balanceOf(positionManager), posmCurrencyBalanceBefore + _currencyAmount);
     }
 }

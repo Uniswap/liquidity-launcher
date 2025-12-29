@@ -31,6 +31,18 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
     function getCurrencyTransferAmount(MigrationData memory data) external view returns (uint128) {
         return _getCurrencyTransferAmount(data);
     }
+
+    function getPoolToken() external view returns (address) {
+        return _getPoolToken();
+    }
+
+    function transferAssetsAndExecutePlan(
+        uint128 tokenTransferAmount,
+        uint128 currencyTransferAmount,
+        bytes memory plan
+    ) external {
+        return _transferAssetsAndExecutePlan(tokenTransferAmount, currencyTransferAmount, plan);
+    }
 }
 
 /// @title FullRangeLBPStrategyTest
