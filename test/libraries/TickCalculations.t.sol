@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {TickCalculations} from "../../src/libraries/TickCalculations.sol";
+import {TickCalculations} from "src/libraries/TickCalculations.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract TickCalculationsHelper is Test {

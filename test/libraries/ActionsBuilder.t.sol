@@ -2,10 +2,10 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {ActionsBuilder} from "../../src/libraries/ActionsBuilder.sol";
-import {FullRangeParams, OneSidedParams} from "../../src/types/PositionTypes.sol";
+import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
+import {FullRangeParams, OneSidedParams} from "src/types/PositionTypes.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {TickBounds} from "../../src/types/PositionTypes.sol";
+import {TickBounds} from "src/types/PositionTypes.sol";
 
 // Test helper contract to expose internal library functions for testing
 contract ActionsBuilderTestHelper {

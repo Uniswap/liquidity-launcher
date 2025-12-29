@@ -1,0 +1,7 @@
+OnTokensReceivedTest
+├── when tokens received is LT supply
+│   └── it reverts with {InvalidAmountReceived}
+└── when tokens received is GTE supply
+    ├── it deploys an auction via the factory
+    ├── it emits {AuctionCreated}
+    └── it sets the auction to the correct address
