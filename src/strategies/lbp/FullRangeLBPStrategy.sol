@@ -36,7 +36,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
 
         plan = plan.planFullRangePosition(
             baseParams,
-            FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount})
+            FullRangeParams({tokenAmount: data.fullRangeTokenAmount, currencyAmount: data.fullRangeCurrencyAmount})
         );
 
         plan = plan.planTakePair(baseParams);
@@ -48,13 +48,13 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @param data Migration data
     /// @return The amount of tokens to transfer to the position manager
     function _getTokenTransferAmount(MigrationData memory data) internal pure override returns (uint128) {
-        return data.initialTokenAmount;
+        return data.fullRangeTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer
     /// @param data Migration data
     /// @return The amount of currency to transfer to the position manager
     function _getCurrencyTransferAmount(MigrationData memory data) internal pure override returns (uint128) {
-        return data.initialCurrencyAmount;
+        return data.fullRangeCurrencyAmount;
     }
 }

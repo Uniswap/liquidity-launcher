@@ -51,7 +51,7 @@ abstract contract OnTokensReceivedTest is BttBase {
 
         _deployStrategy(_parameters);
 
-        uint128 auctionSupply = _parameters.totalSupply - lbp.reserveSupply();
+        uint128 auctionSupply = _parameters.totalSupply - lbp.reserveTokenAmount();
 
         address auctionAddress = auctionFactory.getAuctionAddress(
             address(token), auctionSupply, _parameters.auctionParameters, bytes32(0), address(lbp)

@@ -44,12 +44,12 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
 
         plan = plan.planFullRangePosition(
             baseParams,
-            FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount})
+            FullRangeParams({tokenAmount: data.fullRangeTokenAmount, currencyAmount: data.fullRangeCurrencyAmount})
         );
 
-        if (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount) {
-            // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
-            uint128 amount = reserveSupply - data.initialTokenAmount;
+        if (createOneSidedTokenPosition && reserveTokenAmount > data.fullRangeTokenAmount) {
+            // reserveTokenAmount - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
+            uint128 amount = reserveTokenAmount - data.fullRangeTokenAmount;
             // Create one-sided specific parameters
             OneSidedParams memory oneSidedParams = OneSidedParams({amount: amount, inToken: true});
 
@@ -81,9 +81,9 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @param data Migration data
     /// @return The amount of tokens to transfer
     function _getTokenTransferAmount(MigrationData memory data) internal view override returns (uint128) {
-        return (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount)
-            ? reserveSupply
-            : data.initialTokenAmount;
+        return (createOneSidedTokenPosition && reserveTokenAmount > data.fullRangeTokenAmount)
+            ? reserveTokenAmount
+            : data.fullRangeTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer to the position manager
@@ -91,7 +91,7 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @return The amount of currency to transfer
     function _getCurrencyTransferAmount(MigrationData memory data) internal view override returns (uint128) {
         return (createOneSidedCurrencyPosition && data.leftoverCurrency > 0)
-            ? data.initialCurrencyAmount + data.leftoverCurrency
-            : data.initialCurrencyAmount;
+            ? data.fullRangeCurrencyAmount + data.leftoverCurrency
+            : data.fullRangeCurrencyAmount;
     }
 }
