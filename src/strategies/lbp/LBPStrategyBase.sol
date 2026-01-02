@@ -86,8 +86,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         currency = _migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for initializer
-        //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
-        reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
+        //   e.g. if tokenSplit = 5e6 (50%), then half goes to auction and half is reserved
+        reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplit);
         maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
@@ -191,51 +191,56 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
-    /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters memory migratorParams) internal pure {
+    /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
+    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters memory _migratorParams) internal pure {
         // sweep block validation (cannot be before or equal to the migration block)
-        if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
-            revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
+        if (_migratorParams.sweepBlock <= _migratorParams.migrationBlock) {
+            revert InvalidSweepBlock(_migratorParams.sweepBlock, _migratorParams.migrationBlock);
         }
         // token split validation (cannot be greater than or equal to 100%)
-        else if (migratorParams.tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT) {
-            revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT);
+        else if (_migratorParams.tokenSplit >= TokenDistribution.MAX_TOKEN_SPLIT) {
+            revert TokenSplitTooHigh(_migratorParams.tokenSplit, TokenDistribution.MAX_TOKEN_SPLIT);
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         else if (
-            migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
-                || migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
+            _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
+                || _migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
         ) {
             revert InvalidTickSpacing(
-                migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
+                _migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
             );
         }
         // fee validation (cannot be greater than the v4 max fee)
-        else if (migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            revert InvalidFee(migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
+        else if (_migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+            revert InvalidFee(_migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
         }
         // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
         else if (
-            migratorParams.positionRecipient == address(0)
-                || migratorParams.positionRecipient == ActionConstants.MSG_SENDER
-                || migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
+            _migratorParams.positionRecipient == address(0)
+                || _migratorParams.positionRecipient == ActionConstants.MSG_SENDER
+                || _migratorParams.positionRecipient == ActionConstants.ADDRESS_THIS
         ) {
-            revert InvalidPositionRecipient(migratorParams.positionRecipient);
+            revert InvalidPositionRecipient(_migratorParams.positionRecipient);
         }
-        // auction supply validation (cannot be zero)
-        else if (_totalSupply.calculateAuctionSupply(migratorParams.tokenSplitToAuction) == 0) {
-            revert AuctionSupplyIsZero();
+        // Require the split of tokens to the initializer to be greater than zero
+        else if (_totalSupply.calculateTokenSplit(_migratorParams.tokenSplit) == 0) {
+            revert TokenSplitIsZero();
         }
     }
 
     /// @notice Validates that the deployed initializer parameters are valid for this strategy implementation
     /// @dev MUST be called in the same transaction as the deployment of the initializer
     function _validateInitializerParams(ILBPInitializer _initializer) internal view virtual {
-        if (_initializer.fundsRecipient() != ActionConstants.MSG_SENDER) {
-            revert InvalidFundsRecipient(_initializer.fundsRecipient(), ActionConstants.MSG_SENDER);
-        } else if (_initializer.endBlock() >= migrationBlock) {
+        // Require this contract to receive the raised currency from the initializer
+        if (_initializer.fundsRecipient() != address(this)) {
+            revert InvalidFundsRecipient(_initializer.fundsRecipient(), address(this));
+        }
+        // Require `migrationBlock` to be after the conclusion of the initialization step
+        else if (_initializer.endBlock() >= migrationBlock) {
             revert InvalidEndBlock(_initializer.endBlock(), migrationBlock);
-        } else if (_initializer.currency() != currency) {
+        }
+        // Require the currency used by the initializer to be the same as the currency used by this strategy
+        else if (_initializer.currency() != currency) {
             revert InvalidCurrency(_initializer.currency(), currency);
         }
     }
@@ -299,9 +304,9 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @param data Migration data containing the sqrt price
+    /// @param _data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
-    function _initializePool(MigrationData memory data) internal returns (PoolKey memory key) {
+    function _initializePool(MigrationData memory _data) internal returns (PoolKey memory key) {
         key = PoolKey({
             currency0: _currency0(),
             currency1: _currency1(),
@@ -314,62 +319,62 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         // Will revert if:
         //      - Pool is already initialized
         //      - Initial price is not set (sqrtPriceX96 = 0)
-        poolManager.initialize(key, data.sqrtPriceX96);
+        poolManager.initialize(key, _data.sqrtPriceX96);
 
         return key;
     }
 
     /// @notice Transfers assets to position manager and executes the position plan
-    /// @param tokenTransferAmount The amount of tokens to transfer to the position manager
-    /// @param currencyTransferAmount The amount of currency to transfer to the position manager
-    /// @param plan The encoded position plan to execute
+    /// @param _tokenTransferAmount The amount of tokens to transfer to the position manager
+    /// @param _currencyTransferAmount The amount of currency to transfer to the position manager
+    /// @param _plan The encoded position plan to execute
     function _transferAssetsAndExecutePlan(
-        uint128 tokenTransferAmount,
-        uint128 currencyTransferAmount,
-        bytes memory plan
+        uint128 _tokenTransferAmount,
+        uint128 _currencyTransferAmount,
+        bytes memory _plan
     ) internal {
         // Transfer tokens to position manager
-        Currency.wrap(token).transfer(address(positionManager), tokenTransferAmount);
+        Currency.wrap(token).transfer(address(positionManager), _tokenTransferAmount);
         if (Currency.wrap(currency).isAddressZero()) {
             // Native currency: send as value with modifyLiquidities call
-            positionManager.modifyLiquidities{value: currencyTransferAmount}(plan, block.timestamp);
+            positionManager.modifyLiquidities{value: _currencyTransferAmount}(_plan, block.timestamp);
         } else {
             // Non-native currency: transfer first, then call modifyLiquidities
-            Currency.wrap(currency).transfer(address(positionManager), currencyTransferAmount);
-            positionManager.modifyLiquidities(plan, block.timestamp);
+            Currency.wrap(currency).transfer(address(positionManager), _currencyTransferAmount);
+            positionManager.modifyLiquidities(_plan, block.timestamp);
         }
     }
 
     /// @notice Creates the base position parameters
-    /// @param data Migration data with all necessary parameters
+    /// @param _data Migration data with all necessary parameters
     /// @return baseParams The base position parameters
-    function _basePositionParams(MigrationData memory data) internal view virtual returns (BasePositionParams memory) {
+    function _basePositionParams(MigrationData memory _data) internal view virtual returns (BasePositionParams memory) {
         return BasePositionParams({
             currency: currency,
             poolToken: getPoolToken(),
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
-            initialSqrtPriceX96: data.sqrtPriceX96,
-            liquidity: data.liquidity,
+            initialSqrtPriceX96: _data.sqrtPriceX96,
+            liquidity: _data.liquidity,
             positionRecipient: positionRecipient,
             hooks: IHooks(address(this))
         });
     }
 
     /// @notice Creates the position plan based on migration data
-    /// @param data Migration data with all necessary parameters
+    /// @param _data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal virtual returns (bytes memory plan);
+    function _createPositionPlan(MigrationData memory _data) internal virtual returns (bytes memory plan);
 
     /// @notice Calculates the amount of tokens to transfer
-    /// @param data Migration data
+    /// @param _data Migration data
     /// @return The amount of tokens to transfer to the position manager
-    function _getTokenTransferAmount(MigrationData memory data) internal view virtual returns (uint128);
+    function _getTokenTransferAmount(MigrationData memory _data) internal view virtual returns (uint128);
 
     /// @notice Calculates the amount of currency to transfer
-    /// @param data Migration data
+    /// @param _data Migration data
     /// @return The amount of currency to transfer to the position manager
-    function _getCurrencyTransferAmount(MigrationData memory data) internal view virtual returns (uint128);
+    function _getCurrencyTransferAmount(MigrationData memory _data) internal view virtual returns (uint128);
 
     /// @notice Receives native currency
     receive() external payable {}

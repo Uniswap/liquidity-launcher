@@ -405,7 +405,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 abi.encodeWithSelector(ILBPStrategyBase.InvalidPositionRecipient.selector, positionRecipient)
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
-            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.TokenSplitIsZero.selector));
         } else if (initializerParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(

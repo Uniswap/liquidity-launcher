@@ -93,8 +93,8 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param reserveSupply The reserve supply
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
 
-    /// @notice Error thrown when the auction supply is zero
-    error AuctionSupplyIsZero();
+    /// @notice Error thrown when the token split is zero
+    error TokenSplitIsZero();
 
     /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount

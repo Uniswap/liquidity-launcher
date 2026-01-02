@@ -34,22 +34,22 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     }
 
     /// @notice Creates the position plan based on migration data
-    /// @param data Migration data with all necessary parameters
+    /// @param _data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal override returns (bytes memory) {
+    function _createPositionPlan(MigrationData memory _data) internal override returns (bytes memory) {
         Plan memory plan = StrategyPlanner.init();
 
         // Create base parameters
-        BasePositionParams memory baseParams = _basePositionParams(data);
+        BasePositionParams memory baseParams = _basePositionParams(_data);
 
         plan = plan.planFullRangePosition(
             baseParams,
-            FullRangeParams({tokenAmount: data.initialTokenAmount, currencyAmount: data.initialCurrencyAmount})
+            FullRangeParams({tokenAmount: _data.initialTokenAmount, currencyAmount: _data.initialCurrencyAmount})
         );
 
-        if (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount) {
+        if (createOneSidedTokenPosition && reserveSupply > _data.initialTokenAmount) {
             // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
-            uint128 amount = reserveSupply - data.initialTokenAmount;
+            uint128 amount = reserveSupply - _data.initialTokenAmount;
             // Create one-sided specific parameters
             OneSidedParams memory oneSidedParams = OneSidedParams({amount: amount, inToken: true});
 
@@ -59,9 +59,9 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
             plan = plan.planOneSidedPosition(baseParams, oneSidedParams);
         }
 
-        if (createOneSidedCurrencyPosition && data.leftoverCurrency > 0) {
+        if (createOneSidedCurrencyPosition && _data.leftoverCurrency > 0) {
             // Create one-sided specific parameters
-            OneSidedParams memory oneSidedParams = OneSidedParams({amount: data.leftoverCurrency, inToken: false});
+            OneSidedParams memory oneSidedParams = OneSidedParams({amount: _data.leftoverCurrency, inToken: false});
 
             // Attempt to extend the position plan with a one sided currency position
             // This will silently fail if the one sided position is invalid due to tick bounds or liquidity constraints
@@ -78,20 +78,20 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @notice Calculates the amount of tokens to transfer to the position manager
     /// @dev In the case where the one sided token position cannot be created, this will transfer too many tokens to POSM
     ///      however we will sweep the excess tokens back immediately after creating the positions.
-    /// @param data Migration data
+    /// @param _data Migration data
     /// @return The amount of tokens to transfer
-    function _getTokenTransferAmount(MigrationData memory data) internal view override returns (uint128) {
-        return (createOneSidedTokenPosition && reserveSupply > data.initialTokenAmount)
+    function _getTokenTransferAmount(MigrationData memory _data) internal view override returns (uint128) {
+        return (createOneSidedTokenPosition && reserveSupply > _data.initialTokenAmount)
             ? reserveSupply
-            : data.initialTokenAmount;
+            : _data.initialTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer to the position manager
-    /// @param data Migration data
+    /// @param _data Migration data
     /// @return The amount of currency to transfer
-    function _getCurrencyTransferAmount(MigrationData memory data) internal view override returns (uint128) {
-        return (createOneSidedCurrencyPosition && data.leftoverCurrency > 0)
-            ? data.initialCurrencyAmount + data.leftoverCurrency
-            : data.initialCurrencyAmount;
+    function _getCurrencyTransferAmount(MigrationData memory _data) internal view override returns (uint128) {
+        return (createOneSidedCurrencyPosition && _data.leftoverCurrency > 0)
+            ? _data.initialCurrencyAmount + _data.leftoverCurrency
+            : _data.initialCurrencyAmount;
     }
 }

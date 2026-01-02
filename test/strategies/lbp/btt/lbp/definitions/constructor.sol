@@ -43,18 +43,18 @@ abstract contract ConstructorTest is BttBase {
 
     function test_WhenTokenSplitToAuctionIsGTEMaxTokenSplit(
         FuzzConstructorParameters memory _parameters,
-        uint24 _tokenSplitToAuction
+        uint24 _tokenSplit
     ) public whenSweepBlockIsGTMigrationBlock {
         // it reverts with {TokenSplitTooHigh}
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
-        vm.assume(_tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT);
-        _parameters.migratorParams.tokenSplitToAuction = _tokenSplitToAuction;
+        vm.assume(_tokenSplit >= TokenDistribution.MAX_TOKEN_SPLIT);
+        _parameters.migratorParams.tokenSplit = _tokenSplit;
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILBPStrategyBase.TokenSplitTooHigh.selector, _tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT
+                ILBPStrategyBase.TokenSplitTooHigh.selector, _tokenSplit, TokenDistribution.MAX_TOKEN_SPLIT
             )
         );
         new FullRangeLBPStrategyNoValidation(
@@ -176,7 +176,7 @@ abstract contract ConstructorTest is BttBase {
         _;
     }
 
-    function test_WhenAuctionSupplyIsZero(FuzzConstructorParameters memory _parameters)
+    function test_WhenTokenSplitIsZero(FuzzConstructorParameters memory _parameters)
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
@@ -184,19 +184,17 @@ abstract contract ConstructorTest is BttBase {
         whenPoolLPFeeIsLTEMaxLPFee
         whenPositionRecipientIsNotAReservedAddress
     {
-        // it reverts with {AuctionSupplyIsZero}
+        // it reverts with {TokenSplitIsZero}
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
-        // happens when total supply * tokenSplitToAuction < 1e7
+        // happens when total supply * tokenSplit < 1e7
         _parameters.totalSupply = uint128(_bound(_parameters.totalSupply, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
-        _parameters.migratorParams.tokenSplitToAuction =
-            uint24(_bound(_parameters.migratorParams.tokenSplitToAuction, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
-        vm.assume(
-            _parameters.totalSupply * _parameters.migratorParams.tokenSplitToAuction < TokenDistribution.MAX_TOKEN_SPLIT
-        );
+        _parameters.migratorParams.tokenSplit =
+            uint24(_bound(_parameters.migratorParams.tokenSplit, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
+        vm.assume(_parameters.totalSupply * _parameters.migratorParams.tokenSplit < TokenDistribution.MAX_TOKEN_SPLIT);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.TokenSplitIsZero.selector));
         new FullRangeLBPStrategyNoValidation(
             _parameters.token,
             _parameters.totalSupply,

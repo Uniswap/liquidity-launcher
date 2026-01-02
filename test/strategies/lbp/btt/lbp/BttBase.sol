@@ -132,8 +132,7 @@ abstract contract BttBase is LBPTestHelpers {
             uint64(_bound(_mParameters.migrationBlock, block.number + 2, type(uint64).max - 1));
         _mParameters.sweepBlock =
             uint64(_bound(_mParameters.sweepBlock, _mParameters.migrationBlock + 1, type(uint64).max));
-        _mParameters.tokenSplitToAuction =
-            uint24(_bound(_mParameters.tokenSplitToAuction, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
+        _mParameters.tokenSplit = uint24(_bound(_mParameters.tokenSplit, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
         _mParameters.poolTickSpacing =
             int24(_bound(_mParameters.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         _mParameters.poolLPFee = uint24(_bound(_mParameters.poolLPFee, 1, LPFeeLibrary.MAX_LP_FEE - 1));

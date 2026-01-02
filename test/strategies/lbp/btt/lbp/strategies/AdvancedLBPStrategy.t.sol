@@ -299,7 +299,7 @@ contract AdvancedLBPStrategyTest is BttTests {
 
         _parameters = _toValidConstructorParameters(_parameters, _useNativeCurrency);
         // Send half the tokens to the auction
-        _parameters.migratorParams.tokenSplitToAuction = uint24(1e7 / 2);
+        _parameters.migratorParams.tokenSplit = uint24(1e7 / 2);
 
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));

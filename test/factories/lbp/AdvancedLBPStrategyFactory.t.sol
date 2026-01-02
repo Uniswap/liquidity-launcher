@@ -47,7 +47,7 @@ contract AdvancedLBPStrategyFactoryTest is Test {
             positionRecipient: address(3),
             migrationBlock: uint64(block.number + 101),
             initializerFactory: address(initializerFactory),
-            tokenSplitToAuction: 5000,
+            tokenSplit: 5000,
             sweepBlock: uint64(block.number + 102),
             operator: address(this),
             maxCurrencyAmountForLP: type(uint128).max
