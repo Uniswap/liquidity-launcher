@@ -34,7 +34,7 @@ contract VirtualGovernedLBPStrategy is GovernedLBPStrategy {
     }
 
     /// @notice Returns the address of the underlying token
-    function getPoolToken() internal view override returns (address) {
+    function _getPoolToken() internal view override returns (address) {
         return UNDERLYING_TOKEN;
     }
 }

@@ -42,6 +42,12 @@ contract DynamicArrayTest is Test {
         assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
     }
 
+    function test_init_already_initialized_reverts() public {
+        testHelper.init();
+        vm.expectRevert(DynamicArray.AlreadyInitialized.selector);
+        testHelper.init();
+    }
+
     function test_append_single_succeeds_gas() public {
         bytes[] memory params = testHelper.init();
         bytes memory param = abi.encode(uint256(1));
@@ -55,6 +61,8 @@ contract DynamicArrayTest is Test {
         bytes[] memory params = testHelper.init();
         params = testHelper.append(params, param);
         vm.snapshotGasLastCall("append single");
+        assertEq(testHelper.getLength(), 1);
+        assertEq(params[0], param);
     }
 
     function test_append_multiple_succeeds() public {
@@ -67,13 +75,13 @@ contract DynamicArrayTest is Test {
         }
     }
 
-    function test_append_overflow_reverts() public {
+    function test_append_overflow_reverts(bytes memory param) public {
         bytes[] memory params = testHelper.init();
         for (uint256 i = 0; i < DynamicArray.MAX_PARAMS_SIZE; i++) {
             params = testHelper.append(params, abi.encode(i));
         }
         vm.expectRevert(DynamicArray.LengthOverflow.selector);
-        testHelper.append(params, abi.encode(uint256(DynamicArray.MAX_PARAMS_SIZE)));
+        testHelper.append(params, param);
     }
 
     function test_truncate_empty_succeeds() public {
