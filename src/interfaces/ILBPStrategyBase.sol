@@ -68,9 +68,9 @@ interface ILBPStrategyBase is IDistributionContract {
     error InvalidFundsRecipient(address invalidFundsRecipient, address expectedFundsRecipient);
 
     /// @notice Error thrown when the reserve supply is too high
-    /// @param reserveSupply The invalid reserve supply
+    /// @param reserveTokenAmount The invalid reserve supply
     /// @param maxReserveSupply The maximum reserve supply (type(uint128).max)
-    error ReserveSupplyIsTooHigh(uint256 reserveSupply, uint256 maxReserveSupply);
+    error ReserveSupplyIsTooHigh(uint256 reserveTokenAmount, uint256 maxReserveSupply);
 
     /// @notice Error thrown when the liquidity is invalid
     /// @param liquidity The invalid liquidity
@@ -90,8 +90,8 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Error thrown when the token amount is invalid
     /// @param tokenAmount The invalid token amount
-    /// @param reserveSupply The reserve supply
-    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
+    /// @param reserveTokenAmount The reserve supply
+    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveTokenAmount);
 
     /// @notice Error thrown when the auction supply is zero
     error AuctionSupplyIsZero();
@@ -131,7 +131,7 @@ interface ILBPStrategyBase is IDistributionContract {
     function token() external view returns (address);
     function currency() external view returns (address);
     function totalSupply() external view returns (uint128);
-    function reserveSupply() external view returns (uint128);
+    function reserveTokenAmount() external view returns (uint128);
     function positionManager() external view returns (IPositionManager);
     function positionRecipient() external view returns (address);
     function migrationBlock() external view returns (uint64);

@@ -173,7 +173,7 @@ contract AdvancedLBPStrategyTest is BttTests {
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
 
-        vm.assume(lbp.reserveSupply() <= data.initialTokenAmount);
+        vm.assume(lbp.reserveTokenAmount() <= data.fullRangeTokenAmount);
 
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);
 
@@ -211,7 +211,7 @@ contract AdvancedLBPStrategyTest is BttTests {
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
 
-        vm.assume(lbp.reserveSupply() > data.initialTokenAmount);
+        vm.assume(lbp.reserveTokenAmount() > data.fullRangeTokenAmount);
 
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);
 
@@ -332,7 +332,7 @@ contract AdvancedLBPStrategyTest is BttTests {
         mockAuctionClearingPrice(lbp, auctionParameters.floorPrice + auctionParameters.tickSpacing);
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
-        vm.assume(lbp.reserveSupply() > data.initialTokenAmount);
+        vm.assume(lbp.reserveTokenAmount() > data.fullRangeTokenAmount);
         vm.assume(data.leftoverCurrency > 0);
 
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);

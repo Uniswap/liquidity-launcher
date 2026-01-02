@@ -26,12 +26,12 @@ library TokenDistribution {
     /// @notice Calculates the reserve supply (remainder after auction allocation)
     /// @param totalSupply The total token supply
     /// @param tokenSplitToAuction The percentage split to auction (in basis points, max 1e7)
-    /// @return reserveSupply The amount of tokens reserved for liquidity
+    /// @return reserveTokenAmount The amount of tokens reserved for liquidity
     function calculateReserveSupply(uint128 totalSupply, uint24 tokenSplitToAuction)
         internal
         pure
-        returns (uint128 reserveSupply)
+        returns (uint128 reserveTokenAmount)
     {
-        reserveSupply = totalSupply - calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+        reserveTokenAmount = totalSupply - calculateAuctionSupply(totalSupply, tokenSplitToAuction);
     }
 }

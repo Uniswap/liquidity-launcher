@@ -55,7 +55,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     /// @notice The supply of the token that was sent to this contract to be distributed
     uint128 public immutable totalSupply;
     /// @notice The remaining supply of the token that was not sent to the auction
-    uint128 public immutable reserveSupply;
+    uint128 public immutable reserveTokenAmount;
     /// @notice The maximum amount of currency that can be used to mint the initial liquidity position in the v4 pool
     uint128 public immutable maxCurrencyAmountForLP;
     /// @notice The address that will receive the position
@@ -94,7 +94,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
         //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
-        reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
+        reserveTokenAmount = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
         maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
@@ -122,7 +122,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
             revert AuctionAlreadyCreated();
         }
 
-        uint128 auctionSupply = totalSupply - reserveSupply;
+        uint128 auctionSupply = totalSupply - reserveTokenAmount;
 
         IContinuousClearingAuction _auction = IContinuousClearingAuction(
             address(
@@ -285,23 +285,23 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         uint256 priceX192 = auction.clearingPrice().convertToPriceX192(currencyIsCurrency0);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyAmount, currencyIsCurrency0, reserveSupply);
+        (uint128 fullRangeTokenAmount, uint128 fullRangeCurrencyAmount) =
+            priceX192.calculateAmounts(currencyAmount, currencyIsCurrency0, reserveTokenAmount);
 
-        uint128 leftoverCurrency = currencyAmount - initialCurrencyAmount;
+        uint128 leftoverCurrency = currencyAmount - fullRangeCurrencyAmount;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currencyIsCurrency0 ? initialCurrencyAmount : initialTokenAmount,
-            currencyIsCurrency0 ? initialTokenAmount : initialCurrencyAmount
+            currencyIsCurrency0 ? fullRangeCurrencyAmount : fullRangeTokenAmount,
+            currencyIsCurrency0 ? fullRangeTokenAmount : fullRangeCurrencyAmount
         );
 
         return MigrationData({
             sqrtPriceX96: sqrtPriceX96,
-            initialTokenAmount: initialTokenAmount,
-            initialCurrencyAmount: initialCurrencyAmount,
+            fullRangeTokenAmount: fullRangeTokenAmount,
+            fullRangeCurrencyAmount: fullRangeCurrencyAmount,
             leftoverCurrency: leftoverCurrency,
             liquidity: liquidity
         });
