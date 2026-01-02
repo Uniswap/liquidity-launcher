@@ -1,0 +1,12 @@
+SweepTokenTest
+├── when block number LT sweepBlock
+│   └── it reverts with {SweepNotAllowed}
+└── when block number GTE sweepBlock
+    ├── when msg sender is not operator
+    │   └── it reverts with {NotOperator}
+    └── when msg sender is operator
+        ├── when token balance is zero
+        │   └── it does not sweep the tokens
+        └── when token balance is GT zero
+            ├── it sweeps the tokens
+            └── it emits {TokensSwept}
