@@ -51,7 +51,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
     ILBPStrategyBase impl;
     MockERC20 token;
     MockERC20 implToken;
-    ContinuousClearingAuctionFactory auctionFactory;
+    ContinuousClearingAuctionFactory initializerFactory;
     MigratorParameters migratorParams;
     uint256 nextTokenId;
     bytes auctionParams;
@@ -66,7 +66,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
     }
 
     function _setupContracts() internal {
-        auctionFactory = new ContinuousClearingAuctionFactory();
+        initializerFactory = new ContinuousClearingAuctionFactory();
         liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
@@ -145,11 +145,11 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
         assertEq(address(AdvancedLBPStrategy(payable(address(lbp))).poolManager()), POOL_MANAGER);
         assertEq(lbp.positionRecipient(), migratorParams.positionRecipient);
         assertEq(lbp.migrationBlock(), uint64(block.number + 500));
-        assertEq(address(lbp.auction()), address(0));
+        assertEq(address(lbp.initializer()), address(0));
         assertEq(lbp.poolLPFee(), migratorParams.poolLPFee);
         assertEq(lbp.poolTickSpacing(), migratorParams.poolTickSpacing);
         assertEq(lbp.maxCurrencyAmountForLP(), migratorParams.maxCurrencyAmountForLP);
-        assertEq(lbp.auctionParameters(), auctionParams);
+        assertEq(lbp.initializerParameters(), auctionParams);
     }
 
     // Helper function to create migrator params
@@ -169,7 +169,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             tokenSplitToAuction: tokenSplitToAuction,
-            auctionFactory: address(auctionFactory),
+            initializerFactory: address(initializerFactory),
             positionRecipient: positionRecipient,
             migrationBlock: migrationBlock,
             sweepBlock: sweepBlock,

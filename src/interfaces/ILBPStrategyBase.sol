@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ILBPInitializer} from "./ILBPInitializer.sol";
 
 /// @title ILBPStrategyBase
 /// @notice Base interface for derived LBPStrategy contracts
@@ -134,8 +134,8 @@ interface ILBPStrategyBase is IDistributionContract {
     function migrationBlock() external view returns (uint64);
     function sweepBlock() external view returns (uint64);
     function operator() external view returns (address);
-    function auction() external view returns (IContinuousClearingAuction);
-    function auctionParameters() external view returns (bytes memory);
+    function initializer() external view returns (ILBPInitializer);
+    function initializerParameters() external view returns (bytes memory);
     function poolLPFee() external view returns (uint24);
     function poolTickSpacing() external view returns (int24);
     function maxCurrencyAmountForLP() external view returns (uint128);

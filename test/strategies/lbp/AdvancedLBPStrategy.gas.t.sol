@@ -28,7 +28,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         // Setup
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Step 2: Move to auction start
@@ -68,7 +68,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         setupWithSupplyAndTokenSplit(DEFAULT_TOTAL_SUPPLY, 2e6, address(0));
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -107,7 +107,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         // Setup for migration
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -167,7 +167,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         // Setup for migration
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start

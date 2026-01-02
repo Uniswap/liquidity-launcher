@@ -25,6 +25,6 @@ contract FullRangeLBPStrategyNoValidation is FullRangeLBPStrategy {
     function validateHookAddress(BaseHook) internal pure override {}
 
     function setAuctionParameters(bytes memory auctionParams) external {
-        auctionParameters = auctionParams;
+        initializerParameters = auctionParams;
     }
 }

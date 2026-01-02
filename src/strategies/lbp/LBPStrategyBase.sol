@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
-import {
-    AuctionParameters,
-    IContinuousClearingAuction
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {
-    IContinuousClearingAuctionFactory
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -32,6 +24,8 @@ import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 import {TokenDistribution} from "../../libraries/TokenDistribution.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../interfaces/ILBPInitializer.sol";
+import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 
 /// @title LBPStrategyBase
 /// @notice Base contract for derived LBPStrategies
@@ -63,7 +57,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     /// @notice The block number at which migration is allowed
     uint64 public immutable migrationBlock;
     /// @notice The auction factory that will be used to create the auction
-    address public immutable auctionFactory;
+    address public immutable initializerFactory;
     /// @notice The operator that can sweep currency and tokens from the pool after sweepBlock
     address public immutable operator;
     /// @notice The block number at which the operator can sweep currency and tokens from the pool
@@ -72,34 +66,33 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     IPositionManager public immutable positionManager;
 
     /// @notice The initializer of the pool
-    ILBPInitializer public auction;
-    /// @notice The auction parameters used to initialize the auction via the factory
-    bytes public auctionParameters;
+    ILBPInitializer public initializer;
+    /// @notice The initializer parameters used to initialize the initializer via the factory
+    bytes public initializerParameters;
 
     constructor(
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
     ) SelfInitializerHook(_poolManager) {
         _validateMigratorParams(_totalSupply, _migratorParams);
-        _validateAuctionParams(_auctionParams, _migratorParams);
 
-        auctionParameters = _auctionParams;
+        initializerParameters = _initializerParams;
 
         token = _token;
         currency = _migratorParams.currency;
         totalSupply = _totalSupply;
-        // Calculate tokens reserved for liquidity by subtracting tokens allocated for auction
+        // Calculate tokens reserved for liquidity by subtracting tokens allocated for initializer
         //   e.g. if tokenSplitToAuction = 5e6 (50%), then half goes to auction and half is reserved
         reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplitToAuction);
         maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
         migrationBlock = _migratorParams.migrationBlock;
-        auctionFactory = _migratorParams.auctionFactory;
+        initializerFactory = _migratorParams.initializerFactory;
         poolLPFee = _migratorParams.poolLPFee;
         poolTickSpacing = _migratorParams.poolTickSpacing;
         operator = _migratorParams.operator;
@@ -114,24 +107,32 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @inheritdoc IDistributionContract
     function onTokensReceived() external {
+        // Require at least the total supply of tokens to be held by this contract
         if (IERC20(token).balanceOf(address(this)) < totalSupply) {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
         }
 
-        uint128 auctionSupply = totalSupply - reserveSupply;
+        // Calculate the supply of tokens to be distributed to the initializer
+        uint128 supply = totalSupply - reserveSupply;
 
-        ILBPInitializer _auction = ILBPInitializer(
+        // Deploy the initializer contract via factory
+        ILBPInitializer _initializer = ILBPInitializer(
             address(
-                IDistributionStrategy(auctionFactory)
-                    .initializeDistribution(token, auctionSupply, auctionParameters, bytes32(0))
+                IDistributionStrategy(initializerFactory)
+                    .initializeDistribution(token, supply, initializerParameters, bytes32(0))
             )
         );
 
-        Currency.wrap(token).transfer(address(_auction), auctionSupply);
-        _auction.onTokensReceived();
-        auction = _auction;
+        // Validate the initializer parameters after deployment
+        _validateInitializerParams(_initializer);
 
-        emit AuctionCreated(address(_auction));
+        // Transfer the tokens to the initializer contract
+        Currency.wrap(token).transfer(address(_initializer), supply);
+        // Call the `onTokensReceived` hook
+        _initializer.onTokensReceived();
+        initializer = _initializer;
+
+        emit AuctionCreated(address(_initializer));
     }
 
     /// @inheritdoc ILBPStrategyBase
@@ -227,33 +228,26 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         }
     }
 
-    /// @notice Validates that the auction parameters are valid
-    /// @dev Ensures that the `fundsRecipient` is set to ActionConstants.MSG_SENDER
-    ///      and that the auction concludes before the configured migration block.
-    /// @param auctionParams The auction parameters that will be used to create the auction
-    /// @param migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateAuctionParams(bytes memory auctionParams, MigratorParameters memory migratorParams)
-        internal
-        pure
-    {
-        AuctionParameters memory _auctionParams = abi.decode(auctionParams, (AuctionParameters));
-        if (_auctionParams.fundsRecipient != ActionConstants.MSG_SENDER) {
-            revert InvalidFundsRecipient(_auctionParams.fundsRecipient, ActionConstants.MSG_SENDER);
-        } else if (_auctionParams.endBlock >= migratorParams.migrationBlock) {
-            revert InvalidEndBlock(_auctionParams.endBlock, migratorParams.migrationBlock);
-        } else if (_auctionParams.currency != migratorParams.currency) {
-            revert InvalidCurrency(_auctionParams.currency, migratorParams.currency);
+    /// @notice Validates that the deployed initializer parameters are valid for this strategy implementation
+    /// @dev MUST be called in the same transaction as the deployment of the initializer
+    function _validateInitializerParams(ILBPInitializer _initializer) internal view virtual {
+        if (_initializer.fundsRecipient() != ActionConstants.MSG_SENDER) {
+            revert InvalidFundsRecipient(_initializer.fundsRecipient(), ActionConstants.MSG_SENDER);
+        } else if (_initializer.endBlock() >= migrationBlock) {
+            revert InvalidEndBlock(_initializer.endBlock(), migrationBlock);
+        } else if (_initializer.currency() != currency) {
+            revert InvalidCurrency(_initializer.currency(), currency);
         }
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() internal {
+    function _validateMigration() internal view {
         if (block.number < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, block.number);
         }
 
-        // get the LBP initialization parameters
-        LBPInitializationParams memory lbpParams = auction.lbpInitializationParams();
+        // Get the LBP initialization parameters
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
         uint256 currencyAmount = lbpParams.currencyRaised;
 
         // cannot create a v4 pool with more than type(uint128).max currency amount
@@ -275,7 +269,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData() internal view returns (MigrationData memory) {
         // Both currencyRaised and maxCurrencyAmountForLP are validated to be less than or equal to type(uint128).max
-        LBPInitializationParams memory lbpParams = auction.lbpInitializationParams();
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
         uint128 currencyAmount = uint128(FixedPointMathLib.min(lbpParams.currencyRaised, maxCurrencyAmountForLP));
         bool currencyIsCurrency0 = _currencyIsCurrency0();
 

@@ -246,7 +246,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         );
     }
 
-    function test_setUp_reverts_auctionParametersEncodedImproperly() public {
+    function test_setUp_reverts_initializerParametersEncodedImproperly() public {
         vm.expectRevert();
         new AdvancedLBPStrategyNoValidation(
             address(token),
@@ -288,15 +288,15 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
         console2.logBytes(auctionParams);
-        console2.logBytes(lbp.auctionParameters());
+        console2.logBytes(lbp.initializerParameters());
         lbp.onTokensReceived();
 
         // Verify auction is created
-        assertNotEq(address(lbp.auction()), address(0));
+        assertNotEq(address(lbp.initializer()), address(0));
 
         // Verify token distribution
         uint256 expectedAuctionAmount = DEFAULT_TOTAL_SUPPLY * DEFAULT_TOKEN_SPLIT / 1e7;
-        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp.initializer())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY - expectedAuctionAmount);
     }
 
@@ -335,7 +335,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         lbp.onTokensReceived();
 
         uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
-        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp.initializer())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
 
@@ -349,11 +349,11 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         lbp.onTokensReceived();
 
         // Verify auction is created
-        assertNotEq(address(lbp.auction()), address(0));
+        assertNotEq(address(lbp.initializer()), address(0));
 
         // Verify token distribution
         uint256 expectedAuctionAmount = uint128(uint256(totalSupply) * uint256(DEFAULT_TOKEN_SPLIT) / 1e7);
-        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp.initializer())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), totalSupply - expectedAuctionAmount);
     }
 
@@ -369,7 +369,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         uint128 maxCurrencyAmountForLP
     ) public {
         uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
-        AuctionParameters memory auctionParameters = abi.decode(auctionParams, (AuctionParameters));
+        AuctionParameters memory initializerParameters = abi.decode(auctionParams, (AuctionParameters));
         if (sweepBlock <= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
@@ -406,10 +406,10 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
-        } else if (auctionParameters.endBlock >= migrationBlock) {
+        } else if (initializerParameters.endBlock >= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(
-                    ILBPStrategyBase.InvalidEndBlock.selector, auctionParameters.endBlock, migrationBlock
+                    ILBPStrategyBase.InvalidEndBlock.selector, initializerParameters.endBlock, migrationBlock
                 )
             );
         }

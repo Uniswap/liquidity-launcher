@@ -53,8 +53,8 @@ abstract contract OnTokensReceivedTest is BttBase {
 
         uint128 auctionSupply = _parameters.totalSupply - lbp.reserveSupply();
 
-        address auctionAddress = auctionFactory.getAuctionAddress(
-            address(token), auctionSupply, _parameters.auctionParameters, bytes32(0), address(lbp)
+        address auctionAddress = initializerFactory.getAuctionAddress(
+            address(token), auctionSupply, _parameters.initializerParameters, bytes32(0), address(lbp)
         );
 
         vm.prank(address(liquidityLauncher));
@@ -64,6 +64,6 @@ abstract contract OnTokensReceivedTest is BttBase {
         emit ILBPStrategyBase.AuctionCreated(auctionAddress);
         lbp.onTokensReceived();
 
-        assertEq(address(lbp.auction()), auctionAddress);
+        assertEq(address(lbp.initializer()), auctionAddress);
     }
 }

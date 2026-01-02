@@ -31,7 +31,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -61,7 +61,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -95,7 +95,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -126,7 +126,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -166,7 +166,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -201,7 +201,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -230,9 +230,10 @@ abstract contract ConstructorTest is BttBase {
 
         vm.assume(_fundsRecipient != ActionConstants.MSG_SENDER);
 
-        AuctionParameters memory auctionParameters = abi.decode(_parameters.auctionParameters, (AuctionParameters));
-        auctionParameters.fundsRecipient = _fundsRecipient;
-        _parameters.auctionParameters = abi.encode(auctionParameters);
+        AuctionParameters memory initializerParameters =
+            abi.decode(_parameters.initializerParameters, (AuctionParameters));
+        initializerParameters.fundsRecipient = _fundsRecipient;
+        _parameters.initializerParameters = abi.encode(initializerParameters);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -243,7 +244,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -264,9 +265,10 @@ abstract contract ConstructorTest is BttBase {
         _deployMockToken(_parameters.totalSupply);
 
         vm.assume(_endBlock >= _parameters.migratorParams.migrationBlock);
-        AuctionParameters memory auctionParameters = abi.decode(_parameters.auctionParameters, (AuctionParameters));
-        auctionParameters.endBlock = _endBlock;
-        _parameters.auctionParameters = abi.encode(auctionParameters);
+        AuctionParameters memory initializerParameters =
+            abi.decode(_parameters.initializerParameters, (AuctionParameters));
+        initializerParameters.endBlock = _endBlock;
+        _parameters.initializerParameters = abi.encode(initializerParameters);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -277,7 +279,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -302,9 +304,10 @@ abstract contract ConstructorTest is BttBase {
         _deployMockToken(_parameters.totalSupply);
 
         vm.assume(_currency != _parameters.migratorParams.currency);
-        AuctionParameters memory auctionParameters = abi.decode(_parameters.auctionParameters, (AuctionParameters));
-        auctionParameters.currency = _currency;
-        _parameters.auctionParameters = abi.encode(auctionParameters);
+        AuctionParameters memory initializerParameters =
+            abi.decode(_parameters.initializerParameters, (AuctionParameters));
+        initializerParameters.currency = _currency;
+        _parameters.initializerParameters = abi.encode(initializerParameters);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -315,7 +318,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -342,7 +345,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );

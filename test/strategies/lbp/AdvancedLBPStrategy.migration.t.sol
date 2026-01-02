@@ -66,7 +66,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
     function test_migrate_revertsWithAlreadyInitialized() public {
         // Setup and perform first migration
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
 
         // Submit bids and checkpoint auction
         vm.roll(realAuction.startBlock());
@@ -110,7 +110,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Send tokens but don't submit any bids
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
 
         // Move to end of auction without any bids
         vm.roll(realAuction.endBlock());
@@ -132,7 +132,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Send tokens but don't submit any bids
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
 
         // Move to end of auction without any bids
         vm.roll(realAuction.endBlock());
@@ -167,10 +167,10 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
 
         // Deploy and etch mock auction that will handle ERC20 sweepCurrency
         MockAuctionWithERC20Sweep mockAuction = new MockAuctionWithERC20Sweep(DAI, daiAmount, uint64(block.number - 1));
-        vm.etch(address(lbp.auction()), address(mockAuction).code);
+        vm.etch(address(lbp.initializer()), address(mockAuction).code);
 
         // After etching, we need to deal DAI to the auction since vm.etch doesn't preserve balances
-        deal(DAI, address(lbp.auction()), daiAmount);
+        deal(DAI, address(lbp.initializer()), daiAmount);
 
         // Mock the clearingPrice again after etching
         mockAuctionClearingPrice(lbp, veryLowPrice);
@@ -194,7 +194,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         );
 
         // Expect revert with PriceIsZero
-        vm.prank(address(lbp.auction()));
+        vm.prank(address(lbp.initializer()));
         vm.expectRevert(abi.encodeWithSelector(TokenPricing.PriceIsZero.selector, veryLowPrice));
         lbp.migrate();
     }
@@ -233,7 +233,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // 1000 total supply, 500 auction supply, 500 reserve supply
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -305,7 +305,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         setupWithCurrency(DAI);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -384,7 +384,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -459,7 +459,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         _deployFullRangeLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -526,7 +526,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Setup
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -610,7 +610,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         _deployLBPStrategy(DEFAULT_TOTAL_SUPPLY);
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -697,7 +697,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -781,7 +781,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
 
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start
@@ -927,8 +927,8 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Set up mock auction
         uint128 ethAmount = 1e18;
         MockAuctionWithSweep mockAuction = new MockAuctionWithSweep(ethAmount, uint64(block.number - 1));
-        vm.deal(address(lbp.auction()), ethAmount);
-        vm.etch(address(lbp.auction()), address(mockAuction).code);
+        vm.deal(address(lbp.initializer()), ethAmount);
+        vm.etch(address(lbp.initializer()), address(mockAuction).code);
 
         // Mock the clearingPrice again after etching
         mockAuctionClearingPrice(lbp, veryLowClearingPrice);
@@ -951,7 +951,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
             })
         );
 
-        vm.prank(address(lbp.auction()));
+        vm.prank(address(lbp.initializer()));
         // Expect revert with PriceTooHigh (the error will contain the inverted price)
         vm.expectRevert(
             abi.encodeWithSelector(TokenPricing.PriceTooHigh.selector, Q192 / veryLowClearingPrice, type(uint160).max)
@@ -972,7 +972,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Setup
         sendTokensToLBP(address(liquidityLauncher), token, lbp, totalSupply);
 
-        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.auction()));
+        IContinuousClearingAuction realAuction = IContinuousClearingAuction(address(lbp.initializer()));
         assertFalse(address(realAuction) == address(0));
 
         // Move to auction start

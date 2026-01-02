@@ -29,7 +29,7 @@ contract AdvancedLBPStrategyFactoryTest is Test {
     AdvancedLBPStrategyFactory public factory;
     MockERC20 token;
     LiquidityLauncher liquidityLauncher;
-    ContinuousClearingAuctionFactory auctionFactory;
+    ContinuousClearingAuctionFactory initializerFactory;
     MigratorParameters migratorParams;
     bytes auctionParams;
 
@@ -38,7 +38,7 @@ contract AdvancedLBPStrategyFactoryTest is Test {
         factory = new AdvancedLBPStrategyFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
         token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(liquidityLauncher));
-        auctionFactory = new ContinuousClearingAuctionFactory();
+        initializerFactory = new ContinuousClearingAuctionFactory();
 
         migratorParams = MigratorParameters({
             currency: address(0),
@@ -46,7 +46,7 @@ contract AdvancedLBPStrategyFactoryTest is Test {
             poolTickSpacing: 60,
             positionRecipient: address(3),
             migrationBlock: uint64(block.number + 101),
-            auctionFactory: address(auctionFactory),
+            initializerFactory: address(initializerFactory),
             tokenSplitToAuction: 5000,
             sweepBlock: uint64(block.number + 102),
             operator: address(this),
@@ -116,7 +116,7 @@ contract AdvancedLBPStrategyFactoryTest is Test {
         assertEq(lbp.migrationBlock(), block.number + 101);
         assertEq(lbp.poolLPFee(), 500);
         assertEq(lbp.poolTickSpacing(), 60);
-        assertEq(lbp.auctionParameters(), auctionParams);
+        assertEq(lbp.initializerParameters(), auctionParams);
     }
 
     function test_getLBPAddress_succeeds() public {
