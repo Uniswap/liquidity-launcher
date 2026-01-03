@@ -79,7 +79,7 @@ contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), 1_820_000_000e18);
         console2.logBytes(auctionParams);
-        console2.logBytes(lbp.auctionParameters());
+        console2.logBytes(lbp.initializerParameters());
         lbp.onTokensReceived();
 
         uint128 tokenAmount = 1_820_000_000e18 * 0.85e7 / 1e7;
@@ -87,11 +87,11 @@ contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
         clearingPrice = uint256(bound(clearingPrice, floorPrice, MaxBidPriceLib.maxBidPrice(tokenAmount)));
 
         // Verify auction is created
-        assertNotEq(address(lbp.auction()), address(0));
+        assertNotEq(address(lbp.initializer()), address(0));
 
         // Verify token distribution
         uint256 expectedAuctionAmount = 1_820_000_000e18 * 0.85e7 / 1e7;
-        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp.initializer())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), 1_820_000_000e18 - expectedAuctionAmount);
 
         mockAuctionClearingPrice(lbp, clearingPrice);

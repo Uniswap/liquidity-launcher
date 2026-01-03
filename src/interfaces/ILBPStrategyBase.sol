@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ILBPInitializer} from "./ILBPInitializer.sol";
 
 /// @title ILBPStrategyBase
 /// @notice Base interface for derived LBPStrategy contracts
@@ -16,7 +16,7 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Emitted when the auction is created
     /// @param auction The address of the auction contract
-    event AuctionCreated(address indexed auction);
+    event InitializerCreated(address indexed auction);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -28,6 +28,10 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);
+
+    /// @notice Error thrown when the initializer does not implement the ILBPInitializer interface
+    /// @param initializer The deployed initializer address
+    error InitializerMustImplementInterface(address initializer);
 
     /// @notice Error thrown when the sweep block is before or at the migration block
     error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
@@ -77,11 +81,6 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param maxLiquidity The max liquidity
     error InvalidLiquidity(uint128 liquidity, uint128 maxLiquidity);
 
-    /// @notice Error thrown when the caller is not the auction
-    /// @param caller The caller that is not the auction
-    /// @param auction The auction that is not the caller
-    error NativeCurrencyTransferNotFromAuction(address caller, address auction);
-
     /// @notice Error thrown when the caller is not the operator
     error NotOperator(address caller, address operator);
 
@@ -93,8 +92,8 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param reserveSupply The reserve supply
     error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
 
-    /// @notice Error thrown when the auction supply is zero
-    error AuctionSupplyIsZero();
+    /// @notice Error thrown when the token split is zero
+    error TokenSplitIsZero();
 
     /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount
@@ -134,8 +133,8 @@ interface ILBPStrategyBase is IDistributionContract {
     function migrationBlock() external view returns (uint64);
     function sweepBlock() external view returns (uint64);
     function operator() external view returns (address);
-    function auction() external view returns (IContinuousClearingAuction);
-    function auctionParameters() external view returns (bytes memory);
+    function initializer() external view returns (ILBPInitializer);
+    function initializerParameters() external view returns (bytes memory);
     function poolLPFee() external view returns (uint24);
     function poolTickSpacing() external view returns (int24);
     function maxCurrencyAmountForLP() external view returns (uint128);

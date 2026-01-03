@@ -126,14 +126,16 @@ abstract contract LBPTestHelpers is Test {
     function mockAuctionClearingPrice(ILBPStrategyBase lbp, uint256 price) internal {
         // Mock the auction's clearingPrice function
         vm.mockCall(
-            address(lbp.auction()), abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector), abi.encode(price)
+            address(lbp.initializer()),
+            abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector),
+            abi.encode(price)
         );
     }
 
     function mockCurrencyRaised(ILBPStrategyBase lbp, uint256 amount) internal {
         // Mock the auction's currencyRaised function
         vm.mockCall(
-            address(lbp.auction()),
+            address(lbp.initializer()),
             abi.encodeWithSelector(IContinuousClearingAuction.currencyRaised.selector),
             abi.encode(amount)
         );
@@ -141,17 +143,17 @@ abstract contract LBPTestHelpers is Test {
 
     function mockAuctionEndBlock(ILBPStrategyBase lbp, uint64 blockNumber) internal {
         // Mock the auction's endBlock function
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
+        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
     }
 
     function mockAuctionCheckpoint(ILBPStrategyBase lbp, Checkpoint memory checkpoint) internal {
         // Mock the auction's checkpoint function
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
+        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
     }
 
     /// @dev Mock the auction's checkpoint function with an empty checkpoint
     function mockAuctionCheckpoint(ILBPStrategyBase lbp) internal {
         Checkpoint memory checkpoint;
-        vm.mockCall(address(lbp.auction()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
+        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
     }
 }
