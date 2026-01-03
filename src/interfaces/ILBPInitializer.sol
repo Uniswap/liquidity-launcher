@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
+
+/// @dev The interface id of the ILBPInitializer interface
+/// @dev Per ERC165, the interface selector is the XOR of the selectors of the interfaces implemented by the contract
+bytes4 constant ILBP_INITIALIZER_INTERFACE_ID = 0x66981dad;
 
 /// @notice General parameters for initializing an LBP strategy
 struct LBPInitializationParams {
@@ -12,14 +17,14 @@ struct LBPInitializationParams {
 
 /// @title ILBPInitializer
 /// @notice Generic interface for contracts used for initializing an LBP strategy
-interface ILBPInitializer is IDistributionContract {
+interface ILBPInitializer is IDistributionContract, IERC165 {
     /// @notice Returns the LBP initialization parameters as determined by the implementing contract
     /// @dev The implementing contract MUST ensure that these values are correct at the time of calling
     /// @return params The LBP initialization parameters
     function lbpInitializationParams() external view returns (LBPInitializationParams memory params);
 
     /// @notice Returns the token used by the initializer
-    function tokens() external view returns (address);
+    function token() external view returns (address);
     /// @notice Returns the currency used by the initializer
     function currency() external view returns (address);
     /// @notice Returns the total supply of the token used by the initializer

@@ -2,10 +2,9 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -19,12 +18,15 @@ import {IDistributionContract} from "../../interfaces/IDistributionContract.sol"
 import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
 import {MigrationData} from "../../types/MigrationData.sol";
 import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "../../types/PositionTypes.sol";
-import {ParamsBuilder} from "../../libraries/ParamsBuilder.sol";
+import {BasePositionParams} from "../../types/PositionTypes.sol";
 import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 import {TokenDistribution} from "../../libraries/TokenDistribution.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
-import {ILBPInitializer, LBPInitializationParams} from "../../interfaces/ILBPInitializer.sol";
+import {
+    ILBPInitializer,
+    LBPInitializationParams,
+    ILBP_INITIALIZER_INTERFACE_ID
+} from "../../interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 
 /// @title LBPStrategyBase
@@ -125,6 +127,11 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
         // Validate the initializer parameters after deployment
         _validateInitializerParams(_initializer);
+
+        // Require the initializer to implement the ILBPInitializer interface
+        if (!ERC165Checker.supportsInterface(address(_initializer), ILBP_INITIALIZER_INTERFACE_ID)) {
+            revert InitializerMustImplementInterface(address(_initializer));
+        }
 
         // Transfer the tokens to the initializer contract
         Currency.wrap(token).transfer(address(_initializer), supply);

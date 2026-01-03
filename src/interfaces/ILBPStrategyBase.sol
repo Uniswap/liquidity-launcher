@@ -29,6 +29,10 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);
 
+    /// @notice Error thrown when the initializer does not implement the ILBPInitializer interface
+    /// @param initializer The deployed initializer address
+    error InitializerMustImplementInterface(address initializer);
+
     /// @notice Error thrown when the sweep block is before or at the migration block
     error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
 
