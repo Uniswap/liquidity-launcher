@@ -40,7 +40,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         uint256 _tokensReceived
     ) public {
         // it deploys an auction via the factory
-        // it emits {AuctionCreated}
+        // it emits {InitializerCreated}
         // it sets the auction to the correct address
 
         _parameters = _toValidConstructorParameters(_parameters);
@@ -61,7 +61,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         token.transfer(address(lbp), _tokensReceived);
 
         vm.expectEmit(true, true, true, true);
-        emit ILBPStrategyBase.AuctionCreated(auctionAddress);
+        emit ILBPStrategyBase.InitializerCreated(auctionAddress);
         lbp.onTokensReceived();
 
         assertEq(address(lbp.initializer()), auctionAddress);

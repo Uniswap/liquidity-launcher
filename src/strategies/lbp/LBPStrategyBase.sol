@@ -139,7 +139,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         _initializer.onTokensReceived();
         initializer = _initializer;
 
-        emit AuctionCreated(address(_initializer));
+        emit InitializerCreated(address(_initializer));
     }
 
     /// @inheritdoc ILBPStrategyBase

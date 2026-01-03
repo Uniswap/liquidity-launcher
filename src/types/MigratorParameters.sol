@@ -9,7 +9,7 @@ struct MigratorParameters {
     uint24 poolLPFee; // the LP fee that the v4 pool will use
     int24 poolTickSpacing; // the tick spacing that the v4 pool will use
     uint24 tokenSplit; // the percentage of the total supply of the token that will be sent to the auction, expressed in mps (1e7 = 100%)
-    address initializerFactory; // the Auction factory that will be used to create the auction
+    address initializerFactory; // the initializer factory that will be used to create the initializer
     address positionRecipient; // the address that will receive the position
     uint64 sweepBlock; // the block number when the operator can sweep currency and tokens from the pool
     address operator; // the address that is able to sweep currency and tokens from the pool

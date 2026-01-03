@@ -16,7 +16,7 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Emitted when the auction is created
     /// @param auction The address of the auction contract
-    event AuctionCreated(address indexed auction);
+    event InitializerCreated(address indexed auction);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -80,11 +80,6 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param liquidity The invalid liquidity
     /// @param maxLiquidity The max liquidity
     error InvalidLiquidity(uint128 liquidity, uint128 maxLiquidity);
-
-    /// @notice Error thrown when the caller is not the auction
-    /// @param caller The caller that is not the auction
-    /// @param auction The auction that is not the caller
-    error NativeCurrencyTransferNotFromAuction(address caller, address auction);
 
     /// @notice Error thrown when the caller is not the operator
     error NotOperator(address caller, address operator);
