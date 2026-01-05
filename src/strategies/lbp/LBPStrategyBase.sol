@@ -40,7 +40,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice The token that is being distributed
     address public immutable token;
-    /// @notice The currency that the auction raised funds in
+    /// @notice The currency that the initializer raised funds in
     address public immutable currency;
 
     /// @notice The LP fee that the v4 pool will use expressed in hundredths of a bip (1e6 = 100%)
@@ -50,7 +50,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice The supply of the token that was sent to this contract to be distributed
     uint128 public immutable totalSupply;
-    /// @notice The remaining supply of the token that was not sent to the auction
+    /// @notice The remaining supply of the token that was not sent to the initializer
     uint128 public immutable reserveSupply;
     /// @notice The maximum amount of currency that can be used to mint the initial liquidity position in the v4 pool
     uint128 public immutable maxCurrencyAmountForLP;
@@ -58,7 +58,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     address public immutable positionRecipient;
     /// @notice The block number at which migration is allowed
     uint64 public immutable migrationBlock;
-    /// @notice The auction factory that will be used to create the auction
+    /// @notice The initializer factory
     address public immutable initializerFactory;
     /// @notice The operator that can sweep currency and tokens from the pool after sweepBlock
     address public immutable operator;
@@ -88,7 +88,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         currency = _migratorParams.currency;
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for initializer
-        //   e.g. if tokenSplit = 5e6 (50%), then half goes to auction and half is reserved
+        //   e.g. if tokenSplit = 5e6 (50%), then half goes to the initializer and half is reserved
         reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplit);
         maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
@@ -322,7 +322,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
             hooks: IHooks(address(this))
         });
 
-        // Initialize the pool with the starting price determined by the auction
+        // Initialize the pool with the returned initial price
         // Will revert if:
         //      - Pool is already initialized
         //      - Initial price is not set (sqrtPriceX96 = 0)

@@ -14,9 +14,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
-    /// @notice Emitted when the auction is created
-    /// @param auction The address of the auction contract
-    event InitializerCreated(address indexed auction);
+    /// @notice Emitted when the initializer is created
+    /// @param initializer The address of the initializer contract
+    event InitializerCreated(address indexed initializer);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -41,10 +41,10 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
 
-    /// @notice Error thrown when the currency in the auction parameters is not the same as the currency in the migrator parameters
-    /// @param auctionCurrency The currency in the auction parameters
-    /// @param migratorCurrency The currency in the migrator parameters
-    error InvalidCurrency(address auctionCurrency, address migratorCurrency);
+    /// @notice Error thrown when the initializer currency is not the same as the strategy currency
+    /// @param actual The initializer currency
+    /// @param expected The actual currency
+    error InvalidCurrency(address actual, address expected);
 
     /// @notice Error thrown when the floor price is invalid
     /// @param floorPrice The invalid floor price

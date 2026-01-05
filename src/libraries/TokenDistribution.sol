@@ -11,19 +11,19 @@ library TokenDistribution {
 
     /// @notice Calculates the token split based on the split ratio
     /// @param _totalSupply The total token supply
-    /// @param _tokenSplit The percentage to split (in basis points, max 1e7)
-    /// @return the amount of tokens allocated to token split
-    function calculateTokenSplit(uint128 _totalSupply, uint24 _tokenSplit) internal pure returns (uint128) {
-        // Safe: totalSupply <= uint128.max and tokenSplit <= MAX_TOKEN_SPLIT (1e7)
-        // uint256(totalSupply) * tokenSplit will never overflow type(uint256).max
-        return uint128(uint256(_totalSupply) * _tokenSplit / MAX_TOKEN_SPLIT);
+    /// @param _splitMps The percentage to split (in basis points, max 1e7)
+    /// @return the split amount of tokens
+    function calculateTokenSplit(uint128 _totalSupply, uint24 _splitMps) internal pure returns (uint128) {
+        // Safe: totalSupply <= uint128.max and _splitMps <= MAX_TOKEN_SPLIT (1e7)
+        // uint256(totalSupply) * _splitMps will never overflow type(uint256).max
+        return uint128(uint256(_totalSupply) * _splitMps / MAX_TOKEN_SPLIT);
     }
 
     /// @notice Calculates the reserve supply (remainder after auction allocation)
     /// @param _totalSupply The total token supply
-    /// @param _tokenSplit The percentage split to auction (in basis points, max 1e7)
+    /// @param _splitMps The percentage to split (in basis points, max 1e7)
     /// @return the amount of tokens reserved for liquidity
-    function calculateReserveSupply(uint128 _totalSupply, uint24 _tokenSplit) internal pure returns (uint128) {
-        return _totalSupply - calculateTokenSplit(_totalSupply, _tokenSplit);
+    function calculateReserveSupply(uint128 _totalSupply, uint24 _splitMps) internal pure returns (uint128) {
+        return _totalSupply - calculateTokenSplit(_totalSupply, _splitMps);
     }
 }
