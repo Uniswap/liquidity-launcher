@@ -231,7 +231,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         }
         // Require the split of tokens to the initializer to be greater than zero
         else if (_totalSupply.calculateTokenSplit(_migratorParams.tokenSplit) == 0) {
-            revert TokenSplitIsZero();
+            revert InitializerTokenSplitIsZero();
         }
     }
 

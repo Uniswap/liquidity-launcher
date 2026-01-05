@@ -15,7 +15,7 @@ ConstructorTest
 │               │   └── it reverts with {InvalidPositionRecipient}
 │               └── when position recipient is not a reserved address
 │                   └── when auction supply is zero
-│                       └── it reverts with {TokenSplitIsZero}
+│                       └── it reverts with {InitializerTokenSplitIsZero}
 └── when migration parameters are valid
     ├── when funds recipient is not MSG_SENDER
     │   └── it reverts with {InvalidFundsRecipient}

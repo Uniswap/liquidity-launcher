@@ -176,7 +176,7 @@ abstract contract ConstructorTest is BttBase {
         _;
     }
 
-    function test_WhenTokenSplitIsZero(FuzzConstructorParameters memory _parameters)
+    function test_WhenInitializerTokenSplitIsZero(FuzzConstructorParameters memory _parameters)
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
@@ -184,7 +184,7 @@ abstract contract ConstructorTest is BttBase {
         whenPoolLPFeeIsLTEMaxLPFee
         whenPositionRecipientIsNotAReservedAddress
     {
-        // it reverts with {TokenSplitIsZero}
+        // it reverts with {InitializerTokenSplitIsZero}
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
@@ -194,7 +194,7 @@ abstract contract ConstructorTest is BttBase {
             uint24(_bound(_parameters.migratorParams.tokenSplit, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
         vm.assume(_parameters.totalSupply * _parameters.migratorParams.tokenSplit < TokenDistribution.MAX_TOKEN_SPLIT);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.TokenSplitIsZero.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InitializerTokenSplitIsZero.selector));
         new FullRangeLBPStrategyNoValidation(
             _parameters.token,
             _parameters.totalSupply,
