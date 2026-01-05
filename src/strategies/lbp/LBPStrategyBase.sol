@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {BlockNumberish} from "blocknumberish/src/BlockNumberish.sol";
 import {ContinuousClearingAuction} from "continuous-clearing-auction/src/ContinuousClearingAuction.sol";
 import {
     AuctionParameters,
@@ -36,7 +37,7 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 /// @title LBPStrategyBase
 /// @notice Base contract for derived LBPStrategies
 /// @custom:security-contact security@uniswap.org
-abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
+abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, BlockNumberish {
     using CurrencyLibrary for Currency;
     using StrategyPlanner for *;
     using TokenDistribution for uint128;
@@ -151,7 +152,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @inheritdoc ILBPStrategyBase
     function sweepToken() external {
-        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (_getBlockNumberish() < sweepBlock) revert SweepNotAllowed(sweepBlock, _getBlockNumberish());
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
 
         uint256 tokenBalance = Currency.wrap(token).balanceOf(address(this));
@@ -163,7 +164,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @inheritdoc ILBPStrategyBase
     function sweepCurrency() external {
-        if (block.number < sweepBlock) revert SweepNotAllowed(sweepBlock, block.number);
+        if (_getBlockNumberish() < sweepBlock) revert SweepNotAllowed(sweepBlock, _getBlockNumberish());
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
 
         uint256 currencyBalance = Currency.wrap(currency).balanceOf(address(this));
@@ -248,8 +249,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Validates migration timing and currency balance
     function _validateMigration() internal {
-        if (block.number < migrationBlock) {
-            revert MigrationNotAllowed(migrationBlock, block.number);
+        if (_getBlockNumberish() < migrationBlock) {
+            revert MigrationNotAllowed(migrationBlock, _getBlockNumberish());
         }
 
         // call checkpoint to get the final currency raised and clearing price

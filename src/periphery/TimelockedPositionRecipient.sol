@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {BlockNumberish} from "blocknumberish/src/BlockNumberish.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -8,7 +9,7 @@ import {ITimelockedPositionRecipient} from "../interfaces/ITimelockedPositionRec
 
 /// @title TimelockedPositionRecipient
 /// @notice Utility contract for holding v4 LP positions until a timelock period has passed
-contract TimelockedPositionRecipient is ITimelockedPositionRecipient, ReentrancyGuardTransient {
+contract TimelockedPositionRecipient is ITimelockedPositionRecipient, ReentrancyGuardTransient, BlockNumberish {
     /// @notice Thrown when this contract is not the owner of the position
     error NotPositionOwner();
 
@@ -34,7 +35,7 @@ contract TimelockedPositionRecipient is ITimelockedPositionRecipient, Reentrancy
 
     /// @inheritdoc ITimelockedPositionRecipient
     function approveOperator() external {
-        if (block.number < timelockBlockNumber) revert Timelocked();
+        if (_getBlockNumberish() < timelockBlockNumber) revert Timelocked();
 
         IERC721(address(positionManager)).setApprovalForAll(operator, true);
 
