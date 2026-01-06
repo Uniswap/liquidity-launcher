@@ -46,6 +46,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param floorPrice The invalid floor price
     error InvalidFloorPrice(uint256 floorPrice);
 
+    /// @notice Error thrown when the max currency amount for LP is zero
+    error MaxCurrencyAmountForLPIsZero();
+
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
     error TokenSplitTooHigh(uint24 tokenSplit, uint24 maxTokenSplit);
