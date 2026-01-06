@@ -82,7 +82,7 @@ contract ParamsBuilderTest is Test {
             address(3),
             liquidity
         );
-        assertEq(testHelper.getLength(), 3);
+        assertEq(params.length, 3);
         assertEq(
             params[0],
             abi.encode(
@@ -133,7 +133,7 @@ contract ParamsBuilderTest is Test {
             liquidity
         );
 
-        assertEq(testHelper.getLength(), 3);
+        assertEq(params.length, 3);
 
         assertEq(
             params[0],
@@ -200,7 +200,7 @@ contract ParamsBuilderTest is Test {
             address(3),
             oneSidedLiquidity
         );
-        assertEq(testHelper.getLength(), 4);
+        assertEq(params.length, 4);
 
         assertEq(
             params[0],
@@ -292,7 +292,7 @@ contract ParamsBuilderTest is Test {
             address(3),
             oneSidedLiquidity
         );
-        assertEq(testHelper.getLength(), 4);
+        assertEq(params.length, 4);
 
         assertEq(
             params[0],
@@ -383,7 +383,7 @@ contract ParamsBuilderTest is Test {
             oneSidedLiquidity
         );
 
-        assertEq(testHelper.getLength(), 4);
+        assertEq(params.length, 4);
 
         assertEq(
             params[0],

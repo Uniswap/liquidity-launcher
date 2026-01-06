@@ -68,9 +68,7 @@ contract StrategyPlannerTest is Test {
             FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000})
         );
         assertEq(plan.actions.length, 3);
-        assertEq(testHelper.getLength(), 3);
-        assertEq(plan.actions.length, testHelper.getLength());
-        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.params.length, 3);
         assertEq(plan.actions, ActionsBuilder.init().addMint().addSettle().addSettle());
 
         assertEq(
@@ -119,9 +117,7 @@ contract StrategyPlannerTest is Test {
 
         Plan memory plan = testHelper.planFullRangePosition(StrategyPlanner.init(), baseParams, fullRangeParams);
         assertEq(plan.actions.length, 3);
-        assertEq(testHelper.getLength(), 3);
-        assertEq(plan.actions.length, testHelper.getLength());
-        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.params.length, 3);
         assertEq(plan.actions, ActionsBuilder.init().addMint().addSettle().addSettle());
 
         assertEq(
@@ -193,9 +189,7 @@ contract StrategyPlannerTest is Test {
             OneSidedParams({amount: 1000000000000000000, inToken: true})
         );
         assertEq(plan.actions.length, 1);
-        assertEq(testHelper.getLength(), 1);
-        assertEq(plan.actions.length, testHelper.getLength());
-        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.params.length, 1);
         assertEq(plan.actions, ActionsBuilder.init().addMint());
 
         uint128 oneSidedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -226,7 +220,7 @@ contract StrategyPlannerTest is Test {
             )
         );
 
-        assertEq(testHelper.truncate(plan.params).length, 1);
+        assertEq(plan.params.length, 1);
     }
 
     function test_planOneSidedPosition_inCurrency_succeeds() public {
@@ -252,9 +246,7 @@ contract StrategyPlannerTest is Test {
             OneSidedParams({amount: 1000000000000000000, inToken: false})
         );
         assertEq(plan.actions.length, 1);
-        assertEq(testHelper.getLength(), 1);
-        assertEq(plan.actions.length, testHelper.getLength());
-        assertEq(plan.params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(plan.params.length, 1);
         assertEq(plan.actions, ActionsBuilder.init().addMint());
         assertEq(
             plan.params[0],
@@ -281,7 +273,7 @@ contract StrategyPlannerTest is Test {
                 ParamsBuilder.ZERO_BYTES
             )
         );
-        assertEq(testHelper.truncate(plan.params).length, 1);
+        assertEq(plan.params.length, 1);
     }
 
     function calculateLiquidity(
@@ -376,7 +368,7 @@ contract StrategyPlannerTest is Test {
         // Assert results
         if (testData.plan.actions.length == 3) {
             assertEq(testData.plan.actions, testData.fullPlan.actions);
-            assertEq(testHelper.truncate(testData.fullPlan.params).length, 3);
+            assertEq(testData.fullPlan.params.length, 3);
         } else {
             _assertOneSidedPositionParams(baseParams, oneSidedParams, testData);
         }
@@ -448,7 +440,7 @@ contract StrategyPlannerTest is Test {
         OneSidedTestData memory testData
     ) private view {
         assertEq(testData.plan.actions.length, 4);
-        assertEq(testHelper.truncate(testData.plan.params).length, 4);
+        assertEq(testData.plan.params.length, 4);
         assertEq(testData.plan.actions, ActionsBuilder.addMint(testData.fullPlan.actions));
 
         // Assert params[3] - extract to separate function to reduce complexity

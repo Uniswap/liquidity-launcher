@@ -12,18 +12,17 @@ contract DynamicArrayTestHelper {
         return DynamicArray.init();
     }
 
-    function getLength() public view returns (uint256 length) {
-        return DynamicArray.getLength();
-    }
-
     /// @notice Appends a new parameter to the params array
     function append(bytes[] memory params, bytes memory param) public returns (bytes[] memory) {
         return params.append(param);
     }
 
-    /// @notice Truncates the params array to its actual length
-    function truncate(bytes[] memory params) public view returns (bytes[] memory) {
-        return params.truncate();
+    /// @notice Helper function to get the parameter at the given index
+    function indexOf(bytes[] memory params, uint256 _index) public view returns (bytes memory result) {
+        assembly {
+            let slot := add(add(params, 0x20), mul(_index, 0x20))
+            result := mload(slot)
+        }
     }
 }
 
@@ -38,8 +37,7 @@ contract DynamicArrayTest is Test {
     function test_init_gas() public {
         bytes[] memory params = testHelper.init();
         vm.snapshotGasLastCall("init");
-        assertEq(testHelper.getLength(), 0);
-        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
+        assertEq(params.length, 0);
     }
 
     function test_append_single_succeeds_gas() public {
@@ -47,14 +45,15 @@ contract DynamicArrayTest is Test {
         bytes memory param = abi.encode(uint256(1));
         params = testHelper.append(params, param);
         vm.snapshotGasLastCall("append single");
-        assertEq(testHelper.getLength(), 1);
-        assertEq(params[0], param);
+        assertEq(params.length, 1);
+        assertEq(testHelper.indexOf(params, 0), param);
     }
 
     function test_append_single_fuzz(bytes memory param) public {
         bytes[] memory params = testHelper.init();
         params = testHelper.append(params, param);
-        vm.snapshotGasLastCall("append single");
+        assertEq(params.length, 1);
+        assertEq(testHelper.indexOf(params, 0), param);
     }
 
     function test_append_multiple_succeeds() public {
@@ -62,8 +61,8 @@ contract DynamicArrayTest is Test {
         for (uint256 i = 0; i < DynamicArray.MAX_PARAMS_SIZE; i++) {
             bytes memory param = abi.encode(i);
             params = testHelper.append(params, param);
-            assertEq(testHelper.getLength(), i + 1);
-            assertEq(params[i], param);
+            assertEq(params.length, i + 1);
+            assertEq(testHelper.indexOf(params, i), param);
         }
     }
 
@@ -76,44 +75,11 @@ contract DynamicArrayTest is Test {
         testHelper.append(params, abi.encode(uint256(DynamicArray.MAX_PARAMS_SIZE)));
     }
 
-    function test_truncate_empty_succeeds() public {
-        bytes[] memory params = testHelper.init();
-        params = testHelper.truncate(params);
-        assertEq(params.length, 0);
-    }
-
-    function test_truncate_partial_succeeds() public {
-        bytes[] memory params = testHelper.init();
-        for (uint256 i = 0; i < 5; i++) {
-            params = testHelper.append(params, abi.encode(i));
-        }
-        params = testHelper.truncate(params);
-        assertEq(params.length, 5);
-        for (uint256 i = 0; i < 5; i++) {
-            assertEq(params[i], abi.encode(i));
-        }
-    }
-
-    function test_truncate_full_succeeds() public {
-        bytes[] memory params = testHelper.init();
-        for (uint256 i = 0; i < DynamicArray.MAX_PARAMS_SIZE; i++) {
-            params = testHelper.append(params, abi.encode(i));
-        }
-        params = testHelper.truncate(params);
-        assertEq(params.length, DynamicArray.MAX_PARAMS_SIZE);
-    }
-
-    function test_fuzz_append_and_truncate(uint8 numParams) public {
+    function test_fuzz_append(uint8 numParams) public {
         vm.assume(numParams > 0 && numParams <= DynamicArray.MAX_PARAMS_SIZE);
         bytes[] memory params = testHelper.init();
         for (uint256 i = 0; i < numParams; i++) {
             params = testHelper.append(params, abi.encode(i));
-        }
-        assertEq(testHelper.getLength(), numParams);
-        params = testHelper.truncate(params);
-        assertEq(params.length, numParams);
-        for (uint256 i = 0; i < numParams; i++) {
-            assertEq(params[i], abi.encode(i));
         }
     }
 }
