@@ -9,8 +9,14 @@ import {
     IContinuousClearingAuctionFactory
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
+import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ActionConstants} from "v4-periphery/src/libraries/ActionConstants.sol";
+import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {ITokenCurrencyStorage} from "continuous-clearing-auction/src/interfaces/ITokenCurrencyStorage.sol";
 
 abstract contract OnTokensReceivedTest is BttBase {
+    using AuctionStepsBuilder for bytes;
+
     function test_WhenTokensReceivedIsLessThanTotalSupply(
         FuzzConstructorParameters memory _parameters,
         uint256 _tokensReceived
@@ -30,6 +36,98 @@ abstract contract OnTokensReceivedTest is BttBase {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IDistributionContract.InvalidAmountReceived.selector, _parameters.totalSupply, _tokensReceived
+            )
+        );
+        lbp.onTokensReceived();
+    }
+
+    function test_ValidateInitializerParams_WhenFundsRecipientIsNotTheStrategy(
+        FuzzConstructorParameters memory _parameters,
+        address _fundsRecipient
+    ) public {
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        vm.assume(_fundsRecipient != ActionConstants.MSG_SENDER && _fundsRecipient != address(0));
+
+        AuctionParameters memory initializerParameters =
+            abi.decode(_parameters.initializerParameters, (AuctionParameters));
+        initializerParameters.fundsRecipient = _fundsRecipient;
+        _parameters.initializerParameters = abi.encode(initializerParameters);
+
+        _deployStrategy(_parameters);
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyBase.InvalidFundsRecipient.selector, _fundsRecipient, address(lbp))
+        );
+        lbp.onTokensReceived();
+    }
+
+    modifier whenFundsRecipientIsTheStrategy() {
+        _;
+    }
+
+    function test_ValidateInitializerParams_WhenEndBlockIsGTEMigrationBlock(
+        FuzzConstructorParameters memory _parameters,
+        uint64 _endBlock
+    ) public whenFundsRecipientIsTheStrategy {
+        // it reverts with {InvalidEndBlock}
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        vm.assume(
+            _endBlock >= _parameters.migratorParams.migrationBlock && _endBlock > 1 && _endBlock < type(uint64).max
+        );
+        AuctionParameters memory initializerParameters =
+            abi.decode(_parameters.initializerParameters, (AuctionParameters));
+        initializerParameters.endBlock = _endBlock;
+        initializerParameters.claimBlock = _endBlock + 1; // mock claim block
+        initializerParameters.startBlock = _endBlock - 1; // mock start block
+        initializerParameters.auctionStepsData = AuctionStepsBuilder.init().addStep(1e7, 1); // mock step data
+        _parameters.initializerParameters = abi.encode(initializerParameters);
+
+        _deployStrategy(_parameters);
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBase.InvalidEndBlock.selector, _endBlock, _parameters.migratorParams.migrationBlock
+            )
+        );
+        lbp.onTokensReceived();
+    }
+
+    modifier whenEndBlockIsLTMigrationBlock() {
+        _;
+    }
+
+    function test_ValidateInitializerParams_WhenCurrencyIsNotTheSameAsTheMigrationCurrency(
+        FuzzConstructorParameters memory _parameters,
+        address _currency
+    ) public whenFundsRecipientIsTheStrategy whenEndBlockIsLTMigrationBlock {
+        // it reverts with {InvalidCurrency}
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        vm.assume(_currency != _parameters.migratorParams.currency && _currency != _parameters.token);
+        AuctionParameters memory initializerParameters =
+            abi.decode(_parameters.initializerParameters, (AuctionParameters));
+        initializerParameters.currency = _currency;
+        _parameters.initializerParameters = abi.encode(initializerParameters);
+
+        _deployStrategy(_parameters);
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategyBase.InvalidCurrency.selector, _currency, _parameters.migratorParams.currency
             )
         );
         lbp.onTokensReceived();

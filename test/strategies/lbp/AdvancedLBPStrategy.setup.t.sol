@@ -182,94 +182,6 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         }
     }
 
-    function test_setUp_revertsWithInvalidFundsRecipient() public {
-        bytes memory auctionStepsData = AuctionStepsBuilder.init().addStep(100e3, 100);
-
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InvalidFundsRecipient.selector, address(2), address(1)));
-        new AdvancedLBPStrategyNoValidation(
-            address(token),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(
-                address(0),
-                500,
-                100,
-                DEFAULT_TOKEN_SPLIT,
-                address(3),
-                uint64(block.number + 500),
-                uint64(block.number + 1000),
-                address(this),
-                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
-            ),
-            abi.encode(
-                AuctionParameters({
-                    currency: address(0), // ETH
-                    tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
-                    fundsRecipient: address(2), // invalid funds recipient
-                    startBlock: uint64(block.number),
-                    endBlock: uint64(block.number + 100),
-                    claimBlock: uint64(block.number + 100),
-                    tickSpacing: 20,
-                    validationHook: address(0), // No validation hook
-                    floorPrice: 1,
-                    requiredCurrencyRaised: 0,
-                    auctionStepsData: auctionStepsData
-                })
-            ),
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            true,
-            true
-        );
-    }
-
-    function test_setUp_revertsWithInvalidCurrency() public {
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InvalidCurrency.selector, address(0), address(1)));
-        new AdvancedLBPStrategyNoValidation(
-            address(token),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(
-                address(1),
-                500,
-                100,
-                DEFAULT_TOKEN_SPLIT,
-                address(3),
-                uint64(block.number + 500),
-                uint64(block.number + 1000),
-                address(this),
-                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
-            ), // currency is address(1)
-            auctionParams, // currency is address(0)
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            true,
-            true
-        );
-    }
-
-    function test_setUp_reverts_initializerParametersEncodedImproperly() public {
-        vm.expectRevert();
-        new AdvancedLBPStrategyNoValidation(
-            address(token),
-            DEFAULT_TOTAL_SUPPLY,
-            createMigratorParams(
-                address(0),
-                500,
-                100,
-                DEFAULT_TOKEN_SPLIT,
-                address(3),
-                uint64(block.number + 500),
-                uint64(block.number + 1000),
-                address(this),
-                DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
-            ),
-            "",
-            IPositionManager(POSITION_MANAGER),
-            IPoolManager(POOL_MANAGER),
-            true,
-            true
-        );
-    }
-
     // ============ Token Reception Tests ============
 
     function test_onTokenReceived_revertsWithInvalidAmountReceived() public {
@@ -369,7 +281,6 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         uint128 maxCurrencyAmountForLP
     ) public {
         uint24 maxTokenSplit = TokenDistribution.MAX_TOKEN_SPLIT;
-        AuctionParameters memory initializerParameters = abi.decode(auctionParams, (AuctionParameters));
         if (sweepBlock <= migrationBlock) {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
@@ -406,12 +317,6 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             );
         } else if (FullMath.mulDiv(totalSupply, tokenSplit, maxTokenSplit) == 0) {
             vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InitializerTokenSplitIsZero.selector));
-        } else if (initializerParameters.endBlock >= migrationBlock) {
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    ILBPStrategyBase.InvalidEndBlock.selector, initializerParameters.endBlock, migrationBlock
-                )
-            );
         }
 
         // Should succeed with valid params

@@ -8,6 +8,7 @@ import {ILBPStrategyTestExtension} from "./ILBPStrategyTestExtension.sol";
 import {Plan} from "src/libraries/StrategyPlanner.sol";
 import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTestExtension {
     constructor(
@@ -119,8 +120,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockCurrencyRaised(lbp, _currencyAmount);
-        mockAuctionClearingPrice(lbp, initializerParameters.floorPrice);
+        mockLBPInitializationParams(
+            lbp,
+            LBPInitializationParams({
+                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+            })
+        );
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);
@@ -153,8 +158,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockCurrencyRaised(lbp, _currencyAmount);
-        mockAuctionClearingPrice(lbp, initializerParameters.floorPrice);
+        mockLBPInitializationParams(
+            lbp,
+            LBPInitializationParams({
+                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+            })
+        );
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
 
@@ -192,8 +201,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockCurrencyRaised(lbp, _currencyAmount);
-        mockAuctionClearingPrice(lbp, initializerParameters.floorPrice);
+        mockLBPInitializationParams(
+            lbp,
+            LBPInitializationParams({
+                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+            })
+        );
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
 
@@ -230,8 +243,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockCurrencyRaised(lbp, _currencyAmount);
-        mockAuctionClearingPrice(lbp, initializerParameters.floorPrice);
+        mockLBPInitializationParams(
+            lbp,
+            LBPInitializationParams({
+                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+            })
+        );
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
         vm.assume(data.leftoverCurrency == 0);
@@ -269,8 +286,12 @@ contract AdvancedLBPStrategyTest is BttTests {
 
         // Large currency amounts can trip safe cast overflows in the V4 LiquidityAmounts library
         _currencyAmount = uint128(_bound(_currencyAmount, 1, 1e30));
-        mockCurrencyRaised(lbp, _currencyAmount);
-        mockAuctionClearingPrice(lbp, initializerParameters.floorPrice);
+        mockLBPInitializationParams(
+            lbp,
+            LBPInitializationParams({
+                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+            })
+        );
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
         vm.assume(data.leftoverCurrency > 0);
@@ -317,8 +338,14 @@ contract AdvancedLBPStrategyTest is BttTests {
         assertTrue(AdvancedLBPStrategy(payable(address(lbp))).createOneSidedTokenPosition());
         assertTrue(AdvancedLBPStrategy(payable(address(lbp))).createOneSidedCurrencyPosition());
 
-        mockCurrencyRaised(lbp, _currencyAmount);
-        mockAuctionClearingPrice(lbp, initializerParameters.floorPrice + initializerParameters.tickSpacing);
+        mockLBPInitializationParams(
+            lbp,
+            LBPInitializationParams({
+                initialPriceX96: initializerParameters.floorPrice + initializerParameters.tickSpacing,
+                tokensSold: 0,
+                currencyRaised: _currencyAmount
+            })
+        );
 
         MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
         vm.assume(lbp.reserveSupply() > data.initialTokenAmount);

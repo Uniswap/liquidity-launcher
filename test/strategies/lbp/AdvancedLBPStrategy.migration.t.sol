@@ -117,7 +117,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         realAuction.checkpoint();
 
         // The auction should have floor price as clearing price with no bids
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 clearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
         assertEq(clearingPrice, FLOOR_PRICE);
 
         realAuction.sweepCurrency();
@@ -139,7 +139,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         realAuction.checkpoint();
 
         // The auction should have floor price as clearing price with no bids
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 clearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
         assertEq(clearingPrice, FLOOR_PRICE);
 
         realAuction.sweepCurrency();
@@ -162,7 +162,6 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Mock a very low price that will result in sqrtPrice below MIN_SQRT_PRICE
         // would never happen because the floor price is 1 << 33
         uint256 veryLowPrice = 0;
-        mockAuctionClearingPrice(lbp, veryLowPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1)); // Mock past block so auction is ended
 
         // Deploy and etch mock auction that will handle ERC20 sweepCurrency
@@ -171,26 +170,12 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
 
         // After etching, we need to deal DAI to the auction since vm.etch doesn't preserve balances
         deal(DAI, address(lbp.initializer()), daiAmount);
-
-        // Mock the clearingPrice again after etching
-        mockAuctionClearingPrice(lbp, veryLowPrice);
-
-        mockCurrencyRaised(lbp, daiAmount);
-
         deal(DAI, address(lbp), daiAmount);
 
         vm.roll(lbp.migrationBlock());
 
-        mockAuctionCheckpoint(
-            lbp,
-            Checkpoint({
-                clearingPrice: veryLowPrice,
-                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(0),
-                cumulativeMpsPerPrice: 0,
-                cumulativeMps: 0,
-                prev: 0,
-                next: type(uint64).max
-            })
+        mockLBPInitializationParams(
+            lbp, LBPInitializationParams({initialPriceX96: veryLowPrice, tokensSold: 0, currencyRaised: daiAmount})
         );
 
         // Expect revert with PriceIsZero
@@ -548,7 +533,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         realAuction.checkpoint();
 
         // Get clearing price before sweeping
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 clearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
 
         realAuction.sweepCurrency();
 
@@ -713,7 +698,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();
 
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 clearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
 
         realAuction.sweepCurrency();
 
@@ -802,7 +787,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();
 
-        uint256 clearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 clearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
 
         realAuction.sweepCurrency();
 
@@ -859,20 +844,14 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // Setup
         sendTokensToLBP(address(liquidityLauncher), token, lbp, totalSupply);
 
-        mockAuctionClearingPrice(lbp, clearingPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1));
-        mockCurrencyRaised(lbp, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
-        deal(address(lbp), FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
+        uint256 currencyRaised = FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96);
+        deal(address(lbp), currencyRaised);
 
-        mockAuctionCheckpoint(
+        mockLBPInitializationParams(
             lbp,
-            Checkpoint({
-                clearingPrice: clearingPrice,
-                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
-                cumulativeMpsPerPrice: 0,
-                cumulativeMps: 0,
-                prev: 0,
-                next: type(uint64).max
+            LBPInitializationParams({
+                initialPriceX96: clearingPrice, tokensSold: tokenAmount, currencyRaised: currencyRaised
             })
         );
 
@@ -881,28 +860,14 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         uint256 priceX192 = clearingPrice.convertToPriceX192(true);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) = priceX192.calculateAmounts(
-            uint128(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
-            true,
-            totalSupply.calculateReserveSupply(tokenSplit)
-        );
+        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
+            priceX192.calculateAmounts(uint128(currencyRaised), true, totalSupply.calculateReserveSupply(tokenSplit));
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE, initialCurrencyAmount, initialTokenAmount
         );
 
-        if (
-            FullMath.mulDiv(
-                        FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice), // priceX192
-                        FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96), // currencyAmount
-                        Q192 // Q192
-                    ) == 0
-                || FullMath.mulDiv(
-                        totalSupply.calculateReserveSupply(tokenSplit), // reserveSupply
-                        Q192,
-                        FullMath.mulDiv(1 << 192, FixedPoint96.Q96, clearingPrice) // priceX192
-                    ) == 0 || liquidity == 0
-        ) {
+        if (initialTokenAmount == 0 || initialCurrencyAmount == 0 || liquidity == 0) {
             vm.expectRevert(abi.encodeWithSelector(Position.CannotUpdateEmptyPosition.selector));
             lbp.migrate();
         } else {
@@ -921,7 +886,6 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         // MAX_SQRT_PRICE is approximately 1461446703485210103287273052203988822378723970342
         // So we need a clearing price close to 0 but not 0
         uint256 veryLowClearingPrice = 2 ** 32; // Below the minimum floor price
-        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1));
 
         // Set up mock auction
@@ -930,25 +894,13 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         vm.deal(address(lbp.initializer()), ethAmount);
         vm.etch(address(lbp.initializer()), address(mockAuction).code);
 
-        // Mock the clearingPrice again after etching
-        mockAuctionClearingPrice(lbp, veryLowClearingPrice);
-
-        mockCurrencyRaised(lbp, ethAmount);
-
         deal(address(lbp), ethAmount);
 
         vm.roll(lbp.migrationBlock());
 
-        mockAuctionCheckpoint(
+        mockLBPInitializationParams(
             lbp,
-            Checkpoint({
-                clearingPrice: veryLowClearingPrice,
-                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(0),
-                cumulativeMpsPerPrice: 0,
-                cumulativeMps: 0,
-                prev: 0,
-                next: type(uint64).max
-            })
+            LBPInitializationParams({initialPriceX96: veryLowClearingPrice, tokensSold: 0, currencyRaised: ethAmount})
         );
 
         vm.prank(address(lbp.initializer()));

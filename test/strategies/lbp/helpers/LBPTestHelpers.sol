@@ -15,6 +15,7 @@ import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interf
 import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
+import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -123,37 +124,26 @@ abstract contract LBPTestHelpers is Test {
         lbp.onTokensReceived();
     }
 
-    function mockAuctionClearingPrice(ILBPStrategyBase lbp, uint256 price) internal {
-        // Mock the auction's clearingPrice function
-        vm.mockCall(
-            address(lbp.initializer()),
-            abi.encodeWithSelector(ICheckpointStorage.clearingPrice.selector),
-            abi.encode(price)
-        );
-    }
-
-    function mockCurrencyRaised(ILBPStrategyBase lbp, uint256 amount) internal {
-        // Mock the auction's currencyRaised function
-        vm.mockCall(
-            address(lbp.initializer()),
-            abi.encodeWithSelector(IContinuousClearingAuction.currencyRaised.selector),
-            abi.encode(amount)
-        );
-    }
-
     function mockAuctionEndBlock(ILBPStrategyBase lbp, uint64 blockNumber) internal {
         // Mock the auction's endBlock function
         vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
     }
 
-    function mockAuctionCheckpoint(ILBPStrategyBase lbp, Checkpoint memory checkpoint) internal {
-        // Mock the auction's checkpoint function
-        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
+    /// @dev Mock the auction's checkpoint function with the given parameters
+    function mockLBPInitializationParams(ILBPStrategyBase lbp, LBPInitializationParams memory params) internal {
+        vm.mockCall(
+            address(lbp.initializer()),
+            abi.encodeWithSelector(ILBPInitializer.lbpInitializationParams.selector),
+            abi.encode(params)
+        );
     }
 
-    /// @dev Mock the auction's checkpoint function with an empty checkpoint
-    function mockAuctionCheckpoint(ILBPStrategyBase lbp) internal {
-        Checkpoint memory checkpoint;
-        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("checkpoint()"), abi.encode(checkpoint));
+    /// @dev Mock the auction's checkpoint function with empty values
+    function mockLBPInitializationParams(ILBPStrategyBase lbp) internal {
+        vm.mockCall(
+            address(lbp.initializer()),
+            abi.encodeWithSelector(ILBPInitializer.lbpInitializationParams.selector),
+            abi.encode(LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0}))
+        );
     }
 }

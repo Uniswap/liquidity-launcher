@@ -47,7 +47,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
 
         realAuction.checkpoint();
 
-        uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 realClearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
         uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, tickNumberToPriceX96(2));
@@ -83,7 +83,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();
 
-        uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 realClearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
         uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
@@ -131,7 +131,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();
 
-        uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 realClearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
         uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
@@ -191,7 +191,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         vm.roll(realAuction.endBlock());
         realAuction.checkpoint();
 
-        uint256 realClearingPrice = ICheckpointStorage(address(realAuction)).clearingPrice();
+        uint256 realClearingPrice = IContinuousClearingAuction(address(realAuction)).clearingPrice();
         uint256 realCurrencyRaised = IContinuousClearingAuction(address(realAuction)).currencyRaised();
 
         assertEq(realClearingPrice, targetPrice);
