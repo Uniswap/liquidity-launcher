@@ -41,7 +41,7 @@ rustup
 forge build
 
 # Build rust project
-./scripts/build_rust.sh
+./script/build_rust.sh
 
 # Run tests
 forge test --isolate -vvv

@@ -54,7 +54,7 @@ contract SaltGenerator {
 
     function generate() public returns (bytes32) {
         string[] memory ffi_cmds = new string[](10);
-        ffi_cmds[0] = "./shell-scripts/run-address-miner.sh";
+        ffi_cmds[0] = "./shell-script/run-address-miner.sh";
         ffi_cmds[1] = vm.toString($initCodeHash);
         ffi_cmds[2] = vm.toString($mask);
         ffi_cmds[3] = "-m";
