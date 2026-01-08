@@ -16,7 +16,7 @@ Liquidity Launcher provides a streamlined approach for projects to:
 - **Bootstrap** liquidity using price discovery mechanisms
 - **Deploy** automated market making pools on Uniswap V4
 
-The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning with immediate trading liquidity.
+The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
 ## Installation
 This project uses Foundry for development and testing. To get started:
