@@ -53,7 +53,7 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
 
     /// @notice Claim any fees from the position and burn the `tokens` portion
     /// @param _tokenId The token ID of the position
-    function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
+    function collectFees(uint256 _tokenId) external nonReentrant {
         // Require the caller to burn at least the minimum amount of `token`
         SafeTransferLib.safeTransferFrom(token, msg.sender, BURN_ADDRESS, minTokenBurnAmount);
         emit TokensBurned(minTokenBurnAmount);

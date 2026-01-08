@@ -29,7 +29,7 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
 
     /// @notice Collect any fees from the position and forward them to the set recipient
     /// @param _tokenId the token ID of the position
-    function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
+    function collectFees(uint256 _tokenId) external nonReentrant {
         (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
 
         // Collect the fees from the position
