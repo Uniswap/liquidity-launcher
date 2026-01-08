@@ -6,3 +6,6 @@ out/
 .env
 
 broadcast/
+
+# Rust project
+**/target
