@@ -374,6 +374,8 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             vm.expectRevert(
                 abi.encodeWithSelector(ILBPStrategyBase.InvalidSweepBlock.selector, sweepBlock, migrationBlock)
             );
+        } else if (maxCurrencyAmountForLP == 0) {
+            vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.MaxCurrencyAmountForLPIsZero.selector));
         }
         // Test token split validation
         else if (tokenSplit >= maxTokenSplit) {
