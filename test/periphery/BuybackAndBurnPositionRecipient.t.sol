@@ -27,6 +27,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     // And the fork block is a few blocks after, allowing the position to have non zero fees
     uint256 constant FORK_BLOCK = 23936030;
     uint256 constant FORK_TOKEN_ID = 107192;
+    uint256 constant FORK_CURRENCY_FEES_AMOUNT = 709706242928;
 
     MockERC20 token;
     MockERC20 currency;
@@ -104,7 +105,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         positionRecipient =
             new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 0);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
-        positionRecipient.collectFees(FORK_TOKEN_ID);
+        positionRecipient.collectFees(FORK_TOKEN_ID, 0);
     }
 
     function test_collectFees_revertsIfMinimumBurnAmountIsNotMet(uint256 _minTokenBurnAmount) public {
@@ -122,11 +123,41 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
 
         vm.expectRevert(abi.encodeWithSelector(SafeTransferLib.TransferFromFailed.selector));
         vm.prank(searcher);
-        positionRecipient.collectFees(FORK_TOKEN_ID);
+        positionRecipient.collectFees(FORK_TOKEN_ID, 0);
     }
 
-    function test_collectFees_transfersCurrencyFeesToCaller(uint256 _minTokenBurnAmount) public {
+    function test_collectFees_revertsIfInsufficientCurrencyReceived(
+        uint256 _minTokenBurnAmount,
+        uint256 _minCurrencyAmount
+    ) public {
         vm.assume(_minTokenBurnAmount > 0 && _minTokenBurnAmount < 1_000_000e6);
+        _minCurrencyAmount = _bound(_minCurrencyAmount, FORK_CURRENCY_FEES_AMOUNT + 1, type(uint256).max);
+
+        positionRecipient = new BuybackAndBurnPositionRecipient(
+            USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, _minTokenBurnAmount
+        );
+        vm.prank(searcher);
+        IERC20(USDC).approve(address(positionRecipient), type(uint256).max);
+        _dealUSDCFromPoolManager(address(searcher), _minTokenBurnAmount);
+
+        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+
+        vm.prank(searcher);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                BuybackAndBurnPositionRecipient.InsufficientCurrencyReceived.selector,
+                FORK_CURRENCY_FEES_AMOUNT,
+                _minCurrencyAmount
+            )
+        );
+        positionRecipient.collectFees(FORK_TOKEN_ID, _minCurrencyAmount);
+    }
+
+    function test_collectFees_transfersCurrencyFeesToCaller(uint256 _minTokenBurnAmount, uint256 _minCurrencyAmount)
+        public
+    {
+        vm.assume(_minTokenBurnAmount > 0 && _minTokenBurnAmount < 1_000_000e6);
+        _minCurrencyAmount = _bound(_minCurrencyAmount, 0, FORK_CURRENCY_FEES_AMOUNT);
 
         positionRecipient = new BuybackAndBurnPositionRecipient(
             USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, _minTokenBurnAmount
@@ -146,7 +177,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         vm.prank(searcher);
         vm.expectEmit(true, true, true, true);
         emit BuybackAndBurnPositionRecipient.FeesCollected(searcher);
-        positionRecipient.collectFees(FORK_TOKEN_ID);
+        positionRecipient.collectFees(FORK_TOKEN_ID, _minCurrencyAmount);
         assertGt(
             Currency.wrap(NATIVE).balanceOf(searcher),
             searcherCurrencyBalanceBefore,
