@@ -52,7 +52,7 @@ The project requires the following environment variable for testing:
 ## Deployment Addresses
 
 ### Liquidity Launcher
-The LiquidityLauncher contract can be deployed to the same address on all networks with the cannoncial Permit2 deployment address (0x000000000022D473030F116dDEE9F6B43aC78BA3).
+The LiquidityLauncher contract can be deployed to the same address on all networks with the canonical Permit2 deployment address (0x000000000022D473030F116dDEE9F6B43aC78BA3).
 
 | Version | Address | Commit Hash |
 |---------|---------|------------|

@@ -34,7 +34,7 @@ The strategy validates parameters to ensure reasonable configurations, such as c
 
 ## Warnings
 
-Users should be aware that it is trivially easy to create a LBPStrategy and corresponding Auction with malicious parameters. This can lead to a loss of funds or a degraded expereience. You must validate all parameters set on each contract in the system before interacting with them.
+Users should be aware that it is trivially easy to create a LBPStrategy and corresponding Auction with malicious parameters. This can lead to a loss of funds or a degraded experience. You must validate all parameters set on each contract in the system before interacting with them.
 
 Since the AdvancedLBPStrategy cannot control the final price of the Auction, or how much currency is raised, it is possible to create an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters to eventually sweep the currency and tokens from the contract.
 
