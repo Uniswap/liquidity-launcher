@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `maxCurrencyAmountForLP` parameter to the strategy contracts [#99](https://github.com/Uniswap/liquidity-launcher/pull/99)
 - BTT unit testing suite [#96](https://github.com/Uniswap/liquidity-launcher/pull/96)
 - Periphery position recipient contracts: TimeLockedPositionRecipient, PositionFeesForwarder, BuybackAndBurnPositionRecipient [#82](https://github.com/Uniswap/liquidity-launcher/pull/82)
+- Documentation: Deployment Guide, Technical Reference [#110](https://github.com/Uniswap/liquidity-launcher/pull/110)
 
 ### Fixed
 - Fixed missing `DistributionInitialized` event [#94](https://github.com/Uniswap/liquidity-launcher/pull/94)

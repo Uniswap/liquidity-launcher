@@ -58,6 +58,22 @@ The LiquidityLauncher contract can be deployed to the same address on all networ
 |---------|---------|------------|
 | v1.0.0 | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d |
 
+> No changes have been made to the LiquidityLauncher contract since v1.0.0.
+
+### FullRangeLBPStrategyFactory
+The FullRangeLBPStrategyFactory contract can be deployed to the same address on all networks.
+
+| Version | Address | Commit Hash |
+|---------|---------|------------|
+| v1.1.0 |  |  |
+
+### AdvancedLBPStrategyFactory
+The AdvancedLBPStrategyFactory contract can be deployed to the same address on all networks.
+
+| Version | Address | Commit Hash |
+|---------|---------|------------|
+| v1.1.0 |  |  |
+
 ## Audits
 - 10/1 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
 - 10/27 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
