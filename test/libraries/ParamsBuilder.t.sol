@@ -15,10 +15,9 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {DynamicArray} from "src/libraries/DynamicArray.sol";
-import {DynamicArrayTestHelper} from "test/libraries/DynamicArray.t.sol";
 
 // Test helper contract to expose internal library functions for testing
-contract ParamsBuilderTestHelper is DynamicArrayTestHelper {
+contract ParamsBuilderTestHelper {
     using ParamsBuilder for *;
 
     function addFullRangeParams(
