@@ -7,7 +7,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
