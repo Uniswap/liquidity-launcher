@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
@@ -44,12 +43,12 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
 
         plan = plan.planFullRangePosition(
             baseParams,
-            FullRangeParams({tokenAmount: _data.initialTokenAmount, currencyAmount: _data.initialCurrencyAmount})
+            FullRangeParams({tokenAmount: _data.fullRangeTokenAmount, currencyAmount: _data.fullRangeCurrencyAmount})
         );
 
-        if (createOneSidedTokenPosition && reserveSupply > _data.initialTokenAmount) {
-            // reserveSupply - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
-            uint128 amount = reserveSupply - _data.initialTokenAmount;
+        if (createOneSidedTokenPosition && reserveTokenAmount > _data.fullRangeTokenAmount) {
+            // reserveTokenAmount - tokenAmount will not underflow because of validation in TokenPricing.calculateAmounts()
+            uint128 amount = reserveTokenAmount - _data.fullRangeTokenAmount;
             // Create one-sided specific parameters
             OneSidedParams memory oneSidedParams = OneSidedParams({amount: amount, inToken: true});
 
@@ -81,17 +80,17 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @param _data Migration data
     /// @return The amount of tokens to transfer
     function _getTokenTransferAmount(MigrationData memory _data) internal view override returns (uint128) {
-        return (createOneSidedTokenPosition && reserveSupply > _data.initialTokenAmount)
-            ? reserveSupply
-            : _data.initialTokenAmount;
+        return (createOneSidedTokenPosition && reserveTokenAmount > _data.fullRangeTokenAmount)
+            ? reserveTokenAmount
+            : _data.fullRangeTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer to the position manager
     /// @param _data Migration data
     /// @return The amount of currency to transfer
-    function _getCurrencyTransferAmount(MigrationData memory _data) internal view override returns (uint128) {
+    function _getCurrencyTransferAmount(MigrationData memory data) internal view override returns (uint128) {
         return (createOneSidedCurrencyPosition && _data.leftoverCurrency > 0)
-            ? _data.initialCurrencyAmount + _data.leftoverCurrency
-            : _data.initialCurrencyAmount;
+            ? _data.fullRangeCurrencyAmount + _data.leftoverCurrency
+            : _data.fullRangeCurrencyAmount;
     }
 }

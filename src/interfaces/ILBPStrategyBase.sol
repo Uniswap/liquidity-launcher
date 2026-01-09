@@ -50,6 +50,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param floorPrice The invalid floor price
     error InvalidFloorPrice(uint256 floorPrice);
 
+    /// @notice Error thrown when the max currency amount for LP is zero
+    error MaxCurrencyAmountForLPIsZero();
+
     /// @notice Error thrown when the token split is too high
     /// @param tokenSplit The invalid token split percentage
     error TokenSplitTooHigh(uint24 tokenSplit, uint24 maxTokenSplit);
@@ -72,9 +75,9 @@ interface ILBPStrategyBase is IDistributionContract {
     error InvalidFundsRecipient(address invalidFundsRecipient, address expectedFundsRecipient);
 
     /// @notice Error thrown when the reserve supply is too high
-    /// @param reserveSupply The invalid reserve supply
+    /// @param reserveTokenAmount The invalid reserve supply
     /// @param maxReserveSupply The maximum reserve supply (type(uint128).max)
-    error ReserveSupplyIsTooHigh(uint256 reserveSupply, uint256 maxReserveSupply);
+    error ReserveSupplyIsTooHigh(uint256 reserveTokenAmount, uint256 maxReserveSupply);
 
     /// @notice Error thrown when the liquidity is invalid
     /// @param liquidity The invalid liquidity
@@ -89,8 +92,8 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Error thrown when the token amount is invalid
     /// @param tokenAmount The invalid token amount
-    /// @param reserveSupply The reserve supply
-    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
+    /// @param reserveTokenAmount The reserve supply
+    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveTokenAmount);
 
     /// @notice Error thrown when the token split to the initializer is zero. This is possible due to rounding.
     error InitializerTokenSplitIsZero();
@@ -104,6 +107,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param amountNeeded The currency amount needed
     /// @param amountAvailable The balance of the currency in the contract
     error InsufficientCurrency(uint256 amountNeeded, uint256 amountAvailable);
+
+    /// @notice Error thrown when the auction has already been created
+    error AuctionAlreadyCreated();
 
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
@@ -127,7 +133,7 @@ interface ILBPStrategyBase is IDistributionContract {
     function token() external view returns (address);
     function currency() external view returns (address);
     function totalSupply() external view returns (uint128);
-    function reserveSupply() external view returns (uint128);
+    function reserveTokenAmount() external view returns (uint128);
     function positionManager() external view returns (IPositionManager);
     function positionRecipient() external view returns (address);
     function migrationBlock() external view returns (uint64);

@@ -41,10 +41,35 @@ abstract contract ConstructorTest is BttBase {
         _;
     }
 
+    function test_WhenMaxCurrencyAmountForLPIsZero(FuzzConstructorParameters memory _parameters)
+        public
+        whenSweepBlockIsGTMigrationBlock
+    {
+        // it reverts with {MaxCurrencyAmountForLPIsZero}
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        _parameters.migratorParams.maxCurrencyAmountForLP = 0;
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.MaxCurrencyAmountForLPIsZero.selector));
+        new FullRangeLBPStrategyNoValidation(
+            _parameters.token,
+            _parameters.totalSupply,
+            _parameters.migratorParams,
+            _parameters.auctionParameters,
+            _parameters.positionManager,
+            _parameters.poolManager
+        );
+    }
+
+    modifier whenMaxCurrencyAmountForLPIsNotZero() {
+        _;
+    }
+
     function test_WhenTokenSplitToAuctionIsGTEMaxTokenSplit(
         FuzzConstructorParameters memory _parameters,
         uint24 _tokenSplit
-    ) public whenSweepBlockIsGTMigrationBlock {
+    ) public whenSweepBlockIsGTMigrationBlock whenMaxCurrencyAmountForLPIsNotZero {
         // it reverts with {TokenSplitTooHigh}
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
@@ -74,7 +99,12 @@ abstract contract ConstructorTest is BttBase {
     function test_WhenPoolTickSpacingIsGTMaxTickSpacingOrLTMinTickSpacing(
         FuzzConstructorParameters memory _parameters,
         int24 _poolTickSpacing
-    ) public whenSweepBlockIsGTMigrationBlock whenTokenSplitToAuctionIsLTMaxTokenSplit {
+    )
+        public
+        whenSweepBlockIsGTMigrationBlock
+        whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
+    {
         // it reverts with {InvalidTickSpacing}
 
         _parameters = _toValidConstructorParameters(_parameters);
@@ -109,6 +139,7 @@ abstract contract ConstructorTest is BttBase {
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
         whenPoolTickSpacingIsWithinMinMaxTickSpacing
     {
         // it reverts with {InvalidFee}
@@ -144,6 +175,7 @@ abstract contract ConstructorTest is BttBase {
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
         whenPoolTickSpacingIsWithinMinMaxTickSpacing
         whenPoolLPFeeIsLTEMaxLPFee
     {
@@ -180,6 +212,7 @@ abstract contract ConstructorTest is BttBase {
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
         whenPoolTickSpacingIsWithinMinMaxTickSpacing
         whenPoolLPFeeIsLTEMaxLPFee
         whenPositionRecipientIsNotAReservedAddress

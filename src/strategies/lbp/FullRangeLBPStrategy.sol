@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
@@ -36,7 +35,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
 
         plan = plan.planFullRangePosition(
             baseParams,
-            FullRangeParams({tokenAmount: _data.initialTokenAmount, currencyAmount: _data.initialCurrencyAmount})
+            FullRangeParams({tokenAmount: _data.fullRangeTokenAmount, currencyAmount: _data.fullRangeCurrencyAmount})
         );
 
         plan = plan.planTakePair(baseParams);
@@ -48,13 +47,13 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @param _data Migration data
     /// @return The amount of tokens to transfer to the position manager
     function _getTokenTransferAmount(MigrationData memory _data) internal pure override returns (uint128) {
-        return _data.initialTokenAmount;
+        return _data.fullRangeTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer
     /// @param _data Migration data
     /// @return The amount of currency to transfer to the position manager
     function _getCurrencyTransferAmount(MigrationData memory _data) internal pure override returns (uint128) {
-        return _data.initialCurrencyAmount;
+        return _data.fullRangeCurrencyAmount;
     }
 }

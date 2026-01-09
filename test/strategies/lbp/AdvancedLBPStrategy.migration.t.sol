@@ -100,7 +100,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
 
         // Try to migrate again
         // give lbp more tokens and currency for testing purposes
-        deal(address(token), address(lbp), lbp.reserveSupply());
+        deal(address(token), address(lbp), lbp.reserveTokenAmount());
         vm.deal(address(lbp), realAuction.currencyRaised());
         vm.expectRevert(abi.encodeWithSelector(Pool.PoolAlreadyInitialized.selector));
         lbp.migrate();
@@ -860,14 +860,18 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
         uint256 priceX192 = clearingPrice.convertToPriceX192(true);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
+        (uint128 fullRangeTokenAmount, uint128 fullRangeCurrencyAmount) =
             priceX192.calculateAmounts(uint128(currencyRaised), true, totalSupply.calculateReserveSupply(tokenSplit));
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE, initialCurrencyAmount, initialTokenAmount
+            sqrtPriceX96,
+            TickMath.MIN_SQRT_PRICE,
+            TickMath.MAX_SQRT_PRICE,
+            fullRangeCurrencyAmount,
+            fullRangeTokenAmount
         );
 
-        if (initialTokenAmount == 0 || initialCurrencyAmount == 0 || liquidity == 0) {
+        if (fullRangeTokenAmount == 0 || fullRangeCurrencyAmount == 0 || liquidity == 0) {
             vm.expectRevert(abi.encodeWithSelector(Position.CannotUpdateEmptyPosition.selector));
             lbp.migrate();
         } else {

@@ -84,14 +84,14 @@ library TokenPricing {
     /// @param priceX192 The price in Q192 fixed-point format
     /// @param currencyAmount The amount of currency to convert
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
-    /// @param reserveSupply The reserve supply of the token
+    /// @param reserveTokenAmount The reserve supply of the token
     /// @return tokenAmount The calculated token amount
     /// @return correspondingCurrencyAmount The corresponding currency amount
     function calculateAmounts(
         uint256 priceX192,
         uint128 currencyAmount,
         bool currencyIsCurrency0,
-        uint128 reserveSupply
+        uint128 reserveTokenAmount
     ) internal pure returns (uint128 tokenAmount, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
         uint256 tokenAmountUint256 = currencyIsCurrency0
@@ -99,10 +99,10 @@ library TokenPricing {
             : FullMath.mulDiv(currencyAmount, Q192, priceX192);
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
-        if (tokenAmountUint256 > reserveSupply) {
+        if (tokenAmountUint256 > reserveTokenAmount) {
             uint256 correspondingCurrencyAmountUint256 = currencyIsCurrency0
-                ? FullMath.mulDiv(reserveSupply, Q192, priceX192)
-                : FullMath.mulDiv(priceX192, reserveSupply, Q192);
+                ? FullMath.mulDiv(reserveTokenAmount, Q192, priceX192)
+                : FullMath.mulDiv(priceX192, reserveTokenAmount, Q192);
 
             if (correspondingCurrencyAmountUint256 > type(uint128).max) {
                 revert AmountOverflow(correspondingCurrencyAmountUint256);
@@ -110,10 +110,10 @@ library TokenPricing {
 
             correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
 
-            tokenAmount = reserveSupply; // tokenAmount will never be greater than reserveSupply
+            tokenAmount = reserveTokenAmount; // tokenAmount will never be greater than reserveTokenAmount
         } else {
             correspondingCurrencyAmount = currencyAmount;
-            // tokenAmountUint256 is less than or equal to reserveSupply which is less than or equal to type(uint128).max
+            // tokenAmountUint256 is less than or equal to reserveTokenAmount which is less than or equal to type(uint128).max
             tokenAmount = uint128(tokenAmountUint256);
         }
 

@@ -56,29 +56,29 @@ contract TokenDistributionTest is Test {
         uint128 totalSupply = 1000e18;
         uint24 tokenSplit = 5e6;
         uint128 expectedReserveSupply = 500e18;
-        uint128 reserveSupply = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
-        assertEq(reserveSupply, expectedReserveSupply);
+        uint128 reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
+        assertEq(reserveTokenAmount, expectedReserveSupply);
 
         tokenSplit = 1e7;
         expectedReserveSupply = 0;
-        reserveSupply = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
-        assertEq(reserveSupply, expectedReserveSupply);
+        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
+        assertEq(reserveTokenAmount, expectedReserveSupply);
 
         tokenSplit = 0;
         expectedReserveSupply = 1000e18;
-        reserveSupply = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
-        assertEq(reserveSupply, expectedReserveSupply);
+        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
+        assertEq(reserveTokenAmount, expectedReserveSupply);
 
         tokenSplit = 2e6;
         expectedReserveSupply = 800e18;
-        reserveSupply = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
-        assertEq(reserveSupply, expectedReserveSupply);
+        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
+        assertEq(reserveTokenAmount, expectedReserveSupply);
     }
 
     function test_fuzz_calculateReserveSupply(uint128 totalSupply, uint24 tokenSplit) public view {
         tokenSplit = uint24(bound(tokenSplit, 0, TokenDistribution.MAX_TOKEN_SPLIT));
         assertLe(uint256(totalSupply) * tokenSplit, type(uint256).max); // safe: totalSupply * tokenSplit will never overflow type(uint256).max
-        uint128 reserveSupply = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
-        assertLe(reserveSupply, totalSupply);
+        uint128 reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
+        assertLe(reserveTokenAmount, totalSupply);
     }
 }

@@ -55,11 +55,6 @@ abstract contract OnTokensReceivedTest is BttBase {
         initializerParameters.fundsRecipient = _fundsRecipient;
         _parameters.initializerParameters = abi.encode(initializerParameters);
 
-        _deployStrategy(_parameters);
-
-        vm.prank(address(liquidityLauncher));
-        token.transfer(address(lbp), _parameters.totalSupply);
-
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyBase.InvalidFundsRecipient.selector, _fundsRecipient, address(lbp))
         );
@@ -68,6 +63,22 @@ abstract contract OnTokensReceivedTest is BttBase {
 
     modifier whenFundsRecipientIsTheStrategy() {
         _;
+    }
+
+    function test_WhenAuctionAlreadyCreated(FuzzConstructorParameters memory _parameters) public {
+        // it reverts with {AuctionAlreadyCreated}
+
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        deal(address(token), address(liquidityLauncher), type(uint256).max);
+        _deployStrategy(_parameters);
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionAlreadyCreated.selector));
+        lbp.onTokensReceived();
     }
 
     function test_ValidateInitializerParams_WhenEndBlockIsGTEMigrationBlock(
@@ -90,6 +101,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         _parameters.initializerParameters = abi.encode(initializerParameters);
 
         _deployStrategy(_parameters);
+        lbp.onTokensReceived();
 
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), _parameters.totalSupply);
@@ -145,18 +157,17 @@ abstract contract OnTokensReceivedTest is BttBase {
         _deployMockToken(_parameters.totalSupply);
 
         deal(address(token), address(liquidityLauncher), type(uint256).max);
-        vm.assume(_tokensReceived >= _parameters.totalSupply);
 
         _deployStrategy(_parameters);
 
-        uint128 auctionSupply = _parameters.totalSupply - lbp.reserveSupply();
+        uint128 auctionSupply = _parameters.totalSupply - lbp.reserveTokenAmount();
 
         address auctionAddress = initializerFactory.getAuctionAddress(
             address(token), auctionSupply, _parameters.initializerParameters, bytes32(0), address(lbp)
         );
 
         vm.prank(address(liquidityLauncher));
-        token.transfer(address(lbp), _tokensReceived);
+        token.transfer(address(lbp), _parameters.totalSupply);
 
         vm.expectEmit(true, true, true, true);
         emit ILBPStrategyBase.InitializerCreated(auctionAddress);

@@ -21,6 +21,8 @@ import {
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {MockVirtualERC20} from "test/mocks/MockVirtualERC20.sol";
+import {IVirtualERC20} from "src/interfaces/external/IVirtualERC20.sol";
 
 struct FuzzConstructorParameters {
     address token;
@@ -35,8 +37,12 @@ abstract contract BttBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
 
     uint256 constant FORK_BLOCK = 23097193;
+    address constant LIQUIDITY_LAUNCHER = 0x3333333333333333333333333333333333333333;
     address constant TOKEN = 0x1111111111111111111111111111111111111111;
     address constant ERC20_CURRENCY = 0x2222222222222222222222222222222222222222;
+
+    address immutable UNDERLYING_TOKEN;
+    address immutable MOCK_VIRTUAL_TOKEN;
 
     LiquidityLauncher liquidityLauncher;
     ILBPStrategyBase lbp;
@@ -45,10 +51,16 @@ abstract contract BttBase is LBPTestHelpers {
     MockERC20 erc20Currency;
     IContinuousClearingAuctionFactory initializerFactory;
 
+    constructor() {
+        UNDERLYING_TOKEN = makeAddr("underlyingToken");
+        MOCK_VIRTUAL_TOKEN = makeAddr("mockVirtualToken");
+    }
+
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
-        liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
-        vm.label(address(liquidityLauncher), "liquidityLauncher");
+        liquidityLauncher = LiquidityLauncher(LIQUIDITY_LAUNCHER);
+        deployCodeTo("LiquidityLauncher", abi.encode(IAllowanceTransfer(PERMIT2)), LIQUIDITY_LAUNCHER);
+        vm.label(LIQUIDITY_LAUNCHER, "liquidityLauncher");
 
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
@@ -95,6 +107,15 @@ abstract contract BttBase is LBPTestHelpers {
     function _deployMockCurrency(uint128 _totalSupply) internal {
         deployCodeTo(
             "MockERC20", abi.encode("Test Currency", "TEST", _totalSupply, address(liquidityLauncher)), ERC20_CURRENCY
+        );
+    }
+
+    function _deployMockVirtualToken(uint128 _totalSupply) internal {
+        deployCodeTo("MockERC20", abi.encode("Test Token", "TEST", _totalSupply, LIQUIDITY_LAUNCHER), UNDERLYING_TOKEN);
+        deployCodeTo(
+            "MockVirtualERC20",
+            abi.encode("Virtual Token", "VTKN", _totalSupply, LIQUIDITY_LAUNCHER, UNDERLYING_TOKEN),
+            MOCK_VIRTUAL_TOKEN
         );
     }
 
@@ -180,6 +201,18 @@ abstract contract BttBase is LBPTestHelpers {
     /// @dev Deploy a strategy to the hook address
     function _deployStrategy(FuzzConstructorParameters memory _parameters) internal {
         address hookAddress = _getHookAddress();
+        // For virtual token tests we need to ensure that the initial deployment with non virtual token address returns UNDERLYING_TOKEN_ADDRESS
+        // This won't be used in the actual virtual strategy tests since we replace token with the mock virtual token
+        vm.mockCall(
+            MOCK_VIRTUAL_TOKEN,
+            abi.encodeWithSelector(IVirtualERC20.UNDERLYING_TOKEN_ADDRESS.selector),
+            abi.encode(UNDERLYING_TOKEN)
+        );
+        vm.mockCall(
+            address(token),
+            abi.encodeWithSelector(IVirtualERC20.UNDERLYING_TOKEN_ADDRESS.selector),
+            abi.encode(address(token))
+        );
         deployCodeTo(_contractName(), _encodeConstructorArgs(_parameters), hookAddress);
         lbp = ILBPStrategyBase(payable(hookAddress));
         vm.label(address(lbp), "lbp");

@@ -50,8 +50,8 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice The supply of the token that was sent to this contract to be distributed
     uint128 public immutable totalSupply;
-    /// @notice The remaining supply of the token that was not sent to the initializer
-    uint128 public immutable reserveSupply;
+    /// @notice The remaining supply of the token that was not sent to the auction
+    uint128 public immutable reserveTokenAmount;
     /// @notice The maximum amount of currency that can be used to mint the initial liquidity position in the v4 pool
     uint128 public immutable maxCurrencyAmountForLP;
     /// @notice The address that will receive the position
@@ -103,7 +103,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Gets the address of the token that will be used to create the pool
     /// @return The address of the token that will be used to create the pool
-    function getPoolToken() internal view virtual returns (address) {
+    function _getPoolToken() internal view virtual returns (address) {
         return token;
     }
 
@@ -112,6 +112,10 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         // Require at least the total supply of tokens to be held by this contract
         if (IERC20(token).balanceOf(address(this)) < totalSupply) {
             revert InvalidAmountReceived(totalSupply, IERC20(token).balanceOf(address(this)));
+        }
+
+        if (address(initializer) != address(0)) {
+            revert InitializerAlreadyCreated();
         }
 
         // Calculate the supply of tokens to be distributed to the initializer
@@ -183,17 +187,17 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
 
     /// @notice Get the currency0 of the pool
     function _currency0() internal view returns (Currency) {
-        return Currency.wrap(_currencyIsCurrency0() ? currency : getPoolToken());
+        return Currency.wrap(_currencyIsCurrency0() ? currency : _getPoolToken());
     }
 
     /// @notice Get the currency1 of the pool
     function _currency1() internal view returns (Currency) {
-        return Currency.wrap(_currencyIsCurrency0() ? getPoolToken() : currency);
+        return Currency.wrap(_currencyIsCurrency0() ? _getPoolToken() : currency);
     }
 
     /// @notice Returns true if the currency is currency0 of the pool
     function _currencyIsCurrency0() internal view returns (bool) {
-        return currency < getPoolToken();
+        return currency < _getPoolToken();
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
@@ -203,6 +207,10 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         // sweep block validation (cannot be before or equal to the migration block)
         if (_migratorParams.sweepBlock <= _migratorParams.migrationBlock) {
             revert InvalidSweepBlock(_migratorParams.sweepBlock, _migratorParams.migrationBlock);
+        }
+        // max currency amount for LP validation cannot be zero
+        else if (migratorParams.maxCurrencyAmountForLP == 0) {
+            revert MaxCurrencyAmountForLPIsZero();
         }
         // token split validation (cannot be greater than or equal to 100%)
         else if (_migratorParams.tokenSplit >= TokenDistribution.MAX_TOKEN_SPLIT) {
@@ -288,23 +296,23 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         uint256 priceX192 = lbpParams.initialPriceX96.convertToPriceX192(currencyIsCurrency0);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
-        (uint128 initialTokenAmount, uint128 initialCurrencyAmount) =
-            priceX192.calculateAmounts(currencyAmount, currencyIsCurrency0, reserveSupply);
+        (uint128 fullRangeTokenAmount, uint128 fullRangeCurrencyAmount) =
+            priceX192.calculateAmounts(currencyAmount, currencyIsCurrency0, reserveTokenAmount);
 
-        uint128 leftoverCurrency = currencyAmount - initialCurrencyAmount;
+        uint128 leftoverCurrency = currencyAmount - fullRangeCurrencyAmount;
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
             TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currencyIsCurrency0 ? initialCurrencyAmount : initialTokenAmount,
-            currencyIsCurrency0 ? initialTokenAmount : initialCurrencyAmount
+            currencyIsCurrency0 ? fullRangeCurrencyAmount : fullRangeTokenAmount,
+            currencyIsCurrency0 ? fullRangeTokenAmount : fullRangeCurrencyAmount
         );
 
         return MigrationData({
             sqrtPriceX96: sqrtPriceX96,
-            initialTokenAmount: initialTokenAmount,
-            initialCurrencyAmount: initialCurrencyAmount,
+            fullRangeTokenAmount: fullRangeTokenAmount,
+            fullRangeCurrencyAmount: fullRangeCurrencyAmount,
             leftoverCurrency: leftoverCurrency,
             liquidity: liquidity
         });
@@ -358,7 +366,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
     function _basePositionParams(MigrationData memory _data) internal view virtual returns (BasePositionParams memory) {
         return BasePositionParams({
             currency: currency,
-            poolToken: getPoolToken(),
+            poolToken: _getPoolToken(),
             poolLPFee: poolLPFee,
             poolTickSpacing: poolTickSpacing,
             initialSqrtPriceX96: _data.sqrtPriceX96,
