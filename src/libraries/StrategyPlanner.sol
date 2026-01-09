@@ -36,7 +36,7 @@ library StrategyPlanner {
     /// @param plan The plan to encode
     /// @return The encoded plan
     function encode(Plan memory plan) internal view returns (bytes memory) {
-        return abi.encode(plan.actions, plan.params.truncate());
+        return abi.encode(plan.actions, plan.params);
     }
 
     /// @notice Creates the actions and parameters needed to mint a full range position on the position manager
