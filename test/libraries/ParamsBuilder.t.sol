@@ -21,7 +21,7 @@ contract ParamsBuilderTest is Test {
 
     using SafeCast for uint256;
 
-    function test_addFullRangeParams_succeeds() public {
+    function test_addFullRangeParams_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -74,7 +74,7 @@ contract ParamsBuilderTest is Test {
         bool currencyIsCurrency0,
         uint128 tokenAmount,
         uint128 currencyAmount
-    ) public {
+    ) public view {
         if (_shouldRevertOnLiquidity(currencyIsCurrency0, tokenAmount, currencyAmount)) {
             return;
         }
@@ -115,7 +115,7 @@ contract ParamsBuilderTest is Test {
         assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false));
     }
 
-    function test_addOneSidedParams_inToken_succeeds() public {
+    function test_addOneSidedParams_inToken_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -208,7 +208,7 @@ contract ParamsBuilderTest is Test {
         );
     }
 
-    function test_addOneSidedParams_inCurrency_succeeds() public {
+    function test_addOneSidedParams_inCurrency_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -305,7 +305,7 @@ contract ParamsBuilderTest is Test {
         TickBounds memory bounds,
         uint128 tokenAmount,
         uint128 currencyAmount
-    ) public {
+    ) public view {
         bool currencyIsCurrency0 = poolKey.currency0 < poolKey.currency1;
         bool inToken = tokenAmount > currencyAmount;
         bool useAmountInCurrency1 = currencyIsCurrency0 == inToken;

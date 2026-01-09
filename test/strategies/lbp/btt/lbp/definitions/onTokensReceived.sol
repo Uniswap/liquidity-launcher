@@ -167,7 +167,8 @@ abstract contract OnTokensReceivedTest is BttBase {
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
-        deal(address(token), address(liquidityLauncher), type(uint256).max);
+        vm.assume(_tokensReceived >= _parameters.totalSupply);
+        deal(address(token), address(liquidityLauncher), _tokensReceived);
 
         _deployStrategy(_parameters);
 
@@ -178,7 +179,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         );
 
         vm.prank(address(liquidityLauncher));
-        token.transfer(address(lbp), _parameters.totalSupply);
+        token.transfer(address(lbp), _tokensReceived);
 
         vm.expectEmit(true, true, true, true);
         emit ILBPStrategyBase.InitializerCreated(auctionAddress);

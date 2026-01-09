@@ -27,7 +27,7 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     /// @notice Creates the position plan based on migration data
     /// @param _data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory _data) internal override returns (bytes memory) {
+    function _createPositionPlan(MigrationData memory _data) internal view override returns (bytes memory) {
         Plan memory plan = StrategyPlanner.init();
 
         // Create base parameters

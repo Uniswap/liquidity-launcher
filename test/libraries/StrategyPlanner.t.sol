@@ -28,7 +28,7 @@ contract StrategyPlannerTest is Test {
     using ParamsBuilder for *;
     using StrategyPlanner for *;
 
-    function test_planFullRangePosition_succeeds() public {
+    function test_planFullRangePosition_succeeds() public pure {
         Plan memory plan = StrategyPlanner.planFullRangePosition(
             StrategyPlanner.init(),
             BasePositionParams({
@@ -80,7 +80,7 @@ contract StrategyPlannerTest is Test {
     function test_fuzz_planFullRangePosition_succeeds(
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams
-    ) public {
+    ) public pure {
         baseParams.poolTickSpacing = int24(
             bound(baseParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING)
         );
@@ -142,7 +142,7 @@ contract StrategyPlannerTest is Test {
         );
     }
 
-    function test_planOneSidedPosition_inToken_succeeds() public {
+    function test_planOneSidedPosition_inToken_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -199,7 +199,7 @@ contract StrategyPlannerTest is Test {
         assertEq(plan.params.length, 1);
     }
 
-    function test_planOneSidedPosition_inCurrency_succeeds() public {
+    function test_planOneSidedPosition_inCurrency_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -415,7 +415,7 @@ contract StrategyPlannerTest is Test {
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams,
         OneSidedTestData memory testData
-    ) private view {
+    ) private pure {
         assertEq(testData.plan.actions.length, 4);
         assertEq(testData.plan.params.length, 4);
         assertEq(testData.plan.actions, ActionsBuilder.addMint(testData.fullPlan.actions));

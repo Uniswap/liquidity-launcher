@@ -41,7 +41,7 @@ contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTe
         return _prepareMigrationData();
     }
 
-    function createPositionPlan(MigrationData memory data) external returns (bytes memory) {
+    function createPositionPlan(MigrationData memory data) external view returns (bytes memory) {
         return _createPositionPlan(data);
     }
 
