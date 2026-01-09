@@ -22,12 +22,12 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         bool _createOneSidedTokenPosition,
         bool _createOneSidedCurrencyPosition
-    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {
+    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager) {
         createOneSidedTokenPosition = _createOneSidedTokenPosition;
         createOneSidedCurrencyPosition = _createOneSidedCurrencyPosition;
     }

@@ -19,10 +19,10 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {}
+    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager) {}
 
     /// @notice Creates the position plan based on migration data
     /// @param _data Migration data with all necessary parameters
