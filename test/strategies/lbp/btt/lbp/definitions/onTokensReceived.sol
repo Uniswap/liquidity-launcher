@@ -55,6 +55,11 @@ abstract contract OnTokensReceivedTest is BttBase {
         initializerParameters.fundsRecipient = _fundsRecipient;
         _parameters.initializerParameters = abi.encode(initializerParameters);
 
+        _deployStrategy(_parameters);
+        vm.assume(_fundsRecipient != address(lbp));
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyBase.InvalidFundsRecipient.selector, _fundsRecipient, address(lbp))
         );
@@ -71,8 +76,15 @@ abstract contract OnTokensReceivedTest is BttBase {
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
+        vm.assume(_parameters.totalSupply < type(uint256).max / 2);
+
         deal(address(token), address(liquidityLauncher), type(uint256).max);
         _deployStrategy(_parameters);
+
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        lbp.onTokensReceived();
 
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), _parameters.totalSupply);
@@ -101,7 +113,6 @@ abstract contract OnTokensReceivedTest is BttBase {
         _parameters.initializerParameters = abi.encode(initializerParameters);
 
         _deployStrategy(_parameters);
-        lbp.onTokensReceived();
 
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), _parameters.totalSupply);
