@@ -16,49 +16,12 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {DynamicArray} from "src/libraries/DynamicArray.sol";
 
-// Test helper contract to expose internal library functions for testing
-contract ParamsBuilderTestHelper {
-    using ParamsBuilder for *;
-
-    function addFullRangeParams(
-        bytes[] memory params,
-        FullRangeParams memory fullRangeParams,
-        PoolKey memory poolKey,
-        TickBounds memory bounds,
-        bool currencyIsCurrency0,
-        address positionRecipient,
-        uint128 liquidity
-    ) external returns (bytes[] memory) {
-        return ParamsBuilder.addFullRangeParams(
-            params, fullRangeParams, poolKey, bounds, currencyIsCurrency0, positionRecipient, liquidity
-        );
-    }
-
-    function addOneSidedParams(
-        bytes[] memory params,
-        OneSidedParams memory oneSidedParams,
-        PoolKey memory poolKey,
-        TickBounds memory bounds,
-        bool currencyIsCurrency0,
-        address positionRecipient,
-        uint128 liquidity
-    ) external returns (bytes[] memory) {
-        return ParamsBuilder.addOneSidedParams(
-            params, oneSidedParams, poolKey, bounds, currencyIsCurrency0, positionRecipient, liquidity
-        );
-    }
-}
-
 contract ParamsBuilderTest is Test {
-    ParamsBuilderTestHelper testHelper;
+    using ParamsBuilder for *;
 
     using SafeCast for uint256;
 
-    function setUp() public {
-        testHelper = new ParamsBuilderTestHelper();
-    }
-
-    function test_addFullRangeParams_succeeds() public {
+    function test_addFullRangeParams_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -66,7 +29,7 @@ contract ParamsBuilderTest is Test {
             100e18,
             10e18
         );
-        bytes[] memory params = testHelper.addFullRangeParams(
+        bytes[] memory params = ParamsBuilder.addFullRangeParams(
             ParamsBuilder.init(),
             FullRangeParams({tokenAmount: 10e18, currencyAmount: 100e18}),
             PoolKey({
@@ -111,7 +74,7 @@ contract ParamsBuilderTest is Test {
         bool currencyIsCurrency0,
         uint128 tokenAmount,
         uint128 currencyAmount
-    ) public {
+    ) public view {
         if (_shouldRevertOnLiquidity(currencyIsCurrency0, tokenAmount, currencyAmount)) {
             return;
         }
@@ -122,7 +85,7 @@ contract ParamsBuilderTest is Test {
             currencyIsCurrency0 ? currencyAmount : tokenAmount,
             currencyIsCurrency0 ? tokenAmount : currencyAmount
         );
-        bytes[] memory params = testHelper.addFullRangeParams(
+        bytes[] memory params = ParamsBuilder.addFullRangeParams(
             ParamsBuilder.init(),
             FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
             poolKey,
@@ -152,7 +115,7 @@ contract ParamsBuilderTest is Test {
         assertEq(params[2], abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false));
     }
 
-    function test_addOneSidedParams_inToken_succeeds() public {
+    function test_addOneSidedParams_inToken_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -160,7 +123,7 @@ contract ParamsBuilderTest is Test {
             100e18,
             10e18
         );
-        bytes[] memory fullRangeParams = testHelper.addFullRangeParams(
+        bytes[] memory fullRangeParams = ParamsBuilder.addFullRangeParams(
             ParamsBuilder.init(),
             FullRangeParams({tokenAmount: 10e18, currencyAmount: 100e18}),
             PoolKey({
@@ -184,7 +147,7 @@ contract ParamsBuilderTest is Test {
             10e18
         );
 
-        bytes[] memory params = testHelper.addOneSidedParams(
+        bytes[] memory params = ParamsBuilder.addOneSidedParams(
             fullRangeParams,
             OneSidedParams({amount: 10e18, inToken: true}),
             PoolKey({
@@ -245,7 +208,7 @@ contract ParamsBuilderTest is Test {
         );
     }
 
-    function test_addOneSidedParams_inCurrency_succeeds() public {
+    function test_addOneSidedParams_inCurrency_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -253,7 +216,7 @@ contract ParamsBuilderTest is Test {
             100e18,
             10e18
         );
-        bytes[] memory fullRangeParams = testHelper.addFullRangeParams(
+        bytes[] memory fullRangeParams = ParamsBuilder.addFullRangeParams(
             ParamsBuilder.init(),
             FullRangeParams({tokenAmount: 10e18, currencyAmount: 100e18}),
             PoolKey({
@@ -276,7 +239,7 @@ contract ParamsBuilderTest is Test {
             0,
             10e18
         );
-        bytes[] memory params = testHelper.addOneSidedParams(
+        bytes[] memory params = ParamsBuilder.addOneSidedParams(
             fullRangeParams,
             OneSidedParams({amount: 10e18, inToken: false}),
             PoolKey({
@@ -342,7 +305,7 @@ contract ParamsBuilderTest is Test {
         TickBounds memory bounds,
         uint128 tokenAmount,
         uint128 currencyAmount
-    ) public {
+    ) public view {
         bool currencyIsCurrency0 = poolKey.currency0 < poolKey.currency1;
         bool inToken = tokenAmount > currencyAmount;
         bool useAmountInCurrency1 = currencyIsCurrency0 == inToken;
@@ -356,7 +319,7 @@ contract ParamsBuilderTest is Test {
             currencyIsCurrency0 ? currencyAmount : tokenAmount,
             currencyIsCurrency0 ? tokenAmount : currencyAmount
         );
-        bytes[] memory fullRangeParams = testHelper.addFullRangeParams(
+        bytes[] memory fullRangeParams = ParamsBuilder.addFullRangeParams(
             ParamsBuilder.init(),
             FullRangeParams({tokenAmount: tokenAmount, currencyAmount: currencyAmount}),
             poolKey,
@@ -372,7 +335,7 @@ contract ParamsBuilderTest is Test {
             0,
             10e18
         );
-        bytes[] memory params = testHelper.addOneSidedParams(
+        bytes[] memory params = ParamsBuilder.addOneSidedParams(
             fullRangeParams,
             OneSidedParams({amount: 10e18, inToken: inToken}),
             poolKey,

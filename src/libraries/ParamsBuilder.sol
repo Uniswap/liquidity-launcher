@@ -16,7 +16,7 @@ library ParamsBuilder {
     bytes constant ZERO_BYTES = new bytes(0);
 
     /// @notice Initializes the parameters, allocating memory for maximum number of params
-    function init() internal returns (bytes[] memory params) {
+    function init() internal pure returns (bytes[] memory params) {
         return DynamicArray.init();
     }
 
@@ -36,7 +36,7 @@ library ParamsBuilder {
         bool currencyIsCurrency0,
         address positionRecipient,
         uint128 liquidity
-    ) internal returns (bytes[] memory) {
+    ) internal pure returns (bytes[] memory) {
         uint128 amount0 = currencyIsCurrency0 ? fullRangeParams.currencyAmount : fullRangeParams.tokenAmount;
         uint128 amount1 = currencyIsCurrency0 ? fullRangeParams.tokenAmount : fullRangeParams.currencyAmount;
 
@@ -74,7 +74,7 @@ library ParamsBuilder {
         bool currencyIsCurrency0,
         address positionRecipient,
         uint128 liquidity
-    ) internal returns (bytes[] memory) {
+    ) internal pure returns (bytes[] memory) {
         // Determine which currency (0 or 1) receives the one-sided liquidity amount
         // XOR logic: position uses currency1 when:
         //   - currencyIsCurrency0=true AND inToken=true (currency is 0, position in token which is 1)
@@ -100,6 +100,7 @@ library ParamsBuilder {
     /// @return params The parameters needed to take the pair using the position manager
     function addTakePairParams(bytes[] memory params, address currency0, address currency1)
         internal
+        view
         returns (bytes[] memory)
     {
         // Take any open deltas from the pool manager and send back to the lbp

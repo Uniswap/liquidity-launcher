@@ -7,6 +7,7 @@ merkle-distributor/=lib/merkle-distributor/
 @optimism/=lib/optimism/packages/contracts-bedrock/
 uerc20-factory/=lib/uerc20-factory/
 continuous-clearing-auction/=lib/continuous-clearing-auction/
+blocknumberish/=lib/blocknumberish/
 @lbp/factories=src/factories/lbp
 @lbp/strategies=src/strategies/lbp
 periphery=src/periphery

@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ILBPInitializer} from "./ILBPInitializer.sol";
 
 /// @title ILBPStrategyBase
 /// @notice Base interface for derived LBPStrategy contracts
@@ -14,9 +14,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
     event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
 
-    /// @notice Emitted when the auction is created
-    /// @param auction The address of the auction contract
-    event AuctionCreated(address indexed auction);
+    /// @notice Emitted when the initializer is created
+    /// @param initializer The address of the initializer contract
+    event InitializerCreated(address indexed initializer);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -29,6 +29,10 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);
 
+    /// @notice Error thrown when the initializer does not implement the ILBPInitializer interface
+    /// @param initializer The deployed initializer address
+    error InitializerMustImplementInterface(address initializer);
+
     /// @notice Error thrown when the sweep block is before or at the migration block
     error InvalidSweepBlock(uint256 sweepBlock, uint256 migrationBlock);
 
@@ -37,10 +41,10 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
 
-    /// @notice Error thrown when the currency in the auction parameters is not the same as the currency in the migrator parameters
-    /// @param auctionCurrency The currency in the auction parameters
-    /// @param migratorCurrency The currency in the migrator parameters
-    error InvalidCurrency(address auctionCurrency, address migratorCurrency);
+    /// @notice Error thrown when the initializer currency is not the same as the strategy currency
+    /// @param actual The initializer currency
+    /// @param expected The actual currency
+    error InvalidCurrency(address actual, address expected);
 
     /// @notice Error thrown when the floor price is invalid
     /// @param floorPrice The invalid floor price
@@ -65,25 +69,20 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param positionRecipient The invalid position recipient
     error InvalidPositionRecipient(address positionRecipient);
 
-    /// @notice Error thrown when the funds recipient is not set to address(1)
+    /// @notice Error thrown when the funds recipient is not set to the strategy
     /// @param invalidFundsRecipient The invalid funds recipient
-    /// @param expectedFundsRecipient The expected funds recipient (address(1))
+    /// @param expectedFundsRecipient The expected funds recipient
     error InvalidFundsRecipient(address invalidFundsRecipient, address expectedFundsRecipient);
 
     /// @notice Error thrown when the reserve supply is too high
-    /// @param reserveSupply The invalid reserve supply
+    /// @param reserveTokenAmount The invalid reserve supply
     /// @param maxReserveSupply The maximum reserve supply (type(uint128).max)
-    error ReserveSupplyIsTooHigh(uint256 reserveSupply, uint256 maxReserveSupply);
+    error ReserveSupplyIsTooHigh(uint256 reserveTokenAmount, uint256 maxReserveSupply);
 
     /// @notice Error thrown when the liquidity is invalid
     /// @param liquidity The invalid liquidity
     /// @param maxLiquidity The max liquidity
     error InvalidLiquidity(uint128 liquidity, uint128 maxLiquidity);
-
-    /// @notice Error thrown when the caller is not the auction
-    /// @param caller The caller that is not the auction
-    /// @param auction The auction that is not the caller
-    error NativeCurrencyTransferNotFromAuction(address caller, address auction);
 
     /// @notice Error thrown when the caller is not the operator
     error NotOperator(address caller, address operator);
@@ -93,11 +92,11 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Error thrown when the token amount is invalid
     /// @param tokenAmount The invalid token amount
-    /// @param reserveSupply The reserve supply
-    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveSupply);
+    /// @param reserveTokenAmount The reserve supply
+    error InvalidTokenAmount(uint128 tokenAmount, uint128 reserveTokenAmount);
 
-    /// @notice Error thrown when the auction supply is zero
-    error AuctionSupplyIsZero();
+    /// @notice Error thrown when the token split to the initializer is zero. This is possible due to rounding.
+    error InitializerTokenSplitIsZero();
 
     /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount
@@ -108,6 +107,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @param amountNeeded The currency amount needed
     /// @param amountAvailable The balance of the currency in the contract
     error InsufficientCurrency(uint256 amountNeeded, uint256 amountAvailable);
+
+    /// @notice Error thrown when the auction has already been created
+    error InitializerAlreadyCreated();
 
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
@@ -131,14 +133,14 @@ interface ILBPStrategyBase is IDistributionContract {
     function token() external view returns (address);
     function currency() external view returns (address);
     function totalSupply() external view returns (uint128);
-    function reserveSupply() external view returns (uint128);
+    function reserveTokenAmount() external view returns (uint128);
     function positionManager() external view returns (IPositionManager);
     function positionRecipient() external view returns (address);
     function migrationBlock() external view returns (uint64);
     function sweepBlock() external view returns (uint64);
     function operator() external view returns (address);
-    function auction() external view returns (IContinuousClearingAuction);
-    function auctionParameters() external view returns (bytes memory);
+    function initializer() external view returns (ILBPInitializer);
+    function initializerParameters() external view returns (bytes memory);
     function poolLPFee() external view returns (uint24);
     function poolTickSpacing() external view returns (int24);
     function maxCurrencyAmountForLP() external view returns (uint128);

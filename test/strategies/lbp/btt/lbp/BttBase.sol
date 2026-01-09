@@ -21,12 +21,14 @@ import {
 } from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {MockVirtualERC20} from "test/mocks/MockVirtualERC20.sol";
+import {IVirtualERC20} from "src/interfaces/external/IVirtualERC20.sol";
 
 struct FuzzConstructorParameters {
     address token;
     uint128 totalSupply;
     MigratorParameters migratorParams;
-    bytes auctionParameters;
+    bytes initializerParameters;
     IPositionManager positionManager;
     IPoolManager poolManager;
 }
@@ -35,20 +37,30 @@ abstract contract BttBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
 
     uint256 constant FORK_BLOCK = 23097193;
+    address constant LIQUIDITY_LAUNCHER = 0x3333333333333333333333333333333333333333;
     address constant TOKEN = 0x1111111111111111111111111111111111111111;
     address constant ERC20_CURRENCY = 0x2222222222222222222222222222222222222222;
+
+    address immutable UNDERLYING_TOKEN;
+    address immutable MOCK_VIRTUAL_TOKEN;
 
     LiquidityLauncher liquidityLauncher;
     ILBPStrategyBase lbp;
     uint256 nextTokenId;
     MockERC20 token;
     MockERC20 erc20Currency;
-    IContinuousClearingAuctionFactory auctionFactory;
+    IContinuousClearingAuctionFactory initializerFactory;
+
+    constructor() {
+        UNDERLYING_TOKEN = makeAddr("underlyingToken");
+        MOCK_VIRTUAL_TOKEN = makeAddr("mockVirtualToken");
+    }
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
-        liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
-        vm.label(address(liquidityLauncher), "liquidityLauncher");
+        liquidityLauncher = LiquidityLauncher(LIQUIDITY_LAUNCHER);
+        deployCodeTo("LiquidityLauncher", abi.encode(IAllowanceTransfer(PERMIT2)), LIQUIDITY_LAUNCHER);
+        vm.label(LIQUIDITY_LAUNCHER, "liquidityLauncher");
 
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
@@ -57,8 +69,8 @@ abstract contract BttBase is LBPTestHelpers {
         erc20Currency = MockERC20(ERC20_CURRENCY);
         vm.label(ERC20_CURRENCY, "erc20 currency");
 
-        auctionFactory = IContinuousClearingAuctionFactory(address(new ContinuousClearingAuctionFactory()));
-        vm.label(address(auctionFactory), "auctionFactory");
+        initializerFactory = IContinuousClearingAuctionFactory(address(new ContinuousClearingAuctionFactory()));
+        vm.label(address(initializerFactory), "initializerFactory");
     }
 
     /// @dev Override with the desired hook address w/ permissions/// @inheritdoc Base
@@ -82,7 +94,7 @@ abstract contract BttBase is LBPTestHelpers {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -95,6 +107,15 @@ abstract contract BttBase is LBPTestHelpers {
     function _deployMockCurrency(uint128 _totalSupply) internal {
         deployCodeTo(
             "MockERC20", abi.encode("Test Currency", "TEST", _totalSupply, address(liquidityLauncher)), ERC20_CURRENCY
+        );
+    }
+
+    function _deployMockVirtualToken(uint128 _totalSupply) internal {
+        deployCodeTo("MockERC20", abi.encode("Test Token", "TEST", _totalSupply, LIQUIDITY_LAUNCHER), UNDERLYING_TOKEN);
+        deployCodeTo(
+            "MockVirtualERC20",
+            abi.encode("Virtual Token", "VTKN", _totalSupply, LIQUIDITY_LAUNCHER, UNDERLYING_TOKEN),
+            MOCK_VIRTUAL_TOKEN
         );
     }
 
@@ -117,7 +138,7 @@ abstract contract BttBase is LBPTestHelpers {
         _parameters.migratorParams = _toValidMigrationParameters(_parameters.migratorParams, _useNativeCurrency);
         _parameters.positionManager = IPositionManager(POSITION_MANAGER); // dont need to fuzz
         _parameters.poolManager = IPoolManager(POOL_MANAGER);
-        _parameters.auctionParameters = _validAuctionParameters(_parameters, _useNativeCurrency);
+        _parameters.initializerParameters = _validAuctionParameters(_parameters, _useNativeCurrency);
         return _parameters;
     }
 
@@ -132,12 +153,11 @@ abstract contract BttBase is LBPTestHelpers {
             uint64(_bound(_mParameters.migrationBlock, block.number + 2, type(uint64).max - 1));
         _mParameters.sweepBlock =
             uint64(_bound(_mParameters.sweepBlock, _mParameters.migrationBlock + 1, type(uint64).max));
-        _mParameters.tokenSplitToAuction =
-            uint24(_bound(_mParameters.tokenSplitToAuction, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
+        _mParameters.tokenSplit = uint24(_bound(_mParameters.tokenSplit, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
         _mParameters.poolTickSpacing =
             int24(_bound(_mParameters.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         _mParameters.poolLPFee = uint24(_bound(_mParameters.poolLPFee, 1, LPFeeLibrary.MAX_LP_FEE - 1));
-        _mParameters.auctionFactory = address(auctionFactory);
+        _mParameters.initializerFactory = address(initializerFactory);
         _mParameters.operator = testOperator;
         _mParameters.maxCurrencyAmountForLP = uint128(_bound(_mParameters.maxCurrencyAmountForLP, 1, type(uint128).max));
         vm.assume(
@@ -152,35 +172,47 @@ abstract contract BttBase is LBPTestHelpers {
         view
         returns (bytes memory)
     {
-        AuctionParameters memory auctionParameters;
-        auctionParameters.currency = _useNativeCurrency ? address(0) : address(erc20Currency);
-        vm.assume(auctionParameters.currency != _parameters.token);
-        auctionParameters.fundsRecipient = ActionConstants.MSG_SENDER;
-        auctionParameters.tokensRecipient = tokensRecipient;
-        auctionParameters.startBlock = uint64(block.number);
-        auctionParameters.endBlock = uint64(
+        AuctionParameters memory initializerParameters;
+        initializerParameters.currency = _useNativeCurrency ? address(0) : address(erc20Currency);
+        vm.assume(initializerParameters.currency != _parameters.token);
+        initializerParameters.fundsRecipient = ActionConstants.MSG_SENDER;
+        initializerParameters.tokensRecipient = tokensRecipient;
+        initializerParameters.startBlock = uint64(block.number);
+        initializerParameters.endBlock = uint64(
             _bound(
-                auctionParameters.endBlock,
-                auctionParameters.startBlock + 1,
+                initializerParameters.endBlock,
+                initializerParameters.startBlock + 1,
                 _parameters.migratorParams.migrationBlock - 1
             )
         );
-        auctionParameters.claimBlock = auctionParameters.endBlock + 1;
-        auctionParameters.tickSpacing = 1 << 96;
-        auctionParameters.validationHook = address(0);
-        auctionParameters.floorPrice = 1 << 96;
-        auctionParameters.requiredCurrencyRaised = 0;
+        initializerParameters.claimBlock = initializerParameters.endBlock + 1;
+        initializerParameters.tickSpacing = 1 << 96;
+        initializerParameters.validationHook = address(0);
+        initializerParameters.floorPrice = 1 << 96;
+        initializerParameters.requiredCurrencyRaised = 0;
 
-        uint64 duration = auctionParameters.endBlock - auctionParameters.startBlock;
+        uint64 duration = initializerParameters.endBlock - initializerParameters.startBlock;
         vm.assume(1e7 % uint24(duration) == 0);
         uint24 mpsPerBlock = 1e7 / uint24(duration);
-        auctionParameters.auctionStepsData = AuctionStepsBuilder.init().addStep(mpsPerBlock, uint40(duration));
-        return abi.encode(auctionParameters);
+        initializerParameters.auctionStepsData = AuctionStepsBuilder.init().addStep(mpsPerBlock, uint40(duration));
+        return abi.encode(initializerParameters);
     }
 
     /// @dev Deploy a strategy to the hook address
     function _deployStrategy(FuzzConstructorParameters memory _parameters) internal {
         address hookAddress = _getHookAddress();
+        // For virtual token tests we need to ensure that the initial deployment with non virtual token address returns UNDERLYING_TOKEN_ADDRESS
+        // This won't be used in the actual virtual strategy tests since we replace token with the mock virtual token
+        vm.mockCall(
+            MOCK_VIRTUAL_TOKEN,
+            abi.encodeWithSelector(IVirtualERC20.UNDERLYING_TOKEN_ADDRESS.selector),
+            abi.encode(UNDERLYING_TOKEN)
+        );
+        vm.mockCall(
+            address(token),
+            abi.encodeWithSelector(IVirtualERC20.UNDERLYING_TOKEN_ADDRESS.selector),
+            abi.encode(address(token))
+        );
         deployCodeTo(_contractName(), _encodeConstructorArgs(_parameters), hookAddress);
         lbp = ILBPStrategyBase(payable(hookAddress));
         vm.label(address(lbp), "lbp");

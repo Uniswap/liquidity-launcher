@@ -28,14 +28,14 @@ library StrategyPlanner {
 
     /// @notice Initializes empty plan
     /// @return plan The empty plan
-    function init() internal returns (Plan memory plan) {
+    function init() internal pure returns (Plan memory plan) {
         return Plan({actions: ActionsBuilder.init(), params: ParamsBuilder.init()});
     }
 
     /// @notice Encodes the plan into a bytes array, truncating the parameters array
     /// @param plan The plan to encode
     /// @return The encoded plan
-    function encode(Plan memory plan) internal view returns (bytes memory) {
+    function encode(Plan memory plan) internal pure returns (bytes memory) {
         return abi.encode(plan.actions, plan.params);
     }
 
@@ -47,7 +47,7 @@ library StrategyPlanner {
         Plan memory plan,
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams
-    ) internal returns (Plan memory) {
+    ) internal pure returns (Plan memory) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
 
         // Get tick bounds for full range
@@ -86,7 +86,7 @@ library StrategyPlanner {
         Plan memory plan,
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams
-    ) internal returns (Plan memory) {
+    ) internal pure returns (Plan memory) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
 
         // Get tick bounds based on position side
@@ -139,7 +139,7 @@ library StrategyPlanner {
     /// @notice Plans the final take pair action and parameters
     /// @param plan The plan to extend with the new actions and parameters
     /// @param baseParams The base parameters for the position
-    function planTakePair(Plan memory plan, BasePositionParams memory baseParams) internal returns (Plan memory) {
+    function planTakePair(Plan memory plan, BasePositionParams memory baseParams) internal view returns (Plan memory) {
         bool currencyIsCurrency0 = baseParams.currency < baseParams.poolToken;
         return Plan({
             actions: plan.actions.addTakePair(),

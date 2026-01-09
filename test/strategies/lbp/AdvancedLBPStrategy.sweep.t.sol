@@ -29,15 +29,15 @@ contract AdvancedLBPStrategySweepTest is AdvancedLBPStrategyTestBase {
     function test_sweepToken_succeeds() public {
         sendTokensToLBP(address(liquidityLauncher), token, lbp, DEFAULT_TOTAL_SUPPLY);
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY / 2);
-        assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), lbp.reserveSupply());
+        assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), lbp.reserveTokenAmount());
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), 0);
         vm.roll(lbp.sweepBlock());
         vm.expectEmit(true, true, true, true);
-        emit TokensSwept(lbp.operator(), lbp.reserveSupply());
+        emit TokensSwept(lbp.operator(), lbp.reserveTokenAmount());
         vm.prank(lbp.operator());
         lbp.sweepToken();
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), 0);
-        assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), lbp.reserveSupply());
+        assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), lbp.reserveTokenAmount());
     }
 
     function test_sweepCurrency_revertsWithSweepNotAllowed() public {

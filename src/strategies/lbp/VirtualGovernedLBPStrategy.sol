@@ -20,21 +20,21 @@ contract VirtualGovernedLBPStrategy is GovernedLBPStrategy {
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         address _governance
     )
         // Underlying strategy
         GovernedLBPStrategy(
-            _token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager, _governance
+            _token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager, _governance
         )
     {
         UNDERLYING_TOKEN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
     }
 
     /// @notice Returns the address of the underlying token
-    function getPoolToken() internal view override returns (address) {
+    function _getPoolToken() internal view override returns (address) {
         return UNDERLYING_TOKEN;
     }
 }

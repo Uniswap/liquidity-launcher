@@ -16,6 +16,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {MaxBidPriceLib} from "continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
+import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
     using AuctionStepsBuilder for bytes;
@@ -79,7 +80,7 @@ contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), 1_820_000_000e18);
         console2.logBytes(auctionParams);
-        console2.logBytes(lbp.auctionParameters());
+        console2.logBytes(lbp.initializerParameters());
         lbp.onTokensReceived();
 
         uint128 tokenAmount = 1_820_000_000e18 * 0.85e7 / 1e7;
@@ -87,27 +88,21 @@ contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {
         clearingPrice = uint256(bound(clearingPrice, floorPrice, MaxBidPriceLib.maxBidPrice(tokenAmount)));
 
         // Verify auction is created
-        assertNotEq(address(lbp.auction()), address(0));
+        assertNotEq(address(lbp.initializer()), address(0));
 
         // Verify token distribution
         uint256 expectedAuctionAmount = 1_820_000_000e18 * 0.85e7 / 1e7;
-        assertEq(token.balanceOf(address(lbp.auction())), expectedAuctionAmount);
+        assertEq(token.balanceOf(address(lbp.initializer())), expectedAuctionAmount);
         assertEq(token.balanceOf(address(lbp)), 1_820_000_000e18 - expectedAuctionAmount);
 
-        mockAuctionClearingPrice(lbp, clearingPrice);
         mockAuctionEndBlock(lbp, uint64(block.number - 1));
-        mockCurrencyRaised(lbp, FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
-        deal(address(lbp), FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96));
+        uint256 currencyRaised = FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96);
+        deal(address(lbp), currencyRaised);
 
-        mockAuctionCheckpoint(
+        mockLBPInitializationParams(
             lbp,
-            Checkpoint({
-                clearingPrice: clearingPrice,
-                currencyRaisedAtClearingPriceQ96_X7: ValueX7.wrap(FullMath.mulDiv(tokenAmount, clearingPrice, 2 ** 96)),
-                cumulativeMpsPerPrice: 0,
-                cumulativeMps: 0,
-                prev: 0,
-                next: type(uint64).max
+            LBPInitializationParams({
+                initialPriceX96: clearingPrice, tokensSold: tokenAmount, currencyRaised: currencyRaised
             })
         );
 
