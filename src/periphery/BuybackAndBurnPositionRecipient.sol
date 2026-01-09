@@ -7,7 +7,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
@@ -19,6 +18,8 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     error InvalidToken();
     /// @notice Thrown when the token and currency are the same address
     error TokenAndCurrencyCannotBeTheSame();
+    /// @notice Thrown when the received currency fees amount is less than expected
+    error InsufficientCurrencyReceived(uint256 received, uint256 expected);
 
     /// @notice Emitted when tokens are burned
     /// @param amount The amount of tokens burned
@@ -54,7 +55,7 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
 
     /// @notice Claim any fees from the position and burn the `tokens` portion
     /// @param _tokenId The token ID of the position
-    function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
+    function collectFees(uint256 _tokenId, uint256 _minCurrencyAmount) external nonReentrant {
         // Require the caller to burn at least the minimum amount of `token`
         SafeTransferLib.safeTransferFrom(token, msg.sender, BURN_ADDRESS, minTokenBurnAmount);
         emit TokensBurned(minTokenBurnAmount);
@@ -67,11 +68,19 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
         params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
         // Call TAKE to send the tokens to the burn address
         params[1] = abi.encode(token, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
-        // Call TAKE to send the currency to the caller
-        params[2] = abi.encode(currency, msg.sender, ActionConstants.OPEN_DELTA);
+        // Call TAKE to send the currency to this contract
+        params[2] = abi.encode(currency, address(this), ActionConstants.OPEN_DELTA);
 
         // Set deadline to the current block
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+
+        // Check received currency amount and transfer to caller
+        uint256 currencyReceived = Currency.wrap(currency).balanceOfSelf();
+        if (currencyReceived < _minCurrencyAmount) {
+            revert InsufficientCurrencyReceived(currencyReceived, _minCurrencyAmount);
+        }
+        // Transfer the currency balance to the caller via CurrencyLibrary
+        Currency.wrap(currency).transfer(msg.sender, currencyReceived);
 
         emit FeesCollected(msg.sender);
     }

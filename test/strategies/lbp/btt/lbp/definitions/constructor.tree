@@ -2,6 +2,8 @@ ConstructorTest
 ├── when sweep block is LTE migration block
 │   └── it reverts with {InvalidSweepBlock}
 ├── when sweep block is GT migration block
+│   ├── when max currency for lp is zero
+│   │   └── it reverts with {MaxCurrencyAmountForLPIsZero}
 │   ├── when token split to auction is GTE max token split
 │   │   └── it reverts with {TokenSplitTooHigh}
 │   └── when token split to auction is LT max token split
@@ -15,7 +17,7 @@ ConstructorTest
 │               │   └── it reverts with {InvalidPositionRecipient}
 │               └── when position recipient is not a reserved address
 │                   └── when auction supply is zero
-│                       └── it reverts with {AuctionSupplyIsZero}
+│                       └── it reverts with {InitializerTokenSplitIsZero}
 └── when migration parameters are valid
     ├── when funds recipient is not MSG_SENDER
     │   └── it reverts with {InvalidFundsRecipient}

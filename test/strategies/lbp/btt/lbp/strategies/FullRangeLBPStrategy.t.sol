@@ -11,12 +11,12 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    ) FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {}
+    ) FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager) {}
 
-    function prepareMigrationData() external returns (MigrationData memory) {
+    function prepareMigrationData() external view returns (MigrationData memory) {
         return _prepareMigrationData();
     }
 
@@ -24,12 +24,24 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
         return _createPositionPlan(data);
     }
 
-    function getTokenTransferAmount(MigrationData memory data) external view returns (uint128) {
+    function getTokenTransferAmount(MigrationData memory data) external pure returns (uint128) {
         return _getTokenTransferAmount(data);
     }
 
-    function getCurrencyTransferAmount(MigrationData memory data) external view returns (uint128) {
+    function getCurrencyTransferAmount(MigrationData memory data) external pure returns (uint128) {
         return _getCurrencyTransferAmount(data);
+    }
+
+    function getPoolToken() external view returns (address) {
+        return _getPoolToken();
+    }
+
+    function transferAssetsAndExecutePlan(
+        uint128 tokenTransferAmount,
+        uint128 currencyTransferAmount,
+        bytes memory plan
+    ) external {
+        return _transferAssetsAndExecutePlan(tokenTransferAmount, currencyTransferAmount, plan);
     }
 }
 

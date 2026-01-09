@@ -69,7 +69,7 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
 
     function test_collectFees_revertsIfPositionIsNotOwner() public {
         positionRecipient = new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, 0, feeRecipient);
-        vm.expectRevert(TimelockedPositionRecipient.NotPositionOwner.selector);
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
         positionRecipient.collectFees(FORK_TOKEN_ID);
     }
 
