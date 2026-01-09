@@ -200,6 +200,10 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         if (migratorParams.sweepBlock <= migratorParams.migrationBlock) {
             revert InvalidSweepBlock(migratorParams.sweepBlock, migratorParams.migrationBlock);
         }
+        // max currency amount for LP validation cannot be zero
+        else if (migratorParams.maxCurrencyAmountForLP == 0) {
+            revert MaxCurrencyAmountForLPIsZero();
+        }
         // token split validation (cannot be greater than or equal to 100%)
         else if (migratorParams.tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT) {
             revert TokenSplitTooHigh(migratorParams.tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT);
