@@ -71,7 +71,7 @@ interface ILBPStrategyBase is IDistributionContract {
 
     /// @notice Error thrown when the funds recipient is not set to the strategy
     /// @param invalidFundsRecipient The invalid funds recipient
-    /// @param expectedFundsRecipient The expected funds recipient 
+    /// @param expectedFundsRecipient The expected funds recipient
     error InvalidFundsRecipient(address invalidFundsRecipient, address expectedFundsRecipient);
 
     /// @notice Error thrown when the reserve supply is too high
