@@ -19,23 +19,23 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {}
+    ) LBPStrategyBase(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager) {}
 
     /// @notice Creates the position plan based on migration data
-    /// @param data Migration data with all necessary parameters
+    /// @param _data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory data) internal override returns (bytes memory) {
+    function _createPositionPlan(MigrationData memory _data) internal override returns (bytes memory) {
         Plan memory plan = StrategyPlanner.init();
 
         // Create base parameters
-        BasePositionParams memory baseParams = _basePositionParams(data);
+        BasePositionParams memory baseParams = _basePositionParams(_data);
 
         plan = plan.planFullRangePosition(
             baseParams,
-            FullRangeParams({tokenAmount: data.fullRangeTokenAmount, currencyAmount: data.fullRangeCurrencyAmount})
+            FullRangeParams({tokenAmount: _data.fullRangeTokenAmount, currencyAmount: _data.fullRangeCurrencyAmount})
         );
 
         plan = plan.planTakePair(baseParams);
@@ -44,16 +44,16 @@ contract FullRangeLBPStrategy is LBPStrategyBase {
     }
 
     /// @notice Calculates the amount of tokens to transfer
-    /// @param data Migration data
+    /// @param _data Migration data
     /// @return The amount of tokens to transfer to the position manager
-    function _getTokenTransferAmount(MigrationData memory data) internal pure override returns (uint128) {
-        return data.fullRangeTokenAmount;
+    function _getTokenTransferAmount(MigrationData memory _data) internal pure override returns (uint128) {
+        return _data.fullRangeTokenAmount;
     }
 
     /// @notice Calculates the amount of currency to transfer
-    /// @param data Migration data
+    /// @param _data Migration data
     /// @return The amount of currency to transfer to the position manager
-    function _getCurrencyTransferAmount(MigrationData memory data) internal pure override returns (uint128) {
-        return data.fullRangeCurrencyAmount;
+    function _getCurrencyTransferAmount(MigrationData memory _data) internal pure override returns (uint128) {
+        return _data.fullRangeCurrencyAmount;
     }
 }

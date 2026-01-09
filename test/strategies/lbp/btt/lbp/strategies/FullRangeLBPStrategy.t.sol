@@ -11,10 +11,10 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager
-    ) FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager) {}
+    ) FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager) {}
 
     function prepareMigrationData() external view returns (MigrationData memory) {
         return _prepareMigrationData();

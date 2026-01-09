@@ -5,20 +5,12 @@ import "forge-std/Test.sol";
 import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
 
 contract TokenDistributionHelper is Test {
-    function calculateAuctionSupply(uint128 totalSupply, uint24 tokenSplitToAuction)
-        public
-        pure
-        returns (uint128 auctionSupply)
-    {
-        return TokenDistribution.calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+    function calculateTokenSplit(uint128 totalSupply, uint24 tokenSplit) public pure returns (uint128) {
+        return TokenDistribution.calculateTokenSplit(totalSupply, tokenSplit);
     }
 
-    function calculateReserveSupply(uint128 totalSupply, uint24 tokenSplitToAuction)
-        public
-        pure
-        returns (uint128 reserveTokenAmount)
-    {
-        return TokenDistribution.calculateReserveSupply(totalSupply, tokenSplitToAuction);
+    function calculateReserveSupply(uint128 totalSupply, uint24 tokenSplit) public pure returns (uint128) {
+        return TokenDistribution.calculateReserveSupply(totalSupply, tokenSplit);
     }
 }
 
@@ -30,63 +22,63 @@ contract TokenDistributionTest is Test {
         tokenDistributionHelper = new TokenDistributionHelper();
     }
 
-    function test_calculateAuctionSupply_succeeds() public view {
+    function test_calculateTokenSplit_succeeds() public view {
         uint128 totalSupply = 1000e18;
-        uint24 tokenSplitToAuction = 5e6;
+        uint24 tokenSplit = 5e6;
         uint128 expectedAuctionSupply = 500e18;
-        uint128 auctionSupply = tokenDistributionHelper.calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+        uint128 auctionSupply = tokenDistributionHelper.calculateTokenSplit(totalSupply, tokenSplit);
         assertEq(auctionSupply, expectedAuctionSupply);
 
-        tokenSplitToAuction = 1e7;
+        tokenSplit = 1e7;
         expectedAuctionSupply = 1000e18;
-        auctionSupply = tokenDistributionHelper.calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+        auctionSupply = tokenDistributionHelper.calculateTokenSplit(totalSupply, tokenSplit);
         assertEq(auctionSupply, expectedAuctionSupply);
 
-        tokenSplitToAuction = 0;
+        tokenSplit = 0;
         expectedAuctionSupply = 0;
-        auctionSupply = tokenDistributionHelper.calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+        auctionSupply = tokenDistributionHelper.calculateTokenSplit(totalSupply, tokenSplit);
         assertEq(auctionSupply, expectedAuctionSupply);
 
-        tokenSplitToAuction = 2e6;
+        tokenSplit = 2e6;
         expectedAuctionSupply = 200e18;
-        auctionSupply = tokenDistributionHelper.calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+        auctionSupply = tokenDistributionHelper.calculateTokenSplit(totalSupply, tokenSplit);
         assertEq(auctionSupply, expectedAuctionSupply);
     }
 
-    function test_fuzz_calculateAuctionSupply(uint128 totalSupply, uint24 tokenSplitToAuction) public view {
-        tokenSplitToAuction = uint24(bound(tokenSplitToAuction, 0, TokenDistribution.MAX_TOKEN_SPLIT));
-        assertLe(uint256(totalSupply) * tokenSplitToAuction, type(uint256).max); // safe: totalSupply * tokenSplitToAuction will never overflow type(uint256).max
-        uint128 auctionSupply = tokenDistributionHelper.calculateAuctionSupply(totalSupply, tokenSplitToAuction);
+    function test_fuzz_calculateTokenSplit(uint128 totalSupply, uint24 tokenSplit) public view {
+        tokenSplit = uint24(bound(tokenSplit, 0, TokenDistribution.MAX_TOKEN_SPLIT));
+        assertLe(uint256(totalSupply) * tokenSplit, type(uint256).max); // safe: totalSupply * tokenSplit will never overflow type(uint256).max
+        uint128 auctionSupply = tokenDistributionHelper.calculateTokenSplit(totalSupply, tokenSplit);
         assertLe(auctionSupply, totalSupply);
     }
 
     function test_calculateReserveSupply_succeeds() public view {
         uint128 totalSupply = 1000e18;
-        uint24 tokenSplitToAuction = 5e6;
+        uint24 tokenSplit = 5e6;
         uint128 expectedReserveSupply = 500e18;
-        uint128 reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplitToAuction);
+        uint128 reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
         assertEq(reserveTokenAmount, expectedReserveSupply);
 
-        tokenSplitToAuction = 1e7;
+        tokenSplit = 1e7;
         expectedReserveSupply = 0;
-        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplitToAuction);
+        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
         assertEq(reserveTokenAmount, expectedReserveSupply);
 
-        tokenSplitToAuction = 0;
+        tokenSplit = 0;
         expectedReserveSupply = 1000e18;
-        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplitToAuction);
+        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
         assertEq(reserveTokenAmount, expectedReserveSupply);
 
-        tokenSplitToAuction = 2e6;
+        tokenSplit = 2e6;
         expectedReserveSupply = 800e18;
-        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplitToAuction);
+        reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
         assertEq(reserveTokenAmount, expectedReserveSupply);
     }
 
-    function test_fuzz_calculateReserveSupply(uint128 totalSupply, uint24 tokenSplitToAuction) public view {
-        tokenSplitToAuction = uint24(bound(tokenSplitToAuction, 0, TokenDistribution.MAX_TOKEN_SPLIT));
-        assertLe(uint256(totalSupply) * tokenSplitToAuction, type(uint256).max); // safe: totalSupply * tokenSplitToAuction will never overflow type(uint256).max
-        uint128 reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplitToAuction);
+    function test_fuzz_calculateReserveSupply(uint128 totalSupply, uint24 tokenSplit) public view {
+        tokenSplit = uint24(bound(tokenSplit, 0, TokenDistribution.MAX_TOKEN_SPLIT));
+        assertLe(uint256(totalSupply) * tokenSplit, type(uint256).max); // safe: totalSupply * tokenSplit will never overflow type(uint256).max
+        uint128 reserveTokenAmount = tokenDistributionHelper.calculateReserveSupply(totalSupply, tokenSplit);
         assertLe(reserveTokenAmount, totalSupply);
     }
 }

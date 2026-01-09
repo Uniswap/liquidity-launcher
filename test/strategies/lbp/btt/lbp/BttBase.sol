@@ -28,7 +28,7 @@ struct FuzzConstructorParameters {
     address token;
     uint128 totalSupply;
     MigratorParameters migratorParams;
-    bytes auctionParameters;
+    bytes initializerParameters;
     IPositionManager positionManager;
     IPoolManager poolManager;
 }
@@ -49,7 +49,7 @@ abstract contract BttBase is LBPTestHelpers {
     uint256 nextTokenId;
     MockERC20 token;
     MockERC20 erc20Currency;
-    IContinuousClearingAuctionFactory auctionFactory;
+    IContinuousClearingAuctionFactory initializerFactory;
 
     constructor() {
         UNDERLYING_TOKEN = makeAddr("underlyingToken");
@@ -69,8 +69,8 @@ abstract contract BttBase is LBPTestHelpers {
         erc20Currency = MockERC20(ERC20_CURRENCY);
         vm.label(ERC20_CURRENCY, "erc20 currency");
 
-        auctionFactory = IContinuousClearingAuctionFactory(address(new ContinuousClearingAuctionFactory()));
-        vm.label(address(auctionFactory), "auctionFactory");
+        initializerFactory = IContinuousClearingAuctionFactory(address(new ContinuousClearingAuctionFactory()));
+        vm.label(address(initializerFactory), "initializerFactory");
     }
 
     /// @dev Override with the desired hook address w/ permissions/// @inheritdoc Base
@@ -94,7 +94,7 @@ abstract contract BttBase is LBPTestHelpers {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -138,7 +138,7 @@ abstract contract BttBase is LBPTestHelpers {
         _parameters.migratorParams = _toValidMigrationParameters(_parameters.migratorParams, _useNativeCurrency);
         _parameters.positionManager = IPositionManager(POSITION_MANAGER); // dont need to fuzz
         _parameters.poolManager = IPoolManager(POOL_MANAGER);
-        _parameters.auctionParameters = _validAuctionParameters(_parameters, _useNativeCurrency);
+        _parameters.initializerParameters = _validAuctionParameters(_parameters, _useNativeCurrency);
         return _parameters;
     }
 
@@ -153,12 +153,11 @@ abstract contract BttBase is LBPTestHelpers {
             uint64(_bound(_mParameters.migrationBlock, block.number + 2, type(uint64).max - 1));
         _mParameters.sweepBlock =
             uint64(_bound(_mParameters.sweepBlock, _mParameters.migrationBlock + 1, type(uint64).max));
-        _mParameters.tokenSplitToAuction =
-            uint24(_bound(_mParameters.tokenSplitToAuction, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
+        _mParameters.tokenSplit = uint24(_bound(_mParameters.tokenSplit, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
         _mParameters.poolTickSpacing =
             int24(_bound(_mParameters.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         _mParameters.poolLPFee = uint24(_bound(_mParameters.poolLPFee, 1, LPFeeLibrary.MAX_LP_FEE - 1));
-        _mParameters.auctionFactory = address(auctionFactory);
+        _mParameters.initializerFactory = address(initializerFactory);
         _mParameters.operator = testOperator;
         _mParameters.maxCurrencyAmountForLP = uint128(_bound(_mParameters.maxCurrencyAmountForLP, 1, type(uint128).max));
         vm.assume(
@@ -173,30 +172,30 @@ abstract contract BttBase is LBPTestHelpers {
         view
         returns (bytes memory)
     {
-        AuctionParameters memory auctionParameters;
-        auctionParameters.currency = _useNativeCurrency ? address(0) : address(erc20Currency);
-        vm.assume(auctionParameters.currency != _parameters.token);
-        auctionParameters.fundsRecipient = ActionConstants.MSG_SENDER;
-        auctionParameters.tokensRecipient = tokensRecipient;
-        auctionParameters.startBlock = uint64(block.number);
-        auctionParameters.endBlock = uint64(
+        AuctionParameters memory initializerParameters;
+        initializerParameters.currency = _useNativeCurrency ? address(0) : address(erc20Currency);
+        vm.assume(initializerParameters.currency != _parameters.token);
+        initializerParameters.fundsRecipient = ActionConstants.MSG_SENDER;
+        initializerParameters.tokensRecipient = tokensRecipient;
+        initializerParameters.startBlock = uint64(block.number);
+        initializerParameters.endBlock = uint64(
             _bound(
-                auctionParameters.endBlock,
-                auctionParameters.startBlock + 1,
+                initializerParameters.endBlock,
+                initializerParameters.startBlock + 1,
                 _parameters.migratorParams.migrationBlock - 1
             )
         );
-        auctionParameters.claimBlock = auctionParameters.endBlock + 1;
-        auctionParameters.tickSpacing = 1 << 96;
-        auctionParameters.validationHook = address(0);
-        auctionParameters.floorPrice = 1 << 96;
-        auctionParameters.requiredCurrencyRaised = 0;
+        initializerParameters.claimBlock = initializerParameters.endBlock + 1;
+        initializerParameters.tickSpacing = 1 << 96;
+        initializerParameters.validationHook = address(0);
+        initializerParameters.floorPrice = 1 << 96;
+        initializerParameters.requiredCurrencyRaised = 0;
 
-        uint64 duration = auctionParameters.endBlock - auctionParameters.startBlock;
+        uint64 duration = initializerParameters.endBlock - initializerParameters.startBlock;
         vm.assume(1e7 % uint24(duration) == 0);
         uint24 mpsPerBlock = 1e7 / uint24(duration);
-        auctionParameters.auctionStepsData = AuctionStepsBuilder.init().addStep(mpsPerBlock, uint40(duration));
-        return abi.encode(auctionParameters);
+        initializerParameters.auctionStepsData = AuctionStepsBuilder.init().addStep(mpsPerBlock, uint40(duration));
+        return abi.encode(initializerParameters);
     }
 
     /// @dev Deploy a strategy to the hook address
