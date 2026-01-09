@@ -88,7 +88,7 @@ contract AdvancedLBPStrategy is LBPStrategyBase {
     /// @notice Calculates the amount of currency to transfer to the position manager
     /// @param _data Migration data
     /// @return The amount of currency to transfer
-    function _getCurrencyTransferAmount(MigrationData memory data) internal view override returns (uint128) {
+    function _getCurrencyTransferAmount(MigrationData memory _data) internal view override returns (uint128) {
         return (createOneSidedCurrencyPosition && _data.leftoverCurrency > 0)
             ? _data.fullRangeCurrencyAmount + _data.leftoverCurrency
             : _data.fullRangeCurrencyAmount;

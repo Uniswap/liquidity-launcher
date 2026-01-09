@@ -89,7 +89,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         totalSupply = _totalSupply;
         // Calculate tokens reserved for liquidity by subtracting tokens allocated for initializer
         //   e.g. if tokenSplit = 5e6 (50%), then half goes to the initializer and half is reserved
-        reserveSupply = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplit);
+        reserveTokenAmount = _totalSupply.calculateReserveSupply(_migratorParams.tokenSplit);
         maxCurrencyAmountForLP = _migratorParams.maxCurrencyAmountForLP;
         positionManager = _positionManager;
         positionRecipient = _migratorParams.positionRecipient;
@@ -119,7 +119,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
         }
 
         // Calculate the supply of tokens to be distributed to the initializer
-        uint128 supply = totalSupply - reserveSupply;
+        uint128 supply = totalSupply - reserveTokenAmount;
 
         // Deploy the initializer contract via factory
         ILBPInitializer _initializer = ILBPInitializer(
@@ -209,7 +209,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook {
             revert InvalidSweepBlock(_migratorParams.sweepBlock, _migratorParams.migrationBlock);
         }
         // max currency amount for LP validation cannot be zero
-        else if (migratorParams.maxCurrencyAmountForLP == 0) {
+        else if (_migratorParams.maxCurrencyAmountForLP == 0) {
             revert MaxCurrencyAmountForLPIsZero();
         }
         // token split validation (cannot be greater than or equal to 100%)

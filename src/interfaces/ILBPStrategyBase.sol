@@ -109,7 +109,7 @@ interface ILBPStrategyBase is IDistributionContract {
     error InsufficientCurrency(uint256 amountNeeded, uint256 amountAvailable);
 
     /// @notice Error thrown when the auction has already been created
-    error AuctionAlreadyCreated();
+    error InitializerAlreadyCreated();
 
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();

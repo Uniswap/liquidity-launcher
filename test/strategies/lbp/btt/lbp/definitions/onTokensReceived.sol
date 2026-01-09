@@ -65,8 +65,8 @@ abstract contract OnTokensReceivedTest is BttBase {
         _;
     }
 
-    function test_WhenAuctionAlreadyCreated(FuzzConstructorParameters memory _parameters) public {
-        // it reverts with {AuctionAlreadyCreated}
+    function test_WhenInitializerAlreadyCreated(FuzzConstructorParameters memory _parameters) public {
+        // it reverts with {InitializerAlreadyCreated}
 
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
@@ -77,7 +77,7 @@ abstract contract OnTokensReceivedTest is BttBase {
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), _parameters.totalSupply);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionAlreadyCreated.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InitializerAlreadyCreated.selector));
         lbp.onTokensReceived();
     }
 
