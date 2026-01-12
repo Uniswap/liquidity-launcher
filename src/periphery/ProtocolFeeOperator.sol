@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
+import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
 
 /// @title ProtocolFeeOperator
 /// @notice Deployed instances of this contract are meant to be set as the `operator` of an LBP strategy
@@ -18,20 +20,30 @@ contract ProtocolFeeOperator is Initializable {
     event ProtocolFeeSwept(address indexed currency, uint256 amount);
     /// @notice Emitted when ownership of the contract is transferred
     event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
+    /// @notice Emitted when the protocol fee is updated
+    event ProtocolFeeUpdated(uint24 protocolFeeBps);
+
+    /// @notice Thrown when the protocol fee controller is not set
+    error ProtocolFeeControllerNotSet();
     /// @notice Thrown when the caller is not the owner
     error NotOwner();
 
-    uint24 public constant PROTOCOL_FEE_BPS = 15;
+    /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to this value
+    uint24 public constant MAX_PROTOCOL_FEE_BPS = 1_000;
     uint24 public constant BPS = 10_000;
 
     /// @notice The address to forward the protocol fees to. Set on construction as it varies per chain
     address public immutable protocolFeeRecipient;
+    /// @notice The controller that will provide the protocol fee in basis points
+    IProtocolFeeController public immutable protocolFeeController;
     /// @notice The owner of the contract. Set on initialization
     /// @dev It is crucial that this is set correctly after deployment to the intended address
     address public owner;
 
-    constructor(address _protocolFeeRecipient) {
+    constructor(address _protocolFeeRecipient, address _protocolFeeController) {
         protocolFeeRecipient = _protocolFeeRecipient;
+        if (_protocolFeeController == address(0)) revert ProtocolFeeControllerNotSet();
+        protocolFeeController = IProtocolFeeController(_protocolFeeController);
         _disableInitializers();
     }
 
@@ -74,10 +86,15 @@ contract ProtocolFeeOperator is Initializable {
         uint256 currencyBalanceAfter = currency.balanceOfSelf();
         uint256 currencySwept = currencyBalanceAfter - currencyBalanceBefore;
         // Calculate the fee, rounding down
-        uint256 fee = currencySwept * PROTOCOL_FEE_BPS / BPS;
+        uint256 fee = currencySwept
+            * FixedPointMathLib.min(
+                protocolFeeController.getProtocolFeeBps(Currency.unwrap(currency), currencySwept), MAX_PROTOCOL_FEE_BPS
+            ) / BPS;
 
         currency.transfer(protocolFeeRecipient, fee);
         currency.transfer(_recipient, currencySwept - fee);
+
+        emit ProtocolFeeSwept(Currency.unwrap(currency), fee);
     }
 
     /// @notice Allows the contract to receive ETH
