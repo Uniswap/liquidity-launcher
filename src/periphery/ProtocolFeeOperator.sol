@@ -29,7 +29,7 @@ contract ProtocolFeeOperator is Initializable {
     error NotOwner();
 
     /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to this value
-    uint24 public constant MAX_PROTOCOL_FEE_BPS = 1_000;
+    uint24 public constant MAX_PROTOCOL_FEE_BPS = 100;
     uint24 public constant BPS = 10_000;
 
     /// @notice The address to forward the protocol fees to. Set on construction as it varies per chain
