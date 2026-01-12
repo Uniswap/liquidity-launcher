@@ -2,6 +2,7 @@
 
 ## Table of Contents
 - [Deployment Process](#deployment-process)
+- [Deployment Requirements](#deployment-requirements)
 - [Creating a new token](#creating-a-new-token)
 - [Token distribution](#token-distribution)
 - [Example](#example)
@@ -9,6 +10,13 @@
 
 ## Deployment Process
 Most deployments will be initiated through the `LiquidityLauncher` contract. If you are also creating a new token, see [Creating a new token](#creating-a-new-token).
+
+## Deployment Requirements
+
+This protocol requires deployment on networks that support the Cancun upgrade, specifically:
+- **EIP-1153 (Transient Storage)**: Used by `ReentrancyGuardTransient` for gas-efficient temporary storage
+
+Supported networks include Ethereum mainnet (post-Cancun) and L2s that have implemented the Cancun upgrade. Before deploying on a new network, verify that transient storage opcodes (`TLOAD`/`TSTORE`) are supported.
 
 ## Creating a new token
 You can create a new token by calling the `createToken` function on the `LiquidityLauncher` contract. This will deploy a new token through a specified factory contract. The launcher supports different token standards including ERC20 tokens (UERC20) and Superchain tokens (USUPERC20).
