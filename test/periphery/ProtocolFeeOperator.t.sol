@@ -8,7 +8,7 @@ import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {FeeTapper} from "../../src/periphery/FeeTapper.sol";
 
 /// @title MockLBP for testing the ProtocolFeeOperator
 /// @notice Sweeps its token and currency balance to the caller
@@ -58,10 +58,8 @@ contract MockProtocolFeeControllerOverflowing {
 contract ProtocolFeeOperatorTest is Test {
     ProtocolFeeOperator public implementation;
     MockProtocolFeeController public protocolFeeController;
-
-    address public protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+    FeeTapper public feeTapper;
     ILBPStrategyBase public lbp;
-
     ERC20Mock public token;
     ERC20Mock public currency;
 
@@ -69,7 +67,8 @@ contract ProtocolFeeOperatorTest is Test {
 
     function setUp() public {
         protocolFeeController = new MockProtocolFeeController();
-        implementation = new ProtocolFeeOperator(protocolFeeRecipient, address(protocolFeeController));
+        feeTapper = new FeeTapper(makeAddr("tokenJar"), address(this));
+        implementation = new ProtocolFeeOperator(address(feeTapper), address(protocolFeeController));
         token = new ERC20Mock();
         currency = new ERC20Mock();
         lbp = ILBPStrategyBase(address(new MockLBP(address(token), address(currency))));
@@ -104,7 +103,7 @@ contract ProtocolFeeOperatorTest is Test {
         protocolFeeOperator.initialize(_lbp, _recipient);
     }
 
-    function test_sweepToken_succeeds(address _recipient, uint256 _amount) public {
+    function test_sweepToken_succeeds(address _recipient, uint128 _amount) public {
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
@@ -117,183 +116,92 @@ contract ProtocolFeeOperatorTest is Test {
         assertEq(token.balanceOf(_recipient), _amount);
     }
 
-    function test_sweepCurrency_protocolFeeController_returnsZero_zeroFee(address _recipient, uint256 _amount) public {
+    function test_sweepCurrency_protocolFeeController_returnsZero_zeroFee(address _recipient, uint128 _amount) public {
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
         vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
 
         protocolFeeOperator.sweepCurrency();
         assertEq(currency.balanceOf(_recipient), _amount);
-        assertEq(protocolFeeOperator.index(), 0);
+        assertEq(currency.balanceOf(address(protocolFeeOperator.feeTapper())), 0);
     }
 
-    function test_sweepCurrency_protocolFeeController_reverts_zeroFee(address _recipient, uint256 _amount) public {
+    function test_sweepCurrency_protocolFeeController_reverts_zeroFee(address _recipient, uint128 _amount) public {
         vm.etch(address(protocolFeeController), address(new MockProtocolFeeControllerReverting()).code);
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
         vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
 
         protocolFeeOperator.sweepCurrency();
+        assertEq(currency.balanceOf(address(protocolFeeOperator.feeTapper())), 0);
         assertEq(currency.balanceOf(_recipient), _amount);
-        assertEq(protocolFeeOperator.index(), 0);
     }
 
-    function test_sweepCurrency_protocolFeeController_overflows_returnsMax(address _recipient, uint256 _amount) public {
+    function test_sweepCurrency_protocolFeeController_overflows_returnsMax(address _recipient, uint128 _amount) public {
         vm.etch(address(protocolFeeController), address(new MockProtocolFeeControllerOverflowing()).code);
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
-        vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+        vm.assume(_amount > 0 && _amount <= type(uint128).max / implementation.MAX_PROTOCOL_FEE_BPS());
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
+        uint128 protocolFeeAmount = _amount * implementation.MAX_PROTOCOL_FEE_BPS() / BPS;
 
-        uint256 protocolFeeIndex = _amount * implementation.MAX_PROTOCOL_FEE_BPS();
         protocolFeeOperator.sweepCurrency();
-        assertEq(currency.balanceOf(_recipient), _amount * (BPS - implementation.MAX_PROTOCOL_FEE_BPS()) / BPS);
-        assertEq(protocolFeeOperator.index(), protocolFeeIndex);
+        assertEq(currency.balanceOf(address(protocolFeeOperator.feeTapper())), protocolFeeAmount);
+        assertEq(currency.balanceOf(_recipient), _amount - protocolFeeAmount);
     }
 
     function test_sweepCurrency_protocolFeeController_returnsLessThanMax(
         address _recipient,
-        uint256 _amount,
-        uint24 _protocolFeeBps,
-        uint256 _releaseBlock
+        uint128 _amount,
+        uint24 _protocolFeeBps
     ) public {
         _protocolFeeBps = uint24(bound(_protocolFeeBps, 1, implementation.MAX_PROTOCOL_FEE_BPS()));
         protocolFeeController.setProtocolFeeBps(_protocolFeeBps);
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
-        vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+        vm.assume(_amount > 0 && _amount <= type(uint128).max / implementation.MAX_PROTOCOL_FEE_BPS());
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
 
-        uint256 protocolFeeIndex = _amount * _protocolFeeBps;
-        uint256 remaining = _amount * (BPS - _protocolFeeBps) / BPS;
+        uint128 protocolFeeAmount = _amount * _protocolFeeBps / BPS;
 
         protocolFeeOperator.sweepCurrency();
-        assertEq(currency.balanceOf(_recipient), remaining, "balance");
-        assertEq(protocolFeeOperator.index(), protocolFeeIndex, "index");
-
-        _releaseBlock = bound(_releaseBlock, block.number + 1, block.number + BPS);
-        uint256 elapsed = _releaseBlock - block.number;
-        uint256 indexDelta =
-            FixedPointMathLib.fullMulDiv(protocolFeeIndex, elapsed * protocolFeeOperator.BPS_RELEASED_PER_BLOCK(), BPS);
-        if (indexDelta > protocolFeeIndex) indexDelta = protocolFeeIndex;
-        uint256 toRelease = indexDelta / BPS;
-        if (toRelease > 0) {
-            vm.expectEmit(true, true, true, true);
-            emit ProtocolFeeOperator.ProtocolFeeReleased(lbp.currency(), toRelease);
-        }
-
-        vm.roll(_releaseBlock);
-        protocolFeeOperator.release();
-        assertEq(currency.balanceOf(protocolFeeRecipient), toRelease, "balance");
-        assertEq(protocolFeeOperator.index(), protocolFeeIndex - indexDelta, "index");
+        assertEq(currency.balanceOf(address(protocolFeeOperator.feeTapper())), protocolFeeAmount);
+        assertEq(currency.balanceOf(_recipient), _amount - protocolFeeAmount);
     }
 
     function test_sweepCurrency_protocolFeeController_returnsMaxWhenOverMax(
         address _recipient,
-        uint256 _amount,
-        uint24 _protocolFeeBps,
-        uint256 _releaseBlock
+        uint128 _amount,
+        uint24 _protocolFeeBps
     ) public {
         _protocolFeeBps = uint24(bound(_protocolFeeBps, implementation.MAX_PROTOCOL_FEE_BPS() + 1, type(uint24).max));
         protocolFeeController.setProtocolFeeBps(_protocolFeeBps);
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
-        vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+        vm.assume(_amount > 0 && _amount <= type(uint128).max / implementation.MAX_PROTOCOL_FEE_BPS());
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
 
-        uint256 protocolFeeIndex = _amount * protocolFeeOperator.MAX_PROTOCOL_FEE_BPS();
+        uint128 protocolFeeAmount = _amount * implementation.MAX_PROTOCOL_FEE_BPS() / BPS;
 
         protocolFeeOperator.sweepCurrency();
-        assertEq(
-            currency.balanceOf(_recipient),
-            _amount * (BPS - protocolFeeOperator.MAX_PROTOCOL_FEE_BPS()) / BPS,
-            "balance"
-        );
-        assertEq(protocolFeeOperator.index(), protocolFeeIndex, "index");
-
-        _releaseBlock = bound(_releaseBlock, block.number + 1, block.number + BPS);
-        uint256 elapsed = _releaseBlock - block.number;
-        uint256 indexDelta =
-            FixedPointMathLib.fullMulDiv(protocolFeeIndex, elapsed * protocolFeeOperator.BPS_RELEASED_PER_BLOCK(), BPS);
-        if (indexDelta > protocolFeeIndex) indexDelta = protocolFeeIndex;
-        uint256 toRelease = indexDelta / BPS;
-        if (toRelease > 0) {
-            vm.expectEmit(true, true, true, true);
-            emit ProtocolFeeOperator.ProtocolFeeReleased(lbp.currency(), toRelease);
-        }
-        vm.roll(_releaseBlock);
-        protocolFeeOperator.release();
-        assertEq(currency.balanceOf(protocolFeeRecipient), toRelease, "balance");
-        assertEq(protocolFeeOperator.index(), protocolFeeIndex - indexDelta, "index");
-    }
-
-    function test_release_multipleReleases(
-        address _recipient,
-        uint256 _amount,
-        uint24 _protocolFeeBps,
-        uint256 _nextSweepCurrencyBlock
-    ) public {
-        _protocolFeeBps = uint24(bound(_protocolFeeBps, 1, implementation.MAX_PROTOCOL_FEE_BPS()));
-        protocolFeeController.setProtocolFeeBps(_protocolFeeBps);
-        ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
-        protocolFeeOperator.initialize(address(lbp), _recipient);
-
-        vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
-
-        currency.mint(address(lbp), _amount);
-        uint256 protocolFeeIndex = _amount * _protocolFeeBps;
-        protocolFeeOperator.sweepCurrency();
-        assertEq(protocolFeeOperator.index(), protocolFeeIndex, "index");
-
-        // roll somewhere between the start of the first drip and its end
-        _nextSweepCurrencyBlock = bound(
-            _nextSweepCurrencyBlock, block.number + 1, block.number + BPS / protocolFeeOperator.BPS_RELEASED_PER_BLOCK()
-        );
-
-        uint256 elapsed = _nextSweepCurrencyBlock - block.number;
-        uint256 indexDelta =
-            FixedPointMathLib.fullMulDiv(protocolFeeIndex, elapsed * protocolFeeOperator.BPS_RELEASED_PER_BLOCK(), BPS);
-        if (indexDelta > protocolFeeIndex) indexDelta = protocolFeeIndex;
-        uint256 toRelease = indexDelta / BPS;
-        if (toRelease > 0) {
-            vm.expectEmit(true, true, true, true);
-            emit ProtocolFeeOperator.ProtocolFeeReleased(lbp.currency(), toRelease);
-        }
-        vm.roll(_nextSweepCurrencyBlock);
-        protocolFeeOperator.release();
-
-        uint256 remainingIndex = protocolFeeOperator.index();
-        currency.mint(address(lbp), _amount);
-        protocolFeeOperator.sweepCurrency();
-        assertEq(protocolFeeOperator.index(), remainingIndex + protocolFeeIndex, "index");
-
-        // Roll past the end of the second drip
-        vm.roll(block.number + BPS);
-
-        toRelease = (remainingIndex + protocolFeeIndex) / BPS;
-        if (toRelease > 0) {
-            vm.expectEmit(true, true, true, true);
-            emit ProtocolFeeOperator.ProtocolFeeReleased(lbp.currency(), toRelease);
-        }
-        protocolFeeOperator.release();
-        assertEq(protocolFeeOperator.index(), 0);
+        assertEq(currency.balanceOf(address(protocolFeeOperator.feeTapper())), protocolFeeAmount);
+        assertEq(currency.balanceOf(_recipient), _amount - protocolFeeAmount);
     }
 }

@@ -3,9 +3,11 @@ pragma solidity ^0.8.26;
 
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
 import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
+import {IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
 
 /// @title ProtocolFeeOperator
 /// @notice EIP1167 contract meant to be set as the `operator` of an LBP strategy
@@ -14,10 +16,10 @@ import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeControl
 contract ProtocolFeeOperator is Initializable {
     using CurrencyLibrary for Currency;
 
-    /// @notice Emitted when the protocol fee is swept
+    /// @notice Emitted when protocol fees are swept
     /// @param currency The currency that was swept
-    /// @param amount The amount of currency that was sent to the protocol fee recipient
-    event ProtocolFeeReleased(address indexed currency, uint256 amount);
+    /// @param amount The amount of currency that was swept
+    event ProtocolFeeSwept(address indexed currency, uint256 amount);
     /// @notice Emitted when the contract is initialized
     event RecipientSet(address indexed recipient);
 
@@ -25,17 +27,11 @@ contract ProtocolFeeOperator is Initializable {
     error InvalidAddress();
 
     /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to this value
-    uint24 public constant MAX_PROTOCOL_FEE_BPS = 100;
+    uint24 public constant MAX_PROTOCOL_FEE_BPS = 1_000;
     uint24 public constant BPS = 10_000;
-    /// @notice The release rate for accrued protocol fees in basis points per block. At 100 basis points,
-    ///         the full amount is released in 100 blocks.
-    /// @dev    This helps smooth out the release of fees which is useful for integrating with TokenJar fee exchangers.
-    ///         For example, if a burn is triggered for every $20k of fees, streaming 1% per block to the recipient
-    ///         would support fee payments of up to $2 million, ensuring that minimal value is lost to MEV
-    uint24 public constant BPS_RELEASED_PER_BLOCK = 100;
 
-    /// @notice The address to forward the protocol fees to. Set on construction as it varies per chain
-    address public immutable protocolFeeRecipient;
+    /// @notice The fee tapper to deposit protocol fees into. Set on construction as it varies per chain
+    IFeeTapper public immutable feeTapper;
     /// @notice The controller that will provide the protocol fee in basis points
     IProtocolFeeController public immutable protocolFeeController;
 
@@ -44,14 +40,11 @@ contract ProtocolFeeOperator is Initializable {
     address public recipient;
     /// @notice The LBP strategy to sweep the tokens and currency from. Set on initialization
     ILBPStrategyBase public lbp;
-    /// @notice Cumulative index of accrued protocol fees. Does NOT account for external transfers
-    uint256 public index;
-    /// @notice The block number of the last release of fees
-    uint256 public lastReleaseBlock;
 
     /// @notice Construct the implementation with immutable protocol fee recipient and controller
-    constructor(address _protocolFeeRecipient, address _protocolFeeController) {
-        protocolFeeRecipient = _protocolFeeRecipient;
+    constructor(address _feeTapper, address _protocolFeeController) {
+        if (_feeTapper == address(0)) revert InvalidAddress();
+        feeTapper = IFeeTapper(_feeTapper);
         if (_protocolFeeController == address(0)) revert InvalidAddress();
         protocolFeeController = IProtocolFeeController(_protocolFeeController);
         _disableInitializers();
@@ -62,7 +55,6 @@ contract ProtocolFeeOperator is Initializable {
         if (_lbp == address(0)) revert InvalidAddress();
         lbp = ILBPStrategyBase(_lbp);
         recipient = _recipient;
-        lastReleaseBlock = block.number;
 
         emit RecipientSet(_recipient);
     }
@@ -79,21 +71,32 @@ contract ProtocolFeeOperator is Initializable {
     /// @notice Forwards the protocol fee portion to the protocol fee recipient and the remaining to the set recipient
     function sweepCurrency() external {
         Currency currency = Currency.wrap(lbp.currency());
-        // settle any existing fees
-        _release(currency);
 
         uint256 currencyBalanceBefore = currency.balanceOfSelf();
         lbp.sweepCurrency();
         uint256 currencyBalanceAfter = currency.balanceOfSelf();
-        uint256 currencySwept = currencyBalanceAfter - currencyBalanceBefore;
+        // Safe to cast since we never raise more than uint128.max
+        uint128 currencySwept = uint128(currencyBalanceAfter - currencyBalanceBefore);
         // Get the protocol fee in basis points, clamped to the maximum protocol fee
-        uint24 protocolFee;
+        uint24 protocolFeeBps = getProtocolFeeBps(Currency.unwrap(currency), currencySwept);
+
+        uint128 feeAmount = (currencySwept * protocolFeeBps) / BPS;
+
+        // Send the protocol fee to the fee tapper
+        currency.transfer(address(feeTapper), feeAmount);
+        // Sync the fee tapper to register the updated balance
+        feeTapper.sync(currency);
+        // Send the remaining amount to the recipient
+        currency.transfer(recipient, currencySwept - feeAmount);
+
+        emit ProtocolFeeSwept(Currency.unwrap(currency), currencySwept);
+    }
+
+    /// @notice Gets the protocol fee in basis points for the given currency
+    /// @dev Returns the fee as a uint24, capped at MAX_PROTOCOL_FEE_BPS. Returns 0 if the call reverts for any reason.
+    function getProtocolFeeBps(address currency, uint128 amount) public view returns (uint24 protocolFee) {
         (bool success, bytes memory data) = address(protocolFeeController)
-            .staticcall(
-                abi.encodeWithSelector(
-                    IProtocolFeeController.getProtocolFeeBps.selector, Currency.unwrap(currency), currencySwept
-                )
-            );
+            .staticcall(abi.encodeWithSelector(IProtocolFeeController.getProtocolFeeBps.selector, currency, amount));
         if (success && data.length >= 32) {
             // Decode into a uint256 and then clamp to the maximum protocol fee. Safe to cast to uint24 since MAX_PROTOCOL_FEE_BPS fits within a uint24
             protocolFee = uint24(FixedPointMathLib.min(abi.decode(data, (uint256)), MAX_PROTOCOL_FEE_BPS));
@@ -101,42 +104,6 @@ contract ProtocolFeeOperator is Initializable {
             // Default to no protocol fee in the event of a revert or malformed return data
             protocolFee = 0;
         }
-
-        index += currencySwept * protocolFee;
-        currency.transfer(recipient, currencySwept * (BPS - protocolFee) / BPS);
-    }
-
-    /// @notice Releases currency to the protocol fee recipient over time according to the release rate
-    function _release(Currency currency) internal returns (uint256) {
-        uint256 _index = index;
-        if (_index == 0) {
-            lastReleaseBlock = block.number;
-            return 0;
-        }
-        uint256 elapsed = block.number - lastReleaseBlock;
-        if (elapsed == 0) return 0;
-
-        // Calculate the amount of protocol fees to release
-        uint256 delta = FixedPointMathLib.fullMulDiv(_index, elapsed * BPS_RELEASED_PER_BLOCK, BPS);
-        if (delta > _index) delta = _index;
-
-        index -= delta;
-        lastReleaseBlock = block.number;
-
-        // since the division by BPS was deferred in `sweepCurrency`, divide here and round down
-        uint256 toRelease = delta / BPS;
-        if (toRelease > 0) {
-            currency.transfer(protocolFeeRecipient, toRelease);
-            emit ProtocolFeeReleased(Currency.unwrap(currency), toRelease);
-        }
-        return toRelease;
-    }
-
-    /// @notice Releases any accrued protocol fees to the protocol fee recipient
-    /// @dev This is permissionless and can be called at any time
-    /// @return The amount of currency which was sent to `protocolFeeRecipient`
-    function release() external returns (uint256) {
-        return _release(Currency.wrap(lbp.currency()));
     }
 
     /// @notice Allows the contract to receive ETH
