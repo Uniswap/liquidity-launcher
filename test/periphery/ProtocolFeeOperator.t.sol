@@ -43,6 +43,18 @@ contract MockProtocolFeeController {
     }
 }
 
+contract MockProtocolFeeControllerReverting {
+    function getProtocolFeeBps(address, uint256) external view returns (uint24) {
+        revert("reverting");
+    }
+}
+
+contract MockProtocolFeeControllerOverflowing {
+    function getProtocolFeeBps(address, uint256) external view returns (uint256) {
+        return type(uint256).max;
+    }
+}
+
 contract ProtocolFeeOperatorTest is Test {
     ProtocolFeeOperator public implementation;
     MockProtocolFeeController public protocolFeeController;
@@ -117,6 +129,37 @@ contract ProtocolFeeOperatorTest is Test {
         protocolFeeOperator.sweepCurrency();
         assertEq(currency.balanceOf(_recipient), _amount);
         assertEq(protocolFeeOperator.index(), 0);
+    }
+
+    function test_sweepCurrency_protocolFeeController_reverts_zeroFee(address _recipient, uint256 _amount) public {
+        vm.etch(address(protocolFeeController), address(new MockProtocolFeeControllerReverting()).code);
+        ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
+        protocolFeeOperator.initialize(address(lbp), _recipient);
+
+        vm.assume(_amount > 0 && _amount <= type(uint128).max);
+        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+
+        currency.mint(address(lbp), _amount);
+
+        protocolFeeOperator.sweepCurrency();
+        assertEq(currency.balanceOf(_recipient), _amount);
+        assertEq(protocolFeeOperator.index(), 0);
+    }
+
+    function test_sweepCurrency_protocolFeeController_overflows_returnsMax(address _recipient, uint256 _amount) public {
+        vm.etch(address(protocolFeeController), address(new MockProtocolFeeControllerOverflowing()).code);
+        ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
+        protocolFeeOperator.initialize(address(lbp), _recipient);
+
+        vm.assume(_amount > 0 && _amount <= type(uint128).max);
+        vm.assume(_recipient != address(0) && _recipient != protocolFeeRecipient && _recipient != address(lbp));
+
+        currency.mint(address(lbp), _amount);
+
+        uint256 protocolFeeIndex = _amount * implementation.MAX_PROTOCOL_FEE_BPS();
+        protocolFeeOperator.sweepCurrency();
+        assertEq(currency.balanceOf(_recipient), _amount * (BPS - implementation.MAX_PROTOCOL_FEE_BPS()) / BPS);
+        assertEq(protocolFeeOperator.index(), protocolFeeIndex);
     }
 
     function test_sweepCurrency_protocolFeeController_returnsLessThanMax(

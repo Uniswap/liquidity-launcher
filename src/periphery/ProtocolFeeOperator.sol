@@ -87,11 +87,20 @@ contract ProtocolFeeOperator is Initializable {
         uint256 currencyBalanceAfter = currency.balanceOfSelf();
         uint256 currencySwept = currencyBalanceAfter - currencyBalanceBefore;
         // Get the protocol fee in basis points, clamped to the maximum protocol fee
-        uint24 protocolFee = uint24(
-            FixedPointMathLib.min(
-                protocolFeeController.getProtocolFeeBps(Currency.unwrap(currency), currencySwept), MAX_PROTOCOL_FEE_BPS
-            )
-        );
+        uint24 protocolFee;
+        (bool success, bytes memory data) = address(protocolFeeController)
+            .staticcall(
+                abi.encodeWithSelector(
+                    IProtocolFeeController.getProtocolFeeBps.selector, Currency.unwrap(currency), currencySwept
+                )
+            );
+        if (success && data.length >= 32) {
+            // Decode into a uint256 and then clamp to the maximum protocol fee. Safe to cast to uint24 since MAX_PROTOCOL_FEE_BPS fits within a uint24
+            protocolFee = uint24(FixedPointMathLib.min(abi.decode(data, (uint256)), MAX_PROTOCOL_FEE_BPS));
+        } else {
+            // Default to no protocol fee in the event of a revert or malformed return data
+            protocolFee = 0;
+        }
 
         index += currencySwept * protocolFee;
         currency.transfer(recipient, currencySwept * (BPS - protocolFee) / BPS);
