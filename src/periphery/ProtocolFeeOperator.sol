@@ -8,8 +8,8 @@ import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
 import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
 
 /// @title ProtocolFeeOperator
-/// @notice EIP1167 Contract meant to be set as the `operator` of an LBP strategy
-///         to send a portion of the raised currency to a set protocol fee recipient
+/// @notice EIP1167 contract meant to be set as the `operator` of an LBP strategy
+///         to stream a portion of the raised currency to a set protocol fee recipient over time
 /// @dev Ensure that `initialize` is called during deployment to prevent misuse
 contract ProtocolFeeOperator is Initializable {
     using CurrencyLibrary for Currency;
@@ -27,6 +27,11 @@ contract ProtocolFeeOperator is Initializable {
     /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to this value
     uint24 public constant MAX_PROTOCOL_FEE_BPS = 100;
     uint24 public constant BPS = 10_000;
+    /// @notice The release rate for accrued protocol fees in basis points per block. At 100 basis points,
+    ///         the full amount is released in 100 blocks.
+    /// @dev    This helps smooth out the release of fees which is useful for integrating with TokenJar fee exchangers.
+    ///         For example, if a burn is triggered for every $20k of fees, streaming 1% per block to the recipient
+    ///         would support fee payments of up to $2 million, ensuring that minimal value is lost to MEV
     uint24 public constant BPS_RELEASED_PER_BLOCK = 100;
 
     /// @notice The address to forward the protocol fees to. Set on construction as it varies per chain
@@ -39,7 +44,7 @@ contract ProtocolFeeOperator is Initializable {
     address public recipient;
     /// @notice The LBP strategy to sweep the tokens and currency from. Set on initialization
     ILBPStrategyBase public lbp;
-    /// @notice Cumulative index of accrued protocol fees
+    /// @notice Cumulative index of accrued protocol fees. Does NOT account for external transfers
     uint256 public index;
     /// @notice The block number of the last release of fees
     uint256 public lastReleaseBlock;
@@ -92,16 +97,17 @@ contract ProtocolFeeOperator is Initializable {
         currency.transfer(recipient, currencySwept * (BPS - protocolFee) / BPS);
     }
 
-    /// @notice Releases currency to the protocol fee recipient
-    function _release(Currency currency) internal {
+    /// @notice Releases currency to the protocol fee recipient over time according to the release rate
+    function _release(Currency currency) internal returns (uint256) {
         uint256 _index = index;
         if (_index == 0) {
             lastReleaseBlock = block.number;
-            return;
+            return 0;
         }
         uint256 elapsed = block.number - lastReleaseBlock;
-        if (elapsed == 0) return;
+        if (elapsed == 0) return 0;
 
+        // Calculate the amount of protocol fees to release
         uint256 delta = FixedPointMathLib.fullMulDiv(_index, elapsed * BPS_RELEASED_PER_BLOCK, BPS);
         if (delta > _index) delta = _index;
 
@@ -114,11 +120,14 @@ contract ProtocolFeeOperator is Initializable {
             currency.transfer(protocolFeeRecipient, toRelease);
             emit ProtocolFeeReleased(Currency.unwrap(currency), toRelease);
         }
+        return toRelease;
     }
 
     /// @notice Releases any accrued protocol fees to the protocol fee recipient
-    function release() external {
-        _release(Currency.wrap(lbp.currency()));
+    /// @dev This is permissionless and can be called at any time
+    /// @return The amount of currency which was sent to `protocolFeeRecipient`
+    function release() external returns (uint256) {
+        return _release(Currency.wrap(lbp.currency()));
     }
 
     /// @notice Allows the contract to receive ETH

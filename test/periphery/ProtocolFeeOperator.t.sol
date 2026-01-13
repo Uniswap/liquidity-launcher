@@ -48,7 +48,6 @@ contract ProtocolFeeOperatorTest is Test {
     MockProtocolFeeController public protocolFeeController;
 
     address public protocolFeeRecipient = makeAddr("protocolFeeRecipient");
-    address public owner = makeAddr("owner");
     ILBPStrategyBase public lbp;
 
     ERC20Mock public token;
