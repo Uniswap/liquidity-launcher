@@ -26,8 +26,9 @@ contract ProtocolFeeOperator is Initializable {
     /// @notice General error for invalid addresses
     error InvalidAddress();
 
-    /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to this value
+    /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to 10%
     uint24 public constant MAX_PROTOCOL_FEE_BPS = 1_000;
+    /// @notice Basis points denominator
     uint24 public constant BPS = 10_000;
 
     /// @notice The fee tapper to deposit protocol fees into. Set on construction as it varies per chain
@@ -50,7 +51,9 @@ contract ProtocolFeeOperator is Initializable {
         _disableInitializers();
     }
 
-    /// @notice Initializes the contract. MUST be called during deployment.
+    /// @notice Initializes the contract. MUST be called atomically during deployment to prevent frontrunning.
+    /// @param _lbp The LBP strategy to sweep the tokens and currency from
+    /// @param _recipient The address to forward the tokens and currency to
     function initialize(address _lbp, address _recipient) external initializer {
         if (_lbp == address(0)) revert InvalidAddress();
         lbp = ILBPStrategyBase(_lbp);
