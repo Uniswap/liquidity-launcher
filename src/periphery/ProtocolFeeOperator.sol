@@ -8,9 +8,9 @@ import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
 import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
 
 /// @title ProtocolFeeOperator
-/// @notice Deployed instances of this contract are meant to be set as the `operator` of an LBP strategy
-///         and they send a portion of the raised currency to the configured protocol fee recipient
-/// @dev Ensure that `initialize` is called after deployment to set up ownership
+/// @notice EIP1167 Contract meant to be set as the `operator` of an LBP strategy
+///         to send a portion of the raised currency to a set protocol fee recipient
+/// @dev Ensure that `initialize` is called during deployment to prevent misuse
 contract ProtocolFeeOperator is Initializable {
     using CurrencyLibrary for Currency;
 
@@ -18,15 +18,11 @@ contract ProtocolFeeOperator is Initializable {
     /// @param currency The currency that was swept
     /// @param amount The amount of currency that was sent to the protocol fee recipient
     event ProtocolFeeSwept(address indexed currency, uint256 amount);
-    /// @notice Emitted when ownership of the contract is transferred
-    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
-    /// @notice Emitted when the protocol fee is updated
-    event ProtocolFeeUpdated(uint24 protocolFeeBps);
+    /// @notice Emitted when the contract is initialized
+    event RecipientSet(address indexed recipient);
 
     /// @notice Thrown when the protocol fee controller is not set
     error ProtocolFeeControllerNotSet();
-    /// @notice Thrown when the caller is not the owner
-    error NotOwner();
 
     /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to this value
     uint24 public constant MAX_PROTOCOL_FEE_BPS = 100;
@@ -36,10 +32,14 @@ contract ProtocolFeeOperator is Initializable {
     address public immutable protocolFeeRecipient;
     /// @notice The controller that will provide the protocol fee in basis points
     IProtocolFeeController public immutable protocolFeeController;
-    /// @notice The owner of the contract. Set on initialization
-    /// @dev It is crucial that this is set correctly after deployment to the intended address
-    address public owner;
 
+    /// @notice The address to forward the tokens and currency to. Set on initialization
+    /// @dev It is crucial that this is set correctly after deployment to the intended address
+    address public recipient;
+    /// @notice The LBP strategy to sweep the tokens and currency from. Set on initialization
+    ILBPStrategyBase public lbp;
+
+    /// @notice Construct the implementation with immutable protocol fee recipient and controller
     constructor(address _protocolFeeRecipient, address _protocolFeeController) {
         protocolFeeRecipient = _protocolFeeRecipient;
         if (_protocolFeeController == address(0)) revert ProtocolFeeControllerNotSet();
@@ -47,42 +47,27 @@ contract ProtocolFeeOperator is Initializable {
         _disableInitializers();
     }
 
-    /// @notice Initializes the contract
-    function initialize(address _owner) external initializer {
-        owner = _owner;
-        emit OwnershipTransferred(address(0), _owner);
+    /// @notice Initializes the contract. MUST be called during deployment.
+    function initialize(address _lbp, address _recipient) external initializer {
+        lbp = ILBPStrategyBase(_lbp);
+        recipient = _recipient;
+        emit RecipientSet(_recipient);
     }
 
-    /// @notice Transfers ownership of the contract to a new address
-    /// @dev Setting `_newOwner` to the zero address will relinquish ownership
-    function transferOwnership(address _newOwner) external onlyOwner {
-        owner = _newOwner;
-        emit OwnershipTransferred(msg.sender, _newOwner);
-    }
+    /// @notice Sweeps the token from the LBP strategy, forwarding all tokens to the set recipient
+    function sweepToken() external {
+        Currency token = Currency.wrap(lbp.token());
+        lbp.sweepToken();
 
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
-        _;
-    }
-
-    /// @notice Sweeps the token from the LBP strategy, forwarding all tokens to the recipient
-    /// @param _lbp The LBP strategy to sweep the token from
-    /// @param _recipient The address to forward the tokens to
-    function sweepToken(ILBPStrategyBase _lbp, address _recipient) external onlyOwner {
-        Currency token = Currency.wrap(_lbp.token());
-        _lbp.sweepToken();
-
-        token.transfer(_recipient, token.balanceOfSelf());
+        token.transfer(recipient, token.balanceOfSelf());
     }
 
     /// @notice Sweeps the currency from the LBP strategy
-    /// @notice Forwards the protocol fee portion to the protocol fee recipient and the remaining to the recipient
-    /// @param _lbp The LBP strategy to sweep the currency from
-    /// @param _recipient The address to forward the currency to
-    function sweepCurrency(ILBPStrategyBase _lbp, address _recipient) external onlyOwner {
-        Currency currency = Currency.wrap(_lbp.currency());
+    /// @notice Forwards the protocol fee portion to the protocol fee recipient and the remaining to the set recipient
+    function sweepCurrency() external {
+        Currency currency = Currency.wrap(lbp.currency());
         uint256 currencyBalanceBefore = currency.balanceOfSelf();
-        _lbp.sweepCurrency();
+        lbp.sweepCurrency();
         uint256 currencyBalanceAfter = currency.balanceOfSelf();
         uint256 currencySwept = currencyBalanceAfter - currencyBalanceBefore;
         // Calculate the fee, rounding down
@@ -92,7 +77,7 @@ contract ProtocolFeeOperator is Initializable {
             ) / BPS;
 
         currency.transfer(protocolFeeRecipient, fee);
-        currency.transfer(_recipient, currencySwept - fee);
+        currency.transfer(recipient, currencySwept - fee);
 
         emit ProtocolFeeSwept(Currency.unwrap(currency), fee);
     }
