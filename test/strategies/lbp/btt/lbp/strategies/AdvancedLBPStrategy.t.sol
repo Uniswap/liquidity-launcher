@@ -37,8 +37,12 @@ contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTe
         )
     {}
 
-    function prepareMigrationData() external view returns (MigrationData memory) {
-        return _prepareMigrationData();
+    function prepareMigrationData(LBPInitializationParams memory lbpParams)
+        external
+        view
+        returns (MigrationData memory)
+    {
+        return _prepareMigrationData(lbpParams);
     }
 
     function createPositionPlan(MigrationData memory data) external view returns (bytes memory) {
@@ -137,14 +141,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockLBPInitializationParams(
-            lbp,
-            LBPInitializationParams({
-                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
-            })
-        );
-
-        MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
+        MigrationData memory data = ILBPStrategyTestExtension(address(lbp))
+            .prepareMigrationData(
+                LBPInitializationParams({
+                    initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+                })
+            );
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);
 
         (bytes memory actions, bytes[] memory params) = abi.decode(encodedPlan, (bytes, bytes[]));
@@ -175,14 +177,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockLBPInitializationParams(
-            lbp,
-            LBPInitializationParams({
-                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
-            })
-        );
-
-        MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
+        MigrationData memory data = ILBPStrategyTestExtension(address(lbp))
+            .prepareMigrationData(
+                LBPInitializationParams({
+                    initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+                })
+            );
 
         vm.assume(lbp.reserveTokenAmount() <= data.fullRangeTokenAmount);
 
@@ -218,14 +218,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockLBPInitializationParams(
-            lbp,
-            LBPInitializationParams({
-                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
-            })
-        );
-
-        MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
+        MigrationData memory data = ILBPStrategyTestExtension(address(lbp))
+            .prepareMigrationData(
+                LBPInitializationParams({
+                    initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+                })
+            );
 
         vm.assume(lbp.reserveTokenAmount() > data.fullRangeTokenAmount);
 
@@ -260,14 +258,12 @@ contract AdvancedLBPStrategyTest is BttTests {
         AuctionParameters memory initializerParameters =
             abi.decode(_parameters.initializerParameters, (AuctionParameters));
 
-        mockLBPInitializationParams(
-            lbp,
-            LBPInitializationParams({
-                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
-            })
-        );
-
-        MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
+        MigrationData memory data = ILBPStrategyTestExtension(address(lbp))
+            .prepareMigrationData(
+                LBPInitializationParams({
+                    initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+                })
+            );
         vm.assume(data.leftoverCurrency == 0);
 
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);
@@ -303,14 +299,12 @@ contract AdvancedLBPStrategyTest is BttTests {
 
         // Large currency amounts can trip safe cast overflows in the V4 LiquidityAmounts library
         _currencyAmount = uint128(_bound(_currencyAmount, 1, 1e30));
-        mockLBPInitializationParams(
-            lbp,
-            LBPInitializationParams({
-                initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
-            })
-        );
-
-        MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
+        MigrationData memory data = ILBPStrategyTestExtension(address(lbp))
+            .prepareMigrationData(
+                LBPInitializationParams({
+                    initialPriceX96: initializerParameters.floorPrice, tokensSold: 0, currencyRaised: _currencyAmount
+                })
+            );
         vm.assume(data.leftoverCurrency > 0);
 
         bytes memory encodedPlan = ILBPStrategyTestExtension(address(lbp)).createPositionPlan(data);
@@ -355,16 +349,14 @@ contract AdvancedLBPStrategyTest is BttTests {
         assertTrue(AdvancedLBPStrategy(payable(address(lbp))).createOneSidedTokenPosition());
         assertTrue(AdvancedLBPStrategy(payable(address(lbp))).createOneSidedCurrencyPosition());
 
-        mockLBPInitializationParams(
-            lbp,
-            LBPInitializationParams({
-                initialPriceX96: initializerParameters.floorPrice + initializerParameters.tickSpacing,
-                tokensSold: 0,
-                currencyRaised: _currencyAmount
-            })
-        );
-
-        MigrationData memory data = ILBPStrategyTestExtension(address(lbp)).prepareMigrationData();
+        MigrationData memory data = ILBPStrategyTestExtension(address(lbp))
+            .prepareMigrationData(
+                LBPInitializationParams({
+                    initialPriceX96: initializerParameters.floorPrice + initializerParameters.tickSpacing,
+                    tokensSold: 0,
+                    currencyRaised: _currencyAmount
+                })
+            );
         vm.assume(lbp.reserveTokenAmount() > data.fullRangeTokenAmount);
         vm.assume(data.leftoverCurrency > 0);
 

@@ -140,18 +140,20 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, Bloc
 
         // Transfer the tokens to the initializer contract
         Currency.wrap(token).transfer(address(_initializer), supply);
+
+        initializer = _initializer;
         // Call the `onTokensReceived` hook
         _initializer.onTokensReceived();
-        initializer = _initializer;
 
         emit InitializerCreated(address(_initializer));
     }
 
     /// @inheritdoc ILBPStrategyBase
     function migrate() external {
-        _validateMigration();
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+        _validateMigration(lbpParams);
 
-        MigrationData memory data = _prepareMigrationData();
+        MigrationData memory data = _prepareMigrationData(lbpParams);
 
         PoolKey memory key = _initializePool(data);
 
@@ -262,14 +264,13 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, Bloc
     }
 
     /// @notice Validates migration timing and currency balance
-    function _validateMigration() internal view {
+    /// @param _lbpParams The LBP initialization parameters
+    function _validateMigration(LBPInitializationParams memory _lbpParams) internal view {
         if (_getBlockNumberish() < migrationBlock) {
             revert MigrationNotAllowed(migrationBlock, _getBlockNumberish());
         }
 
-        // Get the LBP initialization parameters
-        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
-        uint256 currencyAmount = lbpParams.currencyRaised;
+        uint256 currencyAmount = _lbpParams.currencyRaised;
 
         // cannot create a v4 pool with more than type(uint128).max currency amount
         if (currencyAmount > type(uint128).max) {
@@ -287,14 +288,18 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, Bloc
     }
 
     /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
+    /// @param _lbpParams The LBP initialization parameters
     /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData() internal view returns (MigrationData memory) {
+    function _prepareMigrationData(LBPInitializationParams memory _lbpParams)
+        internal
+        view
+        returns (MigrationData memory)
+    {
         // Both currencyRaised and maxCurrencyAmountForLP are validated to be less than or equal to type(uint128).max
-        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
-        uint128 currencyAmount = uint128(FixedPointMathLib.min(lbpParams.currencyRaised, maxCurrencyAmountForLP));
+        uint128 currencyAmount = uint128(FixedPointMathLib.min(_lbpParams.currencyRaised, maxCurrencyAmountForLP));
         bool currencyIsCurrency0 = _currencyIsCurrency0();
 
-        uint256 priceX192 = lbpParams.initialPriceX96.convertToPriceX192(currencyIsCurrency0);
+        uint256 priceX192 = _lbpParams.initialPriceX96.convertToPriceX192(currencyIsCurrency0);
         uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
 
         (uint128 fullRangeTokenAmount, uint128 fullRangeCurrencyAmount) =

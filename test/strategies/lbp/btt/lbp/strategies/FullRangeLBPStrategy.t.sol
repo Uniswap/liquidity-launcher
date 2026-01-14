@@ -5,6 +5,7 @@ import "src/strategies/lbp/FullRangeLBPStrategy.sol";
 import {BttTests} from "../definitions/BttTests.sol";
 import {BttBase} from "../BttBase.sol";
 import {ILBPStrategyTestExtension} from "./ILBPStrategyTestExtension.sol";
+import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategyTestExtension {
     constructor(
@@ -16,8 +17,12 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
         IPoolManager _poolManager
     ) FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager) {}
 
-    function prepareMigrationData() external view returns (MigrationData memory) {
-        return _prepareMigrationData();
+    function prepareMigrationData(LBPInitializationParams memory lbpParams)
+        external
+        view
+        returns (MigrationData memory)
+    {
+        return _prepareMigrationData(lbpParams);
     }
 
     function createPositionPlan(MigrationData memory data) external view returns (bytes memory) {
