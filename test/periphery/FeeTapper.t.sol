@@ -113,12 +113,10 @@ contract FeeTapperTest is Test {
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
         feeTapper.sync(currency);
         assertEq(feeTapper.taps(currency).balance, _feeAmount);
-        assertEq(feeTapper.taps(currency).lastReleaseBlock, uint64(block.number));
 
         _deal(address(feeTapper), _additionalFeeAmount, _useNativeCurrency);
         feeTapper.sync(currency);
         assertEq(feeTapper.taps(currency).balance, _feeAmount + _additionalFeeAmount);
-        assertEq(feeTapper.taps(currency).lastReleaseBlock, uint64(block.number));
 
         _elapsed = uint64(bound(_elapsed, 1, BPS / feeTapper.perBlockReleaseRate()));
 
@@ -144,35 +142,33 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         assertEq(feeTapper.taps(currency).balance, _feeAmount);
-        assertEq(feeTapper.taps(currency).lastReleaseBlock, uint64(block.number));
 
         uint256 amount = feeTapper.release(currency);
         assertEq(amount, 0);
     }
 
-    function test_release_WhenToReleaseIsGreaterThanTapAmount(uint128 _feeAmount) public {
+    function test_release_WhenToReleaseIsGreaterThanTapAmount(uint128 _feeAmount, uint64 _elapsed) public {
         // it returns the rest of the tap amount
 
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate()));
+        _elapsed = uint64(bound(_elapsed, BPS / feeTapper.perBlockReleaseRate(), type(uint64).max));
+        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / _elapsed));
 
         Currency currency = Currency.wrap(address(0));
         _deal(address(feeTapper), _feeAmount, true);
         feeTapper.sync(currency);
 
         // ensure that there is more to release than the tap amount
-        vm.roll(block.number + BPS + 1);
+        vm.roll(block.number + _elapsed);
 
         uint256 amount = feeTapper.release(currency);
         assertEq(amount, _feeAmount);
         assertEq(feeTapper.taps(currency).balance, 0);
-        assertEq(feeTapper.taps(currency).lastReleaseBlock, uint64(block.number));
     }
 
     function test_release_WhenToReleaseIsLTEThanTapAmount(uint128 _feeAmount, uint64 _elapsed, bool _useNativeCurrency)
         public
     {
         // it updates the tap amount
-        // it updates the lastReleaseBlock
         // it emits a {Released()} event
 
         _elapsed = uint64(bound(_elapsed, 1, BPS / feeTapper.perBlockReleaseRate()));
@@ -183,16 +179,42 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         assertEq(feeTapper.taps(currency).balance, _feeAmount);
-        assertEq(feeTapper.taps(currency).lastReleaseBlock, uint64(block.number));
 
         vm.roll(block.number + _elapsed);
         vm.expectEmit(true, true, true, true);
-        uint192 expectedReleased = (_feeAmount * feeTapper.perBlockReleaseRate() * _elapsed) / BPS;
+        uint128 expectedReleased = (_feeAmount * feeTapper.perBlockReleaseRate() * _elapsed) / BPS;
         emit IFeeTapper.Released(Currency.unwrap(currency), expectedReleased);
         vm.assume(expectedReleased > 0);
-        uint192 released = feeTapper.release(currency);
+        uint128 released = feeTapper.release(currency);
         assertEq(released, expectedReleased);
         assertEq(feeTapper.taps(currency).balance, _feeAmount - released);
-        assertEq(feeTapper.taps(currency).lastReleaseBlock, uint64(block.number));
+    }
+
+    function test_release_IsLinear(uint128 _feeAmount, bool _useNativeCurrency) public {
+        // it releases the amount of protocol fees based on the release rate
+
+        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / BPS));
+
+        Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        uint256 snapshotId = vm.snapshot();
+
+        // Maximize number of releases by calling one per block
+        uint128 totalReleased = 0;
+        uint256 maxDust = 0;
+        for (uint64 i = 0; i < BPS / feeTapper.perBlockReleaseRate(); i++) {
+            vm.roll(block.number + 1);
+            totalReleased += feeTapper.release(currency);
+            maxDust++;
+        }
+
+        vm.revertTo(snapshotId);
+
+        // Now test releasing all in one go after BPS / perBlockReleaseRate() blocks
+        vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
+        uint256 endTotalReleased = feeTapper.release(currency);
+        assertApproxEqAbs(endTotalReleased, totalReleased, maxDust, "total released should be the same");
     }
 }

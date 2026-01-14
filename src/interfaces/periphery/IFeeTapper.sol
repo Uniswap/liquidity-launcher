@@ -5,8 +5,16 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 
 /// @notice Struct representing an active tap for a given currency
 struct Tap {
-    uint64 lastReleaseBlock; // The block number at which the last release occurred
-    uint192 balance; // The last synced balance of the currency in the contract
+    uint128 balance;
+    uint64 head;
+    uint64 tail;
+}
+
+struct Keg {
+    uint128 perBlockReleaseAmount;
+    uint64 endBlock;
+    uint64 lastReleaseBlock;
+    uint64 next;
 }
 
 /// @title IFeeTapper
@@ -17,11 +25,14 @@ interface IFeeTapper {
     /// @notice Error thrown when the release rate is invalid
     error InvalidReleaseRate();
 
+    /// @notice Emitted when a tap is created
+    event TapCreated(uint64 indexed id, address indexed currency, uint128 perBlockReleaseAmount, uint64 endBlock);
+
     /// @notice Emitted when protocol fees are deposited
-    event Synced(address indexed currency, uint192 amount);
+    event Synced(address indexed currency, uint128 amount);
 
     /// @notice Emitted when protocol fees are released
-    event Released(address indexed currency, uint192 amount);
+    event Released(address indexed currency, uint128 amount);
 
     /// @notice Emitted when the release rate is set
     /// @param perBlockReleaseRate The new release rate
@@ -34,5 +45,5 @@ interface IFeeTapper {
     /// @notice Releases any accrued protocol fees to the protocol fee recipient
     /// @param currency The currency to release
     /// @return amount The amount of protocol fees released
-    function release(Currency currency) external returns (uint192);
+    function release(Currency currency) external returns (uint128);
 }
