@@ -16,25 +16,31 @@ contract VirtualGovernedLBPStrategy is GovernedLBPStrategy {
     /// @notice The address of the underlying token that is being distributed - used in the migrated pool
     address public immutable UNDERLYING_TOKEN;
 
+    /// @notice Error thrown when the underlying token is the zero address
+    error UnderlyingTokenIsZeroAddress();
+
     constructor(
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         address _governance
     )
         // Underlying strategy
         GovernedLBPStrategy(
-            _token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager, _governance
+            _token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager, _governance
         )
     {
         UNDERLYING_TOKEN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
+        if (UNDERLYING_TOKEN == address(0)) {
+            revert UnderlyingTokenIsZeroAddress();
+        }
     }
 
     /// @notice Returns the address of the underlying token
-    function getPoolToken() internal view override returns (address) {
+    function _getPoolToken() internal view override returns (address) {
         return UNDERLYING_TOKEN;
     }
 }

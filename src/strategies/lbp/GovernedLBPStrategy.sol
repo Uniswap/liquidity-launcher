@@ -37,13 +37,13 @@ contract GovernedLBPStrategy is FullRangeLBPStrategy {
         address _token,
         uint128 _totalSupply,
         MigratorParameters memory _migratorParams,
-        bytes memory _auctionParams,
+        bytes memory _initializerParams,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         address _governance
     )
         // Underlying strategy
-        FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _auctionParams, _positionManager, _poolManager)
+        FullRangeLBPStrategy(_token, _totalSupply, _migratorParams, _initializerParams, _positionManager, _poolManager)
     {
         GOVERNANCE = _governance;
         emit GovernanceSet(_governance);
@@ -58,7 +58,7 @@ contract GovernedLBPStrategy is FullRangeLBPStrategy {
     }
 
     /// @notice Returns the permissions for the hook
-    /// @dev Has permissions for before initialize, before swap and before remove liquidity
+    /// @dev Has permissions for before initialize and before swap
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,

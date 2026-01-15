@@ -6,8 +6,6 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 /// @title ActionsBuilder
 /// @notice Library for building position actions and parameters
 library ActionsBuilder {
-    error InvalidActionsLength(uint256 invalidLength);
-
     /// @notice Initializes an empty actions byte array
     function init() internal pure returns (bytes memory actions) {
         actions = new bytes(0);

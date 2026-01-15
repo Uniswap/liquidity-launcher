@@ -6,7 +6,6 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 import {Multicall} from "../Multicall.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title PositionFeesForwarder
 /// @notice Utility contract for holding v4 LP positions and forwarding fees to a recipient
@@ -30,7 +29,7 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
 
     /// @notice Collect any fees from the position and forward them to the set recipient
     /// @param _tokenId the token ID of the position
-    function collectFees(uint256 _tokenId) external nonReentrant requireOwned(_tokenId) {
+    function collectFees(uint256 _tokenId) external nonReentrant {
         (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
 
         // Collect the fees from the position
