@@ -5,6 +5,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Tap, Keg, IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
+import {console2} from "forge-std/console2.sol";
 
 /// @title FeeTapper
 /// @notice Singleton contract which handles the streaming of incoming protocol fees to TokenJar
@@ -54,12 +55,11 @@ contract FeeTapper is IFeeTapper, Ownable {
 
     /// @inheritdoc IFeeTapper
     function sync(Currency currency) external {
-        // Release any accrued protocol fees
-        _release(currency);
-
         Tap storage $tap = $_taps[currency];
         // Silently truncates any received balances over uint128.max
         uint128 balance = uint128(currency.balanceOfSelf());
+        // Revert if the amount added to the tap would eventually overflow a uint128
+        if (balance > MAX_BALANCE) revert AmountTooLarge();
         uint128 oldBalance = $tap.balance;
         // noop if there hasn't been a change in balance
         if (balance == oldBalance) return;
@@ -71,8 +71,6 @@ contract FeeTapper is IFeeTapper, Ownable {
 
         uint48 endBlock = uint48(block.number + BPS / perBlockReleaseRate);
         uint128 amount = balance - oldBalance;
-        // Revert if the amount added to the tap would eventually overflow a uint128
-        if (amount > MAX_BALANCE) revert AmountTooLarge();
         uint128 perBlockReleaseAmount = amount * perBlockReleaseRate;
 
         Keg storage $keg = $_kegs[next];
@@ -115,12 +113,9 @@ contract FeeTapper is IFeeTapper, Ownable {
     /// @notice Releases a single keg for a given currency
     /// @param id The id of the keg to release
     function _releaseKeg(Keg memory keg, uint32 id) internal returns (uint128 releasedAmount) {
-        releasedAmount = uint128(
-            keg.perBlockReleaseAmount * (FixedPointMathLib.min(block.number, keg.endBlock) - keg.lastReleaseBlock)
-        );
-        if (keg.lastReleaseBlock != block.number) {
-            $_kegs[id].lastReleaseBlock = uint48(block.number);
-        }
+        uint48 minBlock = uint48(FixedPointMathLib.min(block.number, keg.endBlock));
+        releasedAmount = uint128(keg.perBlockReleaseAmount * (minBlock - keg.lastReleaseBlock));
+        $_kegs[id].lastReleaseBlock = minBlock;
         return releasedAmount;
     }
 
@@ -131,30 +126,30 @@ contract FeeTapper is IFeeTapper, Ownable {
             return 0;
         }
 
-        uint32 next = $tap.head;
-        uint32 newHead;
+        uint32 prev = 0;
+        uint32 curr = $tap.head;
         // Itereate through all kegs. This can be very costly if there are lot of kegs.
-        while (next != 0) {
-            Keg memory keg = $_kegs[next];
-            uint32 curr = next;
+        while (curr != 0) {
+            Keg memory keg = $_kegs[curr];
             releasedAmount += _releaseKeg(keg, curr);
-            next = keg.next;
+            // Delete the keg if it is fully released
             if (keg.endBlock <= block.number) {
-                // Update the head (since this keg is fully released)
-                newHead = next;
-                // Delete the old keg
-                delete $_kegs[curr];
-                // If we have iterated through all of the kegs reset the head/tail to 0
-                if (next == 0) {
-                    $tap.head = 0;
-                    $tap.tail = 0;
-                    break;
+                // Update the head if the current head is fully released
+                if (curr == $tap.head) {
+                    $tap.head = keg.next;
+                    // If this was the last keg, reset the tail to 0
+                    if (keg.next == 0) {
+                        $tap.tail = 0;
+                    }
+                } else {
+                    // Otherwise, connect the previous keg to the next one
+                    $_kegs[prev].next = keg.next;
                 }
+                // Delete the keg
+                delete $_kegs[curr];
             }
-        }
-        // Update the head if it needed
-        if (newHead != 0) {
-            $tap.head = newHead;
+            prev = curr;
+            curr = keg.next;
         }
         return releasedAmount;
     }

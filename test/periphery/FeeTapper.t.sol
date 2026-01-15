@@ -428,4 +428,76 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.taps(currency).head, 0);
         assertEq(feeTapper.taps(currency).tail, 0);
     }
+
+    function test_release_WhenMiddleKegIsReleased(uint128 _feeAmount, bool _useNativeCurrency) public {
+        // it deletes the keg when fully released
+        // it keeps the current head/tail of the tap
+        // it links the head to the next keg
+
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
+
+        Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        uint24 originalReleaseRate = feeTapper.perBlockReleaseRate();
+        // Modify the release rate to have the second keg run out before the first and third. It will run out in a block
+        vm.prank(owner);
+        feeTapper.setReleaseRate(BPS);
+
+        // add a second keg
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // Change the release rate back to the original
+        vm.prank(owner);
+        feeTapper.setReleaseRate(originalReleaseRate);
+
+        // add a third keg
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // release the middle keg
+        vm.roll(block.number + 1);
+        uint128 released = feeTapper.release(currency);
+        assertEq(released, _feeAmount + (_feeAmount * originalReleaseRate * 2) / BPS);
+        // Same head and tail
+        assertEq(feeTapper.taps(currency).head, 1);
+        assertEq(feeTapper.taps(currency).tail, 3);
+        assertEq(feeTapper.kegs(1).next, 3);
+        assertEq(feeTapper.kegs(3).next, 0);
+    }
+
+    function test_release_WhenMultipleKegsAreReleased(uint128 _feeAmount, bool _useNativeCurrency) public {
+        // it moves the head over multiple
+
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
+
+        Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // add a second keg
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        uint48 endBlock = uint48(block.number + BPS / feeTapper.perBlockReleaseRate());
+
+        vm.roll(block.number + 1);
+        // add a third keg
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // roll to the end of the first two releases
+        vm.roll(endBlock);
+        uint128 released = feeTapper.release(currency);
+        // head should have been moved from 1 -> 2 -> 3
+        assertEq(feeTapper.taps(currency).head, 3);
+        assertEq(feeTapper.taps(currency).tail, 3);
+        assertEq(feeTapper.kegs(1).perBlockReleaseAmount, 0); // deleted
+        assertEq(feeTapper.kegs(1).next, 0); // deleted
+        assertEq(feeTapper.kegs(2).perBlockReleaseAmount, 0); // deleted
+        assertEq(feeTapper.kegs(2).next, 0); // deleted
+        assertEq(feeTapper.kegs(3).next, 0); // last one
+    }
 }
