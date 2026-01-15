@@ -190,6 +190,22 @@ contract FeeTapperTest is Test {
 
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
+    function test_release_keg_nativeCurrency_gas() public {
+        Currency currency = Currency.wrap(address(0));
+        _deal(address(feeTapper), 1e18, true);
+        feeTapper.sync(currency);
+
+        vm.roll(block.number + 1);
+        feeTapper.release(currency, 1);
+        vm.snapshotGasLastCall("release_keg_nativeCurrency_single");
+
+        vm.roll(block.number + BPS);
+        feeTapper.release(currency, 1);
+        vm.snapshotGasLastCall("release_keg_nativeCurrency_single_deletion");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
     function test_release_erc20Currency_single_gas() public {
         Currency currency = Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), 1e18, false);
@@ -202,6 +218,22 @@ contract FeeTapperTest is Test {
         vm.roll(block.number + BPS);
         feeTapper.release(currency);
         vm.snapshotGasLastCall("release_erc20Currency_single_deletion");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_release_keg_erc20Currency_gas() public {
+        Currency currency = Currency.wrap(address(erc20Currency));
+        _deal(address(feeTapper), 1e18, false);
+        feeTapper.sync(currency);
+
+        vm.roll(block.number + 1);
+        feeTapper.release(currency, 1);
+        vm.snapshotGasLastCall("release_keg_erc20Currency_single");
+
+        vm.roll(block.number + BPS);
+        feeTapper.release(currency, 1);
+        vm.snapshotGasLastCall("release_keg_erc20Currency_single_deletion");
     }
 
     /// forge-config: default.isolate = true
@@ -291,5 +323,56 @@ contract FeeTapperTest is Test {
         vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
         uint256 endTotalReleased = feeTapper.release(currency);
         assertApproxEqAbs(endTotalReleased, totalReleased, maxDust, "total released should be the same");
+    }
+
+    function test_release_WhenEmptyKegsAreReleased(
+        uint128 _feeAmount,
+        uint128 _additionalFeeAmount,
+        bool _useNativeCurrency
+    ) public {
+        // it does not delete the keg when fully released
+        // it does not update the head/tail of the tap
+        // after adding a new keg, the old keg is deleted
+        // after releasing the new keg, it becomes the head/tail of the tap
+
+        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / BPS));
+        _additionalFeeAmount =
+            uint128(bound(_additionalFeeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / BPS));
+
+        Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        uint48 endBlock = uint48(block.number + BPS / feeTapper.perBlockReleaseRate());
+
+        vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
+        uint128 released = feeTapper.release(currency, 1);
+        assertEq(released, _feeAmount);
+        assertEq(feeTapper.taps(currency).balance, 0);
+
+        // assert that the keg is not deleted
+        assertEq(feeTapper.taps(currency).head, 1);
+        assertEq(feeTapper.taps(currency).tail, 1);
+        assertEq(feeTapper.kegs(1).perBlockReleaseAmount, _feeAmount * feeTapper.perBlockReleaseRate());
+        assertEq(feeTapper.kegs(1).endBlock, endBlock);
+
+        // make another deposit
+        _deal(address(feeTapper), _additionalFeeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        vm.roll(block.number + 1);
+        released = feeTapper.release(currency);
+
+        // assert that the old keg is deleted and the new keg is the head/tail
+        assertEq(feeTapper.taps(currency).head, 2);
+        assertEq(feeTapper.taps(currency).tail, 2);
+        assertEq(feeTapper.kegs(1).perBlockReleaseAmount, 0);
+        assertEq(feeTapper.kegs(1).endBlock, 0);
+
+        // assert that after the full release, the head/tail are reset
+        vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
+        released = feeTapper.release(currency);
+        assertEq(feeTapper.taps(currency).head, 0);
+        assertEq(feeTapper.taps(currency).tail, 0);
     }
 }

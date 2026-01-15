@@ -37,6 +37,11 @@ contract FeeTapper is IFeeTapper, Ownable {
         return $_taps[currency];
     }
 
+    /// @notice Gets the keg for the given id
+    function kegs(uint32 id) external view returns (Keg memory) {
+        return $_kegs[id];
+    }
+
     /// @notice Sets the release rate for accrued protocol fees in basis points per block. Only callable by the owner.
     /// @dev Rate must be non zero and <= BPS and evenly divisible by BPS.
     /// @param _perBlockReleaseRate The new release rate in basis points per block
@@ -132,14 +137,16 @@ contract FeeTapper is IFeeTapper, Ownable {
                 newHead = next;
                 // Delete the old keg
                 delete $_kegs[curr];
+                // If we have iterated through all of the kegs reset the head/tail to 0
+                if (next == 0) {
+                    $tap.head = 0;
+                    $tap.tail = 0;
+                    break;
+                }
             }
         }
         // Update the head if it needed
         if (newHead != 0) {
-            // If we have iterated through all of the kegs set the tail to 0
-            if (next == 0) {
-                $tap.tail = 0;
-            }
             $tap.head = newHead;
         }
         return releasedAmount;
