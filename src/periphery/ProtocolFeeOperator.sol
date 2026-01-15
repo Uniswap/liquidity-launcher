@@ -21,10 +21,14 @@ contract ProtocolFeeOperator is Initializable {
     /// @param amount The amount of currency that was swept
     event ProtocolFeeSwept(address indexed currency, uint256 amount);
     /// @notice Emitted when the contract is initialized
+    /// @param recipient The address that was set as the recipient
     event RecipientSet(address indexed recipient);
 
     /// @notice General error for invalid addresses
-    error InvalidAddress();
+    error FeeTapperAddressIsZero();
+    error ProtocolFeeControllerAddressIsZero();
+    error LBPAddressIsZero();
+    error RecipientAddressIsZero();
 
     /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to 10%
     uint24 public constant MAX_PROTOCOL_FEE_BPS = 1_000;
@@ -44,9 +48,9 @@ contract ProtocolFeeOperator is Initializable {
 
     /// @notice Construct the implementation with immutable protocol fee recipient and controller
     constructor(address _feeTapper, address _protocolFeeController) {
-        if (_feeTapper == address(0)) revert InvalidAddress();
+        if (_feeTapper == address(0)) revert FeeTapperAddressIsZero();
         feeTapper = IFeeTapper(_feeTapper);
-        if (_protocolFeeController == address(0)) revert InvalidAddress();
+        if (_protocolFeeController == address(0)) revert ProtocolFeeControllerAddressIsZero();
         protocolFeeController = IProtocolFeeController(_protocolFeeController);
         _disableInitializers();
     }
@@ -55,8 +59,9 @@ contract ProtocolFeeOperator is Initializable {
     /// @param _lbp The LBP strategy to sweep the tokens and currency from
     /// @param _recipient The address to forward the tokens and currency to
     function initialize(address _lbp, address _recipient) external initializer {
-        if (_lbp == address(0)) revert InvalidAddress();
+        if (_lbp == address(0)) revert LBPAddressIsZero();
         lbp = ILBPStrategyBase(_lbp);
+        if (_recipient == address(0)) revert RecipientAddressIsZero();
         recipient = _recipient;
 
         emit RecipientSet(_recipient);

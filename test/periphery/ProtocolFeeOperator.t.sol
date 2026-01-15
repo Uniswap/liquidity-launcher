@@ -74,15 +74,39 @@ contract ProtocolFeeOperatorTest is Test {
         lbp = ILBPStrategyBase(address(new MockLBP(address(token), address(currency))));
     }
 
-    function test_implementation_isNotInitializable() public {
-        assertEq(implementation.recipient(), address(0));
+    function test_implementation_WhenFeeTapperAddressIsZero_reverts(address _protocolFeeController) public {
+        vm.assume(_protocolFeeController != address(0));
+        vm.expectRevert(ProtocolFeeOperator.FeeTapperAddressIsZero.selector);
+        new ProtocolFeeOperator(address(0), _protocolFeeController);
+    }
+
+    function test_implementation_WhenProtocolFeeControllerAddressIsZero_reverts(address _feeTapper) public {
+        vm.assume(_feeTapper != address(0));
+        vm.expectRevert(ProtocolFeeOperator.ProtocolFeeControllerAddressIsZero.selector);
+        new ProtocolFeeOperator(_feeTapper, address(0));
+    }
+
+    function test_implementation_isNotInitializable(address _lbp, address _recipient) public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        implementation.initialize(address(lbp), address(0));
+        implementation.initialize(_lbp, _recipient);
+    }
+
+    function test_initialize_WhenLBPAddressIsZero_reverts(address _recipient) public {
+        vm.assume(_recipient != address(0));
+        ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
+        vm.expectRevert(ProtocolFeeOperator.LBPAddressIsZero.selector);
+        protocolFeeOperator.initialize(address(0), _recipient);
+    }
+
+    function test_initialize_WhenRecipientAddressIsZero_reverts(address _lbp) public {
+        vm.assume(_lbp != address(0));
+        ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
+        vm.expectRevert(ProtocolFeeOperator.RecipientAddressIsZero.selector);
+        protocolFeeOperator.initialize(_lbp, address(0));
     }
 
     function test_initialize_succeeds(address _lbp, address _recipient) public {
-        vm.assume(_lbp != address(0));
-
+        vm.assume(_lbp != address(0) && _recipient != address(0));
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         assertEq(protocolFeeOperator.recipient(), address(0));
 
@@ -94,7 +118,7 @@ contract ProtocolFeeOperatorTest is Test {
     }
 
     function test_initializer_preventsDoubleInitialization(address _lbp, address _recipient) public {
-        vm.assume(_lbp != address(0));
+        vm.assume(_lbp != address(0) && _recipient != address(0));
 
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(_lbp, _recipient);
@@ -104,11 +128,11 @@ contract ProtocolFeeOperatorTest is Test {
     }
 
     function test_sweepToken_succeeds(address _recipient, uint128 _amount) public {
+        vm.assume(_recipient != address(0));
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
         vm.assume(_amount > 0);
-        vm.assume(_recipient != address(0));
 
         token.mint(address(lbp), _amount);
 
@@ -118,10 +142,11 @@ contract ProtocolFeeOperatorTest is Test {
 
     function test_sweepCurrency_protocolFeeController_returnsZero_zeroFee(address _recipient, uint128 _amount) public {
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
+
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
         vm.assume(_amount > 0 && _amount <= type(uint128).max);
-        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
 
@@ -190,11 +215,13 @@ contract ProtocolFeeOperatorTest is Test {
     ) public {
         _protocolFeeBps = uint24(bound(_protocolFeeBps, implementation.MAX_PROTOCOL_FEE_BPS() + 1, type(uint24).max));
         protocolFeeController.setProtocolFeeBps(_protocolFeeBps);
+
         ProtocolFeeOperator protocolFeeOperator = ProtocolFeeOperator(payable(Clones.clone(address(implementation))));
+
+        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
         protocolFeeOperator.initialize(address(lbp), _recipient);
 
         vm.assume(_amount > 0 && _amount <= type(uint128).max / implementation.MAX_PROTOCOL_FEE_BPS());
-        vm.assume(_recipient != address(0) && _recipient != address(feeTapper) && _recipient != address(lbp));
 
         currency.mint(address(lbp), _amount);
 
