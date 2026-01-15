@@ -19,41 +19,17 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
-import {ParamsBuilderTestHelper} from "test/libraries/ParamsBuilder.t.sol";
 import {DynamicArray} from "src/libraries/DynamicArray.sol";
-
-contract StrategyPlannerHelper is ParamsBuilderTestHelper {
-    function planFullRangePosition(
-        Plan memory plan,
-        BasePositionParams memory baseParams,
-        FullRangeParams memory fullRangeParams
-    ) public returns (Plan memory) {
-        return StrategyPlanner.planFullRangePosition(plan, baseParams, fullRangeParams);
-    }
-
-    function planOneSidedPosition(
-        Plan memory plan,
-        BasePositionParams memory baseParams,
-        OneSidedParams memory oneSidedParams
-    ) public returns (Plan memory) {
-        return StrategyPlanner.planOneSidedPosition(plan, baseParams, oneSidedParams);
-    }
-}
 
 contract StrategyPlannerTest is Test {
     using TickCalculations for int24;
     using SafeCast for uint256;
     using ActionsBuilder for *;
     using ParamsBuilder for *;
+    using StrategyPlanner for *;
 
-    StrategyPlannerHelper testHelper;
-
-    function setUp() public {
-        testHelper = new StrategyPlannerHelper();
-    }
-
-    function test_planFullRangePosition_succeeds() public {
-        Plan memory plan = testHelper.planFullRangePosition(
+    function test_planFullRangePosition_succeeds() public pure {
+        Plan memory plan = StrategyPlanner.planFullRangePosition(
             StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
@@ -104,7 +80,7 @@ contract StrategyPlannerTest is Test {
     function test_fuzz_planFullRangePosition_succeeds(
         BasePositionParams memory baseParams,
         FullRangeParams memory fullRangeParams
-    ) public {
+    ) public pure {
         baseParams.poolTickSpacing = int24(
             bound(baseParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING)
         );
@@ -115,7 +91,7 @@ contract StrategyPlannerTest is Test {
         fullRangeParams.tokenAmount = uint128(bound(fullRangeParams.tokenAmount, 0, type(uint128).max));
         fullRangeParams.currencyAmount = uint128(bound(fullRangeParams.currencyAmount, 0, type(uint128).max));
 
-        Plan memory plan = testHelper.planFullRangePosition(StrategyPlanner.init(), baseParams, fullRangeParams);
+        Plan memory plan = StrategyPlanner.planFullRangePosition(StrategyPlanner.init(), baseParams, fullRangeParams);
         assertEq(plan.actions.length, 3);
         assertEq(plan.params.length, 3);
         assertEq(plan.actions, ActionsBuilder.init().addMint().addSettle().addSettle());
@@ -166,7 +142,7 @@ contract StrategyPlannerTest is Test {
         );
     }
 
-    function test_planOneSidedPosition_inToken_succeeds() public {
+    function test_planOneSidedPosition_inToken_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -174,7 +150,7 @@ contract StrategyPlannerTest is Test {
             1000000000000000000,
             1000000000000000000
         );
-        Plan memory plan = testHelper.planOneSidedPosition(
+        Plan memory plan = StrategyPlanner.planOneSidedPosition(
             StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
@@ -223,7 +199,7 @@ contract StrategyPlannerTest is Test {
         assertEq(plan.params.length, 1);
     }
 
-    function test_planOneSidedPosition_inCurrency_succeeds() public {
+    function test_planOneSidedPosition_inCurrency_succeeds() public pure {
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
@@ -231,7 +207,7 @@ contract StrategyPlannerTest is Test {
             1000000000000000000,
             1000000000000000000
         );
-        Plan memory plan = testHelper.planOneSidedPosition(
+        Plan memory plan = StrategyPlanner.planOneSidedPosition(
             StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
@@ -333,6 +309,7 @@ contract StrategyPlannerTest is Test {
         TickBounds bounds;
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function test_fuzz_planOneSidedPosition_succeeds(
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams,
@@ -347,7 +324,7 @@ contract StrategyPlannerTest is Test {
         testData.fullPlan = StrategyPlanner.init();
 
         // Plan full range position
-        testData.fullPlan = testHelper.planFullRangePosition(testData.fullPlan, baseParams, fullRangeParams);
+        testData.fullPlan = StrategyPlanner.planFullRangePosition(testData.fullPlan, baseParams, fullRangeParams);
 
         // Get tick bounds
         testData.bounds = _getTickBounds(baseParams, oneSidedParams);
@@ -358,12 +335,12 @@ contract StrategyPlannerTest is Test {
         // Check if should revert
         if (_shouldRevertOnLiquidity(baseParams, oneSidedParams, testData.bounds)) {
             vm.expectRevert();
-            testHelper.planOneSidedPosition(testData.fullPlan, baseParams, oneSidedParams);
+            StrategyPlanner.planOneSidedPosition(testData.fullPlan, baseParams, oneSidedParams);
             return;
         }
 
         // Plan one-sided position
-        testData.plan = testHelper.planOneSidedPosition(testData.fullPlan, baseParams, oneSidedParams);
+        testData.plan = StrategyPlanner.planOneSidedPosition(testData.fullPlan, baseParams, oneSidedParams);
 
         // Assert results
         if (testData.plan.actions.length == 3) {
@@ -438,7 +415,7 @@ contract StrategyPlannerTest is Test {
         BasePositionParams memory baseParams,
         OneSidedParams memory oneSidedParams,
         OneSidedTestData memory testData
-    ) private view {
+    ) private pure {
         assertEq(testData.plan.actions.length, 4);
         assertEq(testData.plan.params.length, 4);
         assertEq(testData.plan.actions, ActionsBuilder.addMint(testData.fullPlan.actions));
