@@ -65,14 +65,14 @@ The FullRangeLBPStrategyFactory contract can be deployed to the same address on 
 
 | Version | Address | Commit Hash |
 |---------|---------|------------|
-| v1.1.0 |  |  |
+| v2.0.0 |  |  |
 
 ### AdvancedLBPStrategyFactory
 The AdvancedLBPStrategyFactory contract can be deployed to the same address on all networks.
 
 | Version | Address | Commit Hash |
 |---------|---------|------------|
-| v1.1.0 |  |  |
+| v2.0.0 |  |  |
 
 ## Audits
 - 10/1 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
