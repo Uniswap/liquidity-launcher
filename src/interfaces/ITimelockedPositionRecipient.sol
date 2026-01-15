@@ -16,7 +16,11 @@ interface ITimelockedPositionRecipient {
     function approveOperator() external;
 
     // Getters
+
+    /// @notice The block number at which the operator will be approved to transfer the position
     function timelockBlockNumber() external view returns (uint256);
+    /// @notice The operator that will be approved to transfer the position
     function operator() external view returns (address);
+    /// @notice The canonical v4 position manager
     function positionManager() external view returns (IPositionManager);
 }

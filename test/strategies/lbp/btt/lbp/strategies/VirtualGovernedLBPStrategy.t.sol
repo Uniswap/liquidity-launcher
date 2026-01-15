@@ -14,6 +14,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockVirtualERC20} from "test/mocks/MockVirtualERC20.sol";
 import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {IVirtualERC20} from "src/interfaces/external/IVirtualERC20.sol";
 
 contract VirtualGovernedLBPStrategyTestExtension is VirtualGovernedLBPStrategy, ILBPStrategyTestExtension {
     using CurrencyLibrary for Currency;
@@ -102,6 +103,23 @@ contract VirtualGovernedLBPStrategyTest is BttTests {
             _parameters.poolManager,
             governance
         );
+    }
+
+    function test_constructor_WhenUnderlyingTokenIsZeroAddress(FuzzConstructorParameters memory _parameters) public {
+        // it reverts when the underlying token is the zero address
+
+        _parameters = _toValidConstructorParameters(_parameters, true);
+        _parameters.token = MOCK_VIRTUAL_TOKEN;
+        _deployMockVirtualToken(_parameters.totalSupply);
+
+        vm.mockCall(
+            MOCK_VIRTUAL_TOKEN,
+            abi.encodeWithSelector(IVirtualERC20.UNDERLYING_TOKEN_ADDRESS.selector),
+            abi.encode(address(0))
+        );
+
+        vm.expectRevert(VirtualGovernedLBPStrategy.UnderlyingTokenIsZeroAddress.selector);
+        deployCodeTo(_contractName(), _encodeConstructorArgs(_parameters), _getHookAddress());
     }
 
     function test_transferAssetsAndExecutePlan_WhenCurrencyIsNative(

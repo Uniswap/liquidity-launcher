@@ -58,7 +58,7 @@ contract GovernedLBPStrategy is FullRangeLBPStrategy {
     }
 
     /// @notice Returns the permissions for the hook
-    /// @dev Has permissions for before initialize, before swap and before remove liquidity
+    /// @dev Has permissions for before initialize and before swap
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
