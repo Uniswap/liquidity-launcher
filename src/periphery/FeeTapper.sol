@@ -44,9 +44,7 @@ contract FeeTapper is IFeeTapper, Ownable {
         return $_kegs[id];
     }
 
-    /// @notice Sets the release rate for accrued protocol fees in basis points per block. Only callable by the owner.
-    /// @dev Rate must be non zero and <= BPS and evenly divisible by BPS.
-    /// @param _perBlockReleaseRate The new release rate in basis points per block
+    /// @inheritdoc IFeeTapper
     function setReleaseRate(uint24 _perBlockReleaseRate) external onlyOwner {
         if (_perBlockReleaseRate == 0 || _perBlockReleaseRate > BPS) revert ReleaseRateOutOfBounds();
         if (BPS % _perBlockReleaseRate != 0) revert InvalidReleaseRate();
@@ -54,9 +52,7 @@ contract FeeTapper is IFeeTapper, Ownable {
         emit ReleaseRateSet(_perBlockReleaseRate);
     }
 
-    /// @notice Syncs the fee tapper with received protocol fees. Callable by anyone
-    /// @dev Creates a new Tap for the currency if it does not exist already
-    /// @param currency The currency to sync
+    /// @inheritdoc IFeeTapper
     function sync(Currency currency) external {
         // Release any accrued protocol fees
         _release(currency);
@@ -97,16 +93,12 @@ contract FeeTapper is IFeeTapper, Ownable {
         emit Synced(Currency.unwrap(currency), balance);
     }
 
-    /// @notice Releases all accumulated protocol fees for a given currency to the token jar
-    /// @dev This function will loop through all active deposits for the given currency
-    /// @param currency The currency to release
+    /// @inheritdoc IFeeTapper
     function release(Currency currency) external returns (uint128) {
         return _process(currency, _release(currency));
     }
 
-    /// @notice Releases a single keg for a given currency. Each keg is a unique deposit of fees
-    /// @dev This function does not provide storage refunds unlike `release(Currency)`
-    /// @param id The id of the keg to release
+    /// @inheritdoc IFeeTapper
     function release(Currency currency, uint32 id) external returns (uint128) {
         // Require id to exist in Tap
         uint32 next = $_taps[currency].head;

@@ -23,16 +23,13 @@ interface IFeeTapper {
     /// @notice Error thrown when the balance is too large
     error AmountTooLarge();
 
-    /// @notice Error thrown when the amount is invalid
-    error InvalidAmount();
-
     /// @notice Error thrown when the keg is not found
     error KegNotFound(uint32 id);
 
-    /// @notice Error thrown when the release rate is invalid
+    /// @notice Error thrown when the release rate is zero or larger than BPS
     error ReleaseRateOutOfBounds();
 
-    /// @notice Error thrown when BPS is not evenly divisible by the release rate
+    /// @notice Error thrown when the rate does not evenly divide BPS
     error InvalidReleaseRate();
 
     /// @notice Emitted when a new deposit is synced
@@ -42,22 +39,49 @@ interface IFeeTapper {
     /// @param endBlock The block at which the deposit will be fully released
     event Deposited(uint64 indexed id, address indexed currency, uint128 amount, uint64 endBlock);
 
-    /// @notice Emitted when protocol fees are deposited
-    event Synced(address indexed currency, uint128 amount);
+    /// @notice Emitted when a Tap is synced
+    /// @param currency The currency being synced
+    /// @param balance The new balance of the tap
+    event Synced(address indexed currency, uint128 balance);
 
     /// @notice Emitted when protocol fees are released
+    /// @param currency The currency being released
+    /// @param amount The amount of protocol fees released
     event Released(address indexed currency, uint128 amount);
 
     /// @notice Emitted when the release rate is set
-    /// @param perBlockReleaseRate The new release rate
-    event ReleaseRateSet(uint24 perBlockReleaseRate);
+    /// @param rate The new release rate
+    event ReleaseRateSet(uint24 rate);
 
-    /// @notice Syncs the fee tapper with received protocol fees
+    /// @notice Sets the release rate for accrued protocol fees in basis points per block. Only callable by the owner.
+    /// @dev Rate must be non zero and <= BPS and evenly divisible by BPS.
+    /// @param _perBlockReleaseRate The new release rate in basis points per block
+    function setReleaseRate(uint24 _perBlockReleaseRate) external;
+
+    /// @notice Syncs the fee tapper with received protocol fees. Callable by anyone
+    /// @dev Creates a new Tap for the currency if it does not exist already
     /// @param currency The currency to sync
     function sync(Currency currency) external;
 
-    /// @notice Releases any accrued protocol fees to the protocol fee recipient
+    /// @notice Releases all accumulated protocol fees for a given currency to the token jar
+    /// @dev This function will loop through all active deposits for the given currency
     /// @param currency The currency to release
-    /// @return amount The amount of protocol fees released
     function release(Currency currency) external returns (uint128);
+
+    /// @notice Releases a single keg for a given currency. Each keg is a unique deposit of fees
+    /// @dev This function does not provide storage refunds unlike `release(Currency)`
+    /// @param currency The currency to release
+    /// @param id The id of the keg to release
+    function release(Currency currency, uint32 id) external returns (uint128);
+
+    /// Getters
+
+    /// @notice Gets the tap for the given currency
+    /// @param currency The currency to get the tap for
+    function taps(Currency currency) external view returns (Tap memory);
+
+    /// @notice Gets the keg for the given id
+    /// @dev You MUST find the corresponding tap holding the keg before using the returned values
+    /// @param id The id of the keg to get
+    function kegs(uint32 id) external view returns (Keg memory);
 }
