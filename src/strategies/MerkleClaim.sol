@@ -11,7 +11,7 @@ contract MerkleClaim is MerkleDistributorWithDeadline, IDistributionContract {
         MerkleDistributorWithDeadline(_token, _merkleRoot, _endTime == 0 ? type(uint256).max : _endTime)
     {
         if (_token == address(0)) {
-            revert InvalidToken(address(_token));
+            revert InvalidToken(_token);
         }
         // Transfer ownership to the specified owner
         _transferOwnership(_owner);

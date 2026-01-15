@@ -15,7 +15,9 @@ import {Plan, StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
 contract AdvancedLBPStrategy is LBPStrategyBase {
     using StrategyPlanner for *;
 
+    /// @notice Whether to create a one-sided token position. Set on construction.
     bool public immutable createOneSidedTokenPosition;
+    /// @notice Whether to create a one-sided currency position. Set on construction.
     bool public immutable createOneSidedCurrencyPosition;
 
     constructor(

@@ -16,6 +16,9 @@ contract VirtualGovernedLBPStrategy is GovernedLBPStrategy {
     /// @notice The address of the underlying token that is being distributed - used in the migrated pool
     address public immutable UNDERLYING_TOKEN;
 
+    /// @notice Error thrown when the underlying token is the zero address
+    error UnderlyingTokenIsZeroAddress();
+
     constructor(
         address _token,
         uint128 _totalSupply,
@@ -31,6 +34,9 @@ contract VirtualGovernedLBPStrategy is GovernedLBPStrategy {
         )
     {
         UNDERLYING_TOKEN = IVirtualERC20(_token).UNDERLYING_TOKEN_ADDRESS();
+        if (UNDERLYING_TOKEN == address(0)) {
+            revert UnderlyingTokenIsZeroAddress();
+        }
     }
 
     /// @notice Returns the address of the underlying token
