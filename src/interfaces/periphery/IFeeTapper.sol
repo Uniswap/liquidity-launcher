@@ -5,16 +5,17 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 
 /// @notice Struct representing an active tap for a given currency
 struct Tap {
-    uint128 balance;
-    uint64 head;
-    uint64 tail;
+    uint128 balance; /// @notice The last synced balance of the tap
+    uint32 head; /// @notice The head of the linked list of kegs
+    uint32 tail; /// @notice The tail of the linked list of kegs
 }
 
+/// @notice Struct representing a unique currency deposit
 struct Keg {
-    uint128 perBlockReleaseAmount;
-    uint64 endBlock;
-    uint64 lastReleaseBlock;
-    uint64 next;
+    uint128 perBlockReleaseAmount; /// @notice The absolute amount of the currency released per block
+    uint48 endBlock; /// @notice The block at which the deposit will be fully released
+    uint48 lastReleaseBlock; /// @notice The block at which the last release was made
+    uint32 next; /// @notice The next keg in the linked list
 }
 
 /// @title IFeeTapper
@@ -23,10 +24,17 @@ interface IFeeTapper {
     error InvalidAmount();
 
     /// @notice Error thrown when the release rate is invalid
+    error ReleaseRateOutOfBounds();
+
+    /// @notice Error thrown when BPS is not evenly divisible by the release rate
     error InvalidReleaseRate();
 
-    /// @notice Emitted when a tap is created
-    event Deposited(uint64 indexed id, address indexed currency, uint128 perBlockReleaseAmount, uint64 endBlock);
+    /// @notice Emitted when a new deposit is synced
+    /// @param id The unique id of the deposit
+    /// @param currency The currency being deposited
+    /// @param amount The amount of protocol fees deposited
+    /// @param endBlock The block at which the deposit will be fully released
+    event Deposited(uint64 indexed id, address indexed currency, uint128 amount, uint64 endBlock);
 
     /// @notice Emitted when protocol fees are deposited
     event Synced(address indexed currency, uint128 amount);

@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Tap, Keg, IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @title FeeTapper
@@ -16,9 +17,9 @@ contract FeeTapper is IFeeTapper, Ownable {
     /// @notice Mapping of currencies to Taps
     mapping(Currency => Tap) private $_taps;
     /// @notice Linked list of kegs. Taps manage the head and tail of their respective kegs.
-    mapping(uint64 => Keg) private $_kegs;
+    mapping(uint32 => Keg) private $_kegs;
     /// @notice The id of the next keg to be created
-    uint64 public nextId;
+    uint32 public nextId;
 
     /// @notice Basis points denominator
     uint24 public constant BPS = 10_000;
@@ -36,16 +37,18 @@ contract FeeTapper is IFeeTapper, Ownable {
         return $_taps[currency];
     }
 
-    /// @notice Sets the release rate for accrued protocol fees in basis points per block
-    /// @dev Only callable by the owner
-    /// @param _perBlockReleaseRate The new release rate in basis points per block. Must be non zero and <= BPS
+    /// @notice Sets the release rate for accrued protocol fees in basis points per block. Only callable by the owner.
+    /// @dev Rate must be non zero and <= BPS and evenly divisible by BPS.
+    /// @param _perBlockReleaseRate The new release rate in basis points per block
     function setReleaseRate(uint24 _perBlockReleaseRate) external onlyOwner {
-        if (_perBlockReleaseRate == 0 || _perBlockReleaseRate > BPS) revert InvalidReleaseRate();
+        if (_perBlockReleaseRate == 0 || _perBlockReleaseRate > BPS) revert ReleaseRateOutOfBounds();
+        if (BPS % _perBlockReleaseRate != 0) revert InvalidReleaseRate();
         perBlockReleaseRate = _perBlockReleaseRate;
         emit ReleaseRateSet(_perBlockReleaseRate);
     }
 
     /// @notice Syncs the fee tapper with received protocol fees. Callable by anyone
+    /// @dev Creates a new Tap for the currency if it does not exist already
     /// @param currency The currency to sync
     function sync(Currency currency) external {
         // Release any accrued protocol fees
@@ -60,13 +63,15 @@ contract FeeTapper is IFeeTapper, Ownable {
         unchecked {
             nextId++;
         }
-        uint64 next = nextId;
+        uint32 next = nextId;
 
-        uint64 endBlock = uint64(block.number + BPS / perBlockReleaseRate);
+        uint48 endBlock = uint48(block.number + BPS / perBlockReleaseRate);
+        uint128 amount = balance - oldBalance;
+        uint128 perBlockReleaseAmount = amount * perBlockReleaseRate;
+
         Keg storage $keg = $_kegs[next];
-        uint128 perBlockReleaseAmount = (balance - oldBalance) * perBlockReleaseRate;
         $keg.perBlockReleaseAmount += perBlockReleaseAmount;
-        $keg.lastReleaseBlock = uint64(block.number);
+        $keg.lastReleaseBlock = uint48(block.number);
         $keg.endBlock = endBlock;
         if ($tap.head == 0) {
             $tap.head = next;
@@ -78,28 +83,32 @@ contract FeeTapper is IFeeTapper, Ownable {
         }
         $tap.balance = balance;
 
-        emit Deposited(next, Currency.unwrap(currency), perBlockReleaseAmount, endBlock);
+        emit Deposited(next, Currency.unwrap(currency), amount, endBlock);
         emit Synced(Currency.unwrap(currency), balance);
     }
 
-    /// @notice Releases all accumulated protocol fees for a given currency to the protocol fee recipient
+    /// @notice Releases all accumulated protocol fees for a given currency to the token jar
+    /// @dev This function will loop through all active deposits for the given currency
+    /// @param currency The currency to release
     function release(Currency currency) external returns (uint128) {
         return _process(currency, _release(currency));
     }
 
-    /// @notice Internal release logic for a given keg
-    function _release(Currency currency, uint64 id) internal returns (uint128 releasedAmount) {
+    /// @notice Releases a single keg for a given currency. Each keg is a unique deposit of fees
+    /// @dev This function does not provide storage refunds unlike `release(Currency)`
+    /// @param id The id of the keg to release
+    function release(Currency currency, uint32 id) external returns (uint128) {
+        return _process(currency, _releaseKeg(id));
+    }
+
+    /// @notice Releases a single keg for a given currency
+    /// @param id The id of the keg to release
+    function _releaseKeg(uint32 id) internal returns (uint128 releasedAmount) {
         Keg memory keg = $_kegs[id];
-        if (keg.endBlock <= block.number) {
-            releasedAmount = uint128(keg.perBlockReleaseAmount * (keg.endBlock - keg.lastReleaseBlock));
-            // Update the head (since this keg is fully released)
-            $_taps[currency].head = keg.next;
-            // Delete the old keg
-            delete $_kegs[id];
-        } else {
-            releasedAmount = uint128(keg.perBlockReleaseAmount * (block.number - keg.lastReleaseBlock));
-            $_kegs[id].lastReleaseBlock = uint64(block.number);
-        }
+        releasedAmount = uint128(
+            keg.perBlockReleaseAmount * (FixedPointMathLib.min(block.number, keg.endBlock) - keg.lastReleaseBlock)
+        );
+        $_kegs[id].lastReleaseBlock = uint48(block.number);
         return releasedAmount;
     }
 
@@ -110,43 +119,44 @@ contract FeeTapper is IFeeTapper, Ownable {
             return 0;
         }
 
-        uint64 next = $tap.head;
-        uint64 newHead;
-        // Itereate through all kegs
+        uint32 next = $tap.head;
+        uint32 newHead;
+        // Itereate through all kegs. This can be very costly if there are lot of kegs.
         while (next != 0) {
             Keg memory keg = $_kegs[next];
-            uint64 curr = next;
+            uint32 curr = next;
+            releasedAmount += _releaseKeg(curr);
             next = keg.next;
             if (keg.endBlock <= block.number) {
-                releasedAmount += uint128(keg.perBlockReleaseAmount * (keg.endBlock - keg.lastReleaseBlock));
                 // Update the head (since this keg is fully released)
-                newHead = keg.next;
+                newHead = next;
                 // Delete the old keg
                 delete $_kegs[curr];
-            } else {
-                releasedAmount += uint128(keg.perBlockReleaseAmount * (block.number - keg.lastReleaseBlock));
-                $_kegs[curr].lastReleaseBlock = uint64(block.number);
             }
         }
         // Update the head if it needed
-        if(newHead != 0) {
-            $_taps[currency].head = newHead;
+        if (newHead != 0) {
+            // If we have iterated through all of the kegs set the tail to 0
+            if (next == 0) {
+                $tap.tail = 0;
+            }
+            $tap.head = newHead;
         }
         return releasedAmount;
     }
 
-    /// @notice Processes the release of an amount of fees to the protocol fee recipient
-    function _process(Currency _currency, uint128 _toRelease) internal returns (uint128) {
+    /// @notice Transfers the released amount to the token jar
+    function _process(Currency _currency, uint128 _releasedAmount) internal returns (uint128) {
         // Because we deferred dividing by BPS when storing the perBlockReleaseAmount, we need to divide now
-        _toRelease = _toRelease / BPS;
+        uint128 toRelease = _releasedAmount / BPS;
         // Update the tap balance
-        $_taps[_currency].balance -= _toRelease;
+        $_taps[_currency].balance -= toRelease;
 
-        if (_toRelease > 0) {
-            _currency.transfer(tokenJar, _toRelease);
-            emit Released(Currency.unwrap(_currency), _toRelease);
+        if (toRelease > 0) {
+            _currency.transfer(tokenJar, toRelease);
+            emit Released(Currency.unwrap(_currency), toRelease);
         }
-        return _toRelease;
+        return toRelease;
     }
 
     /// @notice Receives ETH

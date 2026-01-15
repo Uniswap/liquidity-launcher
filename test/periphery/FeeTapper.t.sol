@@ -50,27 +50,39 @@ contract FeeTapperTest is Test {
     }
 
     function test_setReleaseRate_WhenEqZero() public {
-        // it reverts with {InvalidReleaseRate()}
+        // it reverts with {ReleaseRateOutOfBounds()}
 
         vm.prank(owner);
-        vm.expectRevert(IFeeTapper.InvalidReleaseRate.selector);
+        vm.expectRevert(IFeeTapper.ReleaseRateOutOfBounds.selector);
         feeTapper.setReleaseRate(0);
     }
 
     function test_setReleaseRate_WhenGtBPS(uint24 _perBlockReleaseRate) public {
-        // it reverts with {InvalidReleaseRate()}
+        // it reverts with {ReleaseRateOutOfBounds()}
 
         _perBlockReleaseRate = uint24(bound(_perBlockReleaseRate, BPS + 1, type(uint24).max));
+
+        vm.prank(owner);
+        vm.expectRevert(IFeeTapper.ReleaseRateOutOfBounds.selector);
+        feeTapper.setReleaseRate(_perBlockReleaseRate);
+    }
+
+    function test_setReleaseRate_WhenNotDivisibleByBPS(uint24 _perBlockReleaseRate) public {
+        // it reverts with {InvalidReleaseRate()}
+
+        _perBlockReleaseRate = uint24(bound(_perBlockReleaseRate, 1, BPS - 1));
+        vm.assume(BPS % _perBlockReleaseRate != 0);
 
         vm.prank(owner);
         vm.expectRevert(IFeeTapper.InvalidReleaseRate.selector);
         feeTapper.setReleaseRate(_perBlockReleaseRate);
     }
 
-    function test_setReleaseRate_WhenLTEBPS(uint24 _perBlockReleaseRate) public {
+    function test_setReleaseRate_WhenLTEBPSAndDivisibleByBPS(uint24 _perBlockReleaseRate) public {
         // it succeeds
 
         _perBlockReleaseRate = uint24(bound(_perBlockReleaseRate, 1, BPS));
+        vm.assume(BPS % _perBlockReleaseRate == 0);
 
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
@@ -196,7 +208,7 @@ contract FeeTapperTest is Test {
     /// forge-config: ci.isolate = true
     function test_release_nativeCurrency_multiple_gas() public {
         Currency currency = Currency.wrap(address(0));
-        for(uint64 i = 0; i < 3; i++) {
+        for (uint64 i = 0; i < 3; i++) {
             _deal(address(feeTapper), 1e18, true);
             feeTapper.sync(currency);
         }
