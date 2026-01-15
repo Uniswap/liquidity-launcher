@@ -20,8 +20,14 @@ struct Keg {
 
 /// @title IFeeTapper
 interface IFeeTapper {
+    /// @notice Error thrown when the balance is too large
+    error AmountTooLarge();
+
     /// @notice Error thrown when the amount is invalid
     error InvalidAmount();
+
+    /// @notice Error thrown when the keg is not found
+    error KegNotFound(uint32 id);
 
     /// @notice Error thrown when the release rate is invalid
     error ReleaseRateOutOfBounds();

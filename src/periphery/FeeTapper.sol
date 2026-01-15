@@ -3,9 +3,8 @@ pragma solidity ^0.8.26;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Tap, Keg, IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {console2} from "forge-std/console2.sol";
+import {Tap, Keg, IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
 
 /// @title FeeTapper
 /// @notice Singleton contract which handles the streaming of incoming protocol fees to TokenJar
@@ -27,6 +26,9 @@ contract FeeTapper is IFeeTapper, Ownable {
     ///         For example, at 10 basis points the full amount is released over 1_000 blocks.
     /// @dev    This helps smooth out the release of fees which is useful for integrating with TokenJar fee exchangers.
     uint24 public perBlockReleaseRate = 10;
+
+    /// @notice The maximum supported balance to prevent overflowing a uint128
+    uint128 public constant MAX_BALANCE = type(uint128).max / BPS;
 
     constructor(address _tokenJar, address _owner) Ownable(_owner) {
         tokenJar = _tokenJar;
@@ -60,6 +62,7 @@ contract FeeTapper is IFeeTapper, Ownable {
         _release(currency);
 
         Tap storage $tap = $_taps[currency];
+        // Silently truncates any received balances over uint128.max
         uint128 balance = uint128(currency.balanceOfSelf());
         uint128 oldBalance = $tap.balance;
         // noop if there hasn't been a change in balance
@@ -72,6 +75,8 @@ contract FeeTapper is IFeeTapper, Ownable {
 
         uint48 endBlock = uint48(block.number + BPS / perBlockReleaseRate);
         uint128 amount = balance - oldBalance;
+        // Revert if the amount added to the tap would eventually overflow a uint128
+        if (amount > MAX_BALANCE) revert AmountTooLarge();
         uint128 perBlockReleaseAmount = amount * perBlockReleaseRate;
 
         Keg storage $keg = $_kegs[next];
@@ -103,17 +108,27 @@ contract FeeTapper is IFeeTapper, Ownable {
     /// @dev This function does not provide storage refunds unlike `release(Currency)`
     /// @param id The id of the keg to release
     function release(Currency currency, uint32 id) external returns (uint128) {
-        return _process(currency, _releaseKeg(id));
+        // Require id to exist in Tap
+        uint32 next = $_taps[currency].head;
+        while (next != 0) {
+            if (next == id) {
+                break;
+            }
+            next = $_kegs[next].next;
+        }
+        if (next == 0) revert KegNotFound(id);
+        return _process(currency, _releaseKeg($_kegs[id], id));
     }
 
     /// @notice Releases a single keg for a given currency
     /// @param id The id of the keg to release
-    function _releaseKeg(uint32 id) internal returns (uint128 releasedAmount) {
-        Keg memory keg = $_kegs[id];
+    function _releaseKeg(Keg memory keg, uint32 id) internal returns (uint128 releasedAmount) {
         releasedAmount = uint128(
             keg.perBlockReleaseAmount * (FixedPointMathLib.min(block.number, keg.endBlock) - keg.lastReleaseBlock)
         );
-        $_kegs[id].lastReleaseBlock = uint48(block.number);
+        if (keg.lastReleaseBlock != block.number) {
+            $_kegs[id].lastReleaseBlock = uint48(block.number);
+        }
         return releasedAmount;
     }
 
@@ -130,7 +145,7 @@ contract FeeTapper is IFeeTapper, Ownable {
         while (next != 0) {
             Keg memory keg = $_kegs[next];
             uint32 curr = next;
-            releasedAmount += _releaseKeg(curr);
+            releasedAmount += _releaseKeg(keg, curr);
             next = keg.next;
             if (keg.endBlock <= block.number) {
                 // Update the head (since this keg is fully released)

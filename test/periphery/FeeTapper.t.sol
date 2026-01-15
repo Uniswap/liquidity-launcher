@@ -104,10 +104,19 @@ contract FeeTapperTest is Test {
         vm.snapshotGasLastCall("sync_existingTap");
     }
 
+    function test_sync_WhenAmountIsTooLarge() public {
+        // it reverts with {AmountTooLarge()}
+
+        Currency currency = Currency.wrap(address(erc20Currency));
+        deal(address(erc20Currency), address(feeTapper), feeTapper.MAX_BALANCE() + 1);
+        vm.expectRevert(IFeeTapper.AmountTooLarge.selector);
+        feeTapper.sync(currency);
+    }
+
     function test_sync_WhenCurrencyIsNotAddressZero(uint128 _feeAmount) public {
         // it emits a {Synced()} event
 
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate()));
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = Currency.wrap(address(erc20Currency));
 
@@ -160,7 +169,7 @@ contract FeeTapperTest is Test {
     function test_release_WhenElapsedIsZero(uint128 _feeAmount) public {
         // it returns 0
 
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate()));
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = Currency.wrap(address(0));
         _deal(address(feeTapper), _feeAmount, true);
@@ -170,6 +179,51 @@ contract FeeTapperTest is Test {
 
         uint256 amount = feeTapper.release(currency);
         assertEq(amount, 0);
+    }
+
+    function test_release_WhenKegIdIsZero(Currency currency) public {
+        // it reverts with {KegNotFound(0)}
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 0));
+        feeTapper.release(currency, 0);
+    }
+
+    function test_release_WhenKegIdIsZeroAndTapIsNotEmpty() public {
+        // it reverts with {KegNotFound(0)}
+
+        _deal(address(feeTapper), 1e18, true);
+        Currency currency = Currency.wrap(address(0));
+        feeTapper.sync(currency);
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 0));
+        feeTapper.release(currency, 0);
+
+        // for different currency
+        Currency otherCurrency = Currency.wrap(address(1));
+        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 0));
+        feeTapper.release(otherCurrency, 0);
+    }
+
+    function test_release_WhenKegIsNotFound(uint32 _id) public {
+        // it reverts with {KegNotFound(_id)}
+
+        _id = uint32(bound(_id, 1, type(uint32).max));
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, _id));
+        feeTapper.release(Currency.wrap(address(0)), _id);
+    }
+
+    function test_release_WhenKegIdIsNotInTap() public {
+        // it reverts with {KegNotFound(_id)}
+
+        Currency currency = Currency.wrap(address(0));
+        _deal(address(feeTapper), 1e18, true);
+        feeTapper.sync(currency);
+
+        // id 1 is for address(0)
+        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 1));
+        Currency otherCurrency = Currency.wrap(address(1));
+        feeTapper.release(otherCurrency, 1);
     }
 
     /// forge-config: default.isolate = true
@@ -258,7 +312,7 @@ contract FeeTapperTest is Test {
         // it returns the rest of the tap amount
 
         _elapsed = uint64(bound(_elapsed, BPS / feeTapper.perBlockReleaseRate(), type(uint64).max));
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / _elapsed));
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = Currency.wrap(address(0));
         _deal(address(feeTapper), _feeAmount, true);
@@ -279,7 +333,7 @@ contract FeeTapperTest is Test {
         // it emits a {Released()} event
 
         _elapsed = uint64(bound(_elapsed, 1, BPS / feeTapper.perBlockReleaseRate()));
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / _elapsed));
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -300,7 +354,7 @@ contract FeeTapperTest is Test {
     function test_release_IsLinear(uint128 _feeAmount, bool _useNativeCurrency) public {
         // it releases the amount of protocol fees based on the release rate
 
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / BPS));
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -335,9 +389,8 @@ contract FeeTapperTest is Test {
         // after adding a new keg, the old keg is deleted
         // after releasing the new keg, it becomes the head/tail of the tap
 
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / BPS));
-        _additionalFeeAmount =
-            uint128(bound(_additionalFeeAmount, 1, type(uint128).max / feeTapper.perBlockReleaseRate() / BPS));
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _additionalFeeAmount = uint128(bound(_additionalFeeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
