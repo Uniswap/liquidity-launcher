@@ -79,6 +79,19 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.perBlockReleaseRate(), _perBlockReleaseRate);
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_sync_gas() public {
+        Currency currency = Currency.wrap(address(erc20Currency));
+        deal(address(erc20Currency), address(feeTapper), 1e18);
+        feeTapper.sync(currency);
+        vm.snapshotGasLastCall("sync_newTap");
+
+        deal(address(erc20Currency), address(feeTapper), 1e18);
+        feeTapper.sync(currency);
+        vm.snapshotGasLastCall("sync_existingTap");
+    }
+
     function test_sync_WhenCurrencyIsNotAddressZero(uint128 _feeAmount) public {
         // it emits a {Synced()} event
 
@@ -100,9 +113,9 @@ contract FeeTapperTest is Test {
         uint64 _elapsed,
         bool _useNativeCurrency
     ) public {
-        // it adds fee amount to the tap amount
-        // it updates the release rate
-        // it updates the last release block
+        // it adds fee amount to the tap balance
+        // it creates a new keg
+        // it emits a {Deposited()} event
         // it emits a {Synced()} event
 
         // Low bounds to avoid overflows later on
@@ -145,6 +158,56 @@ contract FeeTapperTest is Test {
 
         uint256 amount = feeTapper.release(currency);
         assertEq(amount, 0);
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_release_nativeCurrency_single_gas() public {
+        Currency currency = Currency.wrap(address(0));
+        _deal(address(feeTapper), 1e18, true);
+        feeTapper.sync(currency);
+
+        vm.roll(block.number + 1);
+        feeTapper.release(currency);
+        vm.snapshotGasLastCall("release_nativeCurrency_single");
+
+        vm.roll(block.number + BPS);
+        feeTapper.release(currency);
+        vm.snapshotGasLastCall("release_nativeCurrency_single_deletion");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_release_erc20Currency_single_gas() public {
+        Currency currency = Currency.wrap(address(erc20Currency));
+        _deal(address(feeTapper), 1e18, false);
+        feeTapper.sync(currency);
+
+        vm.roll(block.number + 1);
+        feeTapper.release(currency);
+        vm.snapshotGasLastCall("release_erc20Currency_single");
+
+        vm.roll(block.number + BPS);
+        feeTapper.release(currency);
+        vm.snapshotGasLastCall("release_erc20Currency_single_deletion");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_release_nativeCurrency_multiple_gas() public {
+        Currency currency = Currency.wrap(address(0));
+        for(uint64 i = 0; i < 3; i++) {
+            _deal(address(feeTapper), 1e18, true);
+            feeTapper.sync(currency);
+        }
+
+        vm.roll(block.number + 1);
+        feeTapper.release(currency);
+        vm.snapshotGasLastCall("release_nativeCurrency_multiple");
+
+        vm.roll(block.number + BPS);
+        feeTapper.release(currency);
+        vm.snapshotGasLastCall("release_nativeCurrency_multiple_deletion");
     }
 
     function test_release_WhenToReleaseIsGreaterThanTapAmount(uint128 _feeAmount, uint64 _elapsed) public {

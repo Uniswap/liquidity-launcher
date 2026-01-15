@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Tap, Keg, IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
+import {console2} from "forge-std/console2.sol";
 
 /// @title FeeTapper
 /// @notice Singleton contract which handles the streaming of incoming protocol fees to TokenJar
@@ -63,7 +64,6 @@ contract FeeTapper is IFeeTapper, Ownable {
 
         uint64 endBlock = uint64(block.number + BPS / perBlockReleaseRate);
         Keg storage $keg = $_kegs[next];
-        // In case there are multiple syncs in the same block we add up the amounts since they release on the same schedule
         uint128 perBlockReleaseAmount = (balance - oldBalance) * perBlockReleaseRate;
         $keg.perBlockReleaseAmount += perBlockReleaseAmount;
         $keg.lastReleaseBlock = uint64(block.number);
@@ -78,18 +78,13 @@ contract FeeTapper is IFeeTapper, Ownable {
         }
         $tap.balance = balance;
 
-        emit TapCreated(next, Currency.unwrap(currency), perBlockReleaseAmount, endBlock);
+        emit Deposited(next, Currency.unwrap(currency), perBlockReleaseAmount, endBlock);
         emit Synced(Currency.unwrap(currency), balance);
     }
 
     /// @notice Releases all accumulated protocol fees for a given currency to the protocol fee recipient
     function release(Currency currency) external returns (uint128) {
         return _process(currency, _release(currency));
-    }
-
-    /// @notice Releases the protocol fees for a given keg to the protocol fee recipient
-    function release(Currency currency, uint64 id) external returns (uint128) {
-        return _process(currency, _release(currency, id));
     }
 
     /// @notice Internal release logic for a given keg
@@ -116,15 +111,26 @@ contract FeeTapper is IFeeTapper, Ownable {
         }
 
         uint64 next = $tap.head;
-        // If no kegs yet return 0
-        if (next == 0) {
-            return 0;
-        }
-
+        uint64 newHead;
         // Itereate through all kegs
         while (next != 0) {
-            releasedAmount += _release(currency, next);
-            next = $_kegs[next].next;
+            Keg memory keg = $_kegs[next];
+            uint64 curr = next;
+            next = keg.next;
+            if (keg.endBlock <= block.number) {
+                releasedAmount += uint128(keg.perBlockReleaseAmount * (keg.endBlock - keg.lastReleaseBlock));
+                // Update the head (since this keg is fully released)
+                newHead = keg.next;
+                // Delete the old keg
+                delete $_kegs[curr];
+            } else {
+                releasedAmount += uint128(keg.perBlockReleaseAmount * (block.number - keg.lastReleaseBlock));
+                $_kegs[curr].lastReleaseBlock = uint64(block.number);
+            }
+        }
+        // Update the head if it needed
+        if(newHead != 0) {
+            $_taps[currency].head = newHead;
         }
         return releasedAmount;
     }

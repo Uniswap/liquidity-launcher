@@ -26,7 +26,7 @@ interface IFeeTapper {
     error InvalidReleaseRate();
 
     /// @notice Emitted when a tap is created
-    event TapCreated(uint64 indexed id, address indexed currency, uint128 perBlockReleaseAmount, uint64 endBlock);
+    event Deposited(uint64 indexed id, address indexed currency, uint128 perBlockReleaseAmount, uint64 endBlock);
 
     /// @notice Emitted when protocol fees are deposited
     event Synced(address indexed currency, uint128 amount);

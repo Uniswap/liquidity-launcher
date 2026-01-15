@@ -1,0 +1,10 @@
+{
+  "release_erc20Currency_single": "70344",
+  "release_erc20Currency_single_deletion": "43774",
+  "release_nativeCurrency_multiple": "87775",
+  "release_nativeCurrency_multiple_deletion": "55012",
+  "release_nativeCurrency_single": "71665",
+  "release_nativeCurrency_single_deletion": "41995",
+  "sync_existingTap": "35280",
+  "sync_newTap": "82518"
+}
