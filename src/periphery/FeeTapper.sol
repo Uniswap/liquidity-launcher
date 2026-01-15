@@ -128,28 +128,33 @@ contract FeeTapper is IFeeTapper, Ownable {
 
         uint32 prev = 0;
         uint32 curr = $tap.head;
+        uint256 blockNumber = block.number;
         // Itereate through all kegs. This can be very costly if there are lot of kegs.
         while (curr != 0) {
             Keg memory keg = $_kegs[curr];
+            uint32 next = keg.next;
+
             releasedAmount += _releaseKeg(keg, curr);
-            // Delete the keg if it is fully released
-            if (keg.endBlock <= block.number) {
-                // Update the head if the current head is fully released
-                if (curr == $tap.head) {
-                    $tap.head = keg.next;
-                    // If this was the last keg, reset the tail to 0
-                    if (keg.next == 0) {
-                        $tap.tail = 0;
-                    }
+
+            if (keg.endBlock <= blockNumber) {
+                // unlink the current keg
+                if (prev == 0) {
+                    // deleting head
+                    $tap.head = next;
                 } else {
-                    // Otherwise, connect the previous keg to the next one
-                    $_kegs[prev].next = keg.next;
+                    $_kegs[prev].next = next;
                 }
-                // Delete the keg
+                // if we removed the tail (next == 0 after unlink), update tail
+                if (next == 0) {
+                    $tap.tail = prev;
+                }
                 delete $_kegs[curr];
+            } else {
+                // only advance prev when the current keg remains linked
+                prev = curr;
             }
-            prev = curr;
-            curr = keg.next;
+
+            curr = next;
         }
         return releasedAmount;
     }

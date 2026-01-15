@@ -1,14 +1,14 @@
 {
-  "release_erc20Currency_single": "68336",
-  "release_erc20Currency_single_deletion": "41672",
+  "release_erc20Currency_single": "68349",
+  "release_erc20Currency_single_deletion": "41592",
   "release_keg_erc20Currency_single": "68272",
   "release_keg_erc20Currency_single_deletion": "46372",
   "release_keg_nativeCurrency_single": "69593",
   "release_keg_nativeCurrency_single_deletion": "44593",
-  "release_nativeCurrency_multiple": "81813",
-  "release_nativeCurrency_multiple_deletion": "47147",
-  "release_nativeCurrency_single": "69657",
-  "release_nativeCurrency_single_deletion": "36409",
+  "release_nativeCurrency_multiple": "81844",
+  "release_nativeCurrency_multiple_deletion": "46856",
+  "release_nativeCurrency_single": "69670",
+  "release_nativeCurrency_single_deletion": "36328",
   "sync_existingTap": "29698",
   "sync_newTap": "82349"
 }

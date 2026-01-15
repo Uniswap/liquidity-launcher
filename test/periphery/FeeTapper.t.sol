@@ -490,7 +490,7 @@ contract FeeTapperTest is Test {
 
         // roll to the end of the first two releases
         vm.roll(endBlock);
-        uint128 released = feeTapper.release(currency);
+        feeTapper.release(currency);
         // head should have been moved from 1 -> 2 -> 3
         assertEq(feeTapper.taps(currency).head, 3);
         assertEq(feeTapper.taps(currency).tail, 3);
@@ -499,5 +499,102 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.kegs(2).perBlockReleaseAmount, 0); // deleted
         assertEq(feeTapper.kegs(2).next, 0); // deleted
         assertEq(feeTapper.kegs(3).next, 0); // last one
+    }
+
+    function test_release_WhenTailKegEndsBeforeHead_ReLinksCorrectly(uint128 _feeAmount, bool _useNativeCurrency)
+        public
+    {
+        // it deletes the finished tail keg and keeps the list linked for new deposits
+
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
+
+        Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
+
+        // first keg with the default, slower release rate
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        uint24 originalReleaseRate = feeTapper.perBlockReleaseRate();
+
+        // speed up release so the next keg finishes first
+        vm.prank(owner);
+        feeTapper.setReleaseRate(BPS);
+
+        // second keg (will end in 1 block)
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // advance so the tail keg ends while the head is still active
+        vm.roll(block.number + 1);
+        uint128 released = feeTapper.release(currency);
+        assertGt(released, 0);
+
+        // tail was removed; head remains
+        assertEq(feeTapper.taps(currency).head, 1);
+        assertEq(feeTapper.taps(currency).tail, 1);
+        assertEq(feeTapper.kegs(1).next, 0);
+
+        // restore original rate and add a new keg; it should link after the head
+        vm.prank(owner);
+        feeTapper.setReleaseRate(originalReleaseRate);
+
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        assertEq(feeTapper.taps(currency).head, 1);
+        assertEq(feeTapper.taps(currency).tail, 3);
+        assertEq(feeTapper.kegs(1).next, 3);
+        assertEq(feeTapper.kegs(3).next, 0);
+    }
+
+    function test_release_WhenConsecutiveFinishedKegsBehindActiveHead_ReLinksCorrectly(
+        uint128 _feeAmount,
+        bool _useNativeCurrency
+    ) public {
+        // it deletes consecutive finished middle kegs and keeps the tail reachable
+
+        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 4));
+
+        Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
+
+        // Keg A (head) with slow release
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        uint24 originalReleaseRate = feeTapper.perBlockReleaseRate();
+
+        // Speed up to make middle kegs finish quickly
+        vm.prank(owner);
+        feeTapper.setReleaseRate(BPS);
+
+        // Keg B
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // Keg C
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // Restore slower rate for tail keg D
+        vm.prank(owner);
+        feeTapper.setReleaseRate(originalReleaseRate);
+
+        // Keg D (tail, long-lived)
+        _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
+        feeTapper.sync(currency);
+
+        // Roll so B and C have fully ended while A and D are still active
+        vm.roll(block.number + 1);
+
+        uint128 released = feeTapper.release(currency);
+        assertGt(released, 0);
+
+        // A should link directly to D; tail is D; B and C are deleted
+        assertEq(feeTapper.taps(currency).head, 1);
+        assertEq(feeTapper.taps(currency).tail, 4);
+        assertEq(feeTapper.kegs(1).next, 4);
+        assertEq(feeTapper.kegs(4).next, 0);
+        assertEq(feeTapper.kegs(2).perBlockReleaseAmount, 0);
+        assertEq(feeTapper.kegs(3).perBlockReleaseAmount, 0);
     }
 }
