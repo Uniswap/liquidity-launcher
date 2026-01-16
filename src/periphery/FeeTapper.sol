@@ -28,8 +28,8 @@ contract FeeTapper is IFeeTapper, Ownable {
     /// @dev    This helps smooth out the release of fees which is useful for integrating with TokenJar fee exchangers.
     uint24 public perBlockReleaseRate = 10;
 
-    /// @notice The maximum supported balance to prevent overflowing a uint128
-    uint128 public constant MAX_BALANCE = type(uint128).max / BPS;
+    /// @notice The maximum supported balance to prevent overflowing a uint192
+    uint192 public constant MAX_BALANCE = type(uint192).max / BPS;
 
     constructor(address _tokenJar, address _owner) Ownable(_owner) {
         tokenJar = _tokenJar;
@@ -56,11 +56,11 @@ contract FeeTapper is IFeeTapper, Ownable {
     /// @inheritdoc IFeeTapper
     function sync(Currency currency) external {
         Tap storage $tap = $_taps[currency];
-        // Silently truncates any received balances over uint128.max
-        uint128 balance = uint128(currency.balanceOfSelf());
-        // Revert if the amount added to the tap would eventually overflow a uint128
+        // Silently truncates any received balances over uint192.max
+        uint192 balance = uint192(currency.balanceOfSelf());
+        // Revert if the amount added to the tap would eventually overflow a uint192
         if (balance > MAX_BALANCE) revert AmountTooLarge();
-        uint128 oldBalance = $tap.balance;
+        uint192 oldBalance = $tap.balance;
         // noop if there hasn't been a change in balance
         if (balance == oldBalance) return;
 
@@ -70,10 +70,11 @@ contract FeeTapper is IFeeTapper, Ownable {
         uint32 next = nextId;
 
         uint48 endBlock = uint48(block.number + BPS / perBlockReleaseRate);
-        uint128 amount = balance - oldBalance;
-        uint128 perBlockReleaseAmount = amount * perBlockReleaseRate;
+        uint192 amount = balance - oldBalance;
+        uint192 perBlockReleaseAmount = amount * perBlockReleaseRate;
 
         Keg storage $keg = $_kegs[next];
+        $keg.currency = currency;
         $keg.perBlockReleaseAmount += perBlockReleaseAmount;
         $keg.lastReleaseBlock = uint48(block.number);
         $keg.endBlock = endBlock;
@@ -92,35 +93,28 @@ contract FeeTapper is IFeeTapper, Ownable {
     }
 
     /// @inheritdoc IFeeTapper
-    function release(Currency currency) external returns (uint128) {
+    function release(Currency currency) external returns (uint192) {
         return _process(currency, _release(currency));
     }
 
     /// @inheritdoc IFeeTapper
-    function release(Currency currency, uint32 id) external returns (uint128) {
-        // Require id to exist in Tap
-        uint32 next = $_taps[currency].head;
-        while (next != 0) {
-            if (next == id) {
-                break;
-            }
-            next = $_kegs[next].next;
-        }
-        if (next == 0) revert KegNotFound(id);
+    function release(Currency currency, uint32 id) external returns (uint192) {
+        address _expected = Currency.unwrap($_kegs[id].currency);
+        if (_expected != Currency.unwrap(currency)) revert InvalidCurrency(_expected, Currency.unwrap(currency));
         return _process(currency, _releaseKeg($_kegs[id], id));
     }
 
     /// @notice Releases a single keg for a given currency
     /// @param id The id of the keg to release
-    function _releaseKeg(Keg memory keg, uint32 id) internal returns (uint128 releasedAmount) {
+    function _releaseKeg(Keg memory keg, uint32 id) internal returns (uint192 releasedAmount) {
         uint48 minBlock = uint48(FixedPointMathLib.min(block.number, keg.endBlock));
-        releasedAmount = uint128(keg.perBlockReleaseAmount * (minBlock - keg.lastReleaseBlock));
+        releasedAmount = uint192(keg.perBlockReleaseAmount * (minBlock - keg.lastReleaseBlock));
         $_kegs[id].lastReleaseBlock = minBlock;
         return releasedAmount;
     }
 
     /// @notice Releases all kegs for a given currency
-    function _release(Currency currency) internal returns (uint128 releasedAmount) {
+    function _release(Currency currency) internal returns (uint192 releasedAmount) {
         Tap storage $tap = $_taps[currency];
         if ($tap.balance == 0) {
             return 0;
@@ -160,9 +154,9 @@ contract FeeTapper is IFeeTapper, Ownable {
     }
 
     /// @notice Transfers the released amount to the token jar
-    function _process(Currency _currency, uint128 _releasedAmount) internal returns (uint128) {
+    function _process(Currency _currency, uint192 _releasedAmount) internal returns (uint192) {
         // Because we deferred dividing by BPS when storing the perBlockReleaseAmount, we need to divide now
-        uint128 toRelease = _releasedAmount / BPS;
+        uint192 toRelease = _releasedAmount / BPS;
         // Update the tap balance
         $_taps[_currency].balance -= toRelease;
 

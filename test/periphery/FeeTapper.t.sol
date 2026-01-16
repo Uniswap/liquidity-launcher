@@ -113,10 +113,10 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
     }
 
-    function test_sync_WhenCurrencyIsNotAddressZero(uint128 _feeAmount) public {
+    function test_sync_WhenCurrencyIsNotAddressZero(uint192 _feeAmount) public {
         // it emits a {Synced()} event
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = Currency.wrap(address(erc20Currency));
 
@@ -129,8 +129,8 @@ contract FeeTapperTest is Test {
     }
 
     function test_sync_WhenCurrencyIsAddressZeroAndTapIsNotEmpty(
-        uint128 _feeAmount,
-        uint128 _additionalFeeAmount,
+        uint192 _feeAmount,
+        uint192 _additionalFeeAmount,
         uint64 _elapsed,
         bool _useNativeCurrency
     ) public {
@@ -140,8 +140,8 @@ contract FeeTapperTest is Test {
         // it emits a {Synced()} event
 
         // Low bounds to avoid overflows later on
-        _feeAmount = uint128(bound(_feeAmount, 1, type(uint64).max));
-        _additionalFeeAmount = uint128(bound(_additionalFeeAmount, 1, type(uint64).max));
+        _feeAmount = uint192(bound(_feeAmount, 1, type(uint64).max));
+        _additionalFeeAmount = uint192(bound(_additionalFeeAmount, 1, type(uint64).max));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -166,10 +166,10 @@ contract FeeTapperTest is Test {
         assertEq(amount, 0);
     }
 
-    function test_release_WhenElapsedIsZero(uint128 _feeAmount) public {
+    function test_release_WhenElapsedIsZero(uint192 _feeAmount) public {
         // it returns 0
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = Currency.wrap(address(0));
         _deal(address(feeTapper), _feeAmount, true);
@@ -181,49 +181,17 @@ contract FeeTapperTest is Test {
         assertEq(amount, 0);
     }
 
-    function test_release_WhenKegIdIsZero(Currency currency) public {
-        // it reverts with {KegNotFound(0)}
-
-        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 0));
-        feeTapper.release(currency, 0);
-    }
-
-    function test_release_WhenKegIdIsZeroAndTapIsNotEmpty() public {
-        // it reverts with {KegNotFound(0)}
+    function test_release_WhenKegCurrencyDoesNotMatch(uint32 _id) public {
+        // it reverts with {InvalidCurrency()}
 
         _deal(address(feeTapper), 1e18, true);
         Currency currency = Currency.wrap(address(0));
         feeTapper.sync(currency);
-
-        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 0));
-        feeTapper.release(currency, 0);
 
         // for different currency
         Currency otherCurrency = Currency.wrap(address(1));
-        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 0));
-        feeTapper.release(otherCurrency, 0);
-    }
-
-    function test_release_WhenKegIsNotFound(uint32 _id) public {
-        // it reverts with {KegNotFound(_id)}
-
-        _id = uint32(bound(_id, 1, type(uint32).max));
-
-        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, _id));
-        feeTapper.release(Currency.wrap(address(0)), _id);
-    }
-
-    function test_release_WhenKegIdIsNotInTap() public {
-        // it reverts with {KegNotFound(_id)}
-
-        Currency currency = Currency.wrap(address(0));
-        _deal(address(feeTapper), 1e18, true);
-        feeTapper.sync(currency);
-
-        // id 1 is for address(0)
-        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.KegNotFound.selector, 1));
-        Currency otherCurrency = Currency.wrap(address(1));
-        feeTapper.release(otherCurrency, 1);
+        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.InvalidCurrency.selector, address(0), address(1)));
+        feeTapper.release(otherCurrency, _id);
     }
 
     /// forge-config: default.isolate = true
@@ -308,11 +276,11 @@ contract FeeTapperTest is Test {
         vm.snapshotGasLastCall("release_nativeCurrency_multiple_deletion");
     }
 
-    function test_release_WhenToReleaseIsGreaterThanTapAmount(uint128 _feeAmount, uint64 _elapsed) public {
+    function test_release_WhenToReleaseIsGreaterThanTapAmount(uint192 _feeAmount, uint64 _elapsed) public {
         // it returns the rest of the tap amount
 
         _elapsed = uint64(bound(_elapsed, BPS / feeTapper.perBlockReleaseRate(), type(uint64).max));
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = Currency.wrap(address(0));
         _deal(address(feeTapper), _feeAmount, true);
@@ -326,14 +294,14 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.taps(currency).balance, 0);
     }
 
-    function test_release_WhenToReleaseIsLTEThanTapAmount(uint128 _feeAmount, uint64 _elapsed, bool _useNativeCurrency)
+    function test_release_WhenToReleaseIsLTEThanTapAmount(uint192 _feeAmount, uint64 _elapsed, bool _useNativeCurrency)
         public
     {
         // it updates the tap amount
         // it emits a {Released()} event
 
         _elapsed = uint64(bound(_elapsed, 1, BPS / feeTapper.perBlockReleaseRate()));
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -343,18 +311,18 @@ contract FeeTapperTest is Test {
 
         vm.roll(block.number + _elapsed);
         vm.expectEmit(true, true, true, true);
-        uint128 expectedReleased = (_feeAmount * feeTapper.perBlockReleaseRate() * _elapsed) / BPS;
+        uint192 expectedReleased = (_feeAmount * feeTapper.perBlockReleaseRate() * _elapsed) / BPS;
         emit IFeeTapper.Released(Currency.unwrap(currency), expectedReleased);
         vm.assume(expectedReleased > 0);
-        uint128 released = feeTapper.release(currency);
+        uint192 released = feeTapper.release(currency);
         assertEq(released, expectedReleased);
         assertEq(feeTapper.taps(currency).balance, _feeAmount - released);
     }
 
-    function test_release_IsLinear(uint128 _feeAmount, bool _useNativeCurrency) public {
+    function test_release_IsLinear(uint192 _feeAmount, bool _useNativeCurrency) public {
         // it releases the amount of protocol fees based on the release rate
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -363,7 +331,7 @@ contract FeeTapperTest is Test {
         uint256 snapshotId = vm.snapshot();
 
         // Maximize number of releases by calling one per block
-        uint128 totalReleased = 0;
+        uint192 totalReleased = 0;
         uint256 maxDust = 0;
         for (uint64 i = 0; i < BPS / feeTapper.perBlockReleaseRate(); i++) {
             vm.roll(block.number + 1);
@@ -380,8 +348,8 @@ contract FeeTapperTest is Test {
     }
 
     function test_release_WhenEmptyKegsAreReleased(
-        uint128 _feeAmount,
-        uint128 _additionalFeeAmount,
+        uint192 _feeAmount,
+        uint192 _additionalFeeAmount,
         bool _useNativeCurrency
     ) public {
         // it does not delete the keg when fully released
@@ -389,8 +357,8 @@ contract FeeTapperTest is Test {
         // after adding a new keg, the old keg is deleted
         // after releasing the new keg, it becomes the head/tail of the tap
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
-        _additionalFeeAmount = uint128(bound(_additionalFeeAmount, 1, feeTapper.MAX_BALANCE()));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE()));
+        _additionalFeeAmount = uint192(bound(_additionalFeeAmount, 1, feeTapper.MAX_BALANCE()));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -399,7 +367,7 @@ contract FeeTapperTest is Test {
         uint48 endBlock = uint48(block.number + BPS / feeTapper.perBlockReleaseRate());
 
         vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
-        uint128 released = feeTapper.release(currency, 1);
+        uint192 released = feeTapper.release(currency, 1);
         assertEq(released, _feeAmount);
         assertEq(feeTapper.taps(currency).balance, 0);
 
@@ -429,12 +397,12 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.taps(currency).tail, 0);
     }
 
-    function test_release_WhenMiddleKegIsReleased(uint128 _feeAmount, bool _useNativeCurrency) public {
+    function test_release_WhenMiddleKegIsReleased(uint192 _feeAmount, bool _useNativeCurrency) public {
         // it deletes the keg when fully released
         // it keeps the current head/tail of the tap
         // it links the head to the next keg
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -459,7 +427,7 @@ contract FeeTapperTest is Test {
 
         // release the middle keg
         vm.roll(block.number + 1);
-        uint128 released = feeTapper.release(currency);
+        uint192 released = feeTapper.release(currency);
         assertEq(released, _feeAmount + (_feeAmount * originalReleaseRate * 2) / BPS);
         // Same head and tail
         assertEq(feeTapper.taps(currency).head, 1);
@@ -468,10 +436,10 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.kegs(3).next, 0);
     }
 
-    function test_release_WhenMultipleKegsAreReleased(uint128 _feeAmount, bool _useNativeCurrency) public {
+    function test_release_WhenMultipleKegsAreReleased(uint192 _feeAmount, bool _useNativeCurrency) public {
         // it moves the head over multiple
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
         _deal(address(feeTapper), _feeAmount, _useNativeCurrency);
@@ -501,12 +469,12 @@ contract FeeTapperTest is Test {
         assertEq(feeTapper.kegs(3).next, 0); // last one
     }
 
-    function test_release_WhenTailKegEndsBeforeHead_ReLinksCorrectly(uint128 _feeAmount, bool _useNativeCurrency)
+    function test_release_WhenTailKegEndsBeforeHead_ReLinksCorrectly(uint192 _feeAmount, bool _useNativeCurrency)
         public
     {
         // it deletes the finished tail keg and keeps the list linked for new deposits
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 3));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
 
@@ -526,7 +494,7 @@ contract FeeTapperTest is Test {
 
         // advance so the tail keg ends while the head is still active
         vm.roll(block.number + 1);
-        uint128 released = feeTapper.release(currency);
+        uint192 released = feeTapper.release(currency);
         assertGt(released, 0);
 
         // tail was removed; head remains
@@ -548,12 +516,12 @@ contract FeeTapperTest is Test {
     }
 
     function test_release_WhenConsecutiveFinishedKegsBehindActiveHead_ReLinksCorrectly(
-        uint128 _feeAmount,
+        uint192 _feeAmount,
         bool _useNativeCurrency
     ) public {
         // it deletes consecutive finished middle kegs and keeps the tail reachable
 
-        _feeAmount = uint128(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 4));
+        _feeAmount = uint192(bound(_feeAmount, 1, feeTapper.MAX_BALANCE() / 4));
 
         Currency currency = _useNativeCurrency ? Currency.wrap(address(0)) : Currency.wrap(address(erc20Currency));
 
@@ -586,7 +554,7 @@ contract FeeTapperTest is Test {
         // Roll so B and C have fully ended while A and D are still active
         vm.roll(block.number + 1);
 
-        uint128 released = feeTapper.release(currency);
+        uint192 released = feeTapper.release(currency);
         assertGt(released, 0);
 
         // A should link directly to D; tail is D; B and C are deleted

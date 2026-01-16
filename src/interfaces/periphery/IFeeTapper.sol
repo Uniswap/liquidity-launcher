@@ -5,16 +5,17 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 
 /// @notice Struct representing an active tap for a given currency
 struct Tap {
-    uint128 balance; /// @notice The last synced balance of the tap
+    uint192 balance; /// @notice The last synced balance of the tap
     uint32 head; /// @notice The head of the linked list of kegs
     uint32 tail; /// @notice The tail of the linked list of kegs
 }
 
 /// @notice Struct representing a unique currency deposit
 struct Keg {
-    uint128 perBlockReleaseAmount; /// @notice The absolute amount of the currency released per block
+    Currency currency; /// @notice The currency associated with the keg
     uint48 endBlock; /// @notice The block at which the deposit will be fully released
     uint48 lastReleaseBlock; /// @notice The block at which the last release was made
+    uint192 perBlockReleaseAmount; /// @notice The absolute amount of the currency released per block
     uint32 next; /// @notice The next keg in the linked list
 }
 
@@ -23,31 +24,33 @@ interface IFeeTapper {
     /// @notice Error thrown when the balance is too large
     error AmountTooLarge();
 
-    /// @notice Error thrown when the keg is not found
-    error KegNotFound(uint32 id);
-
     /// @notice Error thrown when the release rate is zero or larger than BPS
     error ReleaseRateOutOfBounds();
 
     /// @notice Error thrown when the rate does not evenly divide BPS
     error InvalidReleaseRate();
 
+    /// @notice Error thrown when the currency of the keg does not match the currency of the tap
+    /// @param expected The expected currency
+    /// @param actual The actual currency
+    error InvalidCurrency(address expected, address actual);
+
     /// @notice Emitted when a new deposit is synced
     /// @param id The unique id of the deposit
     /// @param currency The currency being deposited
     /// @param amount The amount of protocol fees deposited
     /// @param endBlock The block at which the deposit will be fully released
-    event Deposited(uint64 indexed id, address indexed currency, uint128 amount, uint64 endBlock);
+    event Deposited(uint64 indexed id, address indexed currency, uint192 amount, uint64 endBlock);
 
     /// @notice Emitted when a Tap is synced
     /// @param currency The currency being synced
     /// @param balance The new balance of the tap
-    event Synced(address indexed currency, uint128 balance);
+    event Synced(address indexed currency, uint192 balance);
 
     /// @notice Emitted when protocol fees are released
     /// @param currency The currency being released
     /// @param amount The amount of protocol fees released
-    event Released(address indexed currency, uint128 amount);
+    event Released(address indexed currency, uint192 amount);
 
     /// @notice Emitted when the release rate is set
     /// @param rate The new release rate
@@ -66,13 +69,13 @@ interface IFeeTapper {
     /// @notice Releases all accumulated protocol fees for a given currency to the token jar
     /// @dev This function will loop through all active deposits for the given currency
     /// @param currency The currency to release
-    function release(Currency currency) external returns (uint128);
+    function release(Currency currency) external returns (uint192);
 
     /// @notice Releases a single keg for a given currency. Each keg is a unique deposit of fees
     /// @dev This function does not provide storage refunds unlike `release(Currency)`
     /// @param currency The currency to release
     /// @param id The id of the keg to release
-    function release(Currency currency, uint32 id) external returns (uint128);
+    function release(Currency currency, uint32 id) external returns (uint192);
 
     /// Getters
 
