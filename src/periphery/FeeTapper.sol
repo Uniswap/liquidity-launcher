@@ -71,19 +71,19 @@ contract FeeTapper is IFeeTapper, Ownable {
 
         uint48 endBlock = uint48(block.number + BPS / perBlockReleaseRate);
         uint192 amount = balance - oldBalance;
-        uint192 perBlockReleaseAmount = amount * perBlockReleaseRate;
 
-        Keg storage $keg = $_kegs[next];
-        $keg.currency = currency;
-        $keg.perBlockReleaseAmount += perBlockReleaseAmount;
-        $keg.lastReleaseBlock = uint48(block.number);
-        $keg.endBlock = endBlock;
+        $_kegs[next] = Keg({
+            currency: currency,
+            perBlockReleaseAmount: amount * perBlockReleaseRate,
+            lastReleaseBlock: uint48(block.number),
+            endBlock: endBlock,
+            next: 0
+        });
         if ($tap.head == 0) {
             $tap.head = next;
             $tap.tail = next;
         } else {
             $_kegs[$tap.tail].next = next;
-            $keg.next = 0;
             $tap.tail = next;
         }
         $tap.balance = balance;
@@ -95,7 +95,7 @@ contract FeeTapper is IFeeTapper, Ownable {
     /// @inheritdoc IFeeTapper
     function release(uint32 id) external returns (uint192) {
         Keg memory keg = $_kegs[id];
-        return _process(keg.currency, _releaseKeg(keg, id));
+        return _process(keg.currency, _release(keg, id));
     }
 
     /// @inheritdoc IFeeTapper
