@@ -6,7 +6,7 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 
 /// @dev The interface id of the ILBPInitializer interface
 /// @dev Per ERC165, the interface selector is the XOR of the selectors of the interfaces implemented by the contract
-bytes4 constant ILBP_INITIALIZER_INTERFACE_ID = 0x66981dad;
+bytes4 constant ILBP_INITIALIZER_INTERFACE_ID = type(ILBPInitializer).interfaceId;
 
 /// @notice General parameters for initializing an LBP strategy
 struct LBPInitializationParams {
