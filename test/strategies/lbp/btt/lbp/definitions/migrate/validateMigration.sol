@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {MigrateBttBase, FuzzConstructorParameters} from "./MigrateBttBase.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 abstract contract ValidateMigrationTest is MigrateBttBase {
     function test_WhenBlockNumberIsLTMigrationBlock(FuzzConstructorParameters memory _parameters, uint64 _blockNumber)
@@ -46,8 +47,9 @@ abstract contract ValidateMigrationTest is MigrateBttBase {
 
         _currencyAmount = _bound(_currencyAmount, uint256(type(uint128).max) + 1, type(uint256).max);
 
-        mockAuctionCheckpoint(lbp);
-        mockCurrencyRaised(lbp, _currencyAmount);
+        mockLBPInitializationParams(
+            lbp, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: _currencyAmount})
+        );
 
         $parameters = _parameters;
         $revertData =
@@ -74,8 +76,9 @@ abstract contract ValidateMigrationTest is MigrateBttBase {
         vm.assume(_blockNumber >= _parameters.migratorParams.migrationBlock);
         vm.roll(_blockNumber);
 
-        mockAuctionCheckpoint(lbp);
-        mockCurrencyRaised(lbp, 0);
+        mockLBPInitializationParams(
+            lbp, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
 
         $parameters = _parameters;
         $revertData = abi.encodeWithSelector(ILBPStrategyBase.NoCurrencyRaised.selector);
@@ -113,8 +116,9 @@ abstract contract ValidateMigrationTest is MigrateBttBase {
         }
 
         _currencyAmount = uint128(_bound(_currencyAmount, _currencyBalance + 1, type(uint128).max));
-        mockAuctionCheckpoint(lbp);
-        mockCurrencyRaised(lbp, _currencyAmount);
+        mockLBPInitializationParams(
+            lbp, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: _currencyAmount})
+        );
 
         $parameters = _parameters;
         $revertData =

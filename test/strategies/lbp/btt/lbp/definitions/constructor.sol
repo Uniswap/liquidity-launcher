@@ -31,7 +31,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -41,27 +41,52 @@ abstract contract ConstructorTest is BttBase {
         _;
     }
 
+    function test_WhenMaxCurrencyAmountForLPIsZero(FuzzConstructorParameters memory _parameters)
+        public
+        whenSweepBlockIsGTMigrationBlock
+    {
+        // it reverts with {MaxCurrencyAmountForLPIsZero}
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        _parameters.migratorParams.maxCurrencyAmountForLP = 0;
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.MaxCurrencyAmountForLPIsZero.selector));
+        new FullRangeLBPStrategyNoValidation(
+            _parameters.token,
+            _parameters.totalSupply,
+            _parameters.migratorParams,
+            _parameters.initializerParameters,
+            _parameters.positionManager,
+            _parameters.poolManager
+        );
+    }
+
+    modifier whenMaxCurrencyAmountForLPIsNotZero() {
+        _;
+    }
+
     function test_WhenTokenSplitToAuctionIsGTEMaxTokenSplit(
         FuzzConstructorParameters memory _parameters,
-        uint24 _tokenSplitToAuction
-    ) public whenSweepBlockIsGTMigrationBlock {
+        uint24 _tokenSplit
+    ) public whenSweepBlockIsGTMigrationBlock whenMaxCurrencyAmountForLPIsNotZero {
         // it reverts with {TokenSplitTooHigh}
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
-        vm.assume(_tokenSplitToAuction >= TokenDistribution.MAX_TOKEN_SPLIT);
-        _parameters.migratorParams.tokenSplitToAuction = _tokenSplitToAuction;
+        vm.assume(_tokenSplit >= TokenDistribution.MAX_TOKEN_SPLIT);
+        _parameters.migratorParams.tokenSplit = _tokenSplit;
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILBPStrategyBase.TokenSplitTooHigh.selector, _tokenSplitToAuction, TokenDistribution.MAX_TOKEN_SPLIT
+                ILBPStrategyBase.TokenSplitTooHigh.selector, _tokenSplit, TokenDistribution.MAX_TOKEN_SPLIT
             )
         );
         new FullRangeLBPStrategyNoValidation(
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -74,7 +99,12 @@ abstract contract ConstructorTest is BttBase {
     function test_WhenPoolTickSpacingIsGTMaxTickSpacingOrLTMinTickSpacing(
         FuzzConstructorParameters memory _parameters,
         int24 _poolTickSpacing
-    ) public whenSweepBlockIsGTMigrationBlock whenTokenSplitToAuctionIsLTMaxTokenSplit {
+    )
+        public
+        whenSweepBlockIsGTMigrationBlock
+        whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
+    {
         // it reverts with {InvalidTickSpacing}
 
         _parameters = _toValidConstructorParameters(_parameters);
@@ -95,7 +125,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -109,6 +139,7 @@ abstract contract ConstructorTest is BttBase {
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
         whenPoolTickSpacingIsWithinMinMaxTickSpacing
     {
         // it reverts with {InvalidFee}
@@ -126,7 +157,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -144,6 +175,7 @@ abstract contract ConstructorTest is BttBase {
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
         whenPoolTickSpacingIsWithinMinMaxTickSpacing
         whenPoolLPFeeIsLTEMaxLPFee
     {
@@ -166,7 +198,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -176,32 +208,31 @@ abstract contract ConstructorTest is BttBase {
         _;
     }
 
-    function test_WhenAuctionSupplyIsZero(FuzzConstructorParameters memory _parameters)
+    function test_WhenInitializerTokenSplitIsZero(FuzzConstructorParameters memory _parameters)
         public
         whenSweepBlockIsGTMigrationBlock
         whenTokenSplitToAuctionIsLTMaxTokenSplit
+        whenMaxCurrencyAmountForLPIsNotZero
         whenPoolTickSpacingIsWithinMinMaxTickSpacing
         whenPoolLPFeeIsLTEMaxLPFee
         whenPositionRecipientIsNotAReservedAddress
     {
-        // it reverts with {AuctionSupplyIsZero}
+        // it reverts with {InitializerTokenSplitIsZero}
         _parameters = _toValidConstructorParameters(_parameters);
         _deployMockToken(_parameters.totalSupply);
 
-        // happens when total supply * tokenSplitToAuction < 1e7
+        // happens when total supply * tokenSplit < 1e7
         _parameters.totalSupply = uint128(_bound(_parameters.totalSupply, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
-        _parameters.migratorParams.tokenSplitToAuction =
-            uint24(_bound(_parameters.migratorParams.tokenSplitToAuction, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
-        vm.assume(
-            _parameters.totalSupply * _parameters.migratorParams.tokenSplitToAuction < TokenDistribution.MAX_TOKEN_SPLIT
-        );
+        _parameters.migratorParams.tokenSplit =
+            uint24(_bound(_parameters.migratorParams.tokenSplit, 1, TokenDistribution.MAX_TOKEN_SPLIT - 1));
+        vm.assume(_parameters.totalSupply * _parameters.migratorParams.tokenSplit < TokenDistribution.MAX_TOKEN_SPLIT);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.AuctionSupplyIsZero.selector));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyBase.InitializerTokenSplitIsZero.selector));
         new FullRangeLBPStrategyNoValidation(
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
@@ -215,123 +246,10 @@ abstract contract ConstructorTest is BttBase {
         _;
     }
 
-    /**************************************************
-     *               _validateAuctionParams
-     **************************************************/
-
-    function test_WhenFundsRecipientIsNotMSG_SENDER(
-        FuzzConstructorParameters memory _parameters,
-        address _fundsRecipient
-    ) public whenAuctionSupplyIsNotZero whenMigrationParametersAreValid {
-        // it reverts with {InvalidFundsRecipient}
-
-        _parameters = _toValidConstructorParameters(_parameters);
-        _deployMockToken(_parameters.totalSupply);
-
-        vm.assume(_fundsRecipient != ActionConstants.MSG_SENDER);
-
-        AuctionParameters memory auctionParameters = abi.decode(_parameters.auctionParameters, (AuctionParameters));
-        auctionParameters.fundsRecipient = _fundsRecipient;
-        _parameters.auctionParameters = abi.encode(auctionParameters);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ILBPStrategyBase.InvalidFundsRecipient.selector, _fundsRecipient, ActionConstants.MSG_SENDER
-            )
-        );
-        new FullRangeLBPStrategyNoValidation(
-            _parameters.token,
-            _parameters.totalSupply,
-            _parameters.migratorParams,
-            _parameters.auctionParameters,
-            _parameters.positionManager,
-            _parameters.poolManager
-        );
-    }
-
-    modifier whenFundsRecipientIsMSG_SENDER() {
-        _;
-    }
-
-    function test_WhenEndBlockIsGTEMigrationBlock(FuzzConstructorParameters memory _parameters, uint64 _endBlock)
-        public
-        whenAuctionSupplyIsNotZero
-        whenMigrationParametersAreValid
-        whenFundsRecipientIsMSG_SENDER
-    {
-        // it reverts with {InvalidEndBlock}
-        _parameters = _toValidConstructorParameters(_parameters);
-        _deployMockToken(_parameters.totalSupply);
-
-        vm.assume(_endBlock >= _parameters.migratorParams.migrationBlock);
-        AuctionParameters memory auctionParameters = abi.decode(_parameters.auctionParameters, (AuctionParameters));
-        auctionParameters.endBlock = _endBlock;
-        _parameters.auctionParameters = abi.encode(auctionParameters);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ILBPStrategyBase.InvalidEndBlock.selector, _endBlock, _parameters.migratorParams.migrationBlock
-            )
-        );
-        new FullRangeLBPStrategyNoValidation(
-            _parameters.token,
-            _parameters.totalSupply,
-            _parameters.migratorParams,
-            _parameters.auctionParameters,
-            _parameters.positionManager,
-            _parameters.poolManager
-        );
-    }
-
-    modifier whenEndBlockIsLTMigrationBlock() {
-        _;
-    }
-
-    function test_WhenCurrencyIsNotTheSameAsTheMigrationCurrency(
-        FuzzConstructorParameters memory _parameters,
-        address _currency
-    )
-        public
-        whenAuctionSupplyIsNotZero
-        whenMigrationParametersAreValid
-        whenFundsRecipientIsMSG_SENDER
-        whenEndBlockIsLTMigrationBlock
-    {
-        // it reverts with {InvalidCurrency}
-        _parameters = _toValidConstructorParameters(_parameters);
-        _deployMockToken(_parameters.totalSupply);
-
-        vm.assume(_currency != _parameters.migratorParams.currency);
-        AuctionParameters memory auctionParameters = abi.decode(_parameters.auctionParameters, (AuctionParameters));
-        auctionParameters.currency = _currency;
-        _parameters.auctionParameters = abi.encode(auctionParameters);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ILBPStrategyBase.InvalidCurrency.selector, _currency, _parameters.migratorParams.currency
-            )
-        );
-        new FullRangeLBPStrategyNoValidation(
-            _parameters.token,
-            _parameters.totalSupply,
-            _parameters.migratorParams,
-            _parameters.auctionParameters,
-            _parameters.positionManager,
-            _parameters.poolManager
-        );
-    }
-
-    modifier whenCurrencyIsTheSameAsTheMigrationCurrency() {
-        _;
-    }
-
     function test_CanBeConstructed(FuzzConstructorParameters memory _parameters)
         public
         whenAuctionSupplyIsNotZero
         whenMigrationParametersAreValid
-        whenFundsRecipientIsMSG_SENDER
-        whenEndBlockIsLTMigrationBlock
-        whenCurrencyIsTheSameAsTheMigrationCurrency
     {
         // it does not revert
 
@@ -342,7 +260,7 @@ abstract contract ConstructorTest is BttBase {
             _parameters.token,
             _parameters.totalSupply,
             _parameters.migratorParams,
-            _parameters.auctionParameters,
+            _parameters.initializerParameters,
             _parameters.positionManager,
             _parameters.poolManager
         );
