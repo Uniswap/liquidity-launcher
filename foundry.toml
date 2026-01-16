@@ -4,6 +4,9 @@ src = "src"
 out = "out"
 libs = ["lib"]
 bytecode_hash = "none"
+fs_permissions = [
+  { access = "read", path = "script/" }
+]
 
 auto_detect_solc = true
 
