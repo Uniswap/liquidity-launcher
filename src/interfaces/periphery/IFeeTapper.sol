@@ -30,11 +30,6 @@ interface IFeeTapper {
     /// @notice Error thrown when the rate does not evenly divide BPS
     error InvalidReleaseRate();
 
-    /// @notice Error thrown when the currency of the keg does not match the currency of the tap
-    /// @param expected The expected currency
-    /// @param actual The actual currency
-    error InvalidCurrency(address expected, address actual);
-
     /// @notice Emitted when a new deposit is synced
     /// @param id The unique id of the deposit
     /// @param currency The currency being deposited
@@ -66,16 +61,15 @@ interface IFeeTapper {
     /// @param currency The currency to sync
     function sync(Currency currency) external;
 
-    /// @notice Releases all accumulated protocol fees for a given currency to the token jar
-    /// @dev This function will loop through all active deposits for the given currency
-    /// @param currency The currency to release
-    function release(Currency currency) external returns (uint192);
-
-    /// @notice Releases a single keg for a given currency. Each keg is a unique deposit of fees
-    /// @dev This function does not provide storage refunds unlike `release(Currency)`
-    /// @param currency The currency to release
+    /// @notice Releases a single keg. Each keg is a unique deposit of fees
+    /// @dev Unlike releaseAll this function does not remove empty kegs from the list
     /// @param id The id of the keg to release
-    function release(Currency currency, uint32 id) external returns (uint192);
+    function release(uint32 id) external returns (uint192);
+
+    /// @notice Releases all accumulated protocol fees for a given currency to the token jar
+    /// @dev This function will loop through all active kegs for the given currency
+    /// @param currency The currency to release
+    function releaseAll(Currency currency) external returns (uint192);
 
     /// Getters
 

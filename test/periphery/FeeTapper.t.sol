@@ -155,14 +155,14 @@ contract FeeTapperTest is Test {
         _elapsed = uint64(bound(_elapsed, 1, BPS / feeTapper.perBlockReleaseRate()));
 
         vm.roll(block.number + _elapsed);
-        uint256 released = feeTapper.release(currency);
+        uint256 released = feeTapper.releaseAll(currency);
         assertEq(released, (_feeAmount + _additionalFeeAmount) * feeTapper.perBlockReleaseRate() * _elapsed / BPS);
     }
 
     function test_release_WhenTapAmountIsZero(Currency currency) public {
         // it returns 0
 
-        uint256 amount = feeTapper.release(currency);
+        uint256 amount = feeTapper.releaseAll(currency);
         assertEq(amount, 0);
     }
 
@@ -177,21 +177,8 @@ contract FeeTapperTest is Test {
 
         assertEq(feeTapper.taps(currency).balance, _feeAmount);
 
-        uint256 amount = feeTapper.release(currency);
+        uint256 amount = feeTapper.releaseAll(currency);
         assertEq(amount, 0);
-    }
-
-    function test_release_WhenKegCurrencyDoesNotMatch(uint32 _id) public {
-        // it reverts with {InvalidCurrency()}
-
-        _deal(address(feeTapper), 1e18, true);
-        Currency currency = Currency.wrap(address(0));
-        feeTapper.sync(currency);
-
-        // for different currency
-        Currency otherCurrency = Currency.wrap(address(1));
-        vm.expectRevert(abi.encodeWithSelector(IFeeTapper.InvalidCurrency.selector, address(0), address(1)));
-        feeTapper.release(otherCurrency, _id);
     }
 
     /// forge-config: default.isolate = true
@@ -202,11 +189,11 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         vm.roll(block.number + 1);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         vm.snapshotGasLastCall("release_nativeCurrency_single");
 
         vm.roll(block.number + BPS);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         vm.snapshotGasLastCall("release_nativeCurrency_single_deletion");
     }
 
@@ -218,11 +205,11 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         vm.roll(block.number + 1);
-        feeTapper.release(currency, 1);
+        feeTapper.release(1);
         vm.snapshotGasLastCall("release_keg_nativeCurrency_single");
 
         vm.roll(block.number + BPS);
-        feeTapper.release(currency, 1);
+        feeTapper.release(1);
         vm.snapshotGasLastCall("release_keg_nativeCurrency_single_deletion");
     }
 
@@ -234,11 +221,11 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         vm.roll(block.number + 1);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         vm.snapshotGasLastCall("release_erc20Currency_single");
 
         vm.roll(block.number + BPS);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         vm.snapshotGasLastCall("release_erc20Currency_single_deletion");
     }
 
@@ -250,11 +237,11 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         vm.roll(block.number + 1);
-        feeTapper.release(currency, 1);
+        feeTapper.release(1);
         vm.snapshotGasLastCall("release_keg_erc20Currency_single");
 
         vm.roll(block.number + BPS);
-        feeTapper.release(currency, 1);
+        feeTapper.release(1);
         vm.snapshotGasLastCall("release_keg_erc20Currency_single_deletion");
     }
 
@@ -268,11 +255,11 @@ contract FeeTapperTest is Test {
         }
 
         vm.roll(block.number + 1);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         vm.snapshotGasLastCall("release_nativeCurrency_multiple");
 
         vm.roll(block.number + BPS);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         vm.snapshotGasLastCall("release_nativeCurrency_multiple_deletion");
     }
 
@@ -289,7 +276,7 @@ contract FeeTapperTest is Test {
         // ensure that there is more to release than the tap amount
         vm.roll(block.number + _elapsed);
 
-        uint256 amount = feeTapper.release(currency);
+        uint256 amount = feeTapper.releaseAll(currency);
         assertEq(amount, _feeAmount);
         assertEq(feeTapper.taps(currency).balance, 0);
     }
@@ -314,7 +301,7 @@ contract FeeTapperTest is Test {
         uint192 expectedReleased = (_feeAmount * feeTapper.perBlockReleaseRate() * _elapsed) / BPS;
         emit IFeeTapper.Released(Currency.unwrap(currency), expectedReleased);
         vm.assume(expectedReleased > 0);
-        uint192 released = feeTapper.release(currency);
+        uint192 released = feeTapper.releaseAll(currency);
         assertEq(released, expectedReleased);
         assertEq(feeTapper.taps(currency).balance, _feeAmount - released);
     }
@@ -335,7 +322,7 @@ contract FeeTapperTest is Test {
         uint256 maxDust = 0;
         for (uint64 i = 0; i < BPS / feeTapper.perBlockReleaseRate(); i++) {
             vm.roll(block.number + 1);
-            totalReleased += feeTapper.release(currency);
+            totalReleased += feeTapper.releaseAll(currency);
             maxDust++;
         }
 
@@ -343,7 +330,7 @@ contract FeeTapperTest is Test {
 
         // Now test releasing all in one go after BPS / perBlockReleaseRate() blocks
         vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
-        uint256 endTotalReleased = feeTapper.release(currency);
+        uint256 endTotalReleased = feeTapper.releaseAll(currency);
         assertApproxEqAbs(endTotalReleased, totalReleased, maxDust, "total released should be the same");
     }
 
@@ -367,7 +354,7 @@ contract FeeTapperTest is Test {
         uint48 endBlock = uint48(block.number + BPS / feeTapper.perBlockReleaseRate());
 
         vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
-        uint192 released = feeTapper.release(currency, 1);
+        uint192 released = feeTapper.release(1);
         assertEq(released, _feeAmount);
         assertEq(feeTapper.taps(currency).balance, 0);
 
@@ -382,7 +369,7 @@ contract FeeTapperTest is Test {
         feeTapper.sync(currency);
 
         vm.roll(block.number + 1);
-        released = feeTapper.release(currency);
+        released = feeTapper.releaseAll(currency);
 
         // assert that the old keg is deleted and the new keg is the head/tail
         assertEq(feeTapper.taps(currency).head, 2);
@@ -392,7 +379,7 @@ contract FeeTapperTest is Test {
 
         // assert that after the full release, the head/tail are reset
         vm.roll(block.number + BPS / feeTapper.perBlockReleaseRate());
-        released = feeTapper.release(currency);
+        released = feeTapper.releaseAll(currency);
         assertEq(feeTapper.taps(currency).head, 0);
         assertEq(feeTapper.taps(currency).tail, 0);
     }
@@ -427,7 +414,7 @@ contract FeeTapperTest is Test {
 
         // release the middle keg
         vm.roll(block.number + 1);
-        uint192 released = feeTapper.release(currency);
+        uint192 released = feeTapper.releaseAll(currency);
         assertEq(released, _feeAmount + (_feeAmount * originalReleaseRate * 2) / BPS);
         // Same head and tail
         assertEq(feeTapper.taps(currency).head, 1);
@@ -458,7 +445,7 @@ contract FeeTapperTest is Test {
 
         // roll to the end of the first two releases
         vm.roll(endBlock);
-        feeTapper.release(currency);
+        feeTapper.releaseAll(currency);
         // head should have been moved from 1 -> 2 -> 3
         assertEq(feeTapper.taps(currency).head, 3);
         assertEq(feeTapper.taps(currency).tail, 3);
@@ -494,7 +481,7 @@ contract FeeTapperTest is Test {
 
         // advance so the tail keg ends while the head is still active
         vm.roll(block.number + 1);
-        uint192 released = feeTapper.release(currency);
+        uint192 released = feeTapper.releaseAll(currency);
         assertGt(released, 0);
 
         // tail was removed; head remains
@@ -554,7 +541,7 @@ contract FeeTapperTest is Test {
         // Roll so B and C have fully ended while A and D are still active
         vm.roll(block.number + 1);
 
-        uint192 released = feeTapper.release(currency);
+        uint192 released = feeTapper.releaseAll(currency);
         assertGt(released, 0);
 
         // A should link directly to D; tail is D; B and C are deleted

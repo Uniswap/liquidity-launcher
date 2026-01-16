@@ -93,28 +93,28 @@ contract FeeTapper is IFeeTapper, Ownable {
     }
 
     /// @inheritdoc IFeeTapper
-    function release(Currency currency) external returns (uint192) {
-        return _process(currency, _release(currency));
+    function release(uint32 id) external returns (uint192) {
+        Keg memory keg = $_kegs[id];
+        return _process(keg.currency, _releaseKeg(keg, id));
     }
 
     /// @inheritdoc IFeeTapper
-    function release(Currency currency, uint32 id) external returns (uint192) {
-        address _expected = Currency.unwrap($_kegs[id].currency);
-        if (_expected != Currency.unwrap(currency)) revert InvalidCurrency(_expected, Currency.unwrap(currency));
-        return _process(currency, _releaseKeg($_kegs[id], id));
+    function releaseAll(Currency currency) external returns (uint192) {
+        return _process(currency, _releaseAll(currency));
     }
 
     /// @notice Releases a single keg for a given currency
     /// @param id The id of the keg to release
-    function _releaseKeg(Keg memory keg, uint32 id) internal returns (uint192 releasedAmount) {
+    function _release(Keg memory keg, uint32 id) internal returns (uint192 releasedAmount) {
         uint48 minBlock = uint48(FixedPointMathLib.min(block.number, keg.endBlock));
         releasedAmount = uint192(keg.perBlockReleaseAmount * (minBlock - keg.lastReleaseBlock));
+        // Set the lastReleaseBlock such that after the endBlock, releasedAmount will be zero
         $_kegs[id].lastReleaseBlock = minBlock;
         return releasedAmount;
     }
 
     /// @notice Releases all kegs for a given currency
-    function _release(Currency currency) internal returns (uint192 releasedAmount) {
+    function _releaseAll(Currency currency) internal returns (uint192 releasedAmount) {
         Tap storage $tap = $_taps[currency];
         if ($tap.balance == 0) {
             return 0;
@@ -128,7 +128,7 @@ contract FeeTapper is IFeeTapper, Ownable {
             Keg memory keg = $_kegs[curr];
             uint32 next = keg.next;
 
-            releasedAmount += _releaseKeg(keg, curr);
+            releasedAmount += _release(keg, curr);
 
             if (keg.endBlock <= blockNumber) {
                 // unlink the current keg
