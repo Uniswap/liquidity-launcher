@@ -7,7 +7,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
 import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
-import {IFeeTapper} from "../interfaces/periphery/IFeeTapper.sol";
 
 /// @title ProtocolFeeOperator
 /// @notice EIP1167 contract meant to be set as the `operator` of an LBP strategy
@@ -25,7 +24,7 @@ contract ProtocolFeeOperator is Initializable {
     event RecipientSet(address indexed recipient);
 
     /// @notice General error for invalid addresses
-    error FeeTapperAddressIsZero();
+    error ProtocolFeeRecipientIsZero();
     error ProtocolFeeControllerAddressIsZero();
     error LBPAddressIsZero();
     error RecipientAddressIsZero();
@@ -35,8 +34,8 @@ contract ProtocolFeeOperator is Initializable {
     /// @notice Basis points denominator
     uint24 public constant BPS = 10_000;
 
-    /// @notice The fee tapper to deposit protocol fees into. Set on construction as it varies per chain
-    IFeeTapper public immutable feeTapper;
+    /// @notice The recipient to send protocol fees to. Set on construction as it varies per chain
+    address public immutable protocolFeeRecipient;
     /// @notice The controller that will provide the protocol fee in basis points
     IProtocolFeeController public immutable protocolFeeController;
 
@@ -47,9 +46,9 @@ contract ProtocolFeeOperator is Initializable {
     ILBPStrategyBase public lbp;
 
     /// @notice Construct the implementation with immutable protocol fee recipient and controller
-    constructor(address _feeTapper, address _protocolFeeController) {
-        if (_feeTapper == address(0)) revert FeeTapperAddressIsZero();
-        feeTapper = IFeeTapper(_feeTapper);
+    constructor(address _protocolFeeRecipient, address _protocolFeeController) {
+        if (_protocolFeeRecipient == address(0)) revert ProtocolFeeRecipientIsZero();
+        protocolFeeRecipient = _protocolFeeRecipient;
         if (_protocolFeeController == address(0)) revert ProtocolFeeControllerAddressIsZero();
         protocolFeeController = IProtocolFeeController(_protocolFeeController);
         _disableInitializers();
@@ -91,9 +90,7 @@ contract ProtocolFeeOperator is Initializable {
         uint128 feeAmount = (currencySwept * protocolFeeBps) / BPS;
 
         // Send the protocol fee to the fee tapper
-        currency.transfer(address(feeTapper), feeAmount);
-        // Sync the fee tapper to register the updated balance
-        feeTapper.sync(currency);
+        currency.transfer(protocolFeeRecipient, feeAmount);
         // Send the remaining amount to the recipient
         currency.transfer(recipient, currencySwept - feeAmount);
 
