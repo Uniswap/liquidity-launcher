@@ -16,8 +16,15 @@ abstract contract ValidateMigrationTest is MigrateBttBase {
 
         _deployStrategy(_parameters);
 
+        vm.prank(address(liquidityLauncher));
+        token.transfer(address(lbp), _parameters.totalSupply);
+
+        lbp.onTokensReceived();
+
         vm.assume(_blockNumber < _parameters.migratorParams.migrationBlock);
         vm.roll(_blockNumber);
+
+        mockLBPInitializationParams(lbp);
 
         $parameters = _parameters;
         $revertData = abi.encodeWithSelector(
