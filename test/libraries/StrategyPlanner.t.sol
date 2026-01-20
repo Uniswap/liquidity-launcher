@@ -384,8 +384,8 @@ contract StrategyPlannerTest is Test {
         returns (TickBounds memory)
     {
         return baseParams.currency < baseParams.poolToken == oneSidedParams.inToken
-            ? getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
-            : getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
+            ? StrategyPlanner.getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
+            : StrategyPlanner.getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
     }
 
     // Helper function to check if liquidity calculation should revert
@@ -476,45 +476,5 @@ contract StrategyPlannerTest is Test {
             baseParams.positionRecipient,
             ParamsBuilder.ZERO_BYTES
         );
-    }
-
-    function getLeftSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
-        pure
-        returns (TickBounds memory bounds)
-    {
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
-
-        // Check if position is too close to MIN_TICK. If so, return a lower tick and upper tick of 0
-        if (initialTick - TickMath.MIN_TICK < poolTickSpacing) {
-            return bounds;
-        }
-
-        bounds = TickBounds({
-            lowerTick: TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing, // Rounds to the nearest multiple of tick spacing (rounds towards 0 since MIN_TICK is negative)
-            upperTick: initialTick.tickFloor(poolTickSpacing) // Rounds to the nearest multiple of tick spacing if needed (rounds toward -infinity)
-        });
-
-        return bounds;
-    }
-
-    function getRightSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
-        pure
-        returns (TickBounds memory bounds)
-    {
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
-
-        // Check if position is too close to MAX_TICK. If so, return a lower tick and upper tick of 0
-        if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
-            return bounds;
-        }
-
-        bounds = TickBounds({
-            lowerTick: initialTick.tickStrictCeil(poolTickSpacing), // Rounds toward +infinity to the nearest multiple of tick spacing
-            upperTick: TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing // Rounds to the nearest multiple of tick spacing (rounds toward 0 since MAX_TICK is positive)
-        });
-
-        return bounds;
     }
 }

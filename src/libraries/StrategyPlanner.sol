@@ -156,7 +156,7 @@ library StrategyPlanner {
     /// @param poolTickSpacing The tick spacing of the pool
     /// @return bounds The tick bounds for the left-side position (returns 0,0 if the current tick is too close to MIN_TICK)
     function getLeftSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
+        internal
         pure
         returns (TickBounds memory bounds)
     {
@@ -181,7 +181,7 @@ library StrategyPlanner {
     /// @param poolTickSpacing The tick spacing of the pool
     /// @return bounds The tick bounds for the right-side position (returns 0,0 if the current tick is too close to MAX_TICK)
     function getRightSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
+        internal
         pure
         returns (TickBounds memory bounds)
     {
