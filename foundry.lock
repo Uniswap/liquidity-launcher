@@ -4,8 +4,8 @@
   },
   "lib/continuous-clearing-auction": {
     "tag": {
-      "name": "v1.0.0-candidate",
-      "rev": "154fd189022858707837112943c09346869c964f"
+      "name": "v1.1.0",
+      "rev": "0e0511f26e86e08f9cad3888803c53aa45a6f280"
     }
   },
   "lib/forge-std": {
