@@ -28,6 +28,58 @@ contract StrategyPlannerTest is Test {
     using ParamsBuilder for *;
     using StrategyPlanner for *;
 
+    // poolTickSpacing is always positive so its a uint here
+    function test_getLeftSideBounds_WhereInitialTickMinusMinTickIsLTDoublePoolTickSpacing(
+        uint160 _initialSqrtPriceX96,
+        uint24 _poolTickSpacing
+    ) public pure {
+        // it should return empty bounds
+
+        vm.assume(
+            _poolTickSpacing > 0 && _initialSqrtPriceX96 < TickMath.MAX_SQRT_PRICE
+                && _initialSqrtPriceX96 >= TickMath.MIN_SQRT_PRICE
+                && _poolTickSpacing <= uint24(TickMath.MAX_TICK_SPACING)
+        );
+
+        _initialSqrtPriceX96 = uint160(
+            _bound(
+                _initialSqrtPriceX96,
+                TickMath.MIN_SQRT_PRICE,
+                (TickMath.MIN_SQRT_PRICE + uint160(_poolTickSpacing * 2) - 1)
+            )
+        );
+
+        TickBounds memory bounds = StrategyPlanner.getLeftSideBounds(_initialSqrtPriceX96, int24(_poolTickSpacing));
+        assertEq(bounds.lowerTick, 0);
+        assertEq(bounds.upperTick, 0);
+    }
+
+    // poolTickSpacing is always positive so its a uint here
+    function test_getRightSideBounds_WhereInitialTickMinusMinTickIsLTDoublePoolTickSpacing(
+        uint160 _initialSqrtPriceX96,
+        uint24 _poolTickSpacing
+    ) public pure {
+        // it should return empty bounds
+
+        vm.assume(
+            _poolTickSpacing > 0 && _initialSqrtPriceX96 < TickMath.MAX_SQRT_PRICE
+                && _initialSqrtPriceX96 >= TickMath.MIN_SQRT_PRICE
+                && _poolTickSpacing <= uint24(TickMath.MAX_TICK_SPACING)
+        );
+
+        _initialSqrtPriceX96 = uint160(
+            _bound(
+                _initialSqrtPriceX96,
+                (TickMath.MAX_SQRT_PRICE - uint160(_poolTickSpacing * 2)) + 1,
+                TickMath.MAX_SQRT_PRICE - 1
+            )
+        );
+
+        TickBounds memory bounds = StrategyPlanner.getRightSideBounds(_initialSqrtPriceX96, int24(_poolTickSpacing));
+        assertEq(bounds.lowerTick, 0);
+        assertEq(bounds.upperTick, 0);
+    }
+
     function test_planFullRangePosition_succeeds() public pure {
         Plan memory plan = StrategyPlanner.planFullRangePosition(
             StrategyPlanner.init(),
