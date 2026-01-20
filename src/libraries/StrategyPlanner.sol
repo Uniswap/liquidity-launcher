@@ -163,7 +163,8 @@ library StrategyPlanner {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         // Check if position is too close to MIN_TICK. If so, return a lower tick and upper tick of 0
-        if (initialTick - TickMath.MIN_TICK < poolTickSpacing) {
+        // Require there to be at least 2 ticks between the initial tick and MIN_TICK, since `tickFloor` rounds down
+        if (initialTick - TickMath.MIN_TICK < poolTickSpacing * 2) {
             return bounds;
         }
 
@@ -187,7 +188,8 @@ library StrategyPlanner {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         // Check if position is too close to MAX_TICK. If so, return a lower tick and upper tick of 0
-        if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
+        // Require there to be at least 2 ticks between the initial tick and MAX_TICK, since `tickStrictCeil` rounds up
+        if (TickMath.MAX_TICK - initialTick <= poolTickSpacing * 2) {
             return bounds;
         }
 
