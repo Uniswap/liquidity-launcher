@@ -57,6 +57,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
     // ============ Migration Timing Tests ============
 
     function test_migrate_revertsWithMigrationNotAllowed() public {
+        mockLBPInitializationParams(lbp);
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyBase.MigrationNotAllowed.selector, lbp.migrationBlock(), block.number)
         );
