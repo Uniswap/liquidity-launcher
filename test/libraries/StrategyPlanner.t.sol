@@ -41,13 +41,11 @@ contract StrategyPlannerTest is Test {
                 && _poolTickSpacing <= uint24(TickMath.MAX_TICK_SPACING)
         );
 
-        _initialSqrtPriceX96 = uint160(
-            _bound(
-                _initialSqrtPriceX96,
-                TickMath.MIN_SQRT_PRICE,
-                (TickMath.MIN_SQRT_PRICE + uint160(_poolTickSpacing * 2) - 1)
-            )
-        );
+        // 1 less than tick spacing * 2
+        int24 maxTick = TickMath.MIN_TICK + int24(_poolTickSpacing * 2) - 1;
+        uint160 maxSqrtPrice = TickMath.getSqrtPriceAtTick(maxTick);
+
+        _initialSqrtPriceX96 = uint160(_bound(_initialSqrtPriceX96, TickMath.MIN_SQRT_PRICE, maxSqrtPrice));
 
         TickBounds memory bounds = StrategyPlanner.getLeftSideBounds(_initialSqrtPriceX96, int24(_poolTickSpacing));
         assertEq(bounds.lowerTick, 0);
@@ -67,13 +65,11 @@ contract StrategyPlannerTest is Test {
                 && _poolTickSpacing <= uint24(TickMath.MAX_TICK_SPACING)
         );
 
-        _initialSqrtPriceX96 = uint160(
-            _bound(
-                _initialSqrtPriceX96,
-                (TickMath.MAX_SQRT_PRICE - uint160(_poolTickSpacing * 2)) + 1,
-                TickMath.MAX_SQRT_PRICE - 1
-            )
-        );
+        // 1 less than tick spacing * 2
+        int24 minTick = TickMath.MAX_TICK - int24(_poolTickSpacing * 2) + 1;
+        uint160 minSqrtPrice = TickMath.getSqrtPriceAtTick(minTick);
+
+        _initialSqrtPriceX96 = uint160(_bound(_initialSqrtPriceX96, minSqrtPrice, TickMath.MAX_SQRT_PRICE - 1));
 
         TickBounds memory bounds = StrategyPlanner.getRightSideBounds(_initialSqrtPriceX96, int24(_poolTickSpacing));
         assertEq(bounds.lowerTick, 0);

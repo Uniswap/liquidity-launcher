@@ -189,7 +189,7 @@ library StrategyPlanner {
 
         // Check if position is too close to MAX_TICK. If so, return a lower tick and upper tick of 0
         // Require there to be at least 2 ticks between the initial tick and MAX_TICK, since `tickStrictCeil` rounds up
-        if (TickMath.MAX_TICK - initialTick <= poolTickSpacing * 2) {
+        if (TickMath.MAX_TICK - initialTick < poolTickSpacing * 2) {
             return bounds;
         }
 
