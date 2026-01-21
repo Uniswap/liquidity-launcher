@@ -5,7 +5,7 @@
   "lib/continuous-clearing-auction": {
     "tag": {
       "name": "v1.1.0",
-      "rev": "0e0511f26e86e08f9cad3888803c53aa45a6f280"
+      "rev": "95d7da7a2d25cf60f14eaccd6ab5fb24d393a452"
     }
   },
   "lib/forge-std": {
