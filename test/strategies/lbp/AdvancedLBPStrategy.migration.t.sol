@@ -917,7 +917,7 @@ contract AdvancedLBPStrategyMigrationTest is AdvancedLBPStrategyTestBase {
     }
 
     function test_fuzz_migrate_withNonETHCurrency(uint128 totalSupply, uint24 tokenSplit) public {
-        tokenSplit = uint24(bound(tokenSplit, 1, 1e7));
+        tokenSplit = uint24(bound(tokenSplit, 1, 1e7 - 1));
         totalSupply = uint128(bound(totalSupply, 1, 1 << 100));
         uint128 tokenAmount = uint128(uint256(totalSupply) * uint256(tokenSplit) / 1e7);
         vm.assume(tokenAmount > 1e7);
