@@ -8,7 +8,7 @@ import {IDistributionStrategy} from "./IDistributionStrategy.sol";
 interface IStrategyFactory is IDistributionStrategy {
     /// @notice Precomputes the address of the deployed strategy contract via Create2
     /// @dev The returned address is not guaranteed to be a correct deployable address due to
-    ///      construction time validity checks and hook address validation. 
+    ///      construction time validity checks and hook address validation.
     /// @dev The `sender` should be the same as the one used to initialize the distribution
     /// @param token The address of the token to be distributed
     /// @param amount The amount of tokens intended for distribution
