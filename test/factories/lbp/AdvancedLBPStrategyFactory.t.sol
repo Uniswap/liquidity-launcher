@@ -18,6 +18,9 @@ import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/ICon
 import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {SaltGenerator} from "test/saltGenerator/LauncherSaltGenerator.sol";
+import {Distribution} from "src/types/Distribution.sol";
+import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 
 contract AdvancedLBPStrategyFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -26,6 +29,8 @@ contract AdvancedLBPStrategyFactoryTest is Test {
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address constant POSITION_MANAGER = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    uint160 constant BEFORE_INITIALIZE_FLAG_MASK = 1 << 13;
+
     AdvancedLBPStrategyFactory public factory;
     MockERC20 token;
     LiquidityLauncher liquidityLauncher;
@@ -61,9 +66,9 @@ contract AdvancedLBPStrategyFactoryTest is Test {
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
                 claimBlock: uint64(block.number + 100),
-                tickSpacing: 1e6, // Valid tick spacing for auctions
+                tickSpacing: 1 << 96, // Valid tick spacing for auctions
                 validationHook: address(0), // No validation hook
-                floorPrice: 1e6, // 1 ETH as floor price
+                floorPrice: 1 << 96, // 1:1 ratio
                 requiredCurrencyRaised: 0,
                 auctionStepsData: AuctionStepsBuilder.init().addStep(100e3, 100)
             })
@@ -71,43 +76,45 @@ contract AdvancedLBPStrategyFactoryTest is Test {
     }
 
     function test_initializeDistribution_succeeds() public {
-        // mined a salt that when hashed with address(this), gives a valid hook address with beforeInitialize flag set to true
-        // uncomment to see the initCodeHash
-        // bytes32 initCodeHash = keccak256(
-        //     abi.encodePacked(
-        //         type(AdvancedLBPStrategy).creationCode,
-        //         abi.encode(
-        //             address(token),
-        //             TOTAL_SUPPLY,
-        //             migratorParams,
-        //             auctionParams,
-        //             IPositionManager(POSITION_MANAGER),
-        //             IPoolManager(POOL_MANAGER),
-        //             true,
-        //             true
-        //         )
-        //     )
-        // );
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(AdvancedLBPStrategy).creationCode,
+                abi.encode(
+                    token,
+                    uint128(TOTAL_SUPPLY),
+                    migratorParams,
+                    auctionParams,
+                    POSITION_MANAGER,
+                    POOL_MANAGER,
+                    true,
+                    true
+                )
+            )
+        );
+        address poolMask = address(BEFORE_INITIALIZE_FLAG_MASK);
+        bytes32 topLevelSalt = new SaltGenerator().withInitCodeHash(initCodeHash).withMask(poolMask)
+            .withMsgSender(address(this)).withTokenLauncher(address(liquidityLauncher))
+            .withStrategyFactoryAddress(address(factory)).generate();
+
         address expectedAddress = factory.getAddress(
             address(token),
             TOTAL_SUPPLY,
             abi.encode(migratorParams, auctionParams, true, true),
-            0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf,
-            address(this)
-        );
-        vm.expectEmit(true, true, true, true);
-        emit IDistributionStrategy.DistributionInitialized(expectedAddress, address(token), TOTAL_SUPPLY);
-        AdvancedLBPStrategy lbp = AdvancedLBPStrategy(
-            payable(address(
-                    factory.initializeDistribution(
-                        address(token),
-                        TOTAL_SUPPLY,
-                        abi.encode(migratorParams, auctionParams, true, true),
-                        0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf
-                    )
-                ))
+            keccak256(abi.encode(address(this), topLevelSalt)),
+            address(liquidityLauncher)
         );
 
+        Distribution memory distribution = Distribution({
+            strategy: address(factory),
+            amount: TOTAL_SUPPLY,
+            configData: abi.encode(migratorParams, auctionParams, true, true)
+        });
+
+        AdvancedLBPStrategy lbp = AdvancedLBPStrategy(
+            payable(address(liquidityLauncher.distributeToken(address(token), distribution, false, topLevelSalt)))
+        );
+
+        assertEq(address(lbp), expectedAddress);
         assertEq(lbp.totalSupply(), TOTAL_SUPPLY);
         assertEq(lbp.token(), address(token));
         assertEq(address(lbp.positionManager()), POSITION_MANAGER);
@@ -119,36 +126,46 @@ contract AdvancedLBPStrategyFactoryTest is Test {
         assertEq(lbp.initializerParameters(), auctionParams);
     }
 
-    function xtest_getLBPAddress_succeeds() public {
+    function test_getLBPAddress_succeeds() public {
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(AdvancedLBPStrategy).creationCode,
+                abi.encode(
+                    token,
+                    uint128(TOTAL_SUPPLY),
+                    migratorParams,
+                    auctionParams,
+                    POSITION_MANAGER,
+                    POOL_MANAGER,
+                    true,
+                    true
+                )
+            )
+        );
+        address poolMask = address(BEFORE_INITIALIZE_FLAG_MASK);
+        bytes32 topLevelSalt = new SaltGenerator().withInitCodeHash(initCodeHash).withMask(poolMask)
+            .withMsgSender(address(this)).withTokenLauncher(address(liquidityLauncher))
+            .withStrategyFactoryAddress(address(factory)).generate();
+
         address lbpAddress = factory.getAddress(
             address(token),
             TOTAL_SUPPLY,
             abi.encode(migratorParams, auctionParams, true, true),
-            bytes32(0),
-            address(this)
+            keccak256(abi.encode(address(this), topLevelSalt)),
+            address(liquidityLauncher)
         );
+
+        Distribution memory distribution = Distribution({
+            strategy: address(factory),
+            amount: TOTAL_SUPPLY,
+            configData: abi.encode(migratorParams, auctionParams, true, true)
+        });
+
         assertEq(
             lbpAddress,
             address(
-                factory.initializeDistribution(
-                    address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), bytes32(0)
-                )
+                payable(address(liquidityLauncher.distributeToken(address(token), distribution, false, topLevelSalt)))
             )
         );
-    }
-
-    function xtest_getLBPAddress_deterministicSender() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496899124c89fcde98ebe6d25cf;
-        address sender1 = address(1);
-        address sender2 = address(2);
-        vm.prank(sender1);
-        address lbpAddress1 = factory.getAddress(
-            address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender1
-        );
-        vm.prank(sender2);
-        address lbpAddress2 = factory.getAddress(
-            address(token), TOTAL_SUPPLY, abi.encode(migratorParams, auctionParams, true, true), salt, sender2
-        );
-        assertNotEq(lbpAddress1, lbpAddress2);
     }
 }
