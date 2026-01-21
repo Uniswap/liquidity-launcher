@@ -28,6 +28,54 @@ contract StrategyPlannerTest is Test {
     using ParamsBuilder for *;
     using StrategyPlanner for *;
 
+    // poolTickSpacing is always positive so its a uint here
+    function test_getLeftSideBounds_WhereInitialTickMinusMinTickIsLTDoublePoolTickSpacing(
+        uint160 _initialSqrtPriceX96,
+        uint24 _poolTickSpacing
+    ) public pure {
+        // it should return empty bounds
+
+        vm.assume(
+            _poolTickSpacing > 0 && _initialSqrtPriceX96 < TickMath.MAX_SQRT_PRICE
+                && _initialSqrtPriceX96 >= TickMath.MIN_SQRT_PRICE
+                && _poolTickSpacing <= uint24(TickMath.MAX_TICK_SPACING)
+        );
+
+        // 1 less than tick spacing * 2
+        int24 maxTick = TickMath.MIN_TICK + int24(_poolTickSpacing * 2) - 1;
+        uint160 maxSqrtPrice = TickMath.getSqrtPriceAtTick(maxTick);
+
+        _initialSqrtPriceX96 = uint160(_bound(_initialSqrtPriceX96, TickMath.MIN_SQRT_PRICE, maxSqrtPrice));
+
+        TickBounds memory bounds = StrategyPlanner.getLeftSideBounds(_initialSqrtPriceX96, int24(_poolTickSpacing));
+        assertEq(bounds.lowerTick, 0);
+        assertEq(bounds.upperTick, 0);
+    }
+
+    // poolTickSpacing is always positive so its a uint here
+    function test_getRightSideBounds_WhereInitialTickMinusMinTickIsLTDoublePoolTickSpacing(
+        uint160 _initialSqrtPriceX96,
+        uint24 _poolTickSpacing
+    ) public pure {
+        // it should return empty bounds
+
+        vm.assume(
+            _poolTickSpacing > 0 && _initialSqrtPriceX96 < TickMath.MAX_SQRT_PRICE
+                && _initialSqrtPriceX96 >= TickMath.MIN_SQRT_PRICE
+                && _poolTickSpacing <= uint24(TickMath.MAX_TICK_SPACING)
+        );
+
+        // 1 less than tick spacing * 2
+        int24 minTick = TickMath.MAX_TICK - int24(_poolTickSpacing * 2) + 1;
+        uint160 minSqrtPrice = TickMath.getSqrtPriceAtTick(minTick);
+
+        _initialSqrtPriceX96 = uint160(_bound(_initialSqrtPriceX96, minSqrtPrice, TickMath.MAX_SQRT_PRICE - 1));
+
+        TickBounds memory bounds = StrategyPlanner.getRightSideBounds(_initialSqrtPriceX96, int24(_poolTickSpacing));
+        assertEq(bounds.lowerTick, 0);
+        assertEq(bounds.upperTick, 0);
+    }
+
     function test_planFullRangePosition_succeeds() public pure {
         Plan memory plan = StrategyPlanner.planFullRangePosition(
             StrategyPlanner.init(),
@@ -384,8 +432,8 @@ contract StrategyPlannerTest is Test {
         returns (TickBounds memory)
     {
         return baseParams.currency < baseParams.poolToken == oneSidedParams.inToken
-            ? getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
-            : getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
+            ? StrategyPlanner.getLeftSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing)
+            : StrategyPlanner.getRightSideBounds(baseParams.initialSqrtPriceX96, baseParams.poolTickSpacing);
     }
 
     // Helper function to check if liquidity calculation should revert
@@ -476,45 +524,5 @@ contract StrategyPlannerTest is Test {
             baseParams.positionRecipient,
             ParamsBuilder.ZERO_BYTES
         );
-    }
-
-    function getLeftSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
-        pure
-        returns (TickBounds memory bounds)
-    {
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
-
-        // Check if position is too close to MIN_TICK. If so, return a lower tick and upper tick of 0
-        if (initialTick - TickMath.MIN_TICK < poolTickSpacing) {
-            return bounds;
-        }
-
-        bounds = TickBounds({
-            lowerTick: TickMath.MIN_TICK / poolTickSpacing * poolTickSpacing, // Rounds to the nearest multiple of tick spacing (rounds towards 0 since MIN_TICK is negative)
-            upperTick: initialTick.tickFloor(poolTickSpacing) // Rounds to the nearest multiple of tick spacing if needed (rounds toward -infinity)
-        });
-
-        return bounds;
-    }
-
-    function getRightSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
-        pure
-        returns (TickBounds memory bounds)
-    {
-        int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
-
-        // Check if position is too close to MAX_TICK. If so, return a lower tick and upper tick of 0
-        if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
-            return bounds;
-        }
-
-        bounds = TickBounds({
-            lowerTick: initialTick.tickStrictCeil(poolTickSpacing), // Rounds toward +infinity to the nearest multiple of tick spacing
-            upperTick: TickMath.MAX_TICK / poolTickSpacing * poolTickSpacing // Rounds to the nearest multiple of tick spacing (rounds toward 0 since MAX_TICK is positive)
-        });
-
-        return bounds;
     }
 }

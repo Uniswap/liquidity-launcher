@@ -156,14 +156,15 @@ library StrategyPlanner {
     /// @param poolTickSpacing The tick spacing of the pool
     /// @return bounds The tick bounds for the left-side position (returns 0,0 if the current tick is too close to MIN_TICK)
     function getLeftSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
+        internal
         pure
         returns (TickBounds memory bounds)
     {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         // Check if position is too close to MIN_TICK. If so, return a lower tick and upper tick of 0
-        if (initialTick - TickMath.MIN_TICK < poolTickSpacing) {
+        // Require there to be at least 2 ticks between the initial tick and MIN_TICK, since `tickFloor` rounds down
+        if (initialTick - TickMath.MIN_TICK < poolTickSpacing * 2) {
             return bounds;
         }
 
@@ -180,14 +181,15 @@ library StrategyPlanner {
     /// @param poolTickSpacing The tick spacing of the pool
     /// @return bounds The tick bounds for the right-side position (returns 0,0 if the current tick is too close to MAX_TICK)
     function getRightSideBounds(uint160 initialSqrtPriceX96, int24 poolTickSpacing)
-        private
+        internal
         pure
         returns (TickBounds memory bounds)
     {
         int24 initialTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
         // Check if position is too close to MAX_TICK. If so, return a lower tick and upper tick of 0
-        if (TickMath.MAX_TICK - initialTick <= poolTickSpacing) {
+        // Require there to be at least 2 ticks between the initial tick and MAX_TICK, since `tickStrictCeil` rounds up
+        if (TickMath.MAX_TICK - initialTick < poolTickSpacing * 2) {
             return bounds;
         }
 
