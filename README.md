@@ -14,7 +14,7 @@ Liquidity Launcher provides a streamlined approach for projects to:
 - **Create** new ERC20 tokens with extended metadata and cross-chain capabilities
 - **Distribute** tokens through customizable strategies
 - **Bootstrap** liquidity using price discovery mechanisms
-- **Deploy** automated market making pools on Uniswap V4
+- **Deploy** automated market making pools on Uniswap v4
 
 The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
@@ -82,8 +82,9 @@ The AdvancedLBPStrategyFactory contract is deployed to different addresses on di
 
 ## Audits
 - 1/20/2026 [Spearbit](./docs/audit/uniswap-liquidity-launcher-v2.0.0.pdf)
-- 10/1/2025 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
 - 10/27/2025 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
+- 10/20/2025 [ABDK Consulting](./docs/audit/ABDK_Uniswap_TokenLauncher_v_1_0.pdf)
+- 10/1/2025 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
 
 ### Bug bounty
 
