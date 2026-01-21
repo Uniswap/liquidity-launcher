@@ -7,4 +7,5 @@ out/
 
 broadcast/
 
-target/
+# Rust project
+**/target
