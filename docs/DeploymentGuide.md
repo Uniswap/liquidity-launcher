@@ -92,4 +92,4 @@ liquidityLauncher.distributeToken(token, distribution, true, bytes32(0));
 ```
 
 ### Contract verification
-Because multiple contracts may be created as part of the initial call to `LiquidityLauncher.distributeToken`, you may need to manually verify the contracts after the deployment.
+Because multiple contracts may be created as part of the initial call to `LiquidityLauncher.distributeToken`, you may need to manually verify the contracts after the deployment with `forge verify-contract`.
