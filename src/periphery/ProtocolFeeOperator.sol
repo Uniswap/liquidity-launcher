@@ -100,13 +100,22 @@ contract ProtocolFeeOperator is Initializable {
     /// @notice Gets the protocol fee in basis points for the given currency
     /// @dev Returns the fee as a uint24, capped at MAX_PROTOCOL_FEE_BPS. Returns 0 if the call reverts for any reason.
     function getProtocolFeeBps(address currency, uint128 amount) public view returns (uint24 protocolFee) {
-        (bool success, bytes memory data) = address(protocolFeeController)
-            .staticcall(abi.encodeWithSelector(IProtocolFeeController.getProtocolFeeBps.selector, currency, amount));
-        if (success && data.length >= 32) {
-            // Decode into a uint256 and then clamp to the maximum protocol fee. Safe to cast to uint24 since MAX_PROTOCOL_FEE_BPS fits within a uint24
-            protocolFee = uint24(FixedPointMathLib.min(abi.decode(data, (uint256)), MAX_PROTOCOL_FEE_BPS));
+        bytes memory callData = abi.encodeCall(IProtocolFeeController.getProtocolFeeBps, (currency, amount));
+        address controller = address(protocolFeeController);
+
+        bool success;
+        uint256 returnDataSize;
+        uint256 rawFee;
+        assembly {
+            // staticcall with return data redirected to memory slot 0
+            success := staticcall(gas(), controller, add(callData, 0x20), mload(callData), 0, 32)
+            returnDataSize := returndatasize()
+            rawFee := mload(0)
+        }
+
+        if (success && returnDataSize >= 32) {
+            protocolFee = uint24(FixedPointMathLib.min(rawFee, MAX_PROTOCOL_FEE_BPS));
         } else {
-            // Default to no protocol fee in the event of a revert or malformed return data
             protocolFee = 0;
         }
     }
