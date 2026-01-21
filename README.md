@@ -65,18 +65,19 @@ The FullRangeLBPStrategyFactory contract can be deployed to the same address on 
 
 | Version | Address | Commit Hash |
 |---------|---------|------------|
-| v2.0.0 |  |  |
+| v2.0.0 | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 |  |
 
 ### AdvancedLBPStrategyFactory
 The AdvancedLBPStrategyFactory contract can be deployed to the same address on all networks.
 
 | Version | Address | Commit Hash |
 |---------|---------|------------|
-| v2.0.0 |  |  |
+| v2.0.0 | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a |  |
 
 ## Audits
-- 10/1 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
-- 10/27 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
+- 1/20/2026 [Spearbit](./docs/audit/uniswap-liquidity-launcher-v2.0.0.pdf)
+- 10/1/2025 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
+- 10/27/2025 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
 
 ### Bug bounty
 
