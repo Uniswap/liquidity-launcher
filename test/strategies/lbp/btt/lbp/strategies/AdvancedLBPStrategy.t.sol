@@ -7,7 +7,7 @@ import {BttBase, FuzzConstructorParameters} from "../BttBase.sol";
 import {ILBPStrategyTestExtension} from "./ILBPStrategyTestExtension.sol";
 import {Plan} from "src/libraries/StrategyPlanner.sol";
 import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";

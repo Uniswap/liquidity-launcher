@@ -14,8 +14,8 @@ import {TokenPricing} from "src/libraries/TokenPricing.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {MaxBidPriceLib} from "continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
+import {Checkpoint, ValueX7} from "@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {MaxBidPriceLib} from "@uniswap/continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
 import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 contract AdvancedLBPStrategyParamsTest is AdvancedLBPStrategyTestBase {

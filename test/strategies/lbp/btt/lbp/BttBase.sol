@@ -14,12 +14,14 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {
     IContinuousClearingAuctionFactory
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
-import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
+import {
+    ContinuousClearingAuctionFactory
+} from "@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {MockVirtualERC20} from "test/mocks/MockVirtualERC20.sol";
 import {IVirtualERC20} from "src/interfaces/external/IVirtualERC20.sol";

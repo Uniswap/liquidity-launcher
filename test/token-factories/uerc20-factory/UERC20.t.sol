@@ -2,9 +2,9 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {UERC20} from "uerc20-factory/src/tokens/UERC20.sol";
-import {UERC20Factory} from "uerc20-factory/src/factories/UERC20Factory.sol";
-import {UERC20Metadata} from "uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
+import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
+import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
+import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {Base64} from "./libraries/base64.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC165} from "@optimism/interfaces/L2/IERC7802.sol";

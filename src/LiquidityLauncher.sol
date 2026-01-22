@@ -8,7 +8,7 @@ import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
 import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
-import {ITokenFactory} from "uerc20-factory/src/interfaces/ITokenFactory.sol";
+import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
 import {Distribution} from "./types/Distribution.sol";
 
 /// @title LiquidityLauncher

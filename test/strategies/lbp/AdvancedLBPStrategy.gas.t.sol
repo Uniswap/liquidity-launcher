@@ -4,10 +4,12 @@ pragma solidity ^0.8.26;
 import {AdvancedLBPStrategyTestBase} from "./base/AdvancedLBPStrategyTestBase.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
-import {ITickStorage} from "continuous-clearing-auction/src/interfaces/ITickStorage.sol";
+import {
+    IContinuousClearingAuction
+} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {Checkpoint, ValueX7} from "@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {ICheckpointStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
+import {ITickStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ITickStorage.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
