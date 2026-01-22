@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {Math} from "@openzeppelin-latest/contracts/utils/math/Math.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title TokenPricing
 /// @notice Library for pricing operations including price conversions and token amount calculations
@@ -84,26 +84,25 @@ library TokenPricing {
     /// @param priceX192 The price in Q192 fixed-point format
     /// @param currencyAmount The amount of currency to convert
     /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
-    /// @param reserveSupply The reserve supply of the token
+    /// @param reserveTokenAmount The reserve supply of the token
     /// @return tokenAmount The calculated token amount
-    /// @return leftoverCurrency The leftover currency amount
     /// @return correspondingCurrencyAmount The corresponding currency amount
     function calculateAmounts(
         uint256 priceX192,
         uint128 currencyAmount,
         bool currencyIsCurrency0,
-        uint128 reserveSupply
-    ) internal pure returns (uint128 tokenAmount, uint128 leftoverCurrency, uint128 correspondingCurrencyAmount) {
+        uint128 reserveTokenAmount
+    ) internal pure returns (uint128 tokenAmount, uint128 correspondingCurrencyAmount) {
         // calculates corresponding token amount based on currency amount and price
         uint256 tokenAmountUint256 = currencyIsCurrency0
             ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
             : FullMath.mulDiv(currencyAmount, Q192, priceX192);
 
         // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
-        if (tokenAmountUint256 > reserveSupply) {
+        if (tokenAmountUint256 > reserveTokenAmount) {
             uint256 correspondingCurrencyAmountUint256 = currencyIsCurrency0
-                ? FullMath.mulDiv(reserveSupply, Q192, priceX192)
-                : FullMath.mulDiv(priceX192, reserveSupply, Q192);
+                ? FullMath.mulDiv(reserveTokenAmount, Q192, priceX192)
+                : FullMath.mulDiv(priceX192, reserveTokenAmount, Q192);
 
             if (correspondingCurrencyAmountUint256 > type(uint128).max) {
                 revert AmountOverflow(correspondingCurrencyAmountUint256);
@@ -111,15 +110,13 @@ library TokenPricing {
 
             correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
 
-            // currencyAmount is already validated to be less than or equal to type(uint128).max so leftoverCurrency is also less than or equal to type(uint128).max
-            leftoverCurrency = currencyAmount - correspondingCurrencyAmount;
-            tokenAmount = reserveSupply; // tokenAmount will never be greater than reserveSupply
+            tokenAmount = reserveTokenAmount; // tokenAmount will never be greater than reserveTokenAmount
         } else {
             correspondingCurrencyAmount = currencyAmount;
-            // tokenAmountUint256 is less than or equal to reserveSupply which is less than or equal to type(uint128).max
+            // tokenAmountUint256 is less than or equal to reserveTokenAmount which is less than or equal to type(uint128).max
             tokenAmount = uint128(tokenAmountUint256);
         }
 
-        return (tokenAmount, leftoverCurrency, correspondingCurrencyAmount);
+        return (tokenAmount, correspondingCurrencyAmount);
     }
 }

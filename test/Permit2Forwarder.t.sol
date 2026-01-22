@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {Permit2Forwarder} from "../src/Permit2Forwarder.sol";
+import {Permit2Forwarder} from "src/Permit2Forwarder.sol";
 import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";

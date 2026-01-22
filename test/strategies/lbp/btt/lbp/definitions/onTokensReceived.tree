@@ -1,0 +1,9 @@
+OnTokensReceivedTest
+├── when tokens received is LT supply
+│   ├── it reverts with {InvalidAmountReceived}
+│   └── when auction already created
+│       └── it reverts with {InitializerAlreadyCreated}
+└── when tokens received is GTE supply
+    ├── it deploys an initializer via the factory
+    ├── it emits {InitializerCreated}
+    └── it sets the initializer to the correct address

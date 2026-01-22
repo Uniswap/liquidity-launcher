@@ -19,13 +19,12 @@
 [submodule "lib/optimism"]
 	path = lib/optimism
 	url = https://github.com/ethereum-optimism/optimism
-[submodule "lib/merkle-distributor"]
-	path = lib/merkle-distributor
-	url = https://github.com/Uniswap/merkle-distributor
-[submodule "lib/openzeppelin-contracts-4.7"]
-	path = lib/openzeppelin-contracts-4.7
-	url = https://github.com/OpenZeppelin/openzeppelin-contracts.git
-	branch = v4.7.3
+[submodule "lib/uerc20-factory"]
+	path = lib/uerc20-factory
+	url = https://github.com/Uniswap/uerc20-factory
 [submodule "lib/continuous-clearing-auction"]
 	path = lib/continuous-clearing-auction
 	url = https://github.com/Uniswap/continuous-clearing-auction
+[submodule "lib/blocknumberish"]
+	path = lib/blocknumberish
+	url = https://github.com/Uniswap/blocknumberish
