@@ -11,19 +11,21 @@ import {ERC20} from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IContinuousClearingAuction} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {ICheckpointStorage} from "continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
+import {
+    IContinuousClearingAuction
+} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {ICheckpointStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
 import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenPricing} from "src/libraries/TokenPricing.sol";
-import {Checkpoint, ValueX7} from "continuous-clearing-auction/src/libraries/CheckpointLib.sol";
+import {Checkpoint, ValueX7} from "@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {ITokenCurrencyStorage} from "continuous-clearing-auction/src/interfaces/ITokenCurrencyStorage.sol";
+import {ITokenCurrencyStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ITokenCurrencyStorage.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {MaxBidPriceLib} from "continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
-import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
+import {MaxBidPriceLib} from "@uniswap/continuous-clearing-auction/src/libraries/MaxBidPriceLib.sol";
+import {ConstantsLib} from "@uniswap/continuous-clearing-auction/src/libraries/ConstantsLib.sol";
 
 // Mock auction contract that transfers ETH when sweepCurrency is called
 contract MockAuctionWithSweep {

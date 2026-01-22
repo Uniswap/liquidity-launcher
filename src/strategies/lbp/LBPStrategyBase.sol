@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {BlockNumberish} from "blocknumberish/src/BlockNumberish.sol";
+import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";

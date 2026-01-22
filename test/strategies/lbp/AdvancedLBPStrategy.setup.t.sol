@@ -9,17 +9,17 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
 import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
 import {TokenPricing} from "src/libraries/TokenPricing.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {ConstantsLib} from "continuous-clearing-auction/src/libraries/ConstantsLib.sol";
+import {ConstantsLib} from "@uniswap/continuous-clearing-auction/src/libraries/ConstantsLib.sol";
 
 contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
     using AuctionStepsBuilder for bytes;

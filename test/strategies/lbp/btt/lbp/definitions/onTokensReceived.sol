@@ -4,15 +4,17 @@ pragma solidity ^0.8.26;
 import {BttBase, FuzzConstructorParameters} from "../BttBase.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {FullRangeLBPStrategyNoValidation} from "test/mocks/FullRangeLBPStrategyNoValidation.sol";
-import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+import {
+    ContinuousClearingAuctionFactory
+} from "@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {
     IContinuousClearingAuctionFactory
-} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
+} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 import {ActionConstants} from "v4-periphery/src/libraries/ActionConstants.sol";
-import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {ITokenCurrencyStorage} from "continuous-clearing-auction/src/interfaces/ITokenCurrencyStorage.sol";
+import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {ITokenCurrencyStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ITokenCurrencyStorage.sol";
 
 abstract contract OnTokensReceivedTest is BttBase {
     using AuctionStepsBuilder for bytes;

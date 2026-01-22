@@ -14,9 +14,11 @@ import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {ContinuousClearingAuctionFactory} from "continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {
+    ContinuousClearingAuctionFactory
+} from "@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {SaltGenerator} from "test/saltGenerator/LauncherSaltGenerator.sol";
 import {Distribution} from "src/types/Distribution.sol";
