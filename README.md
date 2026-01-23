@@ -89,6 +89,7 @@ The AdvancedLBPStrategyFactory contract is deployed to different addresses on di
 
 ## Audits
 - 1/20/2026 [Spearbit](./docs/audit/uniswap-liquidity-launcher-v2.0.0.pdf)
+- 1/20/2026 [OpenZeppelin](./docs/audit/OpenZeppelin_v2.0.0.pdf)
 - 10/27/2025 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
 - 10/20/2025 [ABDK Consulting](./docs/audit/ABDK_Uniswap_TokenLauncher_v_1_0.pdf)
 - 10/1/2025 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
