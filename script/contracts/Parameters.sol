@@ -35,10 +35,16 @@ contract Parameters {
         IPositionManager(0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4);
     IPoolManager public constant SEPOLIA_POOL_MANAGER = IPoolManager(0xE03A1074c86CFeDd5C142C4F04F1a1536e203543);
 
+    // Base Sepolia addresses: https://docs.uniswap.org/contracts/v4/deployments#base-sepolia-84532
+    IPositionManager public constant BASE_SEPOLIA_POSITION_MANAGER =
+        IPositionManager(0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80);
+    IPoolManager public constant BASE_SEPOLIA_POOL_MANAGER = IPoolManager(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408);
+
     uint256 public constant MAINNET_CHAIN_ID = 1;
     uint256 public constant BASE_CHAIN_ID = 8453;
     uint256 public constant UNICHAIN_CHAIN_ID = 130;
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
+    uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84532;
 
     bytes32 public DEFAULT_SALT = 0x0000000000000000000000000000000000000000000000000000000000000000;
 
@@ -59,6 +65,9 @@ contract Parameters {
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER, poolManager: SEPOLIA_POOL_MANAGER, salt: DEFAULT_SALT
+        });
+        parameters[BASE_SEPOLIA_CHAIN_ID] = DeployParameters({
+            positionManager: BASE_SEPOLIA_POSITION_MANAGER, poolManager: BASE_SEPOLIA_POOL_MANAGER, salt: DEFAULT_SALT
         });
     }
 
