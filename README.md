@@ -89,6 +89,14 @@ The AdvancedLBPStrategyFactory contract is deployed to different addresses on di
 | v2.0.0 | Sepolia | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
 | v2.0.0 | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
 
+### GovernedLBPStrategyFactory
+The GovernedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Base | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+
 ## Audits
 - 1/23/2026 [OpenZeppelin](./docs/audit/OpenZeppelin_v2.0.0.pdf)
 - 1/21/2026 [Spearbit](./docs/audit/uniswap-liquidity-launcher-v2.0.0.pdf)
