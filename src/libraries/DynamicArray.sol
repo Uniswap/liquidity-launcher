@@ -8,7 +8,7 @@ library DynamicArray {
     error LengthOverflow();
 
     /// @notice The maximum number of parameters that can be stored in the array
-    uint24 constant MAX_PARAMS_SIZE = 24;
+    uint24 constant MAX_PARAMS_SIZE = 6;
 
     /// @notice Initializes a new array in memory with the maximum size
     function init() internal pure returns (bytes[] memory params) {

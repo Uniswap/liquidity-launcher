@@ -71,17 +71,11 @@ library PositionPlanner {
     {
         for (uint256 i; i < _tickBounds.length; i++) {
             TickBounds memory bounds = _tickBounds[i];
-            console.log("before getAmountsForLiquidity");
             (uint256 amount0, uint256 amount1) =
                 getAmountsForLiquidity(_currentTick, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
-            console.log("after getAmountsForLiquidity");
-            console.log("amount0", amount0);
-            console.log("amount1", amount1);
             weightedAmount0 += amount0 * _weights[i];
             weightedAmount1 += amount1 * _weights[i];
         }
-        console.log("weightedAmount0", weightedAmount0);
-        console.log("weightedAmount1", weightedAmount1);
     }
 
     /// @notice Solves for the maximum liquidity-per-allocation that fits within both currency budgets.
