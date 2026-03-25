@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
@@ -15,8 +14,6 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
-import {console} from "forge-std/console.sol";
-
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
@@ -29,16 +26,12 @@ library PositionPlanner {
     /// @dev High-precision liquidity used to quote weighted token consumption.
     uint128 internal constant LIQUIDITY_PRECISION = 1e18;
 
-    error EmptyPositionParams();
-    error ZeroAllocationMps();
-    error InvalidAllocationSum(uint256 sum, uint256 expected);
-    error InvalidPositionOffsets(int24 offsetLower, int24 offsetUpper);
     error InvalidResolvedTicks(int24 tickLower, int24 tickUpper);
 
     /// @notice Resolve tick offsets into discrete ticks bounds
     function toTickBounds(TickOffsets[] calldata _params, int24 _currentTick, int24 _tickSpacing)
         internal
-        view
+        pure
         returns (TickBounds[] memory ticks)
     {
         ticks = new TickBounds[](_params.length);

@@ -15,7 +15,7 @@ import {TickBounds} from "src/types/PositionTypes.sol";
 contract MockPositionPlanner {
     function toTickBounds(TickOffsets[] calldata params, int24 currentTick, int24 tickSpacing)
         external
-        view
+        pure
         returns (TickBounds[] memory)
     {
         return PositionPlanner.toTickBounds(params, currentTick, tickSpacing);
@@ -160,7 +160,7 @@ contract PositionPlannerTest is Test {
         uint24[] memory weights = new uint24[](1);
         weights[0] = 1e7;
 
-        (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
+        (, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(tickBounds, weights, currentTick, currency0Amount, currency1Amount);
 
         // Can never be more remaining than the initial amounts
