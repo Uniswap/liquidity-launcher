@@ -44,4 +44,28 @@ library TickCalculations {
             return remainder >= 0 ? tick + tickSpacing - remainder : tick - remainder;
         }
     }
+
+    /// @notice Rounds up to the nearest tick spacing, preserving exact multiples
+    /// @param tick The tick to round up
+    /// @param tickSpacing The tick spacing to round up to (cannot be 0)
+    /// @return The rounded up tick
+    function tickCeil(int24 tick, int24 tickSpacing) internal pure returns (int24) {
+        int24 floored = tickFloor(tick, tickSpacing);
+        return floored == tick ? tick : floored + tickSpacing;
+    }
+
+    /// @notice Returns whether adding `liquidityDelta` would overflow either boundary tick's gross liquidity
+    /// @param liquidityDelta The liquidity being added
+    /// @param lowerLiquidityGross The current gross liquidity on the lower boundary tick
+    /// @param upperLiquidityGross The current gross liquidity on the upper boundary tick
+    /// @param maxLiquidityPerTick The maximum permitted gross liquidity per initialized tick
+    function exceedsLiquidityPerTick(
+        uint128 liquidityDelta,
+        uint128 lowerLiquidityGross,
+        uint128 upperLiquidityGross,
+        uint128 maxLiquidityPerTick
+    ) internal pure returns (bool) {
+        return uint256(lowerLiquidityGross) + liquidityDelta > maxLiquidityPerTick
+            || uint256(upperLiquidityGross) + liquidityDelta > maxLiquidityPerTick;
+    }
 }
