@@ -53,7 +53,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
     function setSettings(Settings calldata _settings) external onlyOwner {
         settings = _settings;
-        emit SettingsSet(_settings);
+        emit SettingsSet(_settings.protocolFeeController, _settings.minSplitForLP);
     }
 
     function initializeDistribution(
@@ -324,7 +324,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // max currency amount for LP cannot be smaller than the min split for LP or bigger than 100%
         (,, uint24 minSplitForLP) = _readSettings();
         if (_migratorParams.currencySplitForLP < minSplitForLP || _migratorParams.currencySplitForLP > 1e7) {
-            revert InvalidCurrencySplitForLP();
+            revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLP, 1e7);
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
@@ -354,7 +354,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         pure
         returns (uint128 currencyAmountForLp)
     {
-        currencyAmountForLp = currencyRaised * currencySplitForLP / 1e7;
+        currencyAmountForLp = currencyAmount * currencySplitForLP / 1e7;
     }
 
     function _readSettings() internal view returns (address protocolFeeController, uint24 minSplitForLP) {

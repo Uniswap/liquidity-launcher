@@ -32,8 +32,9 @@ interface ILBPStrategy {
     }
 
     /// @notice Emitted when the settings are set
-    /// @param settings The settings
-    event SettingsSet(Settings settings);
+    /// @param protocolFeeController The protocol fee controller
+    /// @param minSplitForLP The min split for LP
+    event SettingsSet(address protocolFeeController, uint24 minSplitForLP);
 
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
@@ -65,7 +66,7 @@ interface ILBPStrategy {
     /// @param currencySplitForLP The invalid currency split for LP
     /// @param minSplitForLP The min split for LP
     /// @param maxSplitForLP The max split for LP
-    error InvalidCurrencySplitForLP();
+    error InvalidCurrencySplitForLP(uint24 currencySplitForLP, uint24 minSplitForLP, uint24 maxSplitForLP);
 
     /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
     /// @param tickSpacing The invalid tick spacing
