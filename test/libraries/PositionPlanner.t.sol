@@ -9,16 +9,20 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
-import {Plan, PositionDefinition, Position} from "src/types/PositionPlannerTypes.sol";
+import {Plan, RelativeTickBounds, Position} from "src/types/PositionPlannerTypes.sol";
 import {TickBounds} from "src/types/PositionTypes.sol";
 
 contract MockPositionPlanner {
-    function parseTicksAndAllocations(PositionDefinition[] calldata params, int24 currentTick, int24 tickSpacing)
+    function parseTicks(RelativeTickBounds[] calldata params, int24 currentTick, int24 tickSpacing)
         external
         pure
-        returns (TickBounds[] memory, uint24[] memory)
+        returns (TickBounds[] memory)
     {
-        return PositionPlanner.parseTicksAndAllocations(params, currentTick, tickSpacing);
+        return PositionPlanner.parseTicks(params, currentTick, tickSpacing);
+    }
+
+    function validateWeights(uint24[] calldata weights) external pure {
+        PositionPlanner.validateWeights(weights);
     }
 
     function resolve(
@@ -82,40 +86,30 @@ contract PositionPlannerTest is Test {
         mockPositionPlanner = new MockPositionPlanner();
     }
 
-    // --- parseTicksAndAllocations ---
+    // --- parseTicks ---
 
-    function test_parseTicksAndAllocations_revertsOnInvalidResolvedTicks() public {
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: 0, offsetUpper: 0, weight: 1e7});
+    function test_parseTicks_revertsOnInvalidResolvedTicks() public {
+        RelativeTickBounds[] memory defs = new RelativeTickBounds[](1);
+        defs[0] = RelativeTickBounds({offsetLower: 0, offsetUpper: 0});
 
         vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidResolvedTicks.selector, int24(0), int24(0)));
-        mockPositionPlanner.parseTicksAndAllocations(defs, 0, 10);
+        mockPositionPlanner.parseTicks(defs, 0, 10);
     }
 
-    function test_parseTicksAndAllocations_revertsOnInvalidAllocationWeights() public {
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-
-        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, uint24(5e6)));
-        mockPositionPlanner.parseTicksAndAllocations(defs, 0, 10);
-    }
-
-    function test_fuzz_parseTicksAndAllocations_fullRangeSentinel(int24 currentTick, int24 tickSpacing) public view {
+    function test_fuzz_parseTicks_fullRangeSentinel(int24 currentTick, int24 tickSpacing) public view {
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         currentTick = int24(bound(currentTick, TickMath.MIN_TICK + 1, TickMath.MAX_TICK - 1));
 
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
+        RelativeTickBounds[] memory defs = new RelativeTickBounds[](1);
+        defs[0] = RelativeTickBounds({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK});
 
-        (TickBounds[] memory ticks, uint24[] memory weights) =
-            mockPositionPlanner.parseTicksAndAllocations(defs, currentTick, tickSpacing);
+        TickBounds[] memory ticks = mockPositionPlanner.parseTicks(defs, currentTick, tickSpacing);
 
         assertEq(ticks[0].lowerTick, TickMath.minUsableTick(tickSpacing));
         assertEq(ticks[0].upperTick, TickMath.maxUsableTick(tickSpacing));
-        assertEq(weights[0], 1e7);
     }
 
-    function test_fuzz_parseTicksAndAllocations_relativeOffsets(
+    function test_fuzz_parseTicks_relativeOffsets(
         int24 currentTick,
         int24 tickSpacing,
         int24 offsetLower,
@@ -126,18 +120,36 @@ contract PositionPlannerTest is Test {
         offsetLower = int24(bound(offsetLower, 0, 10000));
         offsetUpper = int24(bound(offsetUpper, 0, 10000));
 
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: offsetLower, offsetUpper: offsetUpper, weight: 1e7});
+        RelativeTickBounds[] memory defs = new RelativeTickBounds[](1);
+        defs[0] = RelativeTickBounds({offsetLower: offsetLower, offsetUpper: offsetUpper});
 
-        try mockPositionPlanner.parseTicksAndAllocations(defs, currentTick, tickSpacing) returns (
-            TickBounds[] memory ticks, uint24[] memory
-        ) {
+        try mockPositionPlanner.parseTicks(defs, currentTick, tickSpacing) returns (TickBounds[] memory ticks) {
             assertLt(ticks[0].lowerTick, ticks[0].upperTick);
             assertEq(ticks[0].lowerTick % tickSpacing, 0);
             assertEq(ticks[0].upperTick % tickSpacing, 0);
             assertGe(ticks[0].lowerTick, TickMath.MIN_TICK);
             assertLe(ticks[0].upperTick, TickMath.MAX_TICK);
         } catch {}
+    }
+
+    // --- validateWeights ---
+
+    function test_validateWeights_revertsOnInvalidWeights() public {
+        uint24[] memory weights = new uint24[](1);
+        weights[0] = 5e6;
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, uint24(5e6)));
+        mockPositionPlanner.validateWeights(weights);
+    }
+
+    function test_fuzz_validateWeights(uint24 weight0) public view {
+        weight0 = uint24(bound(weight0, 1, 1e7 - 1));
+
+        uint24[] memory weights = new uint24[](2);
+        weights[0] = weight0;
+        weights[1] = uint24(1e7) - weight0;
+
+        mockPositionPlanner.validateWeights(weights);
     }
 
     // --- resolve ---
@@ -162,11 +174,13 @@ contract PositionPlannerTest is Test {
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         currentTick = int24(bound(currentTick, TickMath.MIN_TICK + 1, TickMath.MAX_TICK - 1));
 
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
+        RelativeTickBounds[] memory defs = new RelativeTickBounds[](1);
+        defs[0] = RelativeTickBounds({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK});
 
-        (TickBounds[] memory tickBounds, uint24[] memory weights) =
-            mockPositionPlanner.parseTicksAndAllocations(defs, currentTick, tickSpacing);
+        TickBounds[] memory tickBounds = mockPositionPlanner.parseTicks(defs, currentTick, tickSpacing);
+
+        uint24[] memory weights = new uint24[](1);
+        weights[0] = 1e7;
 
         (, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(tickBounds, weights, currentTick, currency0Amount, currency1Amount);
@@ -184,12 +198,15 @@ contract PositionPlannerTest is Test {
         uint128 currency0Amount = 100e18;
         uint128 currency1Amount = 100e18;
 
-        PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-        defs[1] = PositionDefinition({offsetLower: 20, offsetUpper: 20, weight: 5e6});
+        RelativeTickBounds[] memory defs = new RelativeTickBounds[](2);
+        defs[0] = RelativeTickBounds({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK});
+        defs[1] = RelativeTickBounds({offsetLower: 20, offsetUpper: 20});
 
-        (TickBounds[] memory tickBounds, uint24[] memory weights) =
-            mockPositionPlanner.parseTicksAndAllocations(defs, currentTick, tickSpacing);
+        TickBounds[] memory tickBounds = mockPositionPlanner.parseTicks(defs, currentTick, tickSpacing);
+
+        uint24[] memory weights = new uint24[](2);
+        weights[0] = 5e6;
+        weights[1] = 5e6;
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(tickBounds, weights, currentTick, currency0Amount, currency1Amount);
@@ -230,14 +247,15 @@ contract PositionPlannerTest is Test {
 
         PoolKey memory poolKey = _poolKey(tickSpacing);
 
-        PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight0});
-        defs[1] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: uint24(1e7) - weight0
-        });
+        RelativeTickBounds[] memory defs = new RelativeTickBounds[](2);
+        defs[0] = RelativeTickBounds({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK});
+        defs[1] = RelativeTickBounds({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK});
 
-        (TickBounds[] memory tickBounds, uint24[] memory weights) =
-            mockPositionPlanner.parseTicksAndAllocations(defs, currentTick, tickSpacing);
+        TickBounds[] memory tickBounds = mockPositionPlanner.parseTicks(defs, currentTick, tickSpacing);
+
+        uint24[] memory weights = new uint24[](2);
+        weights[0] = weight0;
+        weights[1] = uint24(1e7) - weight0;
 
         try mockPositionPlanner.resolve(tickBounds, weights, currentTick, currency0Amount, currency1Amount) returns (
             Position[] memory positions, uint128 remaining0, uint128 remaining1

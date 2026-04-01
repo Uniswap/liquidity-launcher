@@ -7,10 +7,9 @@ struct Plan {
     bytes[] params;
 }
 
-struct PositionDefinition {
+struct RelativeTickBounds {
     int24 offsetLower;
     int24 offsetUpper;
-    uint24 weight;
 }
 
 /// @notice Generic struct representing a liquidity position

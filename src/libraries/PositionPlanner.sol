@@ -14,7 +14,7 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
-import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
+import {RelativeTickBounds} from "../types/PositionPlannerTypes.sol";
 
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
@@ -31,57 +31,39 @@ library PositionPlanner {
     error InvalidResolvedTicks(int24 tickLower, int24 tickUpper);
     error InvalidAllocationWeights(uint24 totalWeight);
 
-    function parseTicksAndAllocations(PositionDefinition[] calldata _params, int24 _currentTick, int24 _tickSpacing)
+    /// @notice Resolve relative tick offsets into absolute tick bounds.
+    function parseTicks(RelativeTickBounds[] calldata _params, int24 _currentTick, int24 _tickSpacing)
         internal
         pure
-        returns (TickBounds[] memory ticks, uint24[] memory weights)
+        returns (TickBounds[] memory ticks)
     {
         ticks = new TickBounds[](_params.length);
-        weights = new uint24[](_params.length);
-        uint24 totalWeight = 0;
         for (uint256 i; i < _params.length; i++) {
-            PositionDefinition memory param = _params[i];
+            RelativeTickBounds memory param = _params[i];
             int24 tickLower;
             int24 tickUpper;
-            // Sentinel values for full range positions
             if (param.offsetLower == TickMath.MIN_TICK && param.offsetUpper == TickMath.MAX_TICK) {
                 tickLower = TickMath.minUsableTick(_tickSpacing);
                 tickUpper = TickMath.maxUsableTick(_tickSpacing);
             } else {
                 tickLower = (_currentTick - param.offsetLower).tickFloor(_tickSpacing);
                 tickUpper = (_currentTick + param.offsetUpper).tickCeil(_tickSpacing);
-                // Revert if the resolved ticks are not valid (within bounds or ordered incorrectly)
                 if (tickLower < TickMath.MIN_TICK || tickUpper > TickMath.MAX_TICK || tickLower >= tickUpper) {
                     revert InvalidResolvedTicks(tickLower, tickUpper);
                 }
             }
             ticks[i] = TickBounds({lowerTick: tickLower, upperTick: tickUpper});
-
-            totalWeight += param.weight;
-            weights[i] = param.weight;
         }
-
-        if (totalWeight != MPS) {
-            revert InvalidAllocationWeights(totalWeight);
-        }
-
-        return (ticks, weights);
     }
 
-    /// @notice Computes the total weighted token amounts required per unit of liquidity across all positions.
-    /// @dev Used as the first pass of the resolve algorithm to determine how much of each currency
-    ///      one unit of allocation consumes, before solving for the max scale factor.
-    function getWeightedAmounts(TickBounds[] memory _tickBounds, uint24[] memory _weights, int24 _currentTick)
-        internal
-        pure
-        returns (uint256 weightedAmount0, uint256 weightedAmount1)
-    {
-        for (uint256 i; i < _tickBounds.length; i++) {
-            TickBounds memory bounds = _tickBounds[i];
-            (uint256 amount0, uint256 amount1) =
-                getAmountsForLiquidity(_currentTick, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
-            weightedAmount0 += amount0 * _weights[i];
-            weightedAmount1 += amount1 * _weights[i];
+    /// @notice Validates that allocation weights sum to MPS.
+    function validateWeights(uint24[] calldata _weights) internal pure {
+        uint24 totalWeight;
+        for (uint256 i; i < _weights.length; i++) {
+            totalWeight += _weights[i];
+        }
+        if (totalWeight != MPS) {
+            revert InvalidAllocationWeights(totalWeight);
         }
     }
 
@@ -117,7 +99,15 @@ library PositionPlanner {
 
         uint256 liquidityPerAllocation;
         {
-            (uint256 weightedAmount0, uint256 weightedAmount1) = getWeightedAmounts(_tickBounds, _weights, _currentTick);
+            uint256 weightedAmount0 = 0;
+            uint256 weightedAmount1 = 0;
+            for (uint256 i; i < _tickBounds.length; i++) {
+                TickBounds memory bounds = _tickBounds[i];
+                (uint256 amount0, uint256 amount1) =
+                    getAmountsForLiquidity(_currentTick, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
+                weightedAmount0 += amount0 * _weights[i];
+                weightedAmount1 += amount1 * _weights[i];
+            }
             liquidityPerAllocation =
                 getLiquidityPerAllocation(_currency0Amount, _currency1Amount, weightedAmount0, weightedAmount1);
         }
