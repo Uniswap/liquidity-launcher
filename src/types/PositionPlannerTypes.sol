@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// @notice Low-level representation of a PositionManager call plan
+/// @notice Low-level representation of a call to PositionManager
 struct Plan {
     bytes actions;
     bytes[] params;
 }
 
-/// @notice User-provided parameters for a desired position
-struct TickOffsets {
+struct PositionDefinition {
     int24 offsetLower;
     int24 offsetUpper;
+    uint24 weight;
 }
 
+/// @notice Generic struct representing a liquidity position
 struct Position {
     uint128 amount0;
     uint128 amount1;

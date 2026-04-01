@@ -7,13 +7,15 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
-import {Plan, TickOffsets, Position} from "../types/PositionPlannerTypes.sol";
+import {Plan, Position} from "../types/PositionPlannerTypes.sol";
 import {ActionsBuilder} from "./ActionsBuilder.sol";
 import {DynamicArray} from "./DynamicArray.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
+import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
+
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
@@ -27,31 +29,43 @@ library PositionPlanner {
     uint128 internal constant LIQUIDITY_PRECISION = 1e18;
 
     error InvalidResolvedTicks(int24 tickLower, int24 tickUpper);
+    error InvalidAllocationWeights(uint24 totalWeight);
 
-    /// @notice Resolve tick offsets into discrete ticks bounds
-    function toTickBounds(TickOffsets[] calldata _params, int24 _currentTick, int24 _tickSpacing)
+    function parseTicksAndAllocations(PositionDefinition[] calldata _params, int24 _currentTick, int24 _tickSpacing)
         internal
         pure
-        returns (TickBounds[] memory ticks)
+        returns (TickBounds[] memory ticks, uint24[] memory weights)
     {
         ticks = new TickBounds[](_params.length);
+        weights = new uint24[](_params.length);
+        uint24 totalWeight = 0;
         for (uint256 i; i < _params.length; i++) {
-            TickOffsets memory param = _params[i];
+            PositionDefinition memory param = _params[i];
             int24 tickLower;
             int24 tickUpper;
+            // Sentinel values for full range positions
             if (param.offsetLower == TickMath.MIN_TICK && param.offsetUpper == TickMath.MAX_TICK) {
                 tickLower = TickMath.minUsableTick(_tickSpacing);
                 tickUpper = TickMath.maxUsableTick(_tickSpacing);
             } else {
                 tickLower = (_currentTick - param.offsetLower).tickFloor(_tickSpacing);
                 tickUpper = (_currentTick + param.offsetUpper).tickCeil(_tickSpacing);
-            }
-
-            if (tickLower < TickMath.MIN_TICK || tickUpper > TickMath.MAX_TICK || tickLower >= tickUpper) {
-                revert InvalidResolvedTicks(tickLower, tickUpper);
+                // Revert if the resolved ticks are not valid (within bounds or ordered incorrectly)
+                if (tickLower < TickMath.MIN_TICK || tickUpper > TickMath.MAX_TICK || tickLower >= tickUpper) {
+                    revert InvalidResolvedTicks(tickLower, tickUpper);
+                }
             }
             ticks[i] = TickBounds({lowerTick: tickLower, upperTick: tickUpper});
+
+            totalWeight += param.weight;
+            weights[i] = param.weight;
         }
+
+        if (totalWeight != MPS) {
+            revert InvalidAllocationWeights(totalWeight);
+        }
+
+        return (ticks, weights);
     }
 
     /// @notice Computes the total weighted token amounts required per unit of liquidity across all positions.
@@ -121,12 +135,10 @@ library PositionPlanner {
             (uint256 amount0, uint256 amount1) =
                 getAmountsForLiquidity(_currentTick, bound.lowerTick, bound.upperTick, SafeCastLib.toUint128(liquidity));
 
-            // Subtract the required amounts from the remaining currency balances.
             assembly {
                 _currency0Amount := mul(gt(_currency0Amount, amount0), sub(_currency0Amount, amount0))
                 _currency1Amount := mul(gt(_currency1Amount, amount1), sub(_currency1Amount, amount1))
             }
-            // Skip if our balance is not sufficient. Accounts for the case where returned amounts are > uint128.max.
             if (_currency0Amount == 0 || _currency1Amount == 0) continue;
 
             positions[cnt++] = Position({
@@ -138,7 +150,6 @@ library PositionPlanner {
             });
         }
 
-        // Truncate the positions array to the number of accepted positions.
         assembly {
             mstore(positions, cnt)
         }
@@ -178,6 +189,7 @@ library PositionPlanner {
         return Plan({actions: actions, params: params});
     }
 
+    /// @notice Wrapper around getAmountsForLiquidity which converts tick values into sqrt prices
     function getAmountsForLiquidity(int24 _currentTick, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
         internal
         pure
