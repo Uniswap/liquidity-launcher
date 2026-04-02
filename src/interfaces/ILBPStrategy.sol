@@ -10,13 +10,29 @@ import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/ICon
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
 interface ILBPStrategy {
+    // TODO: Replace with AuctionParameters from continuous-clearing-auction once the changes are implemented
+    struct AuctionParameters {
+        address currency; // token to raise funds in. Use address(0) for ETH
+        uint128 custodyTokens; // amount of tokens to be held in custody during the auction
+        address tokensRecipient; // address to receive leftover tokens
+        address fundsRecipient; // address to receive all raised funds
+        uint64 startBlock; // Block which the first step starts
+        uint64 endBlock; // When the auction finishes
+        uint64 claimBlock; // Block when the auction can claimed
+        uint256 tickSpacing; // Fixed granularity for prices
+        address validationHook; // Optional hook called before a bid
+        uint256 floorPrice; // Starting floor price for the auction
+        uint128 requiredCurrencyRaised; // Amount of currency required to be raised for the auction to graduate
+        bytes auctionStepsData; // Packed bytes describing token issuance schedule
+    }
+
     struct MigratorParameters {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
         int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // the amount of the total supply of the token that will be sent to the LP
+        uint128 supplyForLP; // additional amount of the token that will be used to create the LP position
         address fundsRecipient; // the address that will receive the funds from the auction
-        uint128 custodyTokens; // amount of the total supply of the token that will be hold in custody during the auction (additionally to supplyForLP)
+        uint128 custodyTokens; // additional amount of the token that will be hold in custody during the auction (additionally to supplyForLP)
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
         address lpHook; // the hook that will be used to initialize the pool

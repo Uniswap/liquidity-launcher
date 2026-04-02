@@ -12,7 +12,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+// import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {AuctionParameters} from "../../interfaces/ILBPStrategy.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "../../interfaces/ILBPInitializer.sol";
@@ -76,37 +77,17 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             auctionParams := add(configData.offset, 0x100) // 0x100 skips the MigratorParameters struct and points directly at auctionParams.offset
         }
 
-        // Ensure the funds recipient is this contract
-        if (auctionParams.fundsRecipient != address(this) || auctionParams.tokensRecipient != address(this)) {
-            revert InvalidRecipient(address(this));
-        }
-        // Ensure the migration block is after the end block to ensure a successful migration
-        if (auctionParams.endBlock >= migrationParams.migrationBlock) {
-            revert InvalidEndBlock(auctionParams.endBlock, migrationParams.migrationBlock);
-        }
+        // Validate the auction parameters
+        _validateAuctionParams(totalSupply, auctionParams, migrationParams);
 
         // Validate the migrator parameters
-        _validateMigratorParams(uint128(totalSupply), migrationParams);
-
-        // Calculate the auctioned supply by subtracting the supply for LP and custody tokens from the total supply (checked to not underflow)
-        uint256 auctionedSupply = totalSupply - migrationParams.supplyForLP - migrationParams.custodyTokens;
-
-        // Ensure the auctioned supply is less than the maximum uint128 value to allow migration to a v4 pool
-        // TODO: If CCA only requires auctionSupply <= uint128.max because of LP limits, we can remove this condition from here and CCA
-        //       since the token amount going into the v4 pool is migrationParams.supplyForLP, which is enforced as uint128.
-        if (auctionedSupply > type(uint128).max) revert InvalidAmount(auctionedSupply, type(uint128).max);
+        _validateMigratorParams(totalSupply, migrationParams);
 
         // Deploy the initializer contract via factory
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(
-                        token,
-                        auctionedSupply,
-                        /* TODO: Add migrationParams.supplyForLP + migrationParams.custodyTokens, once CCA supports it */
-                        _encodeAuctionParams(auctionParams),
-                        bytes32(0)
-                    )
+                    .initializeDistribution(token, totalSupply, _encodeAuctionParams(auctionParams), bytes32(0))
             )
         );
 
@@ -330,9 +311,11 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters calldata _migratorParams) private view {
-        // token supply for the must LP cannot and the custody must be less than the total supply
-        if (_migratorParams.supplyForLP + _migratorParams.custodyTokens > _totalSupply) {
+    function _validateMigratorParams(uint256 _totalSupply, MigratorParameters calldata _migratorParams) private view {
+        // Ensure the total supply is less than or equal to type(uint128).max
+        if (_totalSupply > type(uint128).max) revert InvalidAmount(_totalSupply, type(uint128).max);
+        // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
+        if (_migratorParams.supplyForLP + _migratorParams.custodyTokens > type(uint128).max) {
             revert InvalidAmount(_migratorParams.supplyForLP, _totalSupply);
         }
         // max currency amount for LP cannot be smaller than the min split for LP or bigger than 100%
@@ -363,6 +346,36 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         }
     }
 
+    /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
+    /// @param totalSupply The total supply of the token that will be used in the initializer for price discovery
+    /// @param auctionParams The auction parameters that will be used to create the v4 pool and position
+    /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
+    function _validateAuctionParams(
+        uint256 totalSupply,
+        AuctionParameters calldata auctionParams,
+        MigratorParameters calldata migrationParams
+    ) private view {
+        // Ensure the auctioned supply is less than the maximum uint128 value to allow migration to a v4 pool
+        // TODO: If CCA only requires auctionSupply <= uint128.max because of LP limits, we can remove this condition from here and CCA
+        //       since the token amount going into the v4 pool is migrationParams.supplyForLP, which is enforced as uint128.
+        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
+
+        // Ensure the funds recipient is this contract
+        if (auctionParams.fundsRecipient != address(this) || auctionParams.tokensRecipient != address(this)) {
+            revert InvalidRecipient(address(this));
+        }
+        // Ensure the migration block is after the end block to ensure a successful migration
+        if (auctionParams.endBlock >= migrationParams.migrationBlock) {
+            revert InvalidEndBlock(auctionParams.endBlock, migrationParams.migrationBlock);
+        }
+        // Ensure the custody tokens are correct inside the auction parameters
+        if (auctionParams.custodyTokens != migrationParams.supplyForLP + migrationParams.custodyTokens) {
+            revert InvalidAmount(
+                auctionParams.custodyTokens, migrationParams.supplyForLP + migrationParams.custodyTokens
+            );
+        }
+    }
+
     function _calculateCurrencyAmountForLp(uint256 currencyAmount, uint24 currencySplitForLP)
         private
         pure
@@ -387,10 +400,10 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             calldatacopy(
                 m,
                 migrationParams,
-                0x140 /* length of MigratorParameters struct */
+                0x120 /* length of MigratorParameters struct */
             )
             // Hash the MigratorParameters struct
-            identifier := keccak256(m, 0x140)
+            identifier := keccak256(m, 0x120)
         }
     }
 
