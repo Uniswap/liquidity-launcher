@@ -47,10 +47,10 @@ interface ILBPStrategy {
         uint128 liquidity;
     }
 
-    /// @notice Emitted when the settings are set
+    /// @notice Emitted when the owner controlled parameters are updated
     /// @param protocolFeeController The protocol fee controller
     /// @param minSplitForLP The min split for LP
-    event SettingsSet(address protocolFeeController, uint24 minSplitForLP);
+    event OwnerControlledParamsSet(address protocolFeeController, uint24 minSplitForLP);
 
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
