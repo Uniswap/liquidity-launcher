@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
-import {Currency} from "continuous-clearing-auction/src/libraries/CurrencyLibrary.sol";
 import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "../../interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
@@ -142,9 +145,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
         // Sweep the currency and tokens into the LBP strategy
         initializer.sweepCurrency();
-        initializer.sweepToken();
+        initializer.sweepUnsoldTokens();
 
-        uint128 currencyAmountForLp =
+        uint256 currencyAmountForLp =
             _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.currencySplitForLP);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool
@@ -162,21 +165,21 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
         // Prepare the migration data
         MigrationData memory data = _prepareMigrationData(
-            address(currency),
-            address(token),
-            currencyAmountForLp,
+            currency,
+            token,
+            uint128(currencyAmountForLp), // Ensured to be less than or equal to type(uint128).max in _validateCurrencyAmountForLp
             migrationParams.supplyForLP,
-            lbpParams.initialPriceX96
+            lbpParams.initialPriceX96,
+            migrationParams.poolTickSpacing
         );
 
-        PoolKey memory key = _initializePool(data);
+        PoolKey memory key =
+            _initializePool(data, currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing);
 
-        bytes memory plan = _createPositionPlan(data);
+        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(data);
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
-        _transferAssetsAndExecutePlan(
-            currency, token, _getTokenTransferAmount(data), _getCurrencyTransferAmount(data), plan
-        );
+        _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
         // TODO: Implement fallback full range position plan into _transferAssetsAndExecutePlan if modify liquidities reverts
 
@@ -199,10 +202,16 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice Initializes the pool with the calculated price
     /// @param _data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
-    function _initializePool(MigrationData memory _data) internal returns (PoolKey memory key) {
+    function _initializePool(
+        MigrationData memory _data,
+        Currency currency,
+        Currency token,
+        uint24 poolLPFee,
+        int24 poolTickSpacing
+    ) internal returns (PoolKey memory key) {
         key = PoolKey({
-            currency0: _currency0(),
-            currency1: _currency1(),
+            currency0: _currency0(currency, token),
+            currency1: _currency1(currency, token),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(address(this))
@@ -249,7 +258,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @param currencyAmountForLp The currency amount raised for the LP
     function _validateCurrencyAmountForLp(uint256 currencyAmountForLp)
         internal
-        view
+        pure
         returns (uint128 actualCurrencyAmountForLp, uint128 currencyAmountAboveMax)
     {
         // Cannot create a v4 pool with more than type(uint128).max currency amount
@@ -271,19 +280,20 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @param initialPriceX96 The initial price of the pool
     /// @return data MigrationData struct containing all calculated values
     function _prepareMigrationData(
-        address currency,
-        address token,
+        Currency currency,
+        Currency token,
         uint128 currencyAmountForLp,
         uint128 tokenAmountForLp,
-        uint256 initialPriceX96
-    ) internal view returns (MigrationData memory) {
+        uint256 initialPriceX96,
+        int24 poolTickSpacing
+    ) internal pure returns (MigrationData memory) {
         bool currencyIsCurrency0 = _currencyIsCurrency0(currency, token);
 
-        uint256 priceX192 = initialPriceX96.convertToPriceX192(currencyIsCurrency0);
-        uint160 sqrtPriceX96 = priceX192.convertToSqrtPriceX96();
+        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currencyIsCurrency0);
+        uint160 sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
 
         (uint128 fullRangeTokenAmount, uint128 fullRangeCurrencyAmount) =
-            priceX192.calculateAmounts(currencyAmountForLp, currencyIsCurrency0, tokenAmountForLp);
+            TokenPricing.calculateAmounts(priceX192, currencyAmountForLp, currencyIsCurrency0, tokenAmountForLp);
 
         uint128 leftoverCurrency = currencyAmountForLp - fullRangeCurrencyAmount;
         uint128 leftoverToken = tokenAmountForLp - fullRangeTokenAmount;
@@ -309,20 +319,24 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice Creates the position plan based on migration data
     /// @param _data Migration data with all necessary parameters
     /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory _data) internal virtual returns (bytes memory plan) {
+    function _createPositionPlan(MigrationData memory _data)
+        internal
+        virtual
+        returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount)
+    {
         // TODO: Implement the position plan creation via the PositionPlanner library
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters calldata _migratorParams) private pure {
+    function _validateMigratorParams(uint128 _totalSupply, MigratorParameters calldata _migratorParams) private view {
         // token supply for the must LP cannot and the custody must be less than the total supply
         if (_migratorParams.supplyForLP + _migratorParams.custodyTokens > _totalSupply) {
             revert InvalidAmount(_migratorParams.supplyForLP, _totalSupply);
         }
         // max currency amount for LP cannot be smaller than the min split for LP or bigger than 100%
-        (,, uint24 minSplitForLP) = _readSettings();
+        (, uint24 minSplitForLP) = _readSettings();
         if (_migratorParams.currencySplitForLP < minSplitForLP || _migratorParams.currencySplitForLP > 1e7) {
             revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLP, 1e7);
         }
@@ -349,15 +363,15 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         }
     }
 
-    function _calculateCurrencyAmountForLp(uint128 currencyAmount, uint24 currencySplitForLP)
+    function _calculateCurrencyAmountForLp(uint256 currencyAmount, uint24 currencySplitForLP)
         private
         pure
-        returns (uint128 currencyAmountForLp)
+        returns (uint256 currencyAmountForLp)
     {
         currencyAmountForLp = currencyAmount * currencySplitForLP / 1e7;
     }
 
-    function _readSettings() internal view returns (address protocolFeeController, uint24 minSplitForLP) {
+    function _readSettings() private view returns (address protocolFeeController, uint24 minSplitForLP) {
         assembly ("memory-safe") {
             let slotContent := sload(settings.slot)
             protocolFeeController := and(slotContent, 0xffffffffffffffffffffffffffffffffffffffff)
@@ -415,7 +429,17 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         }
     }
 
-    function _currencyIsCurrency0(address currency, address token) internal view returns (bool) {
-        return currency < poolToken;
+    function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
+        assembly ("memory-safe") {
+            currencyIsCurrency0 := lt(currency, token)
+        }
+    }
+
+    function _currency0(Currency currency, Currency token) private pure returns (Currency) {
+        return (_currencyIsCurrency0(currency, token) ? currency : token);
+    }
+
+    function _currency1(Currency currency, Currency token) private pure returns (Currency) {
+        return (_currencyIsCurrency0(currency, token) ? token : currency);
     }
 }
