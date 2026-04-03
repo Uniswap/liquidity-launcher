@@ -47,6 +47,9 @@ interface ILBPStrategy {
         uint128 liquidity;
     }
 
+    /// @notice Error thrown when the owner controlled parameters are invalid
+    error InvalidOwnerControlledParams();
+
     /// @notice Emitted when the owner controlled parameters are updated
     /// @param protocolFeeController The protocol fee controller
     /// @param minSplitForLP The min split for LP
@@ -99,6 +102,16 @@ interface ILBPStrategy {
     /// @notice Error thrown when the funds recipient is not set to the strategy
     /// @param expectedRecipient The expected recipient
     error InvalidRecipient(address expectedRecipient);
+
+    /// @notice Error thrown when the amount is greater than the max amount
+    /// @param amount The invalid amount
+    /// @param maxAmount The max amount
+    error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
+
+    /// @notice Error thrown when the custody supply (supplyForLP + custodyTokens) is not equal to the expected custody supply
+    /// @param custodySupply The invalid custody supply
+    /// @param expectedCustodySupply The expected custody supply
+    error InvalidCustodySupply(uint256 custodySupply, uint256 expectedCustodySupply);
 
     /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount

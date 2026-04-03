@@ -44,6 +44,8 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice The mapping of initializers to their identifiers ensuring the validity of provided calldata during migration
     mapping(ILBPInitializer initializer => bytes32 identifier) public initializers;
 
+    // TODO: Add functionality to fully replace GovernedLBPStrategy
+
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
@@ -56,6 +58,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     }
 
     function setOwnerControlledParams(OwnerControlled calldata _ownerControlledParams) external onlyOwner {
+        if (_ownerControlledParams.protocolFeeController == address(0) || _ownerControlledParams.minSplitForLP == 0) {
+            revert InvalidOwnerControlledParams();
+        }
         ownerControlledParams = _ownerControlledParams;
         emit OwnerControlledParamsSet(
             _ownerControlledParams.protocolFeeController, _ownerControlledParams.minSplitForLP
@@ -83,13 +88,15 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         _validateAuctionParams(totalSupply, auctionParams, migrationParams);
 
         // Validate the migrator parameters
-        _validateMigratorParams(totalSupply, migrationParams);
+        _validateMigratorParams(migrationParams);
 
+        // Subtract custody tokens so the CCA only auctions the remaining portion.
+        uint256 auctionedSupply = totalSupply - auctionParams.custodyTokens;
         // Deploy the initializer contract via factory
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, totalSupply, _encodeAuctionParams(auctionParams), bytes32(0))
+                    .initializeDistribution(token, auctionedSupply, _encodeAuctionParams(auctionParams), bytes32(0))
             )
         );
 
@@ -118,6 +125,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Get the identifier for the initializer
         bytes32 identifier = initializers[initializer];
 
+        // Delete the initializer from the mapping to save gas
+        delete initializers[initializer];
+
         // Validate the migration parameters by comparing the stored identifier to the recreated identifier
         if (identifier != _createIdentifier(migrationParams)) {
             revert InvalidMigrationParameters();
@@ -134,7 +144,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.currencySplitForLP);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool
-        (uint128 actualCurrencyAmountForLp, uint128 currencyAmountAboveMax) =
+        (uint128 actualCurrencyAmountForLp, uint256 currencyAmountAboveMax) =
             _validateCurrencyAmountForLp(currencyAmountForLp);
         if (currencyAmountAboveMax > 0) {
             // TODO: Discussion if amount above currency raised should be transferred to the funds recipient or revert.
@@ -143,6 +153,8 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         }
         currencyAmountForLp = actualCurrencyAmountForLp;
 
+        // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
+        // This requires trusting the initializer to return correct and immutable addresses.
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
 
@@ -156,8 +168,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             migrationParams.poolTickSpacing
         );
 
-        PoolKey memory key =
-            _initializePool(data, currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing);
+        PoolKey memory key = _initializePool(
+            data, currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing, migrationParams.lpHook
+        );
 
         (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(data);
 
@@ -182,6 +195,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         emit Migrated(key, data.sqrtPriceX96);
     }
 
+    /// @notice Receive native currency
+    receive() external payable {}
+
     /// @notice Creates the position plan based on migration data
     /// @param _data Migration data with all necessary parameters
     /// @return plan The encoded position plan
@@ -201,14 +217,15 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         Currency currency,
         Currency token,
         uint24 poolLPFee,
-        int24 poolTickSpacing
+        int24 poolTickSpacing,
+        address lpHook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
             currency0: _currency0(currency, token),
             currency1: _currency1(currency, token),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
-            hooks: IHooks(address(this))
+            hooks: IHooks(lpHook)
         });
 
         // Initialize the pool with the returned initial price
@@ -249,18 +266,20 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     }
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
-    /// @param _totalSupply The total supply of the token that was sent to this contract to be distributed
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(uint256 _totalSupply, MigratorParameters calldata _migratorParams) private view {
-        // Ensure the total supply is less than or equal to type(uint128).max
-        if (_totalSupply > type(uint128).max) revert InvalidAmount(_totalSupply, type(uint128).max);
+    function _validateMigratorParams(MigratorParameters calldata _migratorParams) private view {
         // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
-        if (_migratorParams.supplyForLP + _migratorParams.custodyTokens > type(uint128).max) {
-            revert InvalidAmount(_migratorParams.supplyForLP, _totalSupply);
+        if (uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens) > type(uint128).max) {
+            revert InvalidCustodySupply(
+                uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
+            );
         }
-        // max currency amount for LP cannot be smaller than the min split for LP or bigger than 100%
+        // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
         (, uint24 minSplitForLP) = _readOwnerControlledParams();
-        if (_migratorParams.currencySplitForLP < minSplitForLP || _migratorParams.currencySplitForLP > 1e7) {
+        if (
+            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLP
+                || _migratorParams.currencySplitForLP > 1e7
+        ) {
             revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLP, 1e7);
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
@@ -295,11 +314,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         AuctionParameters calldata auctionParams,
         MigratorParameters calldata migrationParams
     ) private view {
-        // Ensure the auctioned supply is less than the maximum uint128 value to allow migration to a v4 pool
-        // TODO: If CCA only requires auctionSupply <= uint128.max because of LP limits, we can remove this condition from here and CCA
-        //       since the token amount going into the v4 pool is migrationParams.supplyForLP, which is enforced as uint128.
-        if (totalSupply > type(uint128).max) revert InvalidAmount(totalSupply, type(uint128).max);
-
         // Ensure the funds recipient is this contract
         if (auctionParams.fundsRecipient != address(this) || auctionParams.tokensRecipient != address(this)) {
             revert InvalidRecipient(address(this));
@@ -309,18 +323,34 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             revert InvalidEndBlock(auctionParams.endBlock, migrationParams.migrationBlock);
         }
         // Ensure the custody tokens are correct inside the auction parameters
-        if (auctionParams.custodyTokens != migrationParams.supplyForLP + migrationParams.custodyTokens) {
-            revert InvalidAmount(
-                auctionParams.custodyTokens, migrationParams.supplyForLP + migrationParams.custodyTokens
-            );
+        uint256 expectedCustodyTokens = migrationParams.supplyForLP + migrationParams.custodyTokens;
+        // Ensure the custody tokens are correct inside the auction parameters
+        if (auctionParams.custodyTokens != expectedCustodyTokens) {
+            revert InvalidCustodySupply(auctionParams.custodyTokens, expectedCustodyTokens);
+        }
+        // totalSupply includes auctioned tokens + custody tokens (supplyForLP + custodyTokens), so it must be greater
+        if (totalSupply <= expectedCustodyTokens) {
+            revert InvalidTotalSupply(totalSupply, expectedCustodyTokens);
+        }
+        // Ensure the auctioned supply is less than the maximum uint128 value to allow migration to a v4 pool
+        // TODO: If CCA only requires auctionSupply <= uint128.max because of LP limits, we can remove this condition from here and CCA
+        //       since the token amount going into the v4 pool is migrationParams.supplyForLP, which is enforced as uint128.
+        if (totalSupply - expectedCustodyTokens > type(uint128).max) {
+            revert InvalidTotalSupply(totalSupply, type(uint128).max);
         }
     }
 
     function _readOwnerControlledParams() private view returns (address protocolFeeController, uint24 minSplitForLP) {
         assembly ("memory-safe") {
             let slotContent := sload(ownerControlledParams.slot)
-            protocolFeeController := and(slotContent, 0xffffffffffffffffffffffffffffffffffffffff)
-            minSplitForLP := and(shr(160, slotContent), 0xffffffffffff)
+            protocolFeeController := and(
+                slotContent,
+                0xffffffffffffffffffffffffffffffffffffffff /* address mask */
+            )
+            minSplitForLP := and(
+                shr(160, slotContent),
+                0xffffff /* uint24 mask */
+            )
         }
     }
 
@@ -329,11 +359,11 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     function _validateCurrencyAmountForLp(uint256 currencyAmountForLp)
         private
         pure
-        returns (uint128 actualCurrencyAmountForLp, uint128 currencyAmountAboveMax)
+        returns (uint128 actualCurrencyAmountForLp, uint256 currencyAmountAboveMax)
     {
         // Cannot create a v4 pool with more than type(uint128).max currency amount
         if (currencyAmountForLp > type(uint128).max) {
-            currencyAmountAboveMax = uint128(currencyAmountForLp - type(uint128).max);
+            currencyAmountAboveMax = currencyAmountForLp - type(uint128).max;
             actualCurrencyAmountForLp = type(uint128).max;
         } else {
             actualCurrencyAmountForLp = uint128(currencyAmountForLp);
@@ -416,29 +446,30 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     {
         // AuctionParameters struct layout:
         //
-        // 0x00 currency
-        // 0x20 tokensRecipient
-        // 0x40 fundsRecipient
-        // 0x60 startBlock
-        // 0x80 endBlock
-        // 0xa0 claimBlock
-        // 0xc0 tickSpacing
-        // 0xe0 validationHook
-        // 0x100 floorPrice
-        // 0x120 requiredCurrencyRaised
-        // 0x140 auctionStepsData.offset
-        // 0x160 auctionStepsData.length
-        // 0x180 auctionStepsData.content (if length > 0)
+        // 0x00 address currency
+        // 0x20 uint128 custodyTokens
+        // 0x40 address tokensRecipient
+        // 0x60 address fundsRecipient
+        // 0x80 uint64 startBlock
+        // 0xa0 uint64 endBlock
+        // 0xc0 uint64 claimBlock
+        // 0xe0 uint256 tickSpacing
+        // 0x100 address validationHook
+        // 0x120 uint256 floorPrice
+        // 0x140 uint128 requiredCurrencyRaised
+        // 0x160 bytes auctionStepsData.offset
+        // 0x180 bytes auctionStepsData.length
+        // 0x1a0 bytes auctionStepsData.content (if length > 0)
         // ...
         //
-        // Total length: 0x180 + rounded up auctionStepsData.length
+        // Total length: 0x1a0 + rounded up auctionStepsData.length
 
         assembly ("memory-safe") {
             // Get the length of the auction steps data since its variable
-            let auctionStepsDataLength := calldataload(add(auctionParams, 0x160))
+            let auctionStepsDataLength := calldataload(add(auctionParams, 0x180))
             // Normalize the length to be a multiple of 32
             auctionStepsDataLength := and(add(auctionStepsDataLength, 0x1f), not(0x1f))
-            let bytesLength := add(0x180, auctionStepsDataLength)
+            let bytesLength := add(0x1a0, auctionStepsDataLength)
             encodedAuctionParams.length := bytesLength
             encodedAuctionParams.offset := auctionParams
         }
