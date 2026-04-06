@@ -1,11 +1,11 @@
 InitializeDistributionTest
-├── when currencySplitForLP is 0
-│   └── it reverts with {InvalidCurrencySplitForLP}
-├── when currencySplitForLP is greater than 1e7
-│   └── it reverts with {InvalidCurrencySplitForLP}
-├── when currencySplitForLP is less than minSplitForLP
-│   └── it reverts with {InvalidCurrencySplitForLP}
-└── when currencySplitForLP is valid
+├── when tier1Rate is 0
+│   └── it reverts with {InvalidBracketConfiguration}
+├── when tier1Rate is greater than 1e7
+│   └── it reverts with {InvalidBracketConfiguration}
+├── when tier1Rate is less than minSplitForLP
+│   └── it reverts with {InvalidBracketConfiguration}
+└── when bracket config is valid
     ├── when poolTickSpacing is out of bounds
     │   └── it reverts with {InvalidTickSpacing}
     └── when poolTickSpacing is valid

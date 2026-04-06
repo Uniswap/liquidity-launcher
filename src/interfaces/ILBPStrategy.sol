@@ -17,7 +17,11 @@ interface ILBPStrategy {
         address fundsRecipient; // the address that will receive the funds from the auction
         uint128 custodyTokens; // additional amount of the token that will be hold in custody during the auction (additionally to supplyForLP)
         address lpPositionRecipient; // the address that will receive the created LP position
-        uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
+        uint24 tier1Rate; // % of currency allocated to LP for the first bracket, expressed in mps (1e7 = 100%)
+        uint128 tier1Threshold; // upper bound of tier 1 in currency amount (0 = flat rate, tier1Rate applies to all)
+        uint24 tier2Rate; // % of currency allocated to LP for the second bracket
+        uint128 tier2Threshold; // upper bound of tier 2 in currency amount (0 = tier2 is the last tier)
+        uint24 tier3Rate; // % of currency allocated to LP for the third bracket (everything above tier2Threshold)
         address lpHook; // the hook that will be used to initialize the pool
     }
 
@@ -70,11 +74,8 @@ interface ILBPStrategy {
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
 
-    /// @notice Error thrown when the currency split for LP is smaller than the min split for LP or bigger than 100%
-    /// @param currencySplitForLP The invalid currency split for LP
-    /// @param minSplitForLP The min split for LP
-    /// @param maxSplitForLP The max split for LP
-    error InvalidCurrencySplitForLP(uint24 currencySplitForLP, uint24 minSplitForLP, uint24 maxSplitForLP);
+    /// @notice Error thrown when the bracket configuration is invalid
+    error InvalidBracketConfiguration();
 
     /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
     /// @param tickSpacing The invalid tick spacing

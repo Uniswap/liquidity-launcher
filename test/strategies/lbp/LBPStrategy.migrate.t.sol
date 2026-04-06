@@ -50,7 +50,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
             LBPInitializationParams({initialPriceX96: FixedPoint96.Q96, tokensSold: 100e18, currencyRaised: hugeRaise})
         );
 
-        uint256 lpAmount = hugeRaise * DEFAULT_CURRENCY_SPLIT / 1e7;
+        uint256 lpAmount = hugeRaise * DEFAULT_TIER1_RATE / 1e7;
         assertGt(lpAmount, type(uint128).max);
     }
 }

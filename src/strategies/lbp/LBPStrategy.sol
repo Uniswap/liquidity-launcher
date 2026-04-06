@@ -36,6 +36,8 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         uint128 liquidity;
     }
 
+    uint24 constant MAX_BRACKET_RATE = 1e7; // 100% in mps
+
     IPoolManager public immutable poolManager;
     IPositionManager public immutable positionManager;
     IDistributionStrategy public immutable initializerFactory;
@@ -150,8 +152,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp =
-            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.currencySplitForLP);
+        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
         // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
@@ -280,14 +281,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
                 uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
             );
         }
-        // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
+        // Validate bracket configuration
         (, uint24 minSplitForLP) = _readOwnerControlledParams();
-        if (
-            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLP
-                || _migratorParams.currencySplitForLP > 1e7
-        ) {
-            revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLP, 1e7);
-        }
+        _validateBrackets(_migratorParams, minSplitForLP);
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
             _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
@@ -402,17 +398,74 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         });
     }
 
-    function _calculateCurrencyAmountForLp(uint256 currencyAmount, uint24 currencySplitForLP)
+    function _calculateCurrencyAmountForLp(uint256 currencyAmount, MigratorParameters memory params)
         private
         pure
-        returns (uint256 currencyAmountForLp)
+        returns (uint256)
     {
-        currencyAmountForLp = currencyAmount * currencySplitForLP / 1e7;
+        // 1 tier (flat rate): tier1Threshold == 0 means tier1Rate applies to everything
+        if (params.tier1Threshold == 0) {
+            return currencyAmount * params.tier1Rate / MAX_BRACKET_RATE;
+        }
+
+        uint256 lpAmount;
+        uint256 remaining = currencyAmount;
+
+        // Tier 1: 0..tier1Threshold
+        uint256 tier1Amount = remaining > params.tier1Threshold ? uint256(params.tier1Threshold) : remaining;
+        lpAmount += tier1Amount * params.tier1Rate / MAX_BRACKET_RATE;
+        remaining -= tier1Amount;
+
+        // 2 tiers: tier2Threshold == 0 means tier2 covers everything above tier1
+        if (remaining == 0 || params.tier2Threshold == 0) {
+            lpAmount += remaining * params.tier2Rate / MAX_BRACKET_RATE;
+            return lpAmount;
+        }
+
+        // Tier 2: tier1Threshold..tier2Threshold
+        uint256 tier2Bound = uint256(params.tier2Threshold) - uint256(params.tier1Threshold);
+        uint256 tier2Amount = remaining > tier2Bound ? tier2Bound : remaining;
+        lpAmount += tier2Amount * params.tier2Rate / MAX_BRACKET_RATE;
+        remaining -= tier2Amount;
+
+        // Tier 3: everything above tier2Threshold
+        lpAmount += remaining * params.tier3Rate / MAX_BRACKET_RATE;
+
+        return lpAmount;
+    }
+
+    /// @notice Validates the bracket configuration
+    /// @param _params The migrator parameters containing bracket config
+    /// @param _minSplitForLP The minimum rate allowed for any tier
+    function _validateBrackets(MigratorParameters memory _params, uint24 _minSplitForLP) private pure {
+        // tier1Rate is always required and must be non-zero
+        if (_params.tier1Rate == 0 || _params.tier1Rate < _minSplitForLP || _params.tier1Rate > MAX_BRACKET_RATE) {
+            revert InvalidBracketConfiguration();
+        }
+
+        // Flat rate: only tier1Rate matters, done
+        if (_params.tier1Threshold == 0) return;
+
+        // 2+ tiers: tier2Rate must be valid
+        if (_params.tier2Rate < _minSplitForLP || _params.tier2Rate > MAX_BRACKET_RATE) {
+            revert InvalidBracketConfiguration();
+        }
+
+        // 2 tiers only: done
+        if (_params.tier2Threshold == 0) return;
+
+        // 3 tiers: tier2Threshold must be greater than tier1Threshold, tier3Rate must be valid
+        if (_params.tier2Threshold <= _params.tier1Threshold) {
+            revert InvalidBracketConfiguration();
+        }
+        if (_params.tier3Rate < _minSplitForLP || _params.tier3Rate > MAX_BRACKET_RATE) {
+            revert InvalidBracketConfiguration();
+        }
     }
 
     function _createIdentifier(MigratorParameters memory migrationParams) private pure returns (bytes32 identifier) {
         assembly ("memory-safe") {
-            identifier := keccak256(migrationParams, 0x120)
+            identifier := keccak256(migrationParams, 0x1A0)
         }
     }
 

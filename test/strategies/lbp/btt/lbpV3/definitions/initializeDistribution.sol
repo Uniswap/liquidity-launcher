@@ -16,8 +16,8 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 /// @notice BTT tests for LBPStrategy.initializeDistribution
 ///
 /// initializeDistribution
-/// ├── when currencySplitForLP is invalid (0, >1e7, <min)
-/// │   └── it reverts with InvalidCurrencySplitForLP
+/// ├── when bracket config is invalid (tier1Rate 0, >1e7, <min)
+/// │   └── it reverts with InvalidBracketConfiguration
 /// ├── when tickSpacing is out of bounds
 /// │   └── it reverts with InvalidTickSpacing
 /// ├── when fee > MAX_LP_FEE
@@ -35,42 +35,42 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///         ├── it stores the identifier
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
-    function test_WhenCurrencySplitIsZero() public {
+    function test_WhenTier1RateIsZero() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.currencySplitForLP = 0;
+        mp.tier1Rate = 0;
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, 0, 0, 1e7));
+        vm.expectRevert(ILBPStrategy.InvalidBracketConfiguration.selector);
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenCurrencySplitIsOver100Percent(uint24 _split) public {
-        _split = uint24(bound(_split, 1e7 + 1, type(uint24).max));
+    function test_WhenTier1RateIsOver100Percent(uint24 _rate) public {
+        _rate = uint24(bound(_rate, 1e7 + 1, type(uint24).max));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.currencySplitForLP = _split;
+        mp.tier1Rate = _rate;
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, _split, 0, 1e7));
+        vm.expectRevert(ILBPStrategy.InvalidBracketConfiguration.selector);
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenCurrencySplitIsBelowMinimum(uint24 _minSplit, uint24 _split) public {
+    function test_WhenTier1RateIsBelowMinimum(uint24 _minSplit, uint24 _rate) public {
         _minSplit = uint24(bound(_minSplit, 2, 10_000));
-        _split = uint24(bound(_split, 1, _minSplit - 1));
+        _rate = uint24(bound(_rate, 1, _minSplit - 1));
 
         strategy.setMinSplitForLp(_minSplit);
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.currencySplitForLP = _split;
+        mp.tier1Rate = _rate;
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, _split, _minSplit, 1e7));
+        vm.expectRevert(ILBPStrategy.InvalidBracketConfiguration.selector);
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    modifier whenCurrencySplitIsValid() {
+    modifier whenBracketConfigIsValid() {
         _;
     }
 
-    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing) public whenCurrencySplitIsValid {
+    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing) public whenBracketConfigIsValid {
         vm.assume(_tickSpacing > TickMath.MAX_TICK_SPACING || _tickSpacing < TickMath.MIN_TICK_SPACING);
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
@@ -91,7 +91,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenFeeIsAboveMax(uint24 _fee) public whenCurrencySplitIsValid whenTickSpacingIsValid {
+    function test_WhenFeeIsAboveMax(uint24 _fee) public whenBracketConfigIsValid whenTickSpacingIsValid {
         _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
@@ -107,7 +107,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
     function test_WhenPositionRecipientIsReserved(uint256 _seed)
         public
-        whenCurrencySplitIsValid
+        whenBracketConfigIsValid
         whenTickSpacingIsValid
         whenFeeIsValid
     {
@@ -228,7 +228,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
                 mp.fundsRecipient,
                 mp.custodyTokens,
                 mp.lpPositionRecipient,
-                mp.currencySplitForLP,
+                mp.tier1Rate,
+                mp.tier1Threshold,
+                mp.tier2Rate,
+                mp.tier2Threshold,
+                mp.tier3Rate,
                 mp.lpHook
             )
         );

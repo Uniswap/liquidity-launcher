@@ -26,7 +26,7 @@ abstract contract LBPStrategyTestBase is Test {
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
     uint128 constant DEFAULT_SUPPLY_FOR_LP = 200e18;
     uint128 constant DEFAULT_CUSTODY_TOKENS = 50e18;
-    uint24 constant DEFAULT_CURRENCY_SPLIT = 5e6;
+    uint24 constant DEFAULT_TIER1_RATE = 5e6; // 50% flat rate
     uint24 constant DEFAULT_POOL_FEE = 500;
     int24 constant DEFAULT_TICK_SPACING = 10;
     uint64 constant MIGRATION_BLOCK_OFFSET = 200;
@@ -57,7 +57,11 @@ abstract contract LBPStrategyTestBase is Test {
             fundsRecipient: fundsRecipient,
             custodyTokens: DEFAULT_CUSTODY_TOKENS,
             lpPositionRecipient: lpPositionRecipient,
-            currencySplitForLP: DEFAULT_CURRENCY_SPLIT,
+            tier1Rate: DEFAULT_TIER1_RATE,
+            tier1Threshold: 0, // flat rate
+            tier2Rate: 0,
+            tier2Threshold: 0,
+            tier3Rate: 0,
             lpHook: address(0)
         });
     }

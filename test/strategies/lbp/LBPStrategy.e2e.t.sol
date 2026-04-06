@@ -24,7 +24,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         // Build params
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.currencySplitForLP = split;
+        mp.tier1Rate = split;
         mp.poolTickSpacing = tickSpacing;
         mp.poolLPFee = fee;
 
@@ -104,7 +104,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         currencyRaised = uint128(bound(currencyRaised, 1e15, 1000e18));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.currencySplitForLP = split;
+        mp.tier1Rate = split;
 
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));

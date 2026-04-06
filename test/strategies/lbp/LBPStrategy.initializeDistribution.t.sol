@@ -26,7 +26,11 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
                 mp.fundsRecipient,
                 mp.custodyTokens,
                 mp.lpPositionRecipient,
-                mp.currencySplitForLP,
+                mp.tier1Rate,
+                mp.tier1Threshold,
+                mp.tier2Rate,
+                mp.tier2Threshold,
+                mp.tier3Rate,
                 mp.lpHook
             )
         );
