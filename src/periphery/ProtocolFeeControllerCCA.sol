@@ -5,11 +5,6 @@ import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeControl
 import {Owned} from "@uniswap/v4-core/lib/solmate/src/auth/Owned.sol";
 
 contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
-    struct GlobalFee {
-        uint24 globalProtocolFeeBps;
-        address globalProtocolFeeRecipient;
-    }
-
     struct Fee {
         uint16 startAmount;
         uint16 protocolFeeBps;
