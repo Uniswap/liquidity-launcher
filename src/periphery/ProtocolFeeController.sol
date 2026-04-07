@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
 import {Owned} from "@uniswap/v4-core/lib/solmate/src/auth/Owned.sol";
 
-contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
+contract ProtocolFeeController is Owned, IProtocolFeeController {
     struct Fee {
         uint16 startAmount;
         uint16 protocolFeeBps;
@@ -15,7 +15,6 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
     uint16 public constant UINT16_MASK = 0xffff;
     uint24 public constant UINT24_MASK = 0xffffff;
     /// @notice bytes4(keccak256("CURRENCY_PROTOCOL_FEE"))
-    /// @dev  mapping(address currency => Fee[] currencyProtocolFees) public currencyProtocolFees;
     bytes4 public constant CURRENCY_PROTOCOL_FEE_SLOT_PREFIX = 0x9562575e;
 
     GlobalFee public globalProtocolFee;
@@ -40,6 +39,7 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
         emit GlobalProtocolFeeSettingsUpdated(globalProtocolFeeBps, recipient);
     }
 
+    /// @dev Must only be called after a global fee recipient is set
     function setProtocolFeePerCurrency(address currency, uint8 scale, Fee[] calldata fees, uint16 cap)
         external
         onlyOwner
@@ -59,9 +59,10 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
         // Limit the number of fees gradations to 3
         if (fees.length > 3) revert InvalidFeeLength(uint8(fees.length), 3);
         // Scale is a power-of-10 exponent (threshold = startAmount * 10^scale).
-        // uint16 max (65,535) × 10^72 ≈ 6.55 × 10^76 < uint256 max ≈ 1.158 × 10^77.
-        // scale > 72 would silently overflow in unchecked assembly multiplication.
-        if (scale > 72) revert InvalidScale(scale, 72);
+        // Normally capped at 72 to prevent overflow: uint16 max (65,535) × 10^72 < uint256 max.
+        // Tightened to 68 because the fee loop multiplies bracketAmount × feeBps (max 10,000):
+        // 65,535 × 10^68 × 10,000 < uint256 max.
+        if (scale > 68) revert InvalidScale(scale, 68);
         // The first fee gradation must start at 0, since it describes the base fee.
         if (fees[0].startAmount != 0) revert InvalidInput();
 
@@ -102,6 +103,7 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
             // Ensure the cap is greater than the last startAmount or zero (indicating no cap set)
             errorBuffer := or(errorBuffer, and(iszero(gt(cap, previousStartAmount)), gt(cap, 0)))
 
+            // Revert if any errors were found.
             if errorBuffer {
                 mstore(0, 0xb4fa3fb3) // InvalidInput()
                 revert(0x1c, 0x04)
@@ -112,7 +114,7 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
             // Pack uint 8 length & uint8 scale. Overrides uint16 fees[0].startAmount, confirmed to be zero:
             // Pack the length of the fee gradations. Max length of three fits into 8 bits.
             content := or(content, shl(248, and(fees.length, UINT8_MASK)))
-            // pack the scale of the fee gradations. Max of 77 fits into 8 bits.
+            // pack the scale of the fee gradations. Max of 68 fits into 8 bits.
             content := or(content, shl(240, and(scale, UINT8_MASK)))
 
             // Store the packed content in the currency's protocol fee slot.
@@ -122,6 +124,7 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
         emit ProtocolFeePerCurrencyUpdated(currency, scale, fees, cap);
     }
 
+    /// @notice Returns the truncated protocol fee in basis points for the given currency and amount. Actual fee should be retrieved using getProtocolFeeAmount.
     function getProtocolFeeBps(address currency, uint256 amount)
         external
         view
@@ -142,6 +145,11 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
         view
         returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
     {
+        if (amount == 0) {
+            protocolFeeAmount = 0;
+            protocolFeeRecipient = globalProtocolFee.globalProtocolFeeRecipient;
+            return (protocolFeeAmount, protocolFeeRecipient);
+        }
         assembly ("memory-safe") {
             // Load the content of the global protocol fee slot.
             // Use assembly to directly cast the slot content to stack and skip memory allocation
@@ -198,6 +206,10 @@ contract ProtocolFeeControllerCCA is Owned, IProtocolFeeController {
 
                     previousStartAmount := ceiling
                 }
+
+                // Round down to bps precision in favor of the paying party so getProtocolFeeAmount and getProtocolFeeBps are consistent.
+                // Converts to integer bps (truncating), then back to amount.
+                protocolFeeAmount := div(mul(div(mul(protocolFeeAmount, BPS), amount), amount), BPS)
             }
 
             // Use the global protocol fee, only if no custom protocol fees are configured.

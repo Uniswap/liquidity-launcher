@@ -61,7 +61,7 @@ Each currency's fee configuration is packed into a single 256-bit storage slot:
 | Field    | Bits | Range    | Description                                                                            |
 | -------- | ---- | -------- | -------------------------------------------------------------------------------------- |
 | `length` | 8    | 0-3      | Number of active fee tiers                                                             |
-| `scale`  | 8    | 0-72     | Power-of-10 exponent. Defines the unit size: `1 unit = 10^scale` smallest denomination. Capped at 72 to prevent overflow: `uint16 max (65,535) × 10^72 < uint256 max` |
+| `scale`  | 8    | 0-68     | Power-of-10 exponent. Defines the unit size: `1 unit = 10^scale` smallest denomination. Capped at 68 to prevent overflow in fee calculation: `uint16 max (65,535) × 10^68 × 10,000 bps < uint256 max` |
 | `fee1`   | 16   | 0-10,000 | Fee rate in bps for the first bracket (starts at amount 0)                             |
 | `start2` | 16   | 0-65,535 | Start amount for the second bracket, in scaled units                                   |
 | `fee2`   | 16   | 0-10,000 | Fee rate in bps for the second bracket                                                 |
