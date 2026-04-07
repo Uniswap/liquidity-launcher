@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
+import {IProtocolFeeController} from "../interfaces/IProtocolFeeController.sol";
 import {Owned} from "@uniswap/v4-core/lib/solmate/src/auth/Owned.sol";
 
 contract ProtocolFeeController is Owned, IProtocolFeeController {
-    struct Fee {
-        uint16 startAmount;
-        uint16 protocolFeeBps;
-    }
-
     uint24 public constant BPS = 10_000;
     uint8 public constant UINT8_MASK = 0xff;
     uint16 public constant UINT16_MASK = 0xffff;
@@ -28,6 +23,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
 
     constructor() Owned(msg.sender) {}
 
+    /// @inheritdoc IProtocolFeeController
     function setGlobalProtocolFeeSettings(uint24 globalProtocolFeeBps, address recipient) external onlyOwner {
         if (globalProtocolFeeBps > BPS) revert InvalidInput();
         if (recipient == address(0)) revert InvalidInput();
@@ -39,7 +35,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
         emit GlobalProtocolFeeSettingsUpdated(globalProtocolFeeBps, recipient);
     }
 
-    /// @dev Must only be called after a global fee recipient is set
+    /// @inheritdoc IProtocolFeeController
     function setProtocolFeePerCurrency(address currency, uint8 scale, Fee[] calldata fees, uint16 cap)
         external
         onlyOwner
@@ -124,7 +120,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
         emit ProtocolFeePerCurrencyUpdated(currency, scale, fees, cap);
     }
 
-    /// @notice Returns the truncated protocol fee in basis points for the given currency and amount. Actual fee should be retrieved using getProtocolFeeAmount.
+    /// @inheritdoc IProtocolFeeController
     function getProtocolFeeBps(address currency, uint256 amount)
         external
         view
@@ -140,6 +136,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
         protocolFeeBps = uint24(protocolFeeAmount * BPS / amount);
     }
 
+    /// @inheritdoc IProtocolFeeController
     function getProtocolFeeAmount(address currency, uint256 amount)
         public
         view
