@@ -158,6 +158,10 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
         view
         returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
     {
+        // Cap amount to prevent silent overflow in unchecked assembly mul(amount, feeBps).
+        // Covers edge case tokens. Type(uint256).max / BPS ≈ 1.16 × 10^73, well beyond any usual token amount.
+        if (amount > type(uint256).max / BPS) amount = type(uint256).max / BPS;
+
         assembly ("memory-safe") {
             // Load the content of the global protocol fee slot.
             // Use assembly to directly cast the slot content to stack and skip memory allocation

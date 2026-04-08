@@ -424,6 +424,31 @@ contract ProtocolFeeControllerTest is Test {
         assertEq(feeAt20001, 2, "Fee must not vanish far above cap");
     }
 
+    function test_getProtocolFeeAmount_capsAmountToPreventOverflow() public {
+        // Global fee = 500 bps. For amounts > type(uint256).max / BPS, the contract
+        // caps the amount to prevent silent overflow in assembly mul operations.
+        uint256 maxSafe = type(uint256).max / BPS;
+
+        // At the cap boundary: should return the fee on maxSafe
+        (uint256 feeAtMax,) = controller.getProtocolFeeAmount(currency, maxSafe);
+        assertEq(feeAtMax, maxSafe * 500 / BPS);
+
+        // Above the cap: should return the same fee (amount is capped internally)
+        (uint256 feeAboveMax,) = controller.getProtocolFeeAmount(currency, maxSafe + 1);
+        assertEq(feeAboveMax, feeAtMax, "Fee must not wrap on overflow amount");
+
+        // type(uint256).max: same capped fee, no revert
+        (uint256 feeAtUintMax,) = controller.getProtocolFeeAmount(currency, type(uint256).max);
+        assertEq(feeAtUintMax, feeAtMax, "Fee must not wrap on uint256 max");
+    }
+
+    function test_getProtocolFeeBps_doesNotRevertOnOverflowAmount() public {
+        // Must not revert even at type(uint256).max — the internal cap prevents overflow.
+        // Bps is 0 because the capped fee is negligible relative to type(uint256).max.
+        (uint24 bps,) = controller.getProtocolFeeBps(currency, type(uint256).max);
+        assertEq(bps, 0);
+    }
+
     function test_getProtocolFeeAmount_maxScale() public {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
         fees[0] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 100});
