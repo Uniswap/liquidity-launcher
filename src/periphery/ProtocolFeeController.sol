@@ -132,7 +132,8 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
             return (protocolFeeBps, protocolFeeRecipient);
         }
         uint256 protocolFeeAmount;
-        (protocolFeeAmount, protocolFeeRecipient) = getProtocolFeeAmount(currency, amount);
+        (protocolFeeAmount, protocolFeeRecipient) = calculateProtocolFeeAmount(currency, amount);
+
         protocolFeeBps = uint24(protocolFeeAmount * BPS / amount);
     }
 
@@ -147,12 +148,22 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
             protocolFeeRecipient = globalProtocolFee.globalProtocolFeeRecipient;
             return (protocolFeeAmount, protocolFeeRecipient);
         }
+        (protocolFeeAmount, protocolFeeRecipient) = calculateProtocolFeeAmount(currency, amount);
+    }
+
+    /// @notice Calculates the protocol fee in basis points for the given currency and amount.
+    ///         Honors custom protocol fee tiers and returns the global protocol fee if non was set.
+    function calculateProtocolFeeAmount(address currency, uint256 amount)
+        private
+        view
+        returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
+    {
         assembly ("memory-safe") {
             // Load the content of the global protocol fee slot.
             // Use assembly to directly cast the slot content to stack and skip memory allocation
             let globalContent := sload(globalProtocolFee.slot)
             // Get the global protocol fee basis points.
-            let protocolFeeBps := and(globalContent, UINT24_MASK)
+            let globalProtocolFeeBps := and(globalContent, UINT24_MASK)
             // Get the global protocol fee recipient.
             protocolFeeRecipient := shr(24, globalContent)
 
@@ -203,14 +214,13 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
 
                     previousStartAmount := ceiling
                 }
-
-                // Round down to bps precision in favor of the paying party so getProtocolFeeAmount and getProtocolFeeBps are consistent.
-                // Converts to integer bps (truncating), then back to amount.
-                protocolFeeAmount := div(mul(div(mul(protocolFeeAmount, BPS), amount), amount), BPS)
             }
 
             // Use the global protocol fee, only if no custom protocol fees are configured.
-            protocolFeeAmount := add(protocolFeeAmount, mul(div(mul(amount, protocolFeeBps), BPS), iszero(length)))
+            protocolFeeAmount := add(
+                protocolFeeAmount,
+                mul(div(mul(amount, globalProtocolFeeBps), BPS), iszero(length))
+            )
         }
     }
 }
