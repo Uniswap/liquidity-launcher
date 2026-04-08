@@ -151,8 +151,8 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
         (protocolFeeAmount, protocolFeeRecipient) = calculateProtocolFeeAmount(currency, amount);
     }
 
-    /// @notice Calculates the protocol fee in basis points for the given currency and amount.
-    ///         Honors custom protocol fee tiers and returns the global protocol fee if non was set.
+    /// @notice Calculates the protocol fee amount for the given currency and amount.
+    ///         Honors custom protocol fee tiers and falls back to the global protocol fee if none was set.
     function calculateProtocolFeeAmount(address currency, uint256 amount)
         private
         view

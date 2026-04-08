@@ -37,8 +37,8 @@ interface IProtocolFeeController {
         view
         returns (uint24 protocolFeeBps, address protocolFeeRecipient);
 
-    /// @notice Returns the protocol fee in basis points, must be less than or equal to the configured
-    ///         maximum protocol fee of 100 basis points.
+    /// @notice Returns the exact protocol fee amount computed under the configured global or per-currency schedule.
+    ///         This is the source of truth for fee deduction. Individual rate parameters are bounded by BPS (10,000 bps = 100%).
     /// @param currency The currency address, address(0) for native
     /// @param amount The amount denoted in currency
     function getProtocolFeeAmount(address currency, uint256 amount)
