@@ -38,22 +38,18 @@ interface ILBPStrategy {
         address lpHook; // the hook that will be used to initialize the pool
     }
 
-    struct MigrationData {
-        uint160 sqrtPriceX96;
-        uint128 fullRangeTokenAmount;
-        uint128 fullRangeCurrencyAmount;
-        uint128 leftoverToken;
-        uint128 leftoverCurrency;
-        uint128 liquidity;
+    struct OwnerControlled {
+        address protocolFeeController; // the address defining the protocol fee payed on non-LP currency
+        uint24 minSplitForLp; // the minimum percentage (in mps) of the total supply of the token that must be sent to an LP
     }
 
-    /// @notice Error thrown when the owner controlled parameters are invalid
-    error InvalidOwnerControlledParams();
-
-    /// @notice Emitted when the owner controlled parameters are updated
+    /// @notice Emitted when the protocol fee controller is set
     /// @param protocolFeeController The protocol fee controller
+    event ProtocolFeeControllerSet(address protocolFeeController);
+
+    /// @notice Emitted when the min split for LP is set
     /// @param minSplitForLP The min split for LP
-    event OwnerControlledParamsSet(address protocolFeeController, uint24 minSplitForLP);
+    event MinSplitForLpSet(uint24 minSplitForLP);
 
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
@@ -70,6 +66,16 @@ interface ILBPStrategy {
 
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
+
+    /// @notice Error thrown when the protocol fee controller is the zero address
+    error InvalidProtocolFeeController();
+
+    /// @notice Error thrown when the min split for LP is zero or greater than 100%
+    error InvalidMinSplitForLp();
+
+    /// @notice Error thrown when the initializer was already created
+    /// @param identifier The identifier stored for the initializer
+    error InitializerAlreadyCreated(bytes32 identifier);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -103,9 +109,9 @@ interface ILBPStrategy {
     /// @param expectedRecipient The expected recipient
     error InvalidRecipient(address expectedRecipient);
 
-    /// @notice Error thrown when the amount is greater than the max amount
-    /// @param amount The invalid amount
-    /// @param maxAmount The max amount
+    /// @notice Error thrown when the total supply is greater than the max total supply
+    /// @param totalSupply The invalid total supply
+    /// @param maxTotalSupply The max total supply
     error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
 
     /// @notice Error thrown when the custody supply (supplyForLP + custodyTokens) is not equal to the expected custody supply

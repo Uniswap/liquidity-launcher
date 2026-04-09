@@ -16,7 +16,6 @@ import {Ownable} from "solady/auth/Ownable.sol";
 import {AuctionParameters} from "../../interfaces/ILBPStrategy.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
-import {ILBPInitializer} from "../../interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
 import {
@@ -29,9 +28,14 @@ import {
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStrategy {
-    struct OwnerControlled {
-        address protocolFeeController; // the address defining the protocol fee payed on non-LP currency
-        uint24 minSplitForLP; // the minimum percentage (in mps) of the total supply of the token that must be sent to an LP
+    /// @notice Internal helper struct
+    struct MigrationData {
+        uint160 sqrtPriceX96;
+        uint128 fullRangeTokenAmount;
+        uint128 fullRangeCurrencyAmount;
+        uint128 leftoverToken;
+        uint128 leftoverCurrency;
+        uint128 liquidity;
     }
 
     IPoolManager public immutable poolManager;
@@ -57,14 +61,24 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         _initializeOwner(msg.sender);
     }
 
-    function setOwnerControlledParams(OwnerControlled calldata _ownerControlledParams) external onlyOwner {
-        if (_ownerControlledParams.protocolFeeController == address(0) || _ownerControlledParams.minSplitForLP == 0) {
-            revert InvalidOwnerControlledParams();
+    function setProtocolFeeController(address protocolFeeController) external onlyOwner {
+        if (protocolFeeController == address(0)) {
+            revert InvalidProtocolFeeController();
         }
-        ownerControlledParams = _ownerControlledParams;
-        emit OwnerControlledParamsSet(
-            _ownerControlledParams.protocolFeeController, _ownerControlledParams.minSplitForLP
-        );
+
+        ownerControlledParams.protocolFeeController = protocolFeeController;
+
+        emit ProtocolFeeControllerSet(protocolFeeController);
+    }
+
+    function setMinSplitForLp(uint24 minSplitForLp) external onlyOwner {
+        if (minSplitForLp == 0 || minSplitForLp > 10_000) {
+            revert InvalidMinSplitForLp();
+        }
+
+        ownerControlledParams.minSplitForLp = minSplitForLp;
+
+        emit MinSplitForLpSet(minSplitForLp);
     }
 
     function initializeDistribution(
@@ -99,6 +113,14 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
                     .initializeDistribution(token, auctionedSupply, _encodeAuctionParams(auctionParams), bytes32(0))
             )
         );
+
+        // Check if the initializer was already set to ensure identifier is not rewritten
+        if (initializers[initializer] != bytes32(0)) {
+            revert InitializerAlreadyCreated(initializers[initializer]);
+        }
+
+        // Validate the initializer parameters are set as expected
+        _validateInitializer(initializer, auctionParams, migrationParams);
 
         // Create the unique identifier for the auction by hashing the MigratorParameters struct
         bytes32 identifier = _createIdentifier(migrationParams);
@@ -143,15 +165,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         uint256 currencyAmountForLp =
             _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.currencySplitForLP);
 
-        // Ensure the currency amount for the LP is in a valid range to create a v4 pool
-        (uint128 actualCurrencyAmountForLp, uint256 currencyAmountAboveMax) =
-            _validateCurrencyAmountForLp(currencyAmountForLp);
-        if (currencyAmountAboveMax > 0) {
-            // TODO: Discussion if amount above currency raised should be transferred to the funds recipient or revert.
-            //       Connected to the discussion about the CCA limit of type(uint128).max currency amount.
-            revert CurrencyAmountTooHigh(currencyAmountForLp, type(uint128).max);
-        }
-        currencyAmountForLp = actualCurrencyAmountForLp;
+        // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
+        // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
+        currencyAmountForLp = _validateCurrencyAmountForLp(currencyAmountForLp);
 
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
         // This requires trusting the initializer to return correct and immutable addresses.
@@ -238,29 +254,31 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     }
 
     /// @notice Transfers assets to position manager and executes the position plan
-    /// @param _tokenTransferAmount The amount of tokens to transfer to the position manager
-    /// @param _currencyTransferAmount The amount of currency to transfer to the position manager
+    /// @param currency The currency to transfer to the position manager
+    /// @param token The token to transfer to the position manager
+    /// @param currencyTransferAmount The amount of currency to transfer to the position manager
+    /// @param tokenTransferAmount The amount of tokens to transfer to the position manager
     /// @param _plan The encoded position plan to execute
     function _transferAssetsAndExecutePlan(
         Currency currency,
         Currency token,
-        uint128 _tokenTransferAmount,
-        uint128 _currencyTransferAmount,
+        uint128 currencyTransferAmount,
+        uint128 tokenTransferAmount,
         bytes memory _plan
     ) private {
         // Transfer tokens to position manager and execute the position plan via modifyLiquidities
         if (currency.isAddressZero()) {
             // Currency is native
-            token.transfer(address(positionManager), _tokenTransferAmount);
-            positionManager.modifyLiquidities{value: _currencyTransferAmount}(_plan, block.timestamp);
+            token.transfer(address(positionManager), tokenTransferAmount);
+            positionManager.modifyLiquidities{value: currencyTransferAmount}(_plan, block.timestamp);
         } else if (token.isAddressZero()) {
             // Token is native
-            currency.transfer(address(positionManager), _currencyTransferAmount);
-            positionManager.modifyLiquidities{value: _tokenTransferAmount}(_plan, block.timestamp);
+            currency.transfer(address(positionManager), currencyTransferAmount);
+            positionManager.modifyLiquidities{value: tokenTransferAmount}(_plan, block.timestamp);
         } else {
             // Both are ERC20 tokens
-            token.transfer(address(positionManager), _tokenTransferAmount);
-            currency.transfer(address(positionManager), _currencyTransferAmount);
+            token.transfer(address(positionManager), tokenTransferAmount);
+            currency.transfer(address(positionManager), currencyTransferAmount);
             positionManager.modifyLiquidities(_plan, block.timestamp);
         }
     }
@@ -324,7 +342,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         }
         // Ensure the custody tokens are correct inside the auction parameters
         uint256 expectedCustodyTokens = migrationParams.supplyForLP + migrationParams.custodyTokens;
-        // Ensure the custody tokens are correct inside the auction parameters
         if (auctionParams.custodyTokens != expectedCustodyTokens) {
             revert InvalidCustodySupply(auctionParams.custodyTokens, expectedCustodyTokens);
         }
@@ -337,6 +354,29 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         //       since the token amount going into the v4 pool is migrationParams.supplyForLP, which is enforced as uint128.
         if (totalSupply - expectedCustodyTokens > type(uint128).max) {
             revert InvalidTotalSupply(totalSupply, type(uint128).max);
+        }
+    }
+
+    /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
+    /// @param initializer The initializer contract
+    /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
+    /// @param auctionParams The auction parameters that will be used to create the v4 pool and position
+    function _validateInitializer(
+        ILBPInitializer initializer,
+        AuctionParameters calldata auctionParams,
+        MigratorParameters calldata migrationParams
+    ) private view {
+        // Ensure the funds recipient is indeed this contract
+        if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
+            revert InvalidRecipient(address(this));
+        }
+        // Ensure the migration block is actually after the end block to ensure a successful migration
+        if (initializer.endBlock() >= migrationParams.migrationBlock) {
+            revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
+        }
+        // Ensure the custody tokens are set in the initializer as expected by the auction parameters
+        if (initializer.custodyTokens() != auctionParams.custodyTokens) {
+            revert InvalidCustodySupply(initializer.custodyTokens(), auctionParams.custodyTokens);
         }
     }
 
@@ -356,22 +396,18 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
     /// @notice Validates migration currency amount for the LP
     /// @param currencyAmountForLp The currency amount raised for the LP
-    function _validateCurrencyAmountForLp(uint256 currencyAmountForLp)
-        private
-        pure
-        returns (uint128 actualCurrencyAmountForLp, uint256 currencyAmountAboveMax)
-    {
-        // Cannot create a v4 pool with more than type(uint128).max currency amount
-        if (currencyAmountForLp > type(uint128).max) {
-            currencyAmountAboveMax = currencyAmountForLp - type(uint128).max;
-            actualCurrencyAmountForLp = type(uint128).max;
-        } else {
-            actualCurrencyAmountForLp = uint128(currencyAmountForLp);
-        }
-
+    function _validateCurrencyAmountForLp(uint256 currencyAmountForLp) private pure returns (uint128) {
         // Cannot create a v4 pool with no currency raised
         if (currencyAmountForLp == 0) {
             revert NoCurrencyRaised();
+        }
+
+        // Cannot create a v4 pool with more than type(uint128).max currency amount
+        if (currencyAmountForLp > type(uint128).max) {
+            // If the currency amount for the LP is greater than type(uint128).max, cap to uint128.max sweep the rest to the funds recipient
+            return type(uint128).max;
+        } else {
+            return uint128(currencyAmountForLp);
         }
     }
 
