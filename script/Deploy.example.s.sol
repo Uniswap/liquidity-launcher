@@ -8,11 +8,21 @@ import {Distribution} from "src/types/Distribution.sol";
 import {IStrategyFactory} from "src/interfaces/IStrategyFactory.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
 import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
+import {MigratorParameters} from "src/types/MigratorParameters.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {Parameters} from "./contracts/Parameters.sol";
+import {SaltGenerator} from "test/saltGenerator/LauncherSaltGenerator.sol";
+import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {ERC20} from "solady/tokens/ERC20.sol";
 
-/// @notice Example script for a token distribution
+/// @notice Example script for a token distribution. By defualt supports only the FullRangeLBPStrategy.
 /// @dev You should fork this and fill in the values in `example.json`
-contract DeployExample is Script {
+contract DeployExample is Script, Parameters {
     using stdJson for string;
+    using SafeCastLib for *;
+
+    uint160 constant BEFORE_INITIALIZE_FLAG_MASK = 1 << 13;
 
     function run() external {
         vm.startBroadcast();
@@ -22,34 +32,68 @@ contract DeployExample is Script {
         string memory chainIdSlug = string(abi.encodePacked('["', vm.toString(block.chainid), '"]'));
         address token = input.readAddress(string.concat(chainIdSlug, ".token"));
         uint128 totalSupply = uint128(input.readUint(string.concat(chainIdSlug, ".totalSupply")));
-        bytes memory configData = input.readBytes(string.concat(chainIdSlug, ".configData"));
-        bytes32 salt = input.readBytes32(string.concat(chainIdSlug, ".salt"));
+
+        MigratorParameters memory migratorParameters = MigratorParameters({
+            migrationBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.migrationBlock")).toUint64(),
+            currency: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.currency")),
+            poolLPFee: input.readUint(string.concat(chainIdSlug, ".migratorParameters.poolLPFee")).toUint24(),
+            poolTickSpacing: input.readInt(string.concat(chainIdSlug, ".migratorParameters.poolTickSpacing")).toInt24(),
+            tokenSplit: input.readUint(string.concat(chainIdSlug, ".migratorParameters.tokenSplit")).toUint24(),
+            initializerFactory: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.initializerFactory")),
+            positionRecipient: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.positionRecipient")),
+            sweepBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.sweepBlock")).toUint64(),
+            operator: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.operator")),
+            maxCurrencyAmountForLP: input.readUint(
+                    string.concat(chainIdSlug, ".migratorParameters.maxCurrencyAmountForLP")
+                ).toUint128()
+        });
+        bytes memory initializerParameters = input.readBytes(string.concat(chainIdSlug, ".initializerParameters"));
+        bytes memory configData = abi.encode(migratorParameters, initializerParameters);
+
         address liquidityLauncher = input.readAddress(string.concat(chainIdSlug, ".liquidityLauncher"));
         address strategyFactory = input.readAddress(string.concat(chainIdSlug, ".strategyFactory"));
-
-        // Salts end up being nested with the msg.sender of each call
-        // The first salt calculated by liquidity launcher uses the originator of the call
-        bytes32 liquidityLauncherSalt = keccak256(abi.encode(msg.sender, salt));
-        bytes32 strategySalt = keccak256(abi.encode(liquidityLauncher, liquidityLauncherSalt));
-
-        // Get the predicted address of the strategy contract
-        address strategy = IStrategyFactory(strategyFactory)
-            .getAddress(token, totalSupply, configData, strategySalt, liquidityLauncher);
 
         // create the distribution instruction
         Distribution memory distribution =
             Distribution({strategy: strategyFactory, amount: totalSupply, configData: configData});
 
-        // Requires the caller of the script to have approved the liquidity launcher
+        // Approve permit2 for the total supply amount
+        ERC20(token).approve(PERMIT2, totalSupply);
+        SafeTransferLib.permit2Approve(token, address(liquidityLauncher), uint160(totalSupply), type(uint48).max);
         bool payerIsUser = true;
 
-        // Begin the distribution
-        ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, payerIsUser, salt);
+        bytes32 initCodeHash = keccak256(
+            abi.encodePacked(
+                type(FullRangeLBPStrategy).creationCode,
+                abi.encode(
+                    token,
+                    uint128(totalSupply),
+                    migratorParameters,
+                    initializerParameters,
+                    getParameters(block.chainid).positionManager,
+                    getParameters(block.chainid).poolManager
+                )
+            )
+        );
+        address poolMask = address(BEFORE_INITIALIZE_FLAG_MASK);
 
-        vm.assertGt(strategy.code.length, 0, "Strategy contract not deployed");
+        vm.stopBroadcast();
+
+        // Don't broadcast the following since it will actually deploy a SaltGenerator
+        bytes32 topLevelSalt = new SaltGenerator().withInitCodeHash(initCodeHash).withMask(poolMask)
+            .withMsgSender(msg.sender).withTokenLauncher(liquidityLauncher).withStrategyFactoryAddress(strategyFactory)
+            .generate();
+
+        vm.startBroadcast();
+
+        // Begin the distribution
+        IDistributionContract strategy =
+            ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, payerIsUser, topLevelSalt);
+
+        vm.assertGt(address(strategy).code.length, 0, "Strategy contract not deployed");
         console2.log("Strategy contract deployed at:", address(strategy));
         // sanity check
-        vm.assertEq(ILBPStrategyBase(strategy).token(), token, "Token mismatch");
+        vm.assertEq(ILBPStrategyBase(address(strategy)).token(), token, "Token mismatch");
 
         vm.stopBroadcast();
     }
