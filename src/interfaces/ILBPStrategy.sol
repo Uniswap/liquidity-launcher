@@ -5,27 +5,10 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
-import {AuctionParameters} from "continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
 interface ILBPStrategy {
-    // TODO: Replace with AuctionParameters from continuous-clearing-auction once the changes are implemented
-    struct AuctionParameters {
-        address currency; // token to raise funds in. Use address(0) for ETH
-        uint128 custodyTokens; // amount of tokens to be held in custody during the auction
-        address tokensRecipient; // address to receive leftover tokens
-        address fundsRecipient; // address to receive all raised funds
-        uint64 startBlock; // Block which the first step starts
-        uint64 endBlock; // When the auction finishes
-        uint64 claimBlock; // Block when the auction can claimed
-        uint256 tickSpacing; // Fixed granularity for prices
-        address validationHook; // Optional hook called before a bid
-        uint256 floorPrice; // Starting floor price for the auction
-        uint128 requiredCurrencyRaised; // Amount of currency required to be raised for the auction to graduate
-        bytes auctionStepsData; // Packed bytes describing token issuance schedule
-    }
-
     struct MigratorParameters {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
