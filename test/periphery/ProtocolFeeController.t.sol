@@ -30,19 +30,19 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     function test_setGlobalProtocolFeeSettings_revertsWhenBpsExceedsBPS() public {
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setGlobalProtocolFeeSettings(10_001, recipient);
     }
 
     function test_setGlobalProtocolFeeSettings_revertsWhenRecipientIsZero() public {
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setGlobalProtocolFeeSettings(500, address(0));
     }
 
     function test_setGlobalProtocolFeeSettings_setsAndEmits() public {
         address newRecipient = makeAddr("newRecipient");
         vm.expectEmit(true, true, true, true);
-        emit ProtocolFeeController.GlobalProtocolFeeSettingsUpdated(300, newRecipient);
+        emit IProtocolFeeController.GlobalProtocolFeeSettingsUpdated(300, newRecipient);
         controller.setGlobalProtocolFeeSettings(300, newRecipient);
 
         (uint24 bps, address r) = controller.globalProtocolFee();
@@ -82,7 +82,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[2] = IProtocolFeeController.Fee({startAmount: 20, protocolFeeBps: 300});
         fees[3] = IProtocolFeeController.Fee({startAmount: 30, protocolFeeBps: 400});
 
-        vm.expectRevert(abi.encodeWithSelector(ProtocolFeeController.InvalidFeeLength.selector, 4, 3));
+        vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidFeeLength.selector, 4, 3));
         controller.setProtocolFeePerCurrency(currency, 18, fees, 0);
     }
 
@@ -90,7 +90,7 @@ contract ProtocolFeeControllerTest is Test {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
         fees[0] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 200});
 
-        vm.expectRevert(abi.encodeWithSelector(ProtocolFeeController.InvalidScale.selector, 69, 68));
+        vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidScale.selector, 69, 68));
         controller.setProtocolFeePerCurrency(currency, 69, fees, 0);
     }
 
@@ -98,7 +98,7 @@ contract ProtocolFeeControllerTest is Test {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
         fees[0] = IProtocolFeeController.Fee({startAmount: 1, protocolFeeBps: 200});
 
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 0);
     }
 
@@ -107,7 +107,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 200});
         fees[1] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 100});
 
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 0);
     }
 
@@ -115,7 +115,7 @@ contract ProtocolFeeControllerTest is Test {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
         fees[0] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 10_001});
 
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 0);
     }
 
@@ -124,7 +124,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 200});
         fees[1] = IProtocolFeeController.Fee({startAmount: 100, protocolFeeBps: 100});
 
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 100);
     }
 
@@ -133,7 +133,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.Fee({startAmount: 0, protocolFeeBps: 200});
         fees[1] = IProtocolFeeController.Fee({startAmount: 100, protocolFeeBps: 100});
 
-        vm.expectRevert(ProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 50);
     }
 
@@ -171,7 +171,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[2] = IProtocolFeeController.Fee({startAmount: 50, protocolFeeBps: 50});
 
         vm.expectEmit(true, true, true, true);
-        emit ProtocolFeeController.ProtocolFeePerCurrencyUpdated(currency, 18, fees, 100);
+        emit IProtocolFeeController.ProtocolFeePerCurrencyUpdated(currency, 18, fees, 100);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 100);
     }
 
@@ -188,7 +188,7 @@ contract ProtocolFeeControllerTest is Test {
         // Delete per-currency config
         IProtocolFeeController.Fee[] memory emptyFees = new IProtocolFeeController.Fee[](0);
         vm.expectEmit(true, true, true, true);
-        emit ProtocolFeeController.ProtocolFeePerCurrencyUpdated(currency, 0, emptyFees, 0);
+        emit IProtocolFeeController.ProtocolFeePerCurrencyUpdated(currency, 0, emptyFees, 0);
         controller.setProtocolFeePerCurrency(currency, 0, emptyFees, 0);
 
         // Verify falls back to global (500 bps)
@@ -424,7 +424,7 @@ contract ProtocolFeeControllerTest is Test {
         assertEq(feeAt20001, 2, "Fee must not vanish far above cap");
     }
 
-    function test_getProtocolFeeAmount_capsAmountToPreventOverflow() public {
+    function test_getProtocolFeeAmount_capsAmountToPreventOverflow() public view {
         // Global fee = 500 bps. For amounts > type(uint256).max / BPS, the contract
         // caps the amount to prevent silent overflow in assembly mul operations.
         uint256 maxSafe = type(uint256).max / BPS;
@@ -442,7 +442,7 @@ contract ProtocolFeeControllerTest is Test {
         assertEq(feeAtUintMax, feeAtMax, "Fee must not wrap on uint256 max");
     }
 
-    function test_getProtocolFeeBps_doesNotRevertOnOverflowAmount() public {
+    function test_getProtocolFeeBps_doesNotRevertOnOverflowAmount() public view {
         // Must not revert even at type(uint256).max — the internal cap prevents overflow.
         // Bps is 0 because the capped fee is negligible relative to type(uint256).max.
         (uint24 bps,) = controller.getProtocolFeeBps(currency, type(uint256).max);

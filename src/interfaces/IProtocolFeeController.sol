@@ -2,16 +2,51 @@
 pragma solidity ^0.8.26;
 
 /// @title IProtocolFeeController
+/// @notice Interface for the ProtocolFeeController, the governance-controlled contract that
+///         determines the protocol fee applied to currency raised through token launches.
+/// @dev Exposes a global flat fee used by default for all currencies, and an optional per-currency
+///      override schedule with up to 3 progressive tiers and an amount cap.
 interface IProtocolFeeController {
+    /// @notice The global fee settings applied to all currencies without a per-currency override
+    /// @param globalProtocolFeeBps The global protocol fee in basis points
+    /// @param globalProtocolFeeRecipient The address that receives protocol fees for all currencies
     struct GlobalFee {
         uint24 globalProtocolFeeBps;
         address globalProtocolFeeRecipient;
     }
 
+    /// @notice A single tier in a per-currency progressive fee schedule
+    /// @param startAmount The scaled start amount of the bracket (threshold = startAmount * 10^scale)
+    /// @param protocolFeeBps The fee rate in basis points applied to the portion of the amount within this bracket
     struct Fee {
         uint16 startAmount;
         uint16 protocolFeeBps;
     }
+
+    /// @notice Emitted when the global protocol fee settings are updated
+    /// @param globalProtocolFeeBps The new global protocol fee in basis points
+    /// @param recipient The new recipient of the global protocol fee
+    event GlobalProtocolFeeSettingsUpdated(uint24 indexed globalProtocolFeeBps, address indexed recipient);
+
+    /// @notice Emitted when a per-currency protocol fee schedule is set or cleared
+    /// @param currency The currency the schedule applies to
+    /// @param scale The power-of-10 exponent used to scale the tier start amounts and cap
+    /// @param fees The tier schedule
+    /// @param cap The amount cap (scaled by 10^scale) after which no additional fees are charged
+    event ProtocolFeePerCurrencyUpdated(address indexed currency, uint8 scale, Fee[] fees, uint16 cap);
+
+    /// @notice Thrown when the number of tiers exceeds the supported maximum
+    /// @param length The provided number of tiers
+    /// @param maxLength The maximum supported number of tiers
+    error InvalidFeeLength(uint8 length, uint8 maxLength);
+
+    /// @notice Thrown when the scale exceeds the supported maximum
+    /// @param scale The provided scale
+    /// @param maxScale The maximum supported scale
+    error InvalidScale(uint8 scale, uint8 maxScale);
+
+    /// @notice Generic error thrown for invalid inputs
+    error InvalidInput();
 
     /// @notice Sets the global protocol fee settings for all currencies without custom fees
     /// @param globalProtocolFeeBps The global protocol fee in basis points
