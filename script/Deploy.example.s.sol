@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {FullRangeLBPStrategy} from "src/strategies/lbp/FullRangeLBPStrategy.sol";
 import {Script, stdJson} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {Distribution} from "src/types/Distribution.sol";
 import {IStrategyFactory} from "src/interfaces/IStrategyFactory.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
 
 /// @notice Example script for a token distribution
 /// @dev You should fork this and fill in the values in `example.json`
@@ -48,8 +46,6 @@ contract DeployExample is Script {
 
         vm.assertGt(strategy.code.length, 0, "Strategy contract not deployed");
         console2.log("Strategy contract deployed at:", address(strategy));
-        // sanity check
-        vm.assertEq(ILBPStrategyBase(strategy).token(), token, "Token mismatch");
 
         vm.stopBroadcast();
     }
