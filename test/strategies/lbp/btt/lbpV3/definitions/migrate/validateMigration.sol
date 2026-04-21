@@ -35,9 +35,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         // Never registered via initializeDistribution, so stored migrationBlock is 0
         ILBPInitializer unregistered = ILBPInitializer(
             address(
-                new MockLBPInitializer(
-                    address(token), address(0), 0, 0, address(strategy), address(strategy), 0, 0
-                )
+                new MockLBPInitializer(address(token), address(0), 0, 0, address(strategy), address(strategy), 0, 0)
             )
         );
 
@@ -45,9 +43,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(unregistered);
         assertEq(storedMigrationBlock, 0);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), _currentBlock)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), _currentBlock));
         strategy.migrate(unregistered);
     }
 
