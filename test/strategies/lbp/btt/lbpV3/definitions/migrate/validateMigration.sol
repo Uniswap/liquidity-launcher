@@ -12,6 +12,8 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 /// @notice BTT tests for LBPStrategy.migrate validation
 ///
 /// migrate
+/// ├── when initializer is unregistered (stored migrationBlock == 0)
+/// │   └── it reverts with MigrationNotAllowed(0, currentBlock)
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotAllowed
 /// └── when block.number >= migrationBlock
@@ -26,6 +28,29 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 ///         ├── it emits TokensSwept
 ///         └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
+    function test_WhenInitializerIsUnregistered(uint64 _currentBlock) public {
+        _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
+        vm.roll(_currentBlock);
+
+        // Never registered via initializeDistribution, so stored migrationBlock is 0
+        ILBPInitializer unregistered = ILBPInitializer(
+            address(
+                new MockLBPInitializer(
+                    address(token), address(0), 0, 0, address(strategy), address(strategy), 0, 0
+                )
+            )
+        );
+
+        // Stored migration params should be zero-valued
+        (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(unregistered);
+        assertEq(storedMigrationBlock, 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), _currentBlock)
+        );
+        strategy.migrate(unregistered);
+    }
+
     function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock) public {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) = _initializeWithDefaults();
 
