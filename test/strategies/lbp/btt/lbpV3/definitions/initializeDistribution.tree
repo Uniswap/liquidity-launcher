@@ -25,5 +25,5 @@ InitializeDistributionTest
                 │   └── it reverts with {InvalidCustodySupply}
                 └── when initializer is valid
                     ├── it deploys an initializer via the factory
-                    ├── it stores the identifier
+                    ├── it stores the migration parameters
                     └── it emits {InitializerCreated}

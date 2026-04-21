@@ -14,32 +14,29 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 /// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/migrate/validateMigration.sol
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsCurrencySwept() public {
-        (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
-            _setupForMigration(10e18, FixedPoint96.Q96);
+        (MockLBPInitializer initializer,) = _setupForMigration(10e18, FixedPoint96.Q96);
 
         vm.expectEmit(true, false, false, true);
         emit ILBPStrategy.CurrencySwept(fundsRecipient, 10e18);
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
     function test_emitsTokensSwept() public {
-        (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
-            _setupForMigration(10e18, FixedPoint96.Q96);
+        (MockLBPInitializer initializer,) = _setupForMigration(10e18, FixedPoint96.Q96);
 
         vm.expectEmit(true, false, false, false);
         emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
     function test_emitsMigrated() public {
-        (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
-            _setupForMigration(10e18, FixedPoint96.Q96);
+        (MockLBPInitializer initializer,) = _setupForMigration(10e18, FixedPoint96.Q96);
 
         vm.expectEmit(false, false, false, false);
         emit ILBPStrategy.Migrated(
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))), 0
         );
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
     function test_currencyAmountCappedAtUint128Max() public {
