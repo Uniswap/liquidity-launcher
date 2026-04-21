@@ -11,38 +11,28 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     function test_identifierIsDeterministic() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
 
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
         MockLBPInitializer init1 = factory.deployedInitializer();
         bytes32 id1 = strategy.initializers(ILBPInitializer(address(init1)));
 
-        bytes32 expectedId = keccak256(
-            abi.encode(
-                mp.migrationBlock,
-                mp.poolLPFee,
-                mp.poolTickSpacing,
-                mp.supplyForLP,
-                mp.fundsRecipient,
-                mp.custodyTokens,
-                mp.lpPositionRecipient,
-                mp.tier1Rate,
-                mp.tier1Threshold,
-                mp.tier2Rate,
-                mp.tier2Threshold,
-                mp.tier3Rate,
-                mp.lpHook
-            )
-        );
+        bytes32 expectedId = keccak256(abi.encode(mp, bp));
         assertEq(id1, expectedId);
     }
 
     function test_emitsInitializerCreated() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
 
-        vm.expectEmit(false, false, false, true);
-        emit ILBPStrategy.InitializerCreated(ILBPInitializer(address(0)), mp);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        vm.expectEmit(false, false, false, false);
+        emit ILBPStrategy.InitializerCreated(ILBPInitializer(address(0)), mp, bp);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
     }
 }

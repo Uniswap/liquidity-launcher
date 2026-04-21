@@ -19,7 +19,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         vm.expectEmit(true, false, false, true);
         emit ILBPStrategy.CurrencySwept(fundsRecipient, 10e18);
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
     }
 
     function test_emitsTokensSwept() public {
@@ -28,7 +28,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         vm.expectEmit(true, false, false, false);
         emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
     }
 
     function test_emitsMigrated() public {
@@ -39,7 +39,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.Migrated(
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))), 0
         );
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
     }
 
     function test_currencyAmountCappedAtUint128Max() public {
@@ -50,7 +50,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
             LBPInitializationParams({initialPriceX96: FixedPoint96.Q96, tokensSold: 100e18, currencyRaised: hugeRaise})
         );
 
-        uint256 lpAmount = hugeRaise * DEFAULT_TIER1_RATE / 1e7;
+        uint256 lpAmount = hugeRaise * DEFAULT_RATE / 1e7;
         assertGt(lpAmount, type(uint128).max);
     }
 }

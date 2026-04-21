@@ -15,7 +15,7 @@ contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
         factory.setCustodyTokens(params2.supplyForLP + params2.custodyTokens);
 
         strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(params2, hex""), bytes32(0)
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(params2, _defaultBreakpoints(), hex""), bytes32(0)
         );
         MockLBPInitializer init2 = factory.deployedInitializer();
 
@@ -35,11 +35,11 @@ contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
         factory.setCustodyTokens(params2.supplyForLP + params2.custodyTokens);
 
         strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(params2, hex""), bytes32(0)
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(params2, _defaultBreakpoints(), hex""), bytes32(0)
         );
 
         vm.roll(params2.migrationBlock);
         vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(init1)), params2);
+        strategy.migrate(ILBPInitializer(address(init1)), params2, _defaultBreakpoints());
     }
 }

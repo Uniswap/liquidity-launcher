@@ -40,7 +40,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, mp.migrationBlock, _currentBlock)
         );
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
     }
 
     modifier whenBlockIsGTEMigrationBlock() {
@@ -55,7 +55,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             new MockLBPInitializer(address(token), address(0), 0, 0, address(strategy), address(strategy), 0, 0);
 
         vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(fake)), mp);
+        strategy.migrate(ILBPInitializer(address(fake)), mp, _defaultBreakpoints());
     }
 
     function test_WhenMigrationParamsDoNotMatch() public whenBlockIsGTEMigrationBlock {
@@ -65,7 +65,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         mp.poolLPFee = 999;
 
         vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
     }
 
     modifier whenIdentifierMatches() {
@@ -82,7 +82,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
 
         vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
     }
 
     modifier whenCurrencyRaisedIsGTZero() {
@@ -98,7 +98,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
             _setupForMigration(10e18, FixedPoint96.Q96);
 
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
 
         assertTrue(initializer.sweepCurrencyCalled());
         assertTrue(initializer.sweepUnsoldTokensCalled());
@@ -114,7 +114,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             _setupForMigration(10e18, FixedPoint96.Q96);
 
         uint256 balBefore = fundsRecipient.balance;
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
         assertGe(fundsRecipient.balance, balBefore);
     }
 
@@ -127,7 +127,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
             _setupForMigration(10e18, FixedPoint96.Q96);
 
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        _migrateWithDefaults(initializer, mp);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 }

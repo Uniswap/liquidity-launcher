@@ -26,7 +26,7 @@ abstract contract LBPStrategyTestBase is Test {
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
     uint128 constant DEFAULT_SUPPLY_FOR_LP = 200e18;
     uint128 constant DEFAULT_CUSTODY_TOKENS = 50e18;
-    uint24 constant DEFAULT_TIER1_RATE = 5e6; // 50% flat rate
+    uint24 constant DEFAULT_RATE = 5e6; // 50% flat rate
     uint24 constant DEFAULT_POOL_FEE = 500;
     int24 constant DEFAULT_TICK_SPACING = 10;
     uint64 constant MIGRATION_BLOCK_OFFSET = 200;
@@ -57,27 +57,28 @@ abstract contract LBPStrategyTestBase is Test {
             fundsRecipient: fundsRecipient,
             custodyTokens: DEFAULT_CUSTODY_TOKENS,
             lpPositionRecipient: lpPositionRecipient,
-            tier1Rate: DEFAULT_TIER1_RATE,
-            tier1Threshold: 0, // flat rate
-            tier2Rate: 0,
-            tier2Threshold: 0,
-            tier3Rate: 0,
             lpHook: address(0)
         });
     }
 
-    /// @notice Encodes MigratorParameters + initializerParams into configData for initializeDistribution
-    function _encodeConfigData(ILBPStrategy.MigratorParameters memory mp, bytes memory initializerParams)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        return abi.encode(mp, initializerParams);
+    function _defaultBreakpoints() internal pure returns (ILBPStrategy.Breakpoint[] memory) {
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: DEFAULT_RATE}); // flat rate
+        return bp;
+    }
+
+    /// @notice Encodes MigratorParameters + breakpoints + initializerParams into configData
+    function _encodeConfigData(
+        ILBPStrategy.MigratorParameters memory mp,
+        ILBPStrategy.Breakpoint[] memory breakpoints,
+        bytes memory initializerParams
+    ) internal pure returns (bytes memory) {
+        return abi.encode(mp, breakpoints, initializerParams);
     }
 
     /// @notice Default configData with empty initializer params
     function _defaultConfigData() internal view returns (bytes memory) {
-        return _encodeConfigData(_defaultMigratorParams(), hex"");
+        return _encodeConfigData(_defaultMigratorParams(), _defaultBreakpoints(), hex"");
     }
 
     function _initializeWithDefaults()
@@ -87,7 +88,7 @@ abstract contract LBPStrategyTestBase is Test {
         mp = _defaultMigratorParams();
         // Set custody tokens on the factory so the deployed initializer reports the expected value
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-        bytes memory configData = _encodeConfigData(mp, hex"");
+        bytes memory configData = _encodeConfigData(mp, _defaultBreakpoints(), hex"");
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
@@ -109,5 +110,10 @@ abstract contract LBPStrategyTestBase is Test {
         vm.roll(mp.migrationBlock);
         vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+    }
+
+    /// @notice Helper to call migrate with default breakpoints
+    function _migrateWithDefaults(MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) internal {
+        strategy.migrate(ILBPInitializer(address(initializer)), mp, _defaultBreakpoints());
     }
 }

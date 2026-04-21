@@ -90,12 +90,12 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         external
         returns (IDistributionContract)
     {
-        // Decode the migration and auction parameters
-        (MigratorParameters memory migrationParams, bytes memory initializerParams) =
-            abi.decode(configData, (MigratorParameters, bytes));
+        // Decode the migration parameters, breakpoints, and auction parameters
+        (MigratorParameters memory migrationParams, Breakpoint[] memory breakpoints, bytes memory initializerParams) =
+            abi.decode(configData, (MigratorParameters, Breakpoint[], bytes));
 
-        // Validate the migrator parameters
-        _validateMigratorParams(migrationParams);
+        // Validate the migrator parameters and breakpoints
+        _validateMigratorParams(migrationParams, breakpoints);
 
         // Subtract custody tokens so the initializer is only given the remaining portion of supply.
         uint256 initializerSupply = totalSupply - migrationParams.custodyTokens;
@@ -115,8 +115,8 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Validate the initializer parameters are set as expected
         _validateInitializer(initializer, migrationParams);
 
-        // Create the unique identifier for the auction by hashing the MigratorParameters struct
-        bytes32 identifier = _createIdentifier(migrationParams);
+        // Create the unique identifier by hashing MigratorParameters + breakpoints
+        bytes32 identifier = _createIdentifier(migrationParams, breakpoints);
         // Store the identifier for the initializer to validate migration parameters during migration
         initializers[initializer] = identifier;
 
@@ -125,13 +125,17 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // emit DistributionInitialized(address(this), token, totalSupply);
 
         // Emit the auction initialized event to allow indexing all the migration and auction parameters
-        emit InitializerCreated(initializer, migrationParams);
+        emit InitializerCreated(initializer, migrationParams, breakpoints);
 
         return IDistributionContract(address(initializer));
     }
 
     /// @notice Migrates the raised funds and tokens to a v4 pool and sweep the raised funds, unsold and custody tokens to the fundsRecipient
-    function migrate(ILBPInitializer initializer, MigratorParameters calldata migrationParams) external {
+    function migrate(
+        ILBPInitializer initializer,
+        MigratorParameters calldata migrationParams,
+        Breakpoint[] calldata breakpoints
+    ) external {
         // Ensure the migration block is after the current block
         if (_getBlockNumberish() < migrationParams.migrationBlock) {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
@@ -141,7 +145,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         bytes32 identifier = initializers[initializer];
 
         // Validate the migration parameters by comparing the stored identifier to the recreated identifier
-        if (identifier != _createIdentifier(migrationParams)) {
+        if (identifier != _createIdentifier(migrationParams, breakpoints)) {
             revert InvalidMigrationParameters();
         }
 
@@ -152,7 +156,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams);
+        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(lbpParams.currencyRaised, breakpoints);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
         // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
@@ -274,16 +278,20 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(MigratorParameters memory _migratorParams) private view {
+    /// @param _breakpoints The currency split breakpoints
+    function _validateMigratorParams(MigratorParameters memory _migratorParams, Breakpoint[] memory _breakpoints)
+        private
+        view
+    {
         // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
         if (uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens) > type(uint128).max) {
             revert InvalidCustodySupply(
                 uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
             );
         }
-        // Validate bracket configuration
+        // Validate breakpoint configuration
         (, uint24 minSplitForLP) = _readOwnerControlledParams();
-        _validateBrackets(_migratorParams, minSplitForLP);
+        _validateBreakpoints(_breakpoints, minSplitForLP);
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
             _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
@@ -398,75 +406,68 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         });
     }
 
-    function _calculateCurrencyAmountForLp(uint256 currencyAmount, MigratorParameters memory params)
+    /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve
+    /// @param currencyAmount The total currency raised
+    /// @param breakpoints The breakpoint array defining the split curve
+    /// @return lpAmount The currency amount allocated to the LP
+    function _calculateCurrencyAmountForLp(uint256 currencyAmount, Breakpoint[] calldata breakpoints)
         private
         pure
-        returns (uint256)
+        returns (uint256 lpAmount)
     {
-        // 1 tier (flat rate): tier1Threshold == 0 means tier1Rate applies to everything
-        if (params.tier1Threshold == 0) {
-            return currencyAmount * params.tier1Rate / MAX_BRACKET_RATE;
-        }
-
-        uint256 lpAmount;
         uint256 remaining = currencyAmount;
+        uint256 prevThreshold;
+        uint256 len = breakpoints.length;
 
-        // Tier 1: 0..tier1Threshold
-        uint256 tier1Amount = remaining > params.tier1Threshold ? uint256(params.tier1Threshold) : remaining;
-        lpAmount += tier1Amount * params.tier1Rate / MAX_BRACKET_RATE;
-        remaining -= tier1Amount;
+        for (uint256 i; i < len; ++i) {
+            if (i == len - 1) {
+                // Last breakpoint: its rate applies to all remaining currency
+                lpAmount += remaining * breakpoints[i].rate / MAX_BRACKET_RATE;
+                break;
+            }
 
-        // 2 tiers: tier2Threshold == 0 means tier2 covers everything above tier1
-        if (remaining == 0 || params.tier2Threshold == 0) {
-            lpAmount += remaining * params.tier2Rate / MAX_BRACKET_RATE;
-            return lpAmount;
-        }
+            uint256 bracketSize = uint256(breakpoints[i].threshold) - prevThreshold;
+            uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
+            lpAmount += bracketAmount * breakpoints[i].rate / MAX_BRACKET_RATE;
+            remaining -= bracketAmount;
 
-        // Tier 2: tier1Threshold..tier2Threshold
-        uint256 tier2Bound = uint256(params.tier2Threshold) - uint256(params.tier1Threshold);
-        uint256 tier2Amount = remaining > tier2Bound ? tier2Bound : remaining;
-        lpAmount += tier2Amount * params.tier2Rate / MAX_BRACKET_RATE;
-        remaining -= tier2Amount;
-
-        // Tier 3: everything above tier2Threshold
-        lpAmount += remaining * params.tier3Rate / MAX_BRACKET_RATE;
-
-        return lpAmount;
-    }
-
-    /// @notice Validates the bracket configuration
-    /// @param _params The migrator parameters containing bracket config
-    /// @param _minSplitForLP The minimum rate allowed for any tier
-    function _validateBrackets(MigratorParameters memory _params, uint24 _minSplitForLP) private pure {
-        // tier1Rate is always required and must be non-zero
-        if (_params.tier1Rate == 0 || _params.tier1Rate < _minSplitForLP || _params.tier1Rate > MAX_BRACKET_RATE) {
-            revert InvalidBracketConfiguration();
-        }
-
-        // Flat rate: only tier1Rate matters, done
-        if (_params.tier1Threshold == 0) return;
-
-        // 2+ tiers: tier2Rate must be valid
-        if (_params.tier2Rate < _minSplitForLP || _params.tier2Rate > MAX_BRACKET_RATE) {
-            revert InvalidBracketConfiguration();
-        }
-
-        // 2 tiers only: done
-        if (_params.tier2Threshold == 0) return;
-
-        // 3 tiers: tier2Threshold must be greater than tier1Threshold, tier3Rate must be valid
-        if (_params.tier2Threshold <= _params.tier1Threshold) {
-            revert InvalidBracketConfiguration();
-        }
-        if (_params.tier3Rate < _minSplitForLP || _params.tier3Rate > MAX_BRACKET_RATE) {
-            revert InvalidBracketConfiguration();
+            if (remaining == 0) break;
+            prevThreshold = breakpoints[i].threshold;
         }
     }
 
-    function _createIdentifier(MigratorParameters memory migrationParams) private pure returns (bytes32 identifier) {
-        assembly ("memory-safe") {
-            identifier := keccak256(migrationParams, 0x1A0)
+    /// @notice Validates the breakpoint configuration
+    /// @param _breakpoints The breakpoint array defining the split curve
+    /// @param _minSplitForLP The minimum rate allowed for any breakpoint
+    function _validateBreakpoints(Breakpoint[] memory _breakpoints, uint24 _minSplitForLP) private pure {
+        uint256 len = _breakpoints.length;
+        if (len == 0) revert InvalidBreakpointConfiguration();
+
+        uint128 prevThreshold;
+        for (uint256 i; i < len; ++i) {
+            uint24 rate = _breakpoints[i].rate;
+            // Every rate must be within [minSplitForLP, MAX_BRACKET_RATE]
+            if (rate == 0 || rate < _minSplitForLP || rate > MAX_BRACKET_RATE) {
+                revert InvalidBreakpointConfiguration();
+            }
+
+            // For non-last breakpoints, thresholds must be ascending and non-zero
+            if (i < len - 1) {
+                uint128 threshold = _breakpoints[i].threshold;
+                if (threshold == 0 || (i > 0 && threshold <= prevThreshold)) {
+                    revert InvalidBreakpointConfiguration();
+                }
+                prevThreshold = threshold;
+            }
         }
+    }
+
+    function _createIdentifier(MigratorParameters memory migrationParams, Breakpoint[] memory breakpoints)
+        private
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(migrationParams, breakpoints));
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {

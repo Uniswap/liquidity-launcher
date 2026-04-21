@@ -16,8 +16,8 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 /// @notice BTT tests for LBPStrategy.initializeDistribution
 ///
 /// initializeDistribution
-/// ├── when bracket config is invalid (tier1Rate 0, >1e7, <min)
-/// │   └── it reverts with InvalidBracketConfiguration
+/// ├── when breakpoint config is invalid (empty, rate 0, >1e7, <min)
+/// │   └── it reverts with InvalidBreakpointConfiguration
 /// ├── when tickSpacing is out of bounds
 /// │   └── it reverts with InvalidTickSpacing
 /// ├── when fee > MAX_LP_FEE
@@ -35,42 +35,86 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///         ├── it stores the identifier
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
-    function test_WhenTier1RateIsZero() public {
+    function test_WhenBreakpointsEmpty() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.tier1Rate = 0;
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](0);
 
-        vm.expectRevert(ILBPStrategy.InvalidBracketConfiguration.selector);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
     }
 
-    function test_WhenTier1RateIsOver100Percent(uint24 _rate) public {
+    function test_WhenBreakpointRateIsZero() public {
+        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: 0});
+
+        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
+    }
+
+    function test_WhenBreakpointRateIsOver100Percent(uint24 _rate) public {
         _rate = uint24(bound(_rate, 1e7 + 1, type(uint24).max));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.tier1Rate = _rate;
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate});
 
-        vm.expectRevert(ILBPStrategy.InvalidBracketConfiguration.selector);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
     }
 
-    function test_WhenTier1RateIsBelowMinimum(uint24 _minSplit, uint24 _rate) public {
+    function test_WhenBreakpointRateIsBelowMinimum(uint24 _minSplit, uint24 _rate) public {
         _minSplit = uint24(bound(_minSplit, 2, 10_000));
         _rate = uint24(bound(_rate, 1, _minSplit - 1));
 
         strategy.setMinSplitForLp(_minSplit);
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.tier1Rate = _rate;
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate});
 
-        vm.expectRevert(ILBPStrategy.InvalidBracketConfiguration.selector);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
     }
 
-    modifier whenBracketConfigIsValid() {
+    function test_WhenNonLastBreakpointThresholdIsZero() public {
+        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](2);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: 5e6}); // threshold 0 on non-last
+        bp[1] = ILBPStrategy.Breakpoint({threshold: 0, rate: 3e6});
+
+        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
+    }
+
+    function test_WhenBreakpointThresholdsNotAscending() public {
+        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](3);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 100e18, rate: 7e6});
+        bp[1] = ILBPStrategy.Breakpoint({threshold: 50e18, rate: 5e6}); // not ascending
+        bp[2] = ILBPStrategy.Breakpoint({threshold: 0, rate: 3e6});
+
+        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
+    }
+
+    modifier whenBreakpointConfigIsValid() {
         _;
     }
 
-    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing) public whenBracketConfigIsValid {
+    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing) public whenBreakpointConfigIsValid {
         vm.assume(_tickSpacing > TickMath.MAX_TICK_SPACING || _tickSpacing < TickMath.MIN_TICK_SPACING);
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
@@ -84,21 +128,25 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
                 TickMath.MAX_TICK_SPACING
             )
         );
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
+        );
     }
 
     modifier whenTickSpacingIsValid() {
         _;
     }
 
-    function test_WhenFeeIsAboveMax(uint24 _fee) public whenBracketConfigIsValid whenTickSpacingIsValid {
+    function test_WhenFeeIsAboveMax(uint24 _fee) public whenBreakpointConfigIsValid whenTickSpacingIsValid {
         _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         mp.poolLPFee = _fee;
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidFee.selector, _fee, LPFeeLibrary.MAX_LP_FEE));
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
+        );
     }
 
     modifier whenFeeIsValid() {
@@ -107,7 +155,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
     function test_WhenPositionRecipientIsReserved(uint256 _seed)
         public
-        whenBracketConfigIsValid
+        whenBreakpointConfigIsValid
         whenTickSpacingIsValid
         whenFeeIsValid
     {
@@ -122,7 +170,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         }
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidPositionRecipient.selector, mp.lpPositionRecipient));
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
+        );
     }
 
     modifier whenPositionRecipientIsValid() {
@@ -154,7 +204,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidRecipient.selector, address(strategy)));
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
+        );
     }
 
     function test_WhenInitializerEndBlockGTEMigrationBlock() public whenMigratorParamsAreValid {
@@ -180,7 +232,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, mp.migrationBlock, mp.migrationBlock)
         );
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
+        );
     }
 
     function test_WhenInitializerCustodyTokensMismatch() public whenMigratorParamsAreValid {
@@ -198,7 +252,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         uint256 expected = uint256(mp.supplyForLP) + uint256(mp.custodyTokens);
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCustodySupply.selector, 999, expected));
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
+        );
     }
 
     modifier whenInitializerIsValid() {
@@ -207,10 +263,13 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
     function test_WhenInitializerIsNew() public whenMigratorParamsAreValid whenInitializerIsValid {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
 
         vm.recordLogs();
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
 
         MockLBPInitializer initializer = factory.deployedInitializer();
 
@@ -219,23 +278,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bytes32 id = strategy.initializers(ILBPInitializer(address(initializer)));
         assertNotEq(id, bytes32(0));
 
-        bytes32 expectedId = keccak256(
-            abi.encode(
-                mp.migrationBlock,
-                mp.poolLPFee,
-                mp.poolTickSpacing,
-                mp.supplyForLP,
-                mp.fundsRecipient,
-                mp.custodyTokens,
-                mp.lpPositionRecipient,
-                mp.tier1Rate,
-                mp.tier1Threshold,
-                mp.tier2Rate,
-                mp.tier2Threshold,
-                mp.tier3Rate,
-                mp.lpHook
-            )
-        );
+        bytes32 expectedId = keccak256(abi.encode(mp, bp));
         assertEq(id, expectedId);
     }
 }

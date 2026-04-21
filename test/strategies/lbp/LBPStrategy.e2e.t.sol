@@ -24,13 +24,17 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         // Build params
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.tier1Rate = split;
         mp.poolTickSpacing = tickSpacing;
         mp.poolLPFee = fee;
 
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: split});
+
         // Initialize
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
         MockLBPInitializer initializer = factory.deployedInitializer();
 
         // Verify identifier stored
@@ -54,7 +58,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         // Migrate
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        strategy.migrate(ILBPInitializer(address(initializer)), mp, bp);
 
         // Strategy should be empty after migration
         assertEq(token.balanceOf(address(strategy)), 0);
@@ -68,18 +72,24 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         migrationOffset1 = uint64(bound(migrationOffset1, 200, 500));
         migrationOffset2 = uint64(bound(migrationOffset2, 501, 1000));
 
+        ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
+
         // First auction
         ILBPStrategy.MigratorParameters memory mp1 = _defaultMigratorParams();
         mp1.migrationBlock = uint64(block.number) + migrationOffset1;
         factory.setCustodyTokens(mp1.supplyForLP + mp1.custodyTokens);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp1, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp1, bp, hex""), bytes32(0)
+        );
         MockLBPInitializer init1 = factory.deployedInitializer();
 
         // Second auction with different params
         ILBPStrategy.MigratorParameters memory mp2 = _defaultMigratorParams();
         mp2.migrationBlock = uint64(block.number) + migrationOffset2;
         factory.setCustodyTokens(mp2.supplyForLP + mp2.custodyTokens);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp2, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp2, bp, hex""), bytes32(0)
+        );
         MockLBPInitializer init2 = factory.deployedInitializer();
 
         // Both identifiers exist and are different
@@ -92,11 +102,11 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // Can't use init1 with mp2
         vm.roll(mp2.migrationBlock);
         vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(init1)), mp2);
+        strategy.migrate(ILBPInitializer(address(init1)), mp2, bp);
 
         // Can't use init2 with mp1
         vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(init2)), mp1);
+        strategy.migrate(ILBPInitializer(address(init2)), mp1, bp);
     }
 
     function test_fuzz_currencySplitAppliedCorrectly(uint24 split, uint128 currencyRaised) public {
@@ -104,10 +114,13 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         currencyRaised = uint128(bound(currencyRaised, 1e15, 1000e18));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.tier1Rate = split;
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: split});
 
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+        );
         MockLBPInitializer initializer = factory.deployedInitializer();
 
         initializer.setLbpInitializationParams(
@@ -123,7 +136,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
-        strategy.migrate(ILBPInitializer(address(initializer)), mp);
+        strategy.migrate(ILBPInitializer(address(initializer)), mp, bp);
 
         // All currency should end up at fundsRecipient (since _createPositionPlan is a stub returning empty,
         // no currency actually goes to LP — it all gets swept)
