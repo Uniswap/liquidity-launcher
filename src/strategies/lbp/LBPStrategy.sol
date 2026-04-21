@@ -412,16 +412,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
     function _createIdentifier(MigratorParameters memory migrationParams) private pure returns (bytes32 identifier) {
         assembly ("memory-safe") {
-            // Load the free memory pointer to the next free slot
-            let m := mload(0x40)
-            // Copy the MigratorParameters struct to memory
-            calldatacopy(
-                m,
-                migrationParams,
-                0x120 /* length of MigratorParameters struct */
-            )
-            // Hash the MigratorParameters struct
-            identifier := keccak256(m, 0x120)
+            identifier := keccak256(migrationParams, 0x120)
         }
     }
 
