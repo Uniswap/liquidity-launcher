@@ -132,8 +132,8 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Load the migration parameters that were stored when the initializer was registered
         MigratorParameters memory migrationParams = initializers[initializer];
 
-        // Ensure the migration block is after the current block. This will revert for unregistered initializers.
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
+        // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
+        if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
         }
 
