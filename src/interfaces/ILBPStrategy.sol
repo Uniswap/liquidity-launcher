@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IDistributionContract} from "./IDistributionContract.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {ILBPInitializer} from "./ILBPInitializer.sol";
+
+/// @title ILBPStrategy
+/// @notice Interface for the LBPStrategy contract
+interface ILBPStrategy {
+    struct MigratorParameters {
+        uint64 migrationBlock; // block number when the migration can begin
+        uint24 poolLPFee; // the LP fee that the v4 pool will use
+        int24 poolTickSpacing; // the tick spacing that the v4 pool will use
+        uint128 supplyForLP; // additional amount of the token that will be used to create the LP position
+        address fundsRecipient; // the address that will receive the funds from the auction
+        uint128 custodyTokens; // additional amount of the token that will be hold in custody during the auction (additionally to supplyForLP)
+        address lpPositionRecipient; // the address that will receive the created LP position
+        uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
+        address lpHook; // the hook that will be used to initialize the pool
+    }
+
+    struct OwnerControlled {
+        address protocolFeeController; // the address defining the protocol fee payed on non-LP currency
+        uint24 minSplitForLp; // the minimum percentage (in mps) of the total supply of the token that must be sent to an LP
+    }
+
+    /// @notice Emitted when the protocol fee controller is set
+    /// @param protocolFeeController The protocol fee controller
+    event ProtocolFeeControllerSet(address protocolFeeController);
+
+    /// @notice Emitted when the min split for LP is set
+    /// @param minSplitForLP The min split for LP
+    event MinSplitForLpSet(uint24 minSplitForLP);
+
+    /// @notice Emitted when the auction is initialized
+    /// @param initializer The initializer contract that was created
+    /// @param migrationParams The migration parameters
+    event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
+
+    /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
+    /// @param key The key of the pool that was created
+    /// @param initialSqrtPriceX96 The initial sqrt price of the pool
+    event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
+
+    /// @notice Emitted when the currency is swept
+    event CurrencySwept(address indexed operator, uint256 amount);
+
+    /// @notice Emitted when the tokens are swept
+    event TokensSwept(address indexed operator, uint256 amount);
+
+    /// @notice Error thrown when the protocol fee controller is the zero address
+    error InvalidProtocolFeeController();
+
+    /// @notice Error thrown when the min split for LP is zero or greater than 100%
+    error InvalidMinSplitForLp();
+
+    /// @notice Error thrown when the initializer was already created
+    /// @param identifier The identifier stored for the initializer
+    error InitializerAlreadyCreated(bytes32 identifier);
+
+    /// @notice Error thrown when migration to a v4 pool is not allowed yet
+    /// @param migrationBlock The block number at which migration is allowed
+    /// @param currentBlock The current block number
+    error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
+
+    /// @notice Error thrown when the end block is at orafter the migration block
+    /// @param endBlock The invalid end block
+    /// @param migrationBlock The migration block
+    error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
+
+    /// @notice Error thrown when the currency split for LP is smaller than the min split for LP or bigger than 100%
+    /// @param currencySplitForLP The invalid currency split for LP
+    /// @param minSplitForLP The min split for LP
+    /// @param maxSplitForLP The max split for LP
+    error InvalidCurrencySplitForLP(uint24 currencySplitForLP, uint24 minSplitForLP, uint24 maxSplitForLP);
+
+    /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
+    /// @param tickSpacing The invalid tick spacing
+    error InvalidTickSpacing(int24 tickSpacing, int24 minTickSpacing, int24 maxTickSpacing);
+
+    /// @notice Error thrown when the fee is greater than the max fee
+    /// @param fee The invalid fee
+    error InvalidFee(uint24 fee, uint24 maxFee);
+
+    /// @notice Error thrown when the position recipient is the zero address, address(1), or address(2)
+    /// @param positionRecipient The invalid position recipient
+    error InvalidPositionRecipient(address positionRecipient);
+
+    /// @notice Error thrown when the funds recipient is not set to the strategy
+    /// @param expectedRecipient The expected recipient
+    error InvalidRecipient(address expectedRecipient);
+
+    /// @notice Error thrown when the total supply is greater than the max total supply
+    /// @param totalSupply The invalid total supply
+    /// @param maxTotalSupply The max total supply
+    error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
+
+    /// @notice Error thrown when the custody supply (supplyForLP + custodyTokens) is not equal to the expected custody supply
+    /// @param custodySupply The invalid custody supply
+    /// @param expectedCustodySupply The expected custody supply
+    error InvalidCustodySupply(uint256 custodySupply, uint256 expectedCustodySupply);
+
+    /// @notice Error thrown when the currency amount is greater than type(uint128).max
+    /// @param currencyAmount The invalid currency amount
+    /// @param maxCurrencyAmount The maximum currency amount (type(uint128).max)
+    error CurrencyAmountTooHigh(uint256 currencyAmount, uint256 maxCurrencyAmount);
+
+    /// @notice Error thrown when no currency was raised
+    error NoCurrencyRaised();
+
+    /// @notice Error thrown when the migration parameters provided differ from the original ones
+    error InvalidMigrationParameters();
+
+    /// @notice Migrates the raised funds and tokens to a v4 pool
+    function migrate(ILBPInitializer initializer, MigratorParameters calldata migrationParams) external;
+}
