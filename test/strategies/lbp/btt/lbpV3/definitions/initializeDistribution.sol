@@ -233,9 +233,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             abi.encode(address(badInit))
         );
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, endBlock, mp.migrationBlock)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, endBlock, mp.migrationBlock));
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
         );
@@ -248,7 +246,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         vm.assume(_wrongCustody != expectedCustody);
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(token), address(0), 0, _wrongCustody, address(strategy), address(strategy), 0, uint64(block.number) + 50
+            address(token),
+            address(0),
+            0,
+            _wrongCustody,
+            address(strategy),
+            address(strategy),
+            0,
+            uint64(block.number) + 50
         );
 
         vm.mockCall(
@@ -257,7 +262,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             abi.encode(address(badInit))
         );
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCustodySupply.selector, _wrongCustody, expectedCustody));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InvalidCustodySupply.selector, _wrongCustody, expectedCustody)
+        );
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, _defaultBreakpoints(), hex""), bytes32(0)
         );

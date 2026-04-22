@@ -52,7 +52,9 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         (MockLBPInitializer initializer,) = _initializeWithDefaults();
         initializer.setLbpInitializationParams(
-            LBPInitializationParams({initialPriceX96: FixedPoint96.Q96, tokensSold: _tokensSold, currencyRaised: hugeRaise})
+            LBPInitializationParams({
+                initialPriceX96: FixedPoint96.Q96, tokensSold: _tokensSold, currencyRaised: hugeRaise
+            })
         );
 
         uint256 lpAmount = hugeRaise * DEFAULT_RATE / 1e7;
