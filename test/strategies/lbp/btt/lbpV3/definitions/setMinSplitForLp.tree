@@ -4,7 +4,7 @@ SetMinSplitForLpTest
 └── when caller is owner
     ├── when value is 0
     │   └── it reverts with {InvalidMinSplitForLp}
-    ├── when value is greater than 10_000
+    ├── when value is over MAX_BPS
     │   └── it reverts with {InvalidMinSplitForLp}
     └── when value is in [1, 10_000]
         ├── it sets the minSplitForLp
