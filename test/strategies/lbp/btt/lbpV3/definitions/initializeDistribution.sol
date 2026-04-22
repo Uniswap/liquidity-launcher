@@ -32,7 +32,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///     ├── when initializer.custodyTokens mismatch
 ///     │   └── it reverts with InvalidCustodySupply
 ///     └── when initializer is valid
-///         ├── it stores the identifier
+///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
     function test_WhenCurrencySplitIsZero() public {
@@ -216,22 +216,27 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         assertNotEq(address(initializer), address(0));
 
-        bytes32 id = strategy.initializers(ILBPInitializer(address(initializer)));
-        assertNotEq(id, bytes32(0));
+        // Verify all fields of MigratorParameters were stored correctly
+        (
+            uint64 migrationBlock,
+            uint24 poolLPFee,
+            int24 poolTickSpacing,
+            uint128 supplyForLP,
+            address storedFundsRecipient,
+            uint128 custodyTokens,
+            address storedLpPositionRecipient,
+            uint24 currencySplitForLP,
+            address lpHook
+        ) = strategy.initializers(ILBPInitializer(address(initializer)));
 
-        bytes32 expectedId = keccak256(
-            abi.encode(
-                mp.migrationBlock,
-                mp.poolLPFee,
-                mp.poolTickSpacing,
-                mp.supplyForLP,
-                mp.fundsRecipient,
-                mp.custodyTokens,
-                mp.lpPositionRecipient,
-                mp.currencySplitForLP,
-                mp.lpHook
-            )
-        );
-        assertEq(id, expectedId);
+        assertEq(migrationBlock, mp.migrationBlock);
+        assertEq(poolLPFee, mp.poolLPFee);
+        assertEq(poolTickSpacing, mp.poolTickSpacing);
+        assertEq(supplyForLP, mp.supplyForLP);
+        assertEq(storedFundsRecipient, mp.fundsRecipient);
+        assertEq(custodyTokens, mp.custodyTokens);
+        assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
+        assertEq(currencySplitForLP, mp.currencySplitForLP);
+        assertEq(lpHook, mp.lpHook);
     }
 }

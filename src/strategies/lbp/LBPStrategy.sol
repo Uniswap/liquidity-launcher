@@ -43,8 +43,8 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     // Owner controlled parameters
     OwnerControlled public ownerControlledParams;
 
-    /// @notice The mapping of initializers to their identifiers ensuring the validity of provided calldata during migration
-    mapping(ILBPInitializer initializer => bytes32 identifier) public initializers;
+    /// @notice The mapping of initializers to their stored migration parameters, used to drive migration
+    mapping(ILBPInitializer initializer => MigratorParameters) public initializers;
 
     // TODO: Add functionality to fully replace GovernedLBPStrategy
 
@@ -105,18 +105,17 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             )
         );
 
-        // Check if the initializer was already set to ensure identifier is not rewritten
-        if (initializers[initializer] != bytes32(0)) {
-            revert InitializerAlreadyCreated(initializers[initializer]);
+        // Check if the initializer was already registered to ensure parameters are not overwritten.
+        // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
+        if (initializers[initializer].migrationBlock != 0) {
+            revert InitializerAlreadyCreated(initializer);
         }
 
         // Validate the initializer parameters are set as expected
         _validateInitializer(initializer, migrationParams);
 
-        // Create the unique identifier for the auction by hashing the MigratorParameters struct
-        bytes32 identifier = _createIdentifier(migrationParams);
-        // Store the identifier for the initializer to validate migration parameters during migration
-        initializers[initializer] = identifier;
+        // Store the parameters for the initializer to validate migration parameters during migration
+        initializers[initializer] = migrationParams;
 
         // TODO: does DistributionInitialized event make sense here?
         // Emit the distribution initialized event
@@ -129,18 +128,13 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     }
 
     /// @notice Migrates the raised funds and tokens to a v4 pool and sweep the raised funds, unsold and custody tokens to the fundsRecipient
-    function migrate(ILBPInitializer initializer, MigratorParameters calldata migrationParams) external {
-        // Ensure the migration block is after the current block
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
+    function migrate(ILBPInitializer initializer) external {
+        // Load the migration parameters that were stored when the initializer was registered
+        MigratorParameters memory migrationParams = initializers[initializer];
+
+        // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
+        if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
-        }
-
-        // Get the identifier for the initializer
-        bytes32 identifier = initializers[initializer];
-
-        // Validate the migration parameters by comparing the stored identifier to the recreated identifier
-        if (identifier != _createIdentifier(migrationParams)) {
-            revert InvalidMigrationParameters();
         }
 
         // Get the LBP initialization parameters. Trust the initializer to return the correct parameters.
@@ -408,12 +402,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         returns (uint256 currencyAmountForLp)
     {
         currencyAmountForLp = currencyAmount * currencySplitForLP / 1e7;
-    }
-
-    function _createIdentifier(MigratorParameters memory migrationParams) private pure returns (bytes32 identifier) {
-        assembly ("memory-safe") {
-            identifier := keccak256(migrationParams, 0x120)
-        }
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
