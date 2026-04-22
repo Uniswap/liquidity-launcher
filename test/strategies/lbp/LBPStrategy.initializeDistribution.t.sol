@@ -14,6 +14,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
 
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+        // deployedInitializer() is a test helper on MockInitializerFactory that returns the last deployed MockLBPInitializer
         MockLBPInitializer init1 = factory.deployedInitializer();
 
         (

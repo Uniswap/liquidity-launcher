@@ -38,7 +38,7 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
         strategy.setMinSplitForLp(0);
     }
 
-    function test_SetMinSplitForLp_WhenValueIsOver10000(uint24 _value) public whenCallerIsOwner_setMinSplit {
+    function test_SetMinSplitForLp_WhenValueIsOverMAX_BPS(uint24 _value) public whenCallerIsOwner_setMinSplit {
         _value = uint24(bound(_value, 10_001, type(uint24).max));
 
         vm.expectRevert(ILBPStrategy.InvalidMinSplitForLp.selector);
