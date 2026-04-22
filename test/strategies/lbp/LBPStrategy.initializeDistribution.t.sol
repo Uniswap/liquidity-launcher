@@ -9,7 +9,7 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 /// @notice Integration and specific-value tests for initializeDistribution
 /// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/initializeDistribution.sol
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
-    function test_identifierIsDeterministic() public {
+    function test_storesMigrationParameters() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
         factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
@@ -18,10 +18,13 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );
         MockLBPInitializer init1 = factory.deployedInitializer();
-        bytes32 id1 = strategy.initializers(ILBPInitializer(address(init1)));
 
-        bytes32 expectedId = keccak256(abi.encode(mp, bp));
-        assertEq(id1, expectedId);
+        (ILBPStrategy.MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(init1)));
+
+        assertEq(storedParams.migrationBlock, mp.migrationBlock);
+        assertEq(storedParams.poolLPFee, mp.poolLPFee);
+        assertEq(storedParams.poolTickSpacing, mp.poolTickSpacing);
+        assertEq(storedParams.supplyForLP, mp.supplyForLP);
     }
 
     function test_emitsInitializerCreated() public {

@@ -276,10 +276,12 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         assertNotEq(address(initializer), address(0));
 
-        bytes32 id = strategy.initializers(ILBPInitializer(address(initializer)));
-        assertNotEq(id, bytes32(0));
-
-        bytes32 expectedId = keccak256(abi.encode(mp, bp));
-        assertEq(id, expectedId);
+        // Verify migration parameters were stored correctly
+        (ILBPStrategy.MigratorParameters memory storedParams) =
+            strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.migrationBlock, mp.migrationBlock);
+        assertEq(storedParams.poolLPFee, mp.poolLPFee);
+        assertEq(storedParams.poolTickSpacing, mp.poolTickSpacing);
+        assertEq(storedParams.supplyForLP, mp.supplyForLP);
     }
 }

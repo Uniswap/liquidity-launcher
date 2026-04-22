@@ -7,8 +7,8 @@ import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 
 contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
-    function test_twoAuctions_independentIdentifiers() public {
-        (MockLBPInitializer init1,) = _initializeWithDefaults();
+    function test_twoAuctions_independentParams() public {
+        (MockLBPInitializer init1, ILBPStrategy.MigratorParameters memory params1) = _initializeWithDefaults();
 
         ILBPStrategy.MigratorParameters memory params2 = _defaultMigratorParams();
         params2.migrationBlock = uint64(block.number) + 300;
@@ -19,27 +19,11 @@ contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
         );
         MockLBPInitializer init2 = factory.deployedInitializer();
 
-        bytes32 id1 = strategy.initializers(ILBPInitializer(address(init1)));
-        bytes32 id2 = strategy.initializers(ILBPInitializer(address(init2)));
+        (ILBPStrategy.MigratorParameters memory storedParams1) = strategy.initializers(ILBPInitializer(address(init1)));
+        (ILBPStrategy.MigratorParameters memory storedParams2) = strategy.initializers(ILBPInitializer(address(init2)));
 
-        assertNotEq(id1, bytes32(0));
-        assertNotEq(id2, bytes32(0));
-        assertNotEq(id1, id2);
-    }
-
-    function test_twoAuctions_cannotSwapParams() public {
-        (MockLBPInitializer init1,) = _initializeWithDefaults();
-
-        ILBPStrategy.MigratorParameters memory params2 = _defaultMigratorParams();
-        params2.migrationBlock = uint64(block.number) + 300;
-        factory.setCustodyTokens(params2.supplyForLP + params2.custodyTokens);
-
-        strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(params2, _defaultBreakpoints(), hex""), bytes32(0)
-        );
-
-        vm.roll(params2.migrationBlock);
-        vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(init1)), params2, _defaultBreakpoints());
+        assertEq(storedParams1.migrationBlock, params1.migrationBlock);
+        assertEq(storedParams2.migrationBlock, params2.migrationBlock);
+        assertTrue(storedParams1.migrationBlock != storedParams2.migrationBlock);
     }
 }

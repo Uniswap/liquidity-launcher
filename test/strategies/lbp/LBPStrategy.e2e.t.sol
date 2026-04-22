@@ -37,9 +37,10 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         );
         MockLBPInitializer initializer = factory.deployedInitializer();
 
-        // Verify identifier stored
-        bytes32 id = strategy.initializers(ILBPInitializer(address(initializer)));
-        assertNotEq(id, bytes32(0));
+        // Verify migration params were stored
+        (ILBPStrategy.MigratorParameters memory storedParams) =
+            strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.migrationBlock, mp.migrationBlock);
 
         // Fund the initializer
         initializer.setLbpInitializationParams(
@@ -58,7 +59,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         // Migrate
-        strategy.migrate(ILBPInitializer(address(initializer)), mp, bp);
+        strategy.migrate(ILBPInitializer(address(initializer)));
 
         // Strategy should be empty after migration
         assertEq(token.balanceOf(address(strategy)), 0);
@@ -92,21 +93,12 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         );
         MockLBPInitializer init2 = factory.deployedInitializer();
 
-        // Both identifiers exist and are different
-        bytes32 id1 = strategy.initializers(ILBPInitializer(address(init1)));
-        bytes32 id2 = strategy.initializers(ILBPInitializer(address(init2)));
-        assertNotEq(id1, bytes32(0));
-        assertNotEq(id2, bytes32(0));
-        assertNotEq(id1, id2);
-
-        // Can't use init1 with mp2
-        vm.roll(mp2.migrationBlock);
-        vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(init1)), mp2, bp);
-
-        // Can't use init2 with mp1
-        vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(init2)), mp1, bp);
+        // Each initializer has its own stored migration params
+        (ILBPStrategy.MigratorParameters memory params1) = strategy.initializers(ILBPInitializer(address(init1)));
+        (ILBPStrategy.MigratorParameters memory params2Stored) = strategy.initializers(ILBPInitializer(address(init2)));
+        assertEq(params1.migrationBlock, mp1.migrationBlock);
+        assertEq(params2Stored.migrationBlock, mp2.migrationBlock);
+        assertTrue(params1.migrationBlock != params2Stored.migrationBlock);
     }
 
     function test_fuzz_currencySplitAppliedCorrectly(uint24 split, uint128 currencyRaised) public {
@@ -136,7 +128,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
-        strategy.migrate(ILBPInitializer(address(initializer)), mp, bp);
+        strategy.migrate(ILBPInitializer(address(initializer)));
 
         // All currency should end up at fundsRecipient (since _createPositionPlan is a stub returning empty,
         // no currency actually goes to LP — it all gets swept)

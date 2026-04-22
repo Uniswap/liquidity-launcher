@@ -117,8 +117,8 @@ abstract contract LBPStrategyTestBase is Test {
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
-    /// @notice Helper to call migrate with default breakpoints
-    function _migrateWithDefaults(MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) internal {
-        strategy.migrate(ILBPInitializer(address(initializer)), mp, _defaultBreakpoints());
+    /// @notice Helper to call migrate
+    function _migrateWithDefaults(MockLBPInitializer initializer) internal {
+        strategy.migrate(ILBPInitializer(address(initializer)));
     }
 }

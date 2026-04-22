@@ -14,22 +14,21 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 /// migrate
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotAllowed
-/// └── when block.number >= migrationBlock
-///     ├── when identifier is bytes32(0) (unknown initializer)
-///     │   └── it reverts with InvalidMigrationParameters
-///     ├── when migrationParams hash != stored identifier
-///     │   └── it reverts with InvalidMigrationParameters
-///     └── when identifier matches
-///         ├── when currencyRaised is 0 (after split)
-///         │   └── it reverts with NoCurrencyRaised
-///         └── when currencyRaised > 0
-///             ├── it calls sweepCurrency on initializer
-///             ├── it calls sweepUnsoldTokens on initializer
-///             ├── it sweeps leftover currency to fundsRecipient
-///             ├── it sweeps leftover tokens to fundsRecipient
-///             ├── it emits CurrencySwept
-///             ├── it emits TokensSwept
-///             └── it emits Migrated
+/// ├── when initializer is unknown (identifier mismatch)
+/// │   └── it reverts with InvalidMigrationParameters
+/// ├── when migration params do not match stored identifier
+/// │   └── it reverts with InvalidMigrationParameters
+/// └── when block.number >= migrationBlock and identifier matches
+///     ├── when currencyRaised is 0 (after split)
+///     │   └── it reverts with NoCurrencyRaised
+///     └── when currencyRaised > 0
+///         ├── it calls sweepCurrency on initializer
+///         ├── it calls sweepUnsoldTokens on initializer
+///         ├── it sweeps leftover currency to fundsRecipient
+///         ├── it sweeps leftover tokens to fundsRecipient
+///         ├── it emits CurrencySwept
+///         ├── it emits TokensSwept
+///         └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
     function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock) public {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) = _initializeWithDefaults();
@@ -40,32 +39,22 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, mp.migrationBlock, _currentBlock)
         );
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
     }
 
     modifier whenBlockIsGTEMigrationBlock() {
         _;
     }
 
-    function test_WhenInitializerIsUnknown() public whenBlockIsGTEMigrationBlock {
-        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        vm.roll(mp.migrationBlock);
+    function test_WhenInitializerIsUnregistered() public whenBlockIsGTEMigrationBlock {
+        vm.roll(1000);
 
         MockLBPInitializer fake =
             new MockLBPInitializer(address(token), address(0), 0, 0, address(strategy), address(strategy), 0, 0);
 
-        vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        strategy.migrate(ILBPInitializer(address(fake)), mp, _defaultBreakpoints());
-    }
-
-    function test_WhenMigrationParamsDoNotMatch() public whenBlockIsGTEMigrationBlock {
-        (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) = _initializeWithDefaults();
-        vm.roll(mp.migrationBlock);
-
-        mp.poolLPFee = 999;
-
-        vm.expectRevert(ILBPStrategy.InvalidMigrationParameters.selector);
-        _migrateWithDefaults(initializer, mp);
+        // Unregistered initializer has migrationBlock == 0, so it reverts with MigrationNotAllowed
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), uint64(1000)));
+        strategy.migrate(ILBPInitializer(address(fake)));
     }
 
     modifier whenIdentifierMatches() {
@@ -82,23 +71,18 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
 
         vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
     }
 
     modifier whenCurrencyRaisedIsGTZero() {
         _;
     }
 
-    function test_CallsSweepOnInitializer()
-        public
-        whenBlockIsGTEMigrationBlock
-        whenIdentifierMatches
-        whenCurrencyRaisedIsGTZero
-    {
+    function test_CallsSweepOnInitializer() public whenBlockIsGTEMigrationBlock whenCurrencyRaisedIsGTZero {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
             _setupForMigration(10e18, FixedPoint96.Q96);
 
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
 
         assertTrue(initializer.sweepCurrencyCalled());
         assertTrue(initializer.sweepUnsoldTokensCalled());
@@ -107,27 +91,25 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     function test_SweepsLeftoverCurrencyToFundsRecipient()
         public
         whenBlockIsGTEMigrationBlock
-        whenIdentifierMatches
         whenCurrencyRaisedIsGTZero
     {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
             _setupForMigration(10e18, FixedPoint96.Q96);
 
         uint256 balBefore = fundsRecipient.balance;
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
         assertGe(fundsRecipient.balance, balBefore);
     }
 
     function test_SweepsLeftoverTokensToFundsRecipient()
         public
         whenBlockIsGTEMigrationBlock
-        whenIdentifierMatches
         whenCurrencyRaisedIsGTZero
     {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) =
             _setupForMigration(10e18, FixedPoint96.Q96);
 
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 }

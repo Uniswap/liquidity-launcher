@@ -40,8 +40,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     IPositionManager public immutable positionManager;
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The mapping of initializers to their identifiers ensuring the validity of provided calldata during migration
-    mapping(ILBPInitializer initializer => bytes32 identifier) public initializers;
+    /// @notice The mapping of initializers to their stored record (migration parameters + breakpoints hash)
+    mapping(ILBPInitializer initializer => InitializerRecord) public initializers;
 
     // TODO: Add functionality to fully replace GovernedLBPStrategy
 
@@ -88,18 +88,21 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             )
         );
 
-        // Check if the initializer was already set to ensure identifier is not rewritten
-        if (initializers[initializer] != bytes32(0)) {
-            revert InitializerAlreadyCreated(initializers[initializer]);
+        // Check if the initializer was already registered to ensure parameters are not overwritten.
+        // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
+        if (initializers[initializer].params.migrationBlock != 0) {
+            revert InitializerAlreadyCreated(initializer);
         }
 
         // Validate the initializer parameters are set as expected
         _validateInitializer(initializer, migrationParams);
 
-        // Create the unique identifier by hashing MigratorParameters + breakpoints
-        bytes32 identifier = _createIdentifier(migrationParams, breakpoints);
-        // Store the identifier for the initializer to validate migration parameters during migration
-        initializers[initializer] = identifier;
+        // Store the parameters and breakpoints for the initializer
+        InitializerRecord storage record = initializers[initializer];
+        record.params = migrationParams;
+        for (uint256 i; i < breakpoints.length; ++i) {
+            record.breakpoints.push(breakpoints[i]);
+        }
 
         // TODO: does DistributionInitialized event make sense here?
         // Emit the distribution initialized event
@@ -112,22 +115,14 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @inheritdoc ILBPStrategy
-    function migrate(
-        ILBPInitializer initializer,
-        MigratorParameters calldata migrationParams,
-        Breakpoint[] calldata breakpoints
-    ) external {
-        // Ensure the migration block is after the current block
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
+    function migrate(ILBPInitializer initializer) external {
+        // Load the stored record for the initializer
+        InitializerRecord storage record = initializers[initializer];
+        MigratorParameters memory migrationParams = record.params;
+
+        // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
+        if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
-        }
-
-        // Get the identifier for the initializer
-        bytes32 identifier = initializers[initializer];
-
-        // Validate the migration parameters by comparing the stored identifier to the recreated identifier
-        if (identifier != _createIdentifier(migrationParams, breakpoints)) {
-            revert InvalidMigrationParameters();
         }
 
         // Get the LBP initialization parameters. Trust the initializer to return the correct parameters.
@@ -137,7 +132,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(lbpParams.currencyRaised, breakpoints);
+        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(lbpParams.currencyRaised, record.breakpoints);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
         // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
@@ -376,9 +371,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @param currencyAmount The total currency raised
     /// @param breakpoints The breakpoint array defining the split curve
     /// @return lpAmount The currency amount allocated to the LP
-    function _calculateCurrencyAmountForLp(uint256 currencyAmount, Breakpoint[] calldata breakpoints)
+    function _calculateCurrencyAmountForLp(uint256 currencyAmount, Breakpoint[] storage breakpoints)
         private
-        pure
+        view
         returns (uint256 lpAmount)
     {
         uint256 remaining = currencyAmount;
@@ -400,14 +395,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             if (remaining == 0) break;
             prevThreshold = breakpoints[i].threshold;
         }
-    }
-
-    function _createIdentifier(MigratorParameters memory migrationParams, Breakpoint[] memory breakpoints)
-        private
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(migrationParams, breakpoints));
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {

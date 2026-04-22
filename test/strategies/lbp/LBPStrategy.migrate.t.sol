@@ -19,7 +19,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         vm.expectEmit(true, false, false, true);
         emit ILBPStrategy.CurrencySwept(fundsRecipient, 10e18);
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
     }
 
     function test_emitsTokensSwept() public {
@@ -28,7 +28,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         vm.expectEmit(true, false, false, false);
         emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
     }
 
     function test_emitsMigrated() public {
@@ -39,7 +39,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.Migrated(
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))), 0
         );
-        _migrateWithDefaults(initializer, mp);
+        _migrateWithDefaults(initializer);
     }
 
     function test_currencyAmountCappedAtUint128Max() public {
