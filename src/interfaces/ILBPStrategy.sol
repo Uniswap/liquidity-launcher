@@ -28,19 +28,6 @@ interface ILBPStrategy {
         address lpHook; // the hook that will be used to initialize the pool
     }
 
-    struct OwnerControlled {
-        address protocolFeeController; // the address defining the protocol fee payed on non-LP currency
-        uint24 minSplitForLp; // the minimum percentage (in mps) of the total supply of the token that must be sent to an LP
-    }
-
-    /// @notice Emitted when the protocol fee controller is set
-    /// @param protocolFeeController The protocol fee controller
-    event ProtocolFeeControllerSet(address protocolFeeController);
-
-    /// @notice Emitted when the min split for LP is set
-    /// @param minSplitForLP The min split for LP
-    event MinSplitForLpSet(uint24 minSplitForLP);
-
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters
@@ -59,12 +46,6 @@ interface ILBPStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Error thrown when the protocol fee controller is the zero address
-    error InvalidProtocolFeeController();
-
-    /// @notice Error thrown when the min split for LP is zero or greater than 100%
-    error InvalidMinSplitForLp();
-
     /// @notice Error thrown when the initializer was already created
     /// @param identifier The identifier stored for the initializer
     error InitializerAlreadyCreated(bytes32 identifier);
@@ -78,9 +59,6 @@ interface ILBPStrategy {
     /// @param endBlock The invalid end block
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
-
-    /// @notice Error thrown when the breakpoint configuration is invalid
-    error InvalidBreakpointConfiguration();
 
     /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
     /// @param tickSpacing The invalid tick spacing
@@ -120,6 +98,9 @@ interface ILBPStrategy {
     error InvalidMigrationParameters();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
+    /// @param initializer The initializer contract that was created
+    /// @param migrationParams The migration parameters
+    /// @param breakpoints The breakpoints
     function migrate(
         ILBPInitializer initializer,
         MigratorParameters calldata migrationParams,

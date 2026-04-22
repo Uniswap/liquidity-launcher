@@ -11,7 +11,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Ownable} from "solady/auth/Ownable.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
@@ -21,11 +20,12 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
+import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStrategy {
+contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, IDistributionStrategy {
     /// @notice Internal helper struct
     struct MigrationData {
         uint160 sqrtPriceX96;
@@ -36,14 +36,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         uint128 liquidity;
     }
 
-    uint24 constant MAX_BRACKET_RATE = 1e7; // 100% in mps
-
     IPoolManager public immutable poolManager;
     IPositionManager public immutable positionManager;
     IDistributionStrategy public immutable initializerFactory;
-
-    // Owner controlled parameters
-    OwnerControlled public ownerControlledParams;
 
     /// @notice The mapping of initializers to their identifiers ensuring the validity of provided calldata during migration
     mapping(ILBPInitializer initializer => bytes32 identifier) public initializers;
@@ -53,34 +48,20 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributionStrategy _initializerFactory
+        IDistributionStrategy _initializerFactory,
+        uint24 _minSplitForLp,
+        address _protocolFeeController,
+        address _owner
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        _initializeOwner(msg.sender);
+        _initializeOwner(_owner);
+        _setMinSplitForLp(_minSplitForLp);
+        _setProtocolFeeController(_protocolFeeController);
     }
 
-    function setProtocolFeeController(address protocolFeeController) external onlyOwner {
-        if (protocolFeeController == address(0)) {
-            revert InvalidProtocolFeeController();
-        }
-
-        ownerControlledParams.protocolFeeController = protocolFeeController;
-
-        emit ProtocolFeeControllerSet(protocolFeeController);
-    }
-
-    function setMinSplitForLp(uint24 minSplitForLp) external onlyOwner {
-        if (minSplitForLp == 0 || minSplitForLp > 10_000) {
-            revert InvalidMinSplitForLp();
-        }
-
-        ownerControlledParams.minSplitForLp = minSplitForLp;
-
-        emit MinSplitForLpSet(minSplitForLp);
-    }
-
+    /// @inheritdoc IDistributionStrategy
     function initializeDistribution(
         address token,
         uint256 totalSupply,
@@ -130,7 +111,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         return IDistributionContract(address(initializer));
     }
 
-    /// @notice Migrates the raised funds and tokens to a v4 pool and sweep the raised funds, unsold and custody tokens to the fundsRecipient
+    /// @inheritdoc ILBPStrategy
     function migrate(
         ILBPInitializer initializer,
         MigratorParameters calldata migrationParams,
@@ -290,8 +271,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             );
         }
         // Validate breakpoint configuration
-        (, uint24 minSplitForLP) = _readOwnerControlledParams();
-        _validateBreakpoints(_breakpoints, minSplitForLP);
+        _validateBreakpoints(_breakpoints);
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
             _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
@@ -331,20 +311,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         uint256 expectedCustodyTokens = migrationParams.supplyForLP + migrationParams.custodyTokens;
         if (initializer.custodyTokens() != expectedCustodyTokens) {
             revert InvalidCustodySupply(initializer.custodyTokens(), expectedCustodyTokens);
-        }
-    }
-
-    function _readOwnerControlledParams() private view returns (address protocolFeeController, uint24 minSplitForLP) {
-        assembly ("memory-safe") {
-            let slotContent := sload(ownerControlledParams.slot)
-            protocolFeeController := and(
-                slotContent,
-                0xffffffffffffffffffffffffffffffffffffffff /* address mask */
-            )
-            minSplitForLP := and(
-                shr(160, slotContent),
-                0xffffff /* uint24 mask */
-            )
         }
     }
 
@@ -433,32 +399,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
 
             if (remaining == 0) break;
             prevThreshold = breakpoints[i].threshold;
-        }
-    }
-
-    /// @notice Validates the breakpoint configuration
-    /// @param _breakpoints The breakpoint array defining the split curve
-    /// @param _minSplitForLP The minimum rate allowed for any breakpoint
-    function _validateBreakpoints(Breakpoint[] memory _breakpoints, uint24 _minSplitForLP) private pure {
-        uint256 len = _breakpoints.length;
-        if (len == 0) revert InvalidBreakpointConfiguration();
-
-        uint128 prevThreshold;
-        for (uint256 i; i < len; ++i) {
-            uint24 rate = _breakpoints[i].rate;
-            // Every rate must be within [minSplitForLP, MAX_BRACKET_RATE]
-            if (rate == 0 || rate < _minSplitForLP || rate > MAX_BRACKET_RATE) {
-                revert InvalidBreakpointConfiguration();
-            }
-
-            // For non-last breakpoints, thresholds must be ascending and non-zero
-            if (i < len - 1) {
-                uint128 threshold = _breakpoints[i].threshold;
-                if (threshold == 0 || (i > 0 && threshold <= prevThreshold)) {
-                    revert InvalidBreakpointConfiguration();
-                }
-                prevThreshold = threshold;
-            }
         }
     }
 

@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {ILBPStrategyConfiguration} from "src/interfaces/ILBPStrategyConfiguration.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
@@ -39,7 +40,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](0);
 
-        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidBreakpointConfiguration.selector);
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );
@@ -50,7 +51,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
         bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: 0});
 
-        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidBreakpointConfiguration.selector);
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );
@@ -63,7 +64,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
         bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate});
 
-        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidBreakpointConfiguration.selector);
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );
@@ -79,7 +80,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
         bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate});
 
-        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidBreakpointConfiguration.selector);
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );
@@ -91,7 +92,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: 5e6}); // threshold 0 on non-last
         bp[1] = ILBPStrategy.Breakpoint({threshold: 0, rate: 3e6});
 
-        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidBreakpointConfiguration.selector);
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );
@@ -104,7 +105,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[1] = ILBPStrategy.Breakpoint({threshold: 50e18, rate: 5e6}); // not ascending
         bp[2] = ILBPStrategy.Breakpoint({threshold: 0, rate: 3e6});
 
-        vm.expectRevert(ILBPStrategy.InvalidBreakpointConfiguration.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidBreakpointConfiguration.selector);
         strategy.initializeDistribution(
             address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
         );

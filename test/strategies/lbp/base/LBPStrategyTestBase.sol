@@ -42,7 +42,12 @@ abstract contract LBPStrategyTestBase is Test {
         factory = new MockInitializerFactory(address(0));
 
         strategy = new LBPStrategy(
-            IPositionManager(positionManager), IPoolManager(poolManager), IDistributionStrategy(address(factory))
+            IPositionManager(positionManager),
+            IPoolManager(poolManager),
+            IDistributionStrategy(address(factory)),
+            1,
+            makeAddr("protocolFeeController"),
+            owner
         );
 
         factory.setStrategyAddress(address(strategy));
