@@ -115,12 +115,32 @@ contract PositionPlannerTest is Test {
 
     // --- resolve ---
 
-    function test_resolve_revertsOnInvalidResolvedTicks() public {
+    function test_resolve_skipsDegenerateBounds() public view {
+        // Offsets of (0, 0) resolve to a zero-width range, which is skipped rather than reverted
+        // so the migrate path never fails on malformed definitions.
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: 0, offsetUpper: 0, weight: 1e7});
 
-        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidResolvedTicks.selector, int24(0), int24(0)));
-        mockPositionPlanner.resolve(defs, 0, 10, 100e18, 100e18);
+        (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
+            mockPositionPlanner.resolve(defs, 0, 10, 100e18, 100e18);
+
+        assertEq(positions.length, 0);
+        assertEq(remaining0, 100e18);
+        assertEq(remaining1, 100e18);
+    }
+
+    function test_resolve_clampsOffsetsExceedingUsableRange() public view {
+        // Offsets well beyond int24 boundaries should clamp to [minUsableTick, maxUsableTick]
+        // rather than reverting on int24 arithmetic overflow.
+        int24 tickSpacing = 60;
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: type(int24).max, offsetUpper: type(int24).max, weight: 1e7});
+
+        (Position[] memory positions,,) = mockPositionPlanner.resolve(defs, 0, tickSpacing, 100e18, 100e18);
+
+        assertEq(positions.length, 1);
+        assertEq(positions[0].tickLower, TickMath.minUsableTick(tickSpacing));
+        assertEq(positions[0].tickUpper, TickMath.maxUsableTick(tickSpacing));
     }
 
     function test_fuzz_resolve_fullRangeSentinel(

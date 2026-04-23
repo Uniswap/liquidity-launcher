@@ -29,8 +29,6 @@ library PositionPlanner {
 
     /// @notice Thrown when the position plan contains no definitions
     error EmptyPositionPlan();
-    /// @notice Thrown when a resolved tick range is out of bounds or non-increasing
-    error InvalidResolvedTicks(int24 tickLower, int24 tickUpper);
     /// @notice Thrown when the weights across a plan do not sum to `MPS`
     error InvalidAllocationWeights(uint24 totalWeight);
 
@@ -67,6 +65,7 @@ library PositionPlanner {
     }
 
     /// @notice Converts each definition's relative offsets into absolute tick bounds snapped to `_tickSpacing`
+    /// @dev Will clamp to the usuable range if the offset exceeds it
     function _resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
         private
         pure
@@ -74,20 +73,23 @@ library PositionPlanner {
     {
         uint256 len = _definitions.length;
         ticks = new TickBounds[](len);
+        int24 minUsable = TickMath.minUsableTick(_tickSpacing);
+        int24 maxUsable = TickMath.maxUsableTick(_tickSpacing);
         for (uint256 i; i < len; i++) {
             int24 offsetLower = _definitions[i].offsetLower;
             int24 offsetUpper = _definitions[i].offsetUpper;
             int24 tickLower;
             int24 tickUpper;
             if (offsetLower == TickMath.MIN_TICK && offsetUpper == TickMath.MAX_TICK) {
-                tickLower = TickMath.minUsableTick(_tickSpacing);
-                tickUpper = TickMath.maxUsableTick(_tickSpacing);
+                tickLower = minUsable;
+                tickUpper = maxUsable;
             } else {
-                tickLower = (_currentTick - offsetLower).tickFloor(_tickSpacing);
-                tickUpper = (_currentTick + offsetUpper).tickCeil(_tickSpacing);
-                if (tickLower < TickMath.MIN_TICK || tickUpper > TickMath.MAX_TICK || tickLower >= tickUpper) {
-                    revert InvalidResolvedTicks(tickLower, tickUpper);
-                }
+                // Widen to int256 to avoid int24 overflow, clamp into the usable range, then snap
+                // to tick spacing. `minUsable`/`maxUsable` are spacing-aligned, so floor/ceil stay in range.
+                int256 lowerRaw = int256(_currentTick) - int256(offsetLower);
+                int256 upperRaw = int256(_currentTick) + int256(offsetUpper);
+                tickLower = int24(FixedPointMathLib.clamp(lowerRaw, minUsable, maxUsable)).tickFloor(_tickSpacing);
+                tickUpper = int24(FixedPointMathLib.clamp(upperRaw, minUsable, maxUsable)).tickCeil(_tickSpacing);
             }
             ticks[i] = TickBounds({lowerTick: tickLower, upperTick: tickUpper});
         }
@@ -110,10 +112,14 @@ library PositionPlanner {
             uint256 weightedAmount1;
             for (uint256 i; i < ticks.length; i++) {
                 TickBounds memory bounds = ticks[i];
+                if (bounds.lowerTick >= bounds.upperTick) continue;
                 (uint256 amount0, uint256 amount1) =
                     getAmountsForLiquidity(_currentTick, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
                 weightedAmount0 += amount0 * _definitions[i].weight;
                 weightedAmount1 += amount1 * _definitions[i].weight;
+            }
+            if (weightedAmount0 == 0 && weightedAmount1 == 0) {
+                return (new Position[](0), _currency0Amount, _currency1Amount);
             }
             liquidityPerAllocation =
                 getLiquidityPerAllocation(_currency0Amount, _currency1Amount, weightedAmount0, weightedAmount1);
@@ -123,6 +129,7 @@ library PositionPlanner {
         uint256 cnt;
         for (uint256 i; i < ticks.length; i++) {
             TickBounds memory bounds = ticks[i];
+            if (bounds.lowerTick >= bounds.upperTick) continue;
             uint256 liquidity = liquidityPerAllocation * _definitions[i].weight;
             if (liquidity == 0 || liquidity > type(uint128).max) {
                 continue;
