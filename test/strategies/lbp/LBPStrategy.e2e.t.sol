@@ -26,7 +26,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         // Ensure currencyRaised * split / 1e7 > 0 to avoid NoCurrencyRaised
         currencyRaised = uint128(bound(currencyRaised, 1e7 / split + 1, type(uint128).max));
-        tokensSold = uint128(bound(tokensSold, 1, DEFAULT_TOTAL_SUPPLY - DEFAULT_SUPPLY_FOR_LP - DEFAULT_CUSTODY_TOKENS));
+        tokensSold =
+            uint128(bound(tokensSold, 1, DEFAULT_TOTAL_SUPPLY - DEFAULT_SUPPLY_FOR_LP - DEFAULT_CUSTODY_TOKENS));
 
         // Build params
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
@@ -106,7 +107,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         split = uint24(bound(split, 1, 1e7));
         // Ensure currencyRaised * split / 1e7 > 0 to avoid NoCurrencyRaised
         currencyRaised = uint128(bound(currencyRaised, 1e7 / split + 1, type(uint128).max));
-        tokensSold = uint128(bound(tokensSold, 1, DEFAULT_TOTAL_SUPPLY - DEFAULT_SUPPLY_FOR_LP - DEFAULT_CUSTODY_TOKENS));
+        tokensSold =
+            uint128(bound(tokensSold, 1, DEFAULT_TOTAL_SUPPLY - DEFAULT_SUPPLY_FOR_LP - DEFAULT_CUSTODY_TOKENS));
 
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         mp.currencySplitForLP = split;

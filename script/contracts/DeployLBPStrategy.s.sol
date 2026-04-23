@@ -16,8 +16,7 @@ contract DeployLBPStrategyScript is Script, Parameters {
         DeployParameters memory params = getParameters(block.chainid);
 
         vm.broadcast();
-        LBPStrategy lbpStrategy =
-            new LBPStrategy(params.positionManager, params.poolManager, initializerFactory);
+        LBPStrategy lbpStrategy = new LBPStrategy(params.positionManager, params.poolManager, initializerFactory);
 
         console.log("LBPStrategy deployed to:", address(lbpStrategy));
     }

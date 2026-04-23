@@ -46,8 +46,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice The mapping of initializers to their stored migration parameters, used to drive migration
     mapping(ILBPInitializer initializer => MigratorParameters) public initializers;
 
-    // TODO: Add functionality to fully replace GovernedLBPStrategy
-
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
@@ -79,6 +77,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         emit MinSplitForLpSet(minSplitForLp);
     }
 
+    /// @inheritdoc IDistributionStrategy
     function initializeDistribution(
         address token,
         uint256 totalSupply,
@@ -117,11 +116,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Store the parameters for the initializer to validate migration parameters during migration
         initializers[initializer] = migrationParams;
 
-        // TODO: does DistributionInitialized event make sense here?
-        // Emit the distribution initialized event
-        // emit DistributionInitialized(address(this), token, totalSupply);
-
-        // Emit the auction initialized event to allow indexing all the migration and auction parameters
         emit InitializerCreated(initializer, migrationParams);
 
         return IDistributionContract(address(initializer));
@@ -180,7 +174,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Transfer all leftover currency and tokens to the funds recipient (non LP currency and tokens, unsold & custody tokens and dust)
         uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
-            // TODO: Handle blocked native currency transfers
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
