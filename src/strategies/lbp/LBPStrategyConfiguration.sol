@@ -8,10 +8,14 @@ import {ILBPStrategyConfiguration} from "../../interfaces/ILBPStrategyConfigurat
 /// @title LBPStrategyConfiguration
 /// @notice Abstract configuration contract for LBPStrategy owner-controlled parameters and breakpoint validation
 abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration {
-    uint24 constant MAX_BRACKET_RATE = 1e7; // 100% in mps
+    /// @notice The maximum bracket rate (100% in mps)
+    uint24 constant MAX_BRACKET_RATE = 1e7;
+    /// @notice The maximum number of breakpoints
     uint256 constant MAX_BREAKPOINTS = 3;
 
+    /// @notice The protocol fee controller
     address public protocolFeeController;
+    /// @notice The min bracket rate
     uint24 public minBracketRate;
 
     /// @inheritdoc ILBPStrategyConfiguration
@@ -30,7 +34,7 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
     /// @param _minBracketRate The min bracket rate
     function _setMinBracketRate(uint24 _minBracketRate) internal {
         if (_minBracketRate == 0 || _minBracketRate > MAX_BRACKET_RATE) {
-            revert InvalidMinBracketRate();
+            revert InvalidMinBracketRate(_minBracketRate);
         }
         minBracketRate = _minBracketRate;
     }

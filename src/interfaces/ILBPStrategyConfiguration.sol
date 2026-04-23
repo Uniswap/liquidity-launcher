@@ -18,15 +18,19 @@ interface ILBPStrategyConfiguration {
     error InvalidProtocolFeeController();
 
     /// @notice Error thrown when the min bracket rate is zero or greater than MAX_BRACKET_RATE
-    error InvalidMinBracketRate();
+    /// @param minBracketRate The invalid min bracket rate
+    error InvalidMinBracketRate(uint24 minBracketRate);
 
     /// @notice Error thrown when the breakpoints array length is invalid (empty or exceeds max)
+    /// @param length The invalid breakpoints array length
     error InvalidBreakpointLength(uint256 length);
 
     /// @notice Error thrown when a breakpoint rate is outside [minBracketRate, MAX_BRACKET_RATE]
+    /// @param rate The invalid breakpoint rate
     error InvalidBreakpointRate(uint24 rate);
 
     /// @notice Error thrown when a breakpoint threshold is zero or not strictly ascending
+    /// @param threshold The invalid breakpoint threshold
     error InvalidBreakpointThreshold(uint128 threshold);
 
     /// @notice Sets the protocol fee controller

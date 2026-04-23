@@ -36,11 +36,14 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         uint128 liquidity;
     }
 
+    /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
+    /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
+    /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The mapping of initializers to their stored record (migration parameters + breakpoints hash)
+    /// @notice The mapping of initializers to their stored record (migration parameters + breakpoints)
     mapping(ILBPInitializer initializer => InitializerRecord) public initializers;
 
     constructor(
