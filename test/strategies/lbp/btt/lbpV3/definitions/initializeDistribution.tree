@@ -1,29 +1,23 @@
 InitializeDistributionTest
-├── when currencySplitForLP is 0
+├── when currencySplitForLP is invalid (0, >1e7, <min)
 │   └── it reverts with {InvalidCurrencySplitForLP}
-├── when currencySplitForLP is greater than 1e7
-│   └── it reverts with {InvalidCurrencySplitForLP}
-├── when currencySplitForLP is less than minSplitForLP
-│   └── it reverts with {InvalidCurrencySplitForLP}
-└── when currencySplitForLP is valid
-    ├── when poolTickSpacing is out of bounds
-    │   └── it reverts with {InvalidTickSpacing}
-    └── when poolTickSpacing is valid
-        ├── when poolLPFee is greater than MAX_LP_FEE
-        │   └── it reverts with {InvalidFee}
-        └── when poolLPFee is valid
-            ├── when lpPositionRecipient is reserved
-            │   └── it reverts with {InvalidPositionRecipient}
-            └── when lpPositionRecipient is valid
-                ├── when initializer fundsRecipient is not strategy
-                │   └── it reverts with {InvalidRecipient}
-                ├── when initializer tokensRecipient is not strategy
-                │   └── it reverts with {InvalidRecipient}
-                ├── when initializer endBlock is GTE migrationBlock
-                │   └── it reverts with {InvalidEndBlock}
-                ├── when initializer custodyTokens mismatch
-                │   └── it reverts with {InvalidCustodySupply}
-                └── when initializer is valid
-                    ├── it deploys an initializer via the factory
-                    ├── it stores the migration parameters
-                    └── it emits {InitializerCreated}
+├── when tickSpacing is out of bounds
+│   └── it reverts with {InvalidTickSpacing}
+├── when fee > MAX_LP_FEE
+│   └── it reverts with {InvalidFee}
+├── when positionRecipient is reserved
+│   └── it reverts with {InvalidPositionRecipient}
+├── when positionDefinitions is empty
+│   └── it reverts with {PositionPlanner.EmptyPositionPlan}
+├── when allocation weights don't sum to MPS (1e7)
+│   └── it reverts with {PositionPlanner.InvalidAllocationWeights}
+└── when migrator params are valid
+    ├── when initializer.fundsRecipient != strategy
+    │   └── it reverts with {InvalidRecipient}
+    ├── when initializer.endBlock >= migrationBlock
+    │   └── it reverts with {InvalidEndBlock}
+    ├── when initializer.custodyTokens mismatch
+    │   └── it reverts with {InvalidCustodySupply}
+    └── when initializer is valid
+        ├── it stores the migration parameters
+        └── it emits {InitializerCreated}

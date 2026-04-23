@@ -40,7 +40,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         );
 
         // Stored migration params should be zero-valued
-        (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(unregistered);
+        (uint64 storedMigrationBlock,,,,,,,,,) = strategy.initializers(unregistered);
         assertEq(storedMigrationBlock, 0);
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), _currentBlock));

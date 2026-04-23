@@ -26,7 +26,8 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
             uint128 custodyTokens,
             address storedLpPositionRecipient,
             uint24 currencySplitForLP,
-            address lpHook
+            address lpHook,
+            bytes memory positionDefinitions
         ) = strategy.initializers(ILBPInitializer(address(init1)));
 
         assertEq(migrationBlock, mp.migrationBlock);
@@ -38,6 +39,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
         assertEq(currencySplitForLP, mp.currencySplitForLP);
         assertEq(lpHook, mp.lpHook);
+        assertEq(positionDefinitions, mp.positionDefinitions);
     }
 
     function test_emitsInitializerCreated() public {

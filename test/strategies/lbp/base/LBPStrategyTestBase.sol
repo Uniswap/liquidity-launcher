@@ -11,6 +11,8 @@ import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 abstract contract LBPStrategyTestBase is Test {
     LBPStrategy strategy;
@@ -50,6 +52,8 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     function _defaultMigratorParams() internal view returns (ILBPStrategy.MigratorParameters memory) {
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
         return ILBPStrategy.MigratorParameters({
             migrationBlock: uint64(block.number) + MIGRATION_BLOCK_OFFSET,
             poolLPFee: DEFAULT_POOL_FEE,
@@ -59,7 +63,8 @@ abstract contract LBPStrategyTestBase is Test {
             custodyTokens: DEFAULT_CUSTODY_TOKENS,
             lpPositionRecipient: lpPositionRecipient,
             currencySplitForLP: DEFAULT_CURRENCY_SPLIT,
-            lpHook: address(0)
+            lpHook: address(0),
+            positionDefinitions: abi.encode(defs)
         });
     }
 

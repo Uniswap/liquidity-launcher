@@ -11,6 +11,8 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 
 /// @title InitializeDistributionTest
 /// @notice BTT tests for LBPStrategy.initializeDistribution
@@ -24,6 +26,10 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 /// │   └── it reverts with InvalidFee
 /// ├── when positionRecipient is reserved
 /// │   └── it reverts with InvalidPositionRecipient
+/// ├── when positionDefinitions is empty
+/// │   └── it reverts with PositionPlanner.EmptyPositionPlan
+/// ├── when allocation weights don't sum to MPS (1e7)
+/// │   └── it reverts with PositionPlanner.InvalidAllocationWeights(total)
 /// └── when migrator params are valid
 ///     ├── when initializer.fundsRecipient != strategy
 ///     │   └── it reverts with InvalidRecipient
@@ -126,6 +132,44 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     }
 
     modifier whenPositionRecipientIsValid() {
+        _;
+    }
+
+    function test_WhenPositionDefinitionsIsEmpty()
+        public
+        whenCurrencySplitIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
+
+        vm.expectRevert(PositionPlanner.EmptyPositionPlan.selector);
+        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+    }
+
+    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight)
+        public
+        whenCurrencySplitIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // Any single-element weight not equal to 1e7.
+        _weight = uint24(bound(_weight, 0, type(uint24).max));
+        vm.assume(_weight != 1e7);
+
+        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _weight});
+        mp.positionDefinitions = abi.encode(defs);
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
+        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+    }
+
+    modifier whenPositionPlanIsValid() {
         _;
     }
 
@@ -238,7 +282,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             uint128 custodyTokens,
             address storedLpPositionRecipient,
             uint24 currencySplitForLP,
-            address lpHook
+            address lpHook,
+            bytes memory positionDefinitions
         ) = strategy.initializers(ILBPInitializer(address(initializer)));
 
         assertEq(migrationBlock, mp.migrationBlock);
@@ -250,5 +295,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
         assertEq(currencySplitForLP, mp.currencySplitForLP);
         assertEq(lpHook, mp.lpHook);
+        assertEq(positionDefinitions, mp.positionDefinitions);
     }
 }

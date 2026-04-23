@@ -19,8 +19,8 @@ contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
         );
         MockLBPInitializer init2 = factory.deployedInitializer();
 
-        (uint64 stored1,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
-        (uint64 stored2,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
+        (uint64 stored1,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
+        (uint64 stored2,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
 
         assertEq(stored1, params1.migrationBlock);
         assertEq(stored2, params2.migrationBlock);

@@ -19,6 +19,7 @@ interface ILBPStrategy {
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
         address lpHook; // the hook that will be used to initialize the pool
+        bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     }
 
     struct OwnerControlled {

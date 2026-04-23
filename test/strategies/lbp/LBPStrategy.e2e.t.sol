@@ -41,7 +41,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockLBPInitializer initializer = factory.deployedInitializer();
 
         // Verify migration params were stored (migrationBlock is a non-zero sentinel)
-        (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
+        (uint64 storedMigrationBlock,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertEq(storedMigrationBlock, mp.migrationBlock);
 
         // Fund the initializer
@@ -96,8 +96,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockLBPInitializer init2 = factory.deployedInitializer();
 
         // Each initializer has its own stored migration params
-        (uint64 stored1,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
-        (uint64 stored2,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
+        (uint64 stored1,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
+        (uint64 stored2,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
         assertEq(stored1, mp1.migrationBlock);
         assertEq(stored2, mp2.migrationBlock);
         assertTrue(stored1 != stored2);
@@ -130,11 +130,16 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
+        uint256 pmBalBefore = positionManager.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // All currency should end up at fundsRecipient (since _createPositionPlan is a stub returning empty,
-        // no currency actually goes to LP — it all gets swept)
-        uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertEq(received, currencyRaised);
+        // With PositionPlanner wired in, some currency may be forwarded to the (mocked) position manager
+        // when `_transferAssetsAndExecutePlan` sends value alongside `modifyLiquidities`. Any amount not
+        // consumed by the LP is swept to fundsRecipient. The sum of both must equal the total raised.
+        uint256 receivedByFunds = fundsRecipient.balance - recipientBalBefore;
+        uint256 receivedByPM = positionManager.balance - pmBalBefore;
+        assertEq(receivedByFunds + receivedByPM, currencyRaised);
+        // Strategy should retain nothing after the migration sweep.
+        assertEq(address(strategy).balance, 0);
     }
 }
