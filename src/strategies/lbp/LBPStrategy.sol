@@ -43,8 +43,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice The mapping of initializers to their stored record (migration parameters + breakpoints hash)
     mapping(ILBPInitializer initializer => InitializerRecord) public initializers;
 
-    // TODO: Add functionality to fully replace GovernedLBPStrategy
-
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
@@ -104,11 +102,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             record.breakpoints.push(breakpoints[i]);
         }
 
-        // TODO: does DistributionInitialized event make sense here?
-        // Emit the distribution initialized event
-        // emit DistributionInitialized(address(this), token, totalSupply);
-
-        // Emit the auction initialized event to allow indexing all the migration and auction parameters
         emit InitializerCreated(initializer, migrationParams, breakpoints);
 
         return IDistributionContract(address(initializer));
@@ -167,7 +160,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         // Transfer all leftover currency and tokens to the funds recipient (non LP currency and tokens, unsold & custody tokens and dust)
         uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
-            // TODO: Handle blocked native currency transfers
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
