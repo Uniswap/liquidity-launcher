@@ -74,7 +74,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             abi.decode(configData, (MigratorParameters, Breakpoint[], bytes));
 
         // Validate the migrator parameters and breakpoints
-        _validateMigratorParams(migrationParams, breakpoints);
+        _validateMigratorParams(migrationParams);
+        _validateBreakpoints(breakpoints);
 
         // Subtract custody tokens so the initializer is only given the remaining portion of supply.
         uint256 initializerSupply = totalSupply - migrationParams.custodyTokens;
@@ -246,19 +247,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    /// @param _breakpoints The currency split breakpoints
-    function _validateMigratorParams(MigratorParameters memory _migratorParams, Breakpoint[] memory _breakpoints)
-        private
-        view
-    {
+    function _validateMigratorParams(MigratorParameters memory _migratorParams) private pure {
         // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
         if (uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens) > type(uint128).max) {
             revert InvalidCustodySupply(
                 uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
             );
         }
-        // Validate breakpoint configuration
-        _validateBreakpoints(_breakpoints);
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
             _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
