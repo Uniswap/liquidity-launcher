@@ -17,19 +17,21 @@ contract LBPStrategy_OwnerControls_Test is LBPStrategyTestBase {
         assertEq(minSplit, 0);
     }
 
-    function test_packedStorageSurvivesUpdates() public {
-        address controller = makeAddr("controller");
-        strategy.setProtocolFeeController(controller);
-        strategy.setMinSplitForLp(7777);
+    function test_packedStorageSurvivesUpdates(address _controller, uint24 _minSplit, address _controller2) public {
+        vm.assume(_controller != address(0) && _controller2 != address(0));
+        _minSplit = uint24(bound(_minSplit, 1, 10_000));
+
+        strategy.setProtocolFeeController(_controller);
+        strategy.setMinSplitForLp(_minSplit);
 
         (address readCtrl, uint24 readSplit) = strategy.ownerControlledParams();
-        assertEq(readCtrl, controller);
-        assertEq(readSplit, 7777);
+        assertEq(readCtrl, _controller);
+        assertEq(readSplit, _minSplit);
 
         // Update one, verify other survives
-        strategy.setProtocolFeeController(makeAddr("ctrl2"));
+        strategy.setProtocolFeeController(_controller2);
         (readCtrl, readSplit) = strategy.ownerControlledParams();
-        assertEq(readCtrl, makeAddr("ctrl2"));
-        assertEq(readSplit, 7777);
+        assertEq(readCtrl, _controller2);
+        assertEq(readSplit, _minSplit);
     }
 }

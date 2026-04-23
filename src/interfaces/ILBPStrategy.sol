@@ -57,8 +57,8 @@ interface ILBPStrategy {
     error InvalidMinSplitForLp();
 
     /// @notice Error thrown when the initializer was already created
-    /// @param identifier The identifier stored for the initializer
-    error InitializerAlreadyCreated(bytes32 identifier);
+    /// @param initializer The initializer that has already been registered
+    error InitializerAlreadyCreated(ILBPInitializer initializer);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -110,9 +110,6 @@ interface ILBPStrategy {
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
 
-    /// @notice Error thrown when the migration parameters provided differ from the original ones
-    error InvalidMigrationParameters();
-
     /// @notice Migrates the raised funds and tokens to a v4 pool
-    function migrate(ILBPInitializer initializer, MigratorParameters calldata migrationParams) external;
+    function migrate(ILBPInitializer initializer) external;
 }

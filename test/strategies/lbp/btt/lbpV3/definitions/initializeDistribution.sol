@@ -32,7 +32,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///     ├── when initializer.custodyTokens mismatch
 ///     │   └── it reverts with InvalidCustodySupply
 ///     └── when initializer is valid
-///         ├── it stores the identifier
+///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
     function test_WhenCurrencySplitIsZero() public {
@@ -157,8 +157,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenInitializerEndBlockGTEMigrationBlock() public whenMigratorParamsAreValid {
+    function test_WhenInitializerEndBlockGTEMigrationBlock(uint64 _endBlockOffset) public whenMigratorParamsAreValid {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+
+        // endBlock >= migrationBlock
+        uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
 
         MockLBPInitializer badInit = new MockLBPInitializer(
             address(token),
@@ -168,7 +171,34 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             address(strategy),
             address(strategy),
             0,
-            uint64(mp.migrationBlock)
+            endBlock
+        );
+
+        vm.mockCall(
+            address(factory),
+            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
+            abi.encode(address(badInit))
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, endBlock, mp.migrationBlock));
+        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
+    }
+
+    function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody) public whenMigratorParamsAreValid {
+        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+
+        uint128 expectedCustody = uint128(mp.supplyForLP + mp.custodyTokens);
+        vm.assume(_wrongCustody != expectedCustody);
+
+        MockLBPInitializer badInit = new MockLBPInitializer(
+            address(token),
+            address(0),
+            0,
+            _wrongCustody,
+            address(strategy),
+            address(strategy),
+            0,
+            uint64(block.number) + 50
         );
 
         vm.mockCall(
@@ -178,26 +208,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, mp.migrationBlock, mp.migrationBlock)
+            abi.encodeWithSelector(ILBPStrategy.InvalidCustodySupply.selector, _wrongCustody, expectedCustody)
         );
-        strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
-    }
-
-    function test_WhenInitializerCustodyTokensMismatch() public whenMigratorParamsAreValid {
-        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-
-        MockLBPInitializer badInit = new MockLBPInitializer(
-            address(token), address(0), 0, 999, address(strategy), address(strategy), 0, uint64(block.number) + 50
-        );
-
-        vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
-            abi.encode(address(badInit))
-        );
-
-        uint256 expected = uint256(mp.supplyForLP) + uint256(mp.custodyTokens);
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCustodySupply.selector, 999, expected));
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
@@ -216,22 +228,27 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         assertNotEq(address(initializer), address(0));
 
-        bytes32 id = strategy.initializers(ILBPInitializer(address(initializer)));
-        assertNotEq(id, bytes32(0));
+        // Verify all fields of MigratorParameters were stored correctly
+        (
+            uint64 migrationBlock,
+            uint24 poolLPFee,
+            int24 poolTickSpacing,
+            uint128 supplyForLP,
+            address storedFundsRecipient,
+            uint128 custodyTokens,
+            address storedLpPositionRecipient,
+            uint24 currencySplitForLP,
+            address lpHook
+        ) = strategy.initializers(ILBPInitializer(address(initializer)));
 
-        bytes32 expectedId = keccak256(
-            abi.encode(
-                mp.migrationBlock,
-                mp.poolLPFee,
-                mp.poolTickSpacing,
-                mp.supplyForLP,
-                mp.fundsRecipient,
-                mp.custodyTokens,
-                mp.lpPositionRecipient,
-                mp.currencySplitForLP,
-                mp.lpHook
-            )
-        );
-        assertEq(id, expectedId);
+        assertEq(migrationBlock, mp.migrationBlock);
+        assertEq(poolLPFee, mp.poolLPFee);
+        assertEq(poolTickSpacing, mp.poolTickSpacing);
+        assertEq(supplyForLP, mp.supplyForLP);
+        assertEq(storedFundsRecipient, mp.fundsRecipient);
+        assertEq(custodyTokens, mp.custodyTokens);
+        assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
+        assertEq(currencySplitForLP, mp.currencySplitForLP);
+        assertEq(lpHook, mp.lpHook);
     }
 }

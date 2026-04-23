@@ -30,6 +30,7 @@ abstract contract LBPStrategyTestBase is Test {
     uint24 constant DEFAULT_POOL_FEE = 500;
     int24 constant DEFAULT_TICK_SPACING = 10;
     uint64 constant MIGRATION_BLOCK_OFFSET = 200;
+    uint128 constant DEFAULT_TOKENS_SOLD = 100e18;
 
     function setUp() public virtual {
         owner = address(this);
@@ -92,10 +93,17 @@ abstract contract LBPStrategyTestBase is Test {
         internal
         returns (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp)
     {
+        return _setupForMigration(currencyRaised, initialPriceX96, DEFAULT_TOKENS_SOLD);
+    }
+
+    function _setupForMigration(uint256 currencyRaised, uint256 initialPriceX96, uint256 tokensSold)
+        internal
+        returns (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp)
+    {
         (initializer, mp) = _initializeWithDefaults();
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
-                initialPriceX96: initialPriceX96, tokensSold: 100e18, currencyRaised: currencyRaised
+                initialPriceX96: initialPriceX96, tokensSold: tokensSold, currencyRaised: currencyRaised
             })
         );
         if (currencyRaised > 0 && currencyRaised <= type(uint128).max) {
