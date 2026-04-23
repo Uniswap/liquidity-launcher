@@ -24,7 +24,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
 
     /// @inheritdoc IProtocolFeeController
     function setGlobalProtocolFeeSettings(uint24 globalProtocolFeeBps, address recipient) external onlyOwner {
-        if (globalProtocolFeeBps > BPS) revert InvalidInput();
+        if (globalProtocolFeeBps > BPS) revert InvalidBps(globalProtocolFeeBps, BPS);
         if (recipient == address(0)) revert InvalidInput();
 
         globalProtocolFee =
@@ -52,18 +52,19 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
         // Limit the number of fee tiers to 3
         if (fees.length > 3) revert InvalidFeeLength(uint8(fees.length), 3);
         // Scale is a power-of-10 exponent (threshold = startAmount * 10^scale).
-        // Normally capped at 72 to prevent overflow: uint16 max (65,535) × 10^72 < uint256 max.
-        // Tightened to 68 because the fee loop multiplies bracketAmount × feeBps (max 10,000):
-        // 65,535 × 10^68 × 10,000 < uint256 max.
+        // Capped at 68 to prevent overflow: uint16 max (65,535) × 10^68 × feeBps < uint256 max.
         if (scale > 68) revert InvalidScale(scale, 68);
         // The first tier must start at 0, since it describes the base fee.
-        if (fees[0].startAmount != 0) revert InvalidInput();
+        if (fees[0].startAmount != 0) revert InvalidStartAmount();
 
         // Use assembly to pack all fee tiers into a single slot
         assembly ("memory-safe") {
-            // Custom protocol fees storage layout:
-            // | 8 bits | 8 bits | 16 bits | 16 bits  | 16 bits | 16 bits  | 16 bits | 16 bits |
-            // | length | scale  | fee1    | start2   | fee2    | start3   | fee3    | cap     |
+            // Custom protocol fees storage layout (left-aligned high bits first; bits 0-143 unused buffer).
+            // `cap` always trails the last tier, so its position shifts with `length`:
+            // | 8 bits | 8 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 144 bits |
+            // | length | scale  | fee1    | start2  | fee2    | start3  | fee3    | cap     |  buffer  |  // 3 tiers
+            // | length | scale  | fee1    | start2  | fee2    | cap     |              zero            |  // 2 tiers
+            // | length | scale  | fee1    | cap     |                    zero                          |  // 1 tier
 
             // Use errorBuffer to capture errors and revert if any are found.
             let errorBuffer := 0
@@ -89,7 +90,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
                 // Pack the startAmount into the content
                 content := or(content, shl(contentPtr, startAmount))
                 contentPtr := sub(contentPtr, 16) // safe because fees.length is limited to 3
-                // Pack the protocolFeeBps valid for that startAmount into the content
+                // Pack the protocolFeeBps for that startAmount into the content
                 content := or(content, shl(contentPtr, protocolFeeBps))
                 contentPtr := sub(contentPtr, 16) // safe because fees.length is limited to 3
             }
@@ -104,7 +105,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
             // Pack the cap after the fee tiers. Max of 65,535 fits into 16 bits.
             content := or(content, shl(contentPtr, and(cap, UINT16_MASK)))
 
-            // Pack uint 8 length & uint8 scale. Overrides uint16 fees[0].startAmount, confirmed to be zero:
+            // Pack uint8 length & uint8 scale. Overrides uint16 fees[0].startAmount, confirmed to be zero:
             // Pack the length of the fee tiers. Max length of three fits into 8 bits.
             content := or(content, shl(248, and(fees.length, UINT8_MASK)))
             // pack the scale of the fee tiers. Max of 68 fits into 8 bits.
@@ -149,7 +150,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
     }
 
     /// @notice Calculates the protocol fee amount for the given currency and amount.
-    ///         Honors custom protocol fee tiers and falls back to the global protocol fee if none was set.
+    ///         Honors custom protocol fee tiers and falls back to the global protocol fee if none were set.
     function calculateProtocolFeeAmount(address currency, uint256 amount)
         private
         view
@@ -161,16 +162,22 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
 
         assembly ("memory-safe") {
             // Load the content of the global protocol fee slot.
-            // Use assembly to directly cast the slot content to stack and skip memory allocation
+            // Use assembly to directly cast the slot content to stack and skip memory allocation.
+            // Global fee storage layout (right-aligned, native solidity packing):
+            // | 72 bits | 160 bits  | 24 bits |
+            // | buffer  | recipient | feeBps  |
             let globalContent := sload(globalProtocolFee.slot)
             // Get the global protocol fee basis points.
             let globalProtocolFeeBps := and(globalContent, UINT24_MASK)
             // Get the global protocol fee recipient.
             protocolFeeRecipient := shr(24, globalContent)
 
-            // Custom protocol fees storage layout:
-            // | 8 bits | 8 bits | 16 bits | 16 bits  | 16 bits | 16 bits  | 16 bits | 16 bits |
-            // | length | scale  | fee1    | start2   | fee2    | start3   | fee3    | cap     |
+            // Custom protocol fees storage layout (left-aligned high bits first; bits 0-143 unused buffer).
+            // `cap` always trails the last tier, so its position shifts with `length`:
+            // | 8 bits | 8 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 144 bits |
+            // | length | scale  | fee1    | start2  | fee2    | start3  | fee3    | cap     |  buffer  |  // 3 tiers
+            // | length | scale  | fee1    | start2  | fee2    | cap     |              zero            |  // 2 tiers
+            // | length | scale  | fee1    | cap     |                    zero                          |  // 1 tier
 
             // Read the content of the currency's protocol fee slot.
             let slot := or(CURRENCY_PROTOCOL_FEE_SLOT_PREFIX, currency)
@@ -182,13 +189,13 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
                 let scale := and(shr(240, content), UINT8_MASK)
                 let scaleFactor := exp(10, scale)
 
-                // Point to the first tier (fee1).
+                // Point to the first tier's protocol fee basis points
                 let contentPtr := 224
                 let previousStartAmount := 0
                 for { let i := 0 } lt(i, length) { i := add(i, 1) } {
                     // Retrieve the protocol fee basis points.
                     let protocolFeeBpsInBracket := and(shr(contentPtr, content), UINT16_MASK)
-                    // Move the pointer to the next tier start
+                    // Move the pointer to the next tier's start amount
                     contentPtr := sub(contentPtr, 16)
                     // Retrieve the next start amount or cap (ceiling of the current bracket).
                     let ceiling := and(shr(contentPtr, content), UINT16_MASK)
@@ -201,6 +208,7 @@ contract ProtocolFeeController is Owned, IProtocolFeeController {
                     // If the ceiling is zero (indicating the cap is reached and no cap set), use the amount as the ceiling.
                     let amountIsCeiling := or(gt(ceiling, amount), iszero(ceiling))
                     // If the amount is smaller than the ceiling, use the amount as the ceiling.
+                    // equivalent to: ceiling = amountIsCeiling ? amount : ceiling
                     ceiling := or(mul(ceiling, iszero(amountIsCeiling)), mul(amount, amountIsCeiling))
                     // Calculate the amount of the current bracket.
                     let bracketAmount := sub(ceiling, previousStartAmount)

@@ -30,7 +30,7 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     function test_setGlobalProtocolFeeSettings_revertsWhenBpsExceedsBPS() public {
-        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidBps.selector, 10_001, BPS));
         controller.setGlobalProtocolFeeSettings(10_001, recipient);
     }
 
@@ -98,7 +98,7 @@ contract ProtocolFeeControllerTest is Test {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
         fees[0] = IProtocolFeeController.Fee({startAmount: 1, protocolFeeBps: 200});
 
-        vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
+        vm.expectRevert(IProtocolFeeController.InvalidStartAmount.selector);
         controller.setProtocolFeePerCurrency(currency, 18, fees, 0);
     }
 

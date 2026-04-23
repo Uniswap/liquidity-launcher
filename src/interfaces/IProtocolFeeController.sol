@@ -45,6 +45,14 @@ interface IProtocolFeeController {
     /// @param maxScale The maximum supported scale
     error InvalidScale(uint8 scale, uint8 maxScale);
 
+    /// @notice Thrown when the provided basis points exceed the supported maximum
+    /// @param bps The provided basis points
+    /// @param maxBps The maximum supported basis points
+    error InvalidBps(uint24 bps, uint24 maxBps);
+
+    /// @notice Thrown when the first tier's startAmount is not zero
+    error InvalidStartAmount();
+
     /// @notice Generic error thrown for invalid inputs
     error InvalidInput();
 
