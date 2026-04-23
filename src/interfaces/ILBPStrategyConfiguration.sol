@@ -10,24 +10,30 @@ interface ILBPStrategyConfiguration {
     /// @param protocolFeeController The protocol fee controller
     event ProtocolFeeControllerSet(address protocolFeeController);
 
-    /// @notice Emitted when the min split for LP is set
-    /// @param minSplitForLP The min split for LP
-    event MinSplitForLpSet(uint24 minSplitForLP);
+    /// @notice Emitted when the min bracket rate is set
+    /// @param minBracketRate The min bracket rate
+    event MinBracketRateSet(uint24 minBracketRate);
 
     /// @notice Error thrown when the protocol fee controller is the zero address
     error InvalidProtocolFeeController();
 
-    /// @notice Error thrown when the min split for LP is zero or greater than MAX_BRACKET_RATE
-    error InvalidMinSplitForLp();
+    /// @notice Error thrown when the min bracket rate is zero or greater than MAX_BRACKET_RATE
+    error InvalidMinBracketRate();
 
-    /// @notice Error thrown when the breakpoint configuration is invalid
-    error InvalidBreakpointConfiguration();
+    /// @notice Error thrown when the breakpoints array length is invalid (empty or exceeds max)
+    error InvalidBreakpointLength(uint256 length);
+
+    /// @notice Error thrown when a breakpoint rate is outside [minBracketRate, MAX_BRACKET_RATE]
+    error InvalidBreakpointRate(uint24 rate);
+
+    /// @notice Error thrown when a breakpoint threshold is zero or not strictly ascending
+    error InvalidBreakpointThreshold(uint128 threshold);
 
     /// @notice Sets the protocol fee controller
     /// @param protocolFeeController The protocol fee controller
     function setProtocolFeeController(address protocolFeeController) external;
 
-    /// @notice Sets the min split for LP
-    /// @param minSplitForLp The min split for LP
-    function setMinSplitForLp(uint24 minSplitForLp) external;
+    /// @notice Sets the min bracket rate
+    /// @param minBracketRate The min bracket rate
+    function setMinBracketRate(uint24 minBracketRate) external;
 }

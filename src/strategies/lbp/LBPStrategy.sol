@@ -49,7 +49,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        uint24 _minSplitForLp,
+        uint24 _minBracketRate,
         address _protocolFeeController,
         address _owner
     ) {
@@ -57,7 +57,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         _initializeOwner(_owner);
-        _setMinSplitForLp(_minSplitForLp);
+        _setMinBracketRate(_minBracketRate);
         _setProtocolFeeController(_protocolFeeController);
     }
 

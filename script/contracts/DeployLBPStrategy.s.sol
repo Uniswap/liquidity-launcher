@@ -14,7 +14,7 @@ import {Parameters, DeployParameters} from "./Parameters.sol";
 contract DeployLBPStrategyScript is Script, Parameters {
     function run(
         IDistributionStrategy initializerFactory,
-        uint24 minSplitForLp,
+        uint24 minBracketRate,
         address protocolFeeController,
         address owner
     ) public {
@@ -22,7 +22,7 @@ contract DeployLBPStrategyScript is Script, Parameters {
 
         vm.broadcast();
         LBPStrategy lbpStrategy = new LBPStrategy(
-            params.positionManager, params.poolManager, initializerFactory, minSplitForLp, protocolFeeController, owner
+            params.positionManager, params.poolManager, initializerFactory, minBracketRate, protocolFeeController, owner
         );
 
         console.log("LBPStrategy deployed to:", address(lbpStrategy));

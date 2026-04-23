@@ -1,16 +1,16 @@
 InitializeDistributionTest
 ├── when breakpoints array is empty
-│   └── it reverts with {InvalidBreakpointConfiguration}
+│   └── it reverts with {InvalidBreakpointLength}
 ├── when breakpoint rate is 0
-│   └── it reverts with {InvalidBreakpointConfiguration}
+│   └── it reverts with {InvalidBreakpointRate}
 ├── when breakpoint rate is greater than 1e7
-│   └── it reverts with {InvalidBreakpointConfiguration}
-├── when breakpoint rate is less than minSplitForLP
-│   └── it reverts with {InvalidBreakpointConfiguration}
+│   └── it reverts with {InvalidBreakpointRate}
+├── when breakpoint rate is less than minBracketRate
+│   └── it reverts with {InvalidBreakpointRate}
 ├── when non-last breakpoint threshold is 0
-│   └── it reverts with {InvalidBreakpointConfiguration}
+│   └── it reverts with {InvalidBreakpointThreshold}
 ├── when breakpoint thresholds are not ascending
-│   └── it reverts with {InvalidBreakpointConfiguration}
+│   └── it reverts with {InvalidBreakpointThreshold}
 └── when breakpoint config is valid
     ├── when poolTickSpacing is out of bounds
     │   └── it reverts with {InvalidTickSpacing}

@@ -18,13 +18,13 @@ contract DeployAllScript is Script {
 
     function run(
         IDistributionStrategy initializerFactory,
-        uint24 minSplitForLp,
+        uint24 minBracketRate,
         address protocolFeeController,
         address owner
     ) public {
         console.log("Deploying all contracts on chain", block.chainid);
 
         liquidityLauncherDeployer.run();
-        lbpStrategyDeployer.run(initializerFactory, minSplitForLp, protocolFeeController, owner);
+        lbpStrategyDeployer.run(initializerFactory, minBracketRate, protocolFeeController, owner);
     }
 }
