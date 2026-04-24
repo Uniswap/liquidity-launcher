@@ -21,7 +21,7 @@ InitializeDistributionTest
                 │   └── it reverts with {InvalidRecipient}
                 ├── when initializer endBlock is GTE migrationBlock
                 │   └── it reverts with {InvalidEndBlock}
-                ├── when initializer custodyTokens mismatch
+                ├── when initializer custody tokens mismatch
                 │   └── it reverts with {InvalidCustodySupply}
                 └── when initializer is valid
                     ├── it deploys an initializer via the factory

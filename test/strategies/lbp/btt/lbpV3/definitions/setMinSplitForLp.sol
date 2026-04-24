@@ -60,19 +60,19 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
         assertEq(stored, _value);
     }
 
-    function test_SetMinSplitForLp_PreservesProtocolFeeController(uint24 _value)
+    function test_SetMinSplitForLp_PreservesProtocolFeeController(uint24 _value, address _controller)
         public
         whenCallerIsOwner_setMinSplit
         whenValueIsInRange
     {
         _value = uint24(bound(_value, 1, 10_000));
+        vm.assume(_controller != address(0));
 
-        address controller = makeAddr("controller");
-        strategy.setProtocolFeeController(controller);
+        strategy.setProtocolFeeController(_controller);
         strategy.setMinSplitForLp(_value);
 
         (address readCtrl, uint24 readSplit) = strategy.ownerControlledParams();
-        assertEq(readCtrl, controller);
+        assertEq(readCtrl, _controller);
         assertEq(readSplit, _value);
     }
 }
