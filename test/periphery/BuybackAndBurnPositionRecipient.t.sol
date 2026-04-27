@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Test} from "forge-std/Test.sol";
-import {BuybackAndBurnPositionRecipient} from "../../src/periphery/BuybackAndBurnPositionRecipient.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {MockERC20} from "../mocks/MockERC20.sol";
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {TimelockedPositionRecipient} from "../../src/periphery/TimelockedPositionRecipient.sol";
-import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
-import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
+import {ITimelockedPositionRecipient} from '../../src/interfaces/ITimelockedPositionRecipient.sol';
+import {BuybackAndBurnPositionRecipient} from '../../src/periphery/BuybackAndBurnPositionRecipient.sol';
+import {TimelockedPositionRecipient} from '../../src/periphery/TimelockedPositionRecipient.sol';
+import {MockERC20} from '../mocks/MockERC20.sol';
+import {TimelockedPositionRecipientTest} from './TimelockedPositionRecipient.t.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/v4-core/src/types/Currency.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {Test} from 'forge-std/Test.sol';
+import {SafeTransferLib} from 'solady/utils/SafeTransferLib.sol';
 
 // Minimal interfaces for testing
 interface IERC20 {
@@ -25,9 +25,9 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     // Fork testing vars
     // Position created here: https://etherscan.io/tx/0x03dafd828c6b47362b1f53d7a692f8f52b8bc44b513f8c9caa9195e1061113a4
     // And the fork block is a few blocks after, allowing the position to have non zero fees
-    uint256 constant FORK_BLOCK = 23936030;
-    uint256 constant FORK_TOKEN_ID = 107192;
-    uint256 constant FORK_CURRENCY_FEES_AMOUNT = 709706242928;
+    uint256 constant FORK_BLOCK = 23_936_030;
+    uint256 constant FORK_TOKEN_ID = 107_192;
+    uint256 constant FORK_CURRENCY_FEES_AMOUNT = 709_706_242_928;
 
     MockERC20 token;
     MockERC20 currency;
@@ -35,9 +35,9 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     function setUp() public virtual override {
         // Setups up fork and operator/searcher
         super.setUp();
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
-        token = new MockERC20("Test Token", "TEST", 1_000e18, address(this));
-        currency = new MockERC20("Test Currency", "TESTC", 1_000e18, address(this));
+        vm.createSelectFork(vm.envString('QUICKNODE_RPC_URL'), FORK_BLOCK);
+        token = new MockERC20('Test Token', 'TEST', 1000e18, address(this));
+        currency = new MockERC20('Test Currency', 'TESTC', 1000e18, address(this));
     }
 
     // Return a basic BuybackAndBurnPositionRecipient for compatibility with TimelockedPositionRecipientTest
@@ -181,20 +181,20 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         assertGt(
             Currency.wrap(NATIVE).balanceOf(searcher),
             searcherCurrencyBalanceBefore,
-            "Searcher currency balance did not increase"
+            'Searcher currency balance did not increase'
         );
         assertEq(
-            Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0, "Position recipient token balance is not 0"
+            Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0, 'Position recipient token balance is not 0'
         );
         assertEq(
             Currency.wrap(NATIVE).balanceOf(address(positionRecipient)),
             0,
-            "Position recipient currency balance is not 0"
+            'Position recipient currency balance is not 0'
         );
         assertGt(
             Currency.wrap(USDC).balanceOf(address(0xdead)),
             deadAddressTokenBalanceBefore + _minTokenBurnAmount,
-            "Dead address token balance did not increase by more than the minimum burn amount"
+            'Dead address token balance did not increase by more than the minimum burn amount'
         );
     }
 }

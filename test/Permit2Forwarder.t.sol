@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "forge-std/Test.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {Permit2Forwarder} from "src/Permit2Forwarder.sol";
-import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
+import {MockERC20} from './mocks/MockERC20.sol';
+import {Permit2SignatureHelpers} from './shared/Permit2SignatureHelpers.sol';
+import 'forge-std/Test.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
+import {DeployPermit2} from 'permit2/test/utils/DeployPermit2.sol';
+import {Permit2Forwarder} from 'src/Permit2Forwarder.sol';
 
 contract Permit2ForwarderTest is Test, DeployPermit2, Permit2SignatureHelpers {
     Permit2Forwarder permit2Forwarder;
@@ -33,7 +33,7 @@ contract Permit2ForwarderTest is Test, DeployPermit2, Permit2SignatureHelpers {
         alice = vm.addr(alicePrivateKey);
 
         // mock token
-        token0 = new MockERC20("Token 0", "T0", 10e18, address(this));
+        token0 = new MockERC20('Token 0', 'T0', 10e18, address(this));
     }
 
     function test_permit_single_succeeds() public {
@@ -57,6 +57,6 @@ contract Permit2ForwarderTest is Test, DeployPermit2, Permit2SignatureHelpers {
         bytes memory sig = getPermitSignature(permit, alicePrivateKey, PERMIT2_DOMAIN_SEPARATOR);
 
         permit2Forwarder.permit(alice, permit, sig);
-        vm.snapshotGasLastCall("permit");
+        vm.snapshotGasLastCall('permit');
     }
 }

@@ -1,28 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import {AdvancedLBPStrategyFactory} from "@lbp/factories/AdvancedLBPStrategyFactory.sol";
-import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
-import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
-import {MockERC20} from "../../mocks/MockERC20.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {MigratorParameters} from "src/types/MigratorParameters.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {MockERC20} from '../../mocks/MockERC20.sol';
+import {AdvancedLBPStrategyFactory} from '@lbp/factories/AdvancedLBPStrategyFactory.sol';
+import {AdvancedLBPStrategy} from '@lbp/strategies/AdvancedLBPStrategy.sol';
 import {
     ContinuousClearingAuctionFactory
-} from "@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
-import {SaltGenerator} from "test/saltGenerator/LauncherSaltGenerator.sol";
-import {Distribution} from "src/types/Distribution.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+} from '@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {AuctionStepsBuilder} from '@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol';
+import {IHooks} from '@uniswap/v4-core/src/interfaces/IHooks.sol';
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import 'forge-std/Test.sol';
+import {SelfInitializerHook} from 'periphery/hooks/SelfInitializerHook.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
+import {LiquidityLauncher} from 'src/LiquidityLauncher.sol';
+import {IDistributionContract} from 'src/interfaces/IDistributionContract.sol';
+import {IDistributionStrategy} from 'src/interfaces/IDistributionStrategy.sol';
+import {Distribution} from 'src/types/Distribution.sol';
+import {MigratorParameters} from 'src/types/MigratorParameters.sol';
+import {SaltGenerator} from 'test/saltGenerator/LauncherSaltGenerator.sol';
 
 contract AdvancedLBPStrategyFactoryTest is Test {
     using AuctionStepsBuilder for bytes;
@@ -41,10 +41,10 @@ contract AdvancedLBPStrategyFactoryTest is Test {
     bytes auctionParams;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), 23097193);
+        vm.createSelectFork(vm.envString('QUICKNODE_RPC_URL'), 23_097_193);
         factory = new AdvancedLBPStrategyFactory(IPositionManager(POSITION_MANAGER), IPoolManager(POOL_MANAGER));
         liquidityLauncher = new LiquidityLauncher(IAllowanceTransfer(PERMIT2));
-        token = new MockERC20("Test Token", "TEST", TOTAL_SUPPLY, address(liquidityLauncher));
+        token = new MockERC20('Test Token', 'TEST', TOTAL_SUPPLY, address(liquidityLauncher));
         initializerFactory = new ContinuousClearingAuctionFactory();
 
         migratorParams = MigratorParameters({
@@ -63,7 +63,7 @@ contract AdvancedLBPStrategyFactoryTest is Test {
         auctionParams = abi.encode(
             AuctionParameters({
                 currency: address(0), // ETH
-                tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                tokensRecipient: makeAddr('tokensRecipient'), // Some valid address
                 fundsRecipient: address(1), // Some valid address
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),

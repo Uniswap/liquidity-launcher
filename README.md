@@ -3,6 +3,7 @@
 Liquidity Launcher is a comprehensive launch system built on Uniswap V4 that facilitates token creation, distribution, and liquidity bootstrapping.
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Installation](#installation)
 - [Docs](#docs)
@@ -10,7 +11,9 @@ Liquidity Launcher is a comprehensive launch system built on Uniswap V4 that fac
 - [Audits](#audits)
 
 ## Overview
+
 Liquidity Launcher provides a streamlined approach for projects to:
+
 - **Create** new ERC20 tokens with extended metadata and cross-chain capabilities
 - **Distribute** tokens through customizable strategies
 - **Bootstrap** liquidity using price discovery mechanisms
@@ -19,6 +22,7 @@ Liquidity Launcher provides a streamlined approach for projects to:
 The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
 ## Installation
+
 This project uses Foundry for development and testing. To get started:
 
 ```bash
@@ -52,6 +56,7 @@ The project requires the following environment variable for testing:
 - `QUICKNODE_RPC_URL`: An Ethereum mainnet RPC endpoint for fork testing
 
 ## Docs
+
 - [Technical Reference](./docs/TechnicalReference.md)
 - [Changelog](./CHANGELOG.md)
 - [Deployment Guide](./docs/DeploymentGuide.md)
@@ -59,45 +64,50 @@ The project requires the following environment variable for testing:
 ## Deployment Addresses
 
 ### Liquidity Launcher
+
 The LiquidityLauncher contract can be deployed to the same address on all networks with the canonical Permit2 deployment address (0x000000000022D473030F116dDEE9F6B43aC78BA3).
 
-| Version | Address | Commit Hash |
-|---------|---------|------------|
-| v1.0.0 | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d |
+| Version | Address                                    | Commit Hash                              |
+| ------- | ------------------------------------------ | ---------------------------------------- |
+| v1.0.0  | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d |
 
 > No changes have been made to the LiquidityLauncher contract since v1.0.0.
 
 ### FullRangeLBPStrategyFactory
+
 The FullRangeLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
 
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Mainnet | 0x65aF3B62EE79763c704f04238080fBADD005B332 | 610603eed7c35ff504e23ec87cd18ec3f701e746  |
-| v2.0.0 | Unichain | 0xAa56d4d68646B4858A5A3a99058169D0100b38e2 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Sepolia | 0x89Dd5691e53Ea95d19ED2AbdEdCf4cBbE50da1ff | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0xa3A236647c80BCD69CAD561ACf863c29981b6fbC | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| Version | Chain        | Address                                    | Commit Hash                              |
+| ------- | ------------ | ------------------------------------------ | ---------------------------------------- |
+| v2.0.0  | Mainnet      | 0x65aF3B62EE79763c704f04238080fBADD005B332 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Unichain     | 0xAa56d4d68646B4858A5A3a99058169D0100b38e2 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Base         | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Sepolia      | 0x89Dd5691e53Ea95d19ED2AbdEdCf4cBbE50da1ff | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Base Sepolia | 0xa3A236647c80BCD69CAD561ACf863c29981b6fbC | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
 
 ### AdvancedLBPStrategyFactory
+
 The AdvancedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
 
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Mainnet | 0x982DC187cbeB4E21431C735B01Ecbd8A606129C5 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Unichain | 0xeB44195e1847F23D4ff411B7d501b726C7620529 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Sepolia | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| Version | Chain        | Address                                    | Commit Hash                              |
+| ------- | ------------ | ------------------------------------------ | ---------------------------------------- |
+| v2.0.0  | Mainnet      | 0x982DC187cbeB4E21431C735B01Ecbd8A606129C5 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Unichain     | 0xeB44195e1847F23D4ff411B7d501b726C7620529 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Base         | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Sepolia      | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
 
 ### GovernedLBPStrategyFactory
+
 The GovernedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
 
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Base | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| Version | Chain        | Address                                    | Commit Hash                              |
+| ------- | ------------ | ------------------------------------------ | ---------------------------------------- |
+| v2.0.0  | Base         | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0  | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
 
 ## Audits
+
 - 1/23/2026 [OpenZeppelin](./docs/audit/OpenZeppelin_v2.0.0.pdf)
 - 1/21/2026 [Spearbit](./docs/audit/uniswap-liquidity-launcher-v2.0.0.pdf)
 - 10/27/2025 [Spearbit](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf)
@@ -117,4 +127,5 @@ security@uniswap.org
 The [whitepaper](./docs/whitepaper.pdf) for Liquidity Launcher.
 
 ## License
+
 This repository is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.

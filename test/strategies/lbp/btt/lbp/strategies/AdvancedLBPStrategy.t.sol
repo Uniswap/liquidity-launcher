@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "src/strategies/lbp/AdvancedLBPStrategy.sol";
-import {BttTests} from "../definitions/BttTests.sol";
-import {BttBase, FuzzConstructorParameters} from "../BttBase.sol";
-import {ILBPStrategyTestExtension} from "./ILBPStrategyTestExtension.sol";
-import {Plan} from "src/libraries/StrategyPlanner.sol";
-import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {BttBase, FuzzConstructorParameters} from '../BttBase.sol';
+import {BttTests} from '../definitions/BttTests.sol';
+import {ILBPStrategyTestExtension} from './ILBPStrategyTestExtension.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/v4-core/src/types/Currency.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {LBPInitializationParams} from 'src/interfaces/ILBPInitializer.sol';
+import {ActionsBuilder} from 'src/libraries/ActionsBuilder.sol';
+import {Plan} from 'src/libraries/StrategyPlanner.sol';
+import 'src/strategies/lbp/AdvancedLBPStrategy.sol';
 
 contract AdvancedLBPStrategyTestExtension is AdvancedLBPStrategy, ILBPStrategyTestExtension {
     using CurrencyLibrary for Currency;
@@ -100,7 +100,7 @@ contract AdvancedLBPStrategyTest is BttTests {
 
     /// @inheritdoc BttBase
     function _contractName() internal pure override returns (string memory) {
-        return "AdvancedLBPStrategyTestExtension";
+        return 'AdvancedLBPStrategyTestExtension';
     }
 
     /// @inheritdoc BttBase
@@ -382,7 +382,7 @@ contract AdvancedLBPStrategyTest is BttTests {
         deal(address(token), address(lbp), _parameters.totalSupply);
         _tokenAmount = uint128(_bound(_tokenAmount, 1, _parameters.totalSupply));
 
-        bytes memory mockPlan = bytes("");
+        bytes memory mockPlan = bytes('');
 
         address positionManager = address(AdvancedLBPStrategy(payable(address(lbp))).positionManager());
 
@@ -394,7 +394,7 @@ contract AdvancedLBPStrategyTest is BttTests {
             positionManager,
             _currencyAmount,
             abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mockPlan, block.timestamp),
-            bytes("")
+            bytes('')
         );
         vm.expectCall(
             positionManager,
@@ -427,7 +427,7 @@ contract AdvancedLBPStrategyTest is BttTests {
         _tokenAmount = uint128(_bound(_tokenAmount, 1, _parameters.totalSupply));
         _currencyAmount = uint128(_bound(_currencyAmount, 1, _parameters.totalSupply));
 
-        bytes memory mockPlan = bytes("");
+        bytes memory mockPlan = bytes('');
 
         address positionManager = address(AdvancedLBPStrategy(payable(address(lbp))).positionManager());
         address poolToken = ILBPStrategyTestExtension(address(lbp)).getPoolToken();
@@ -438,7 +438,7 @@ contract AdvancedLBPStrategyTest is BttTests {
         vm.mockCall(
             positionManager,
             abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mockPlan, block.timestamp),
-            bytes("")
+            bytes('')
         );
         vm.expectCall(
             positionManager,

@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "./base/AdvancedLBPStrategyTestBase.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
-import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
-import {TokenPricing} from "src/libraries/TokenPricing.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {ConstantsLib} from "@uniswap/continuous-clearing-auction/src/libraries/ConstantsLib.sol";
+import './base/AdvancedLBPStrategyTestBase.sol';
+import {AdvancedLBPStrategy} from '@lbp/strategies/AdvancedLBPStrategy.sol';
+import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import {Math} from '@openzeppelin/contracts/utils/math/Math.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {ConstantsLib} from '@uniswap/continuous-clearing-auction/src/libraries/ConstantsLib.sol';
+import {AuctionStepsBuilder} from '@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol';
+import {CustomRevert} from '@uniswap/v4-core/src/libraries/CustomRevert.sol';
+import {FullMath} from '@uniswap/v4-core/src/libraries/FullMath.sol';
+import {LPFeeLibrary} from '@uniswap/v4-core/src/libraries/LPFeeLibrary.sol';
+import {SafeCast} from '@uniswap/v4-core/src/libraries/SafeCast.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {LiquidityAmounts} from '@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol';
+import {SelfInitializerHook} from 'periphery/hooks/SelfInitializerHook.sol';
+import {IDistributionContract} from 'src/interfaces/IDistributionContract.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
+import {TokenDistribution} from 'src/libraries/TokenDistribution.sol';
+import {TokenPricing} from 'src/libraries/TokenPricing.sol';
 
 contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
     using AuctionStepsBuilder for bytes;
@@ -37,7 +37,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
             tokenSplitValue,
             address(3),
             uint64(block.number + 500),
-            uint64(block.number + 1_000),
+            uint64(block.number + 1000),
             address(this),
             DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
@@ -79,7 +79,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 DEFAULT_TOKEN_SPLIT,
                 address(3),
                 uint64(block.number + 500),
-                uint64(block.number + 1_000),
+                uint64(block.number + 1000),
                 address(this),
                 DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
@@ -110,7 +110,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 DEFAULT_TOKEN_SPLIT,
                 address(3),
                 uint64(block.number + 500),
-                uint64(block.number + 1_000),
+                uint64(block.number + 1000),
                 address(this),
                 DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
@@ -139,7 +139,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                 DEFAULT_TOKEN_SPLIT,
                 address(3),
                 uint64(block.number + 500),
-                uint64(block.number + 1_000),
+                uint64(block.number + 1000),
                 address(this),
                 DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
             ),
@@ -169,7 +169,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
                     DEFAULT_TOKEN_SPLIT,
                     invalidRecipients[i],
                     uint64(block.number + 500),
-                    uint64(block.number + 1_000),
+                    uint64(block.number + 1000),
                     address(this),
                     DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
                 ),
@@ -238,7 +238,7 @@ contract AdvancedLBPStrategySetupTest is AdvancedLBPStrategyTestBase {
         vm.assume(auctionAmount > 0);
         vm.assume(auctionAmount <= ConstantsLib.MAX_TOTAL_SUPPLY);
 
-        assertLe(auctionAmount, totalSupply, "auction amount is greater than total supply");
+        assertLe(auctionAmount, totalSupply, 'auction amount is greater than total supply');
 
         setupWithSupplyAndTokenSplit(totalSupply, tokenSplit, address(0));
 

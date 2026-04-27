@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {FullRangeParams, OneSidedParams, TickBounds} from "../types/PositionTypes.sol";
-import {DynamicArray} from "./DynamicArray.sol";
+import {FullRangeParams, OneSidedParams, TickBounds} from '../types/PositionTypes.sol';
+import {DynamicArray} from './DynamicArray.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
 
 /// @title ParamsBuilder
 /// @notice Library for building position parameters

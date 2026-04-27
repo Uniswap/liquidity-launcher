@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {ILBPStrategyBase} from "../interfaces/ILBPStrategyBase.sol";
-import {IProtocolFeeController} from "../interfaces/external/IProtocolFeeController.sol";
+import {ILBPStrategyBase} from '../interfaces/ILBPStrategyBase.sol';
+import {IProtocolFeeController} from '../interfaces/external/IProtocolFeeController.sol';
+import {Initializable} from '@openzeppelin/contracts/proxy/utils/Initializable.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/v4-core/src/types/Currency.sol';
+import {FixedPointMathLib} from 'solady/utils/FixedPointMathLib.sol';
 
 /// @title ProtocolFeeOperator
 /// @notice EIP1167 contract meant to be set as the `operator` of an LBP strategy
@@ -30,7 +30,7 @@ contract ProtocolFeeOperator is Initializable {
     error RecipientAddressIsZero();
 
     /// @notice The maximum protocol fee in basis points. Any returned fee above will be clamped to 10%
-    uint24 public constant MAX_PROTOCOL_FEE_BPS = 1_000;
+    uint24 public constant MAX_PROTOCOL_FEE_BPS = 1000;
     /// @notice Basis points denominator
     uint24 public constant BPS = 10_000;
 

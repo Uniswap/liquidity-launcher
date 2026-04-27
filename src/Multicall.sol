@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IMulticall} from "./interfaces/IMulticall.sol";
+import {IMulticall} from './interfaces/IMulticall.sol';
 
 /// @title Multicall
 /// @notice Enables calling multiple methods in a single call to the contract

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {DynamicArray} from "../../src/libraries/DynamicArray.sol";
+import {DynamicArray} from '../../src/libraries/DynamicArray.sol';
+import {Test} from 'forge-std/Test.sol';
 
 contract DynamicArrayTest is Test {
     using DynamicArray for bytes[];
 
     function test_init_gas() public {
-        vm.startSnapshotGas("init");
+        vm.startSnapshotGas('init');
         bytes[] memory params = DynamicArray.init();
         vm.stopSnapshotGas();
         assertEq(params.length, 0);
@@ -17,7 +17,7 @@ contract DynamicArrayTest is Test {
     function test_append_single_succeeds_gas() public {
         bytes[] memory params = DynamicArray.init();
         bytes memory param = abi.encode(uint256(1));
-        vm.startSnapshotGas("append single");
+        vm.startSnapshotGas('append single');
         params = DynamicArray.append(params, param);
         vm.stopSnapshotGas();
         assertEq(params.length, 1);

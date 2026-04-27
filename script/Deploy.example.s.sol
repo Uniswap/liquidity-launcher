@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {FullRangeLBPStrategy} from "src/strategies/lbp/FullRangeLBPStrategy.sol";
-import {Script, stdJson} from "forge-std/Script.sol";
-import {console2} from "forge-std/console2.sol";
-import {Distribution} from "src/types/Distribution.sol";
-import {IStrategyFactory} from "src/interfaces/IStrategyFactory.sol";
-import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
+import {Script, stdJson} from 'forge-std/Script.sol';
+import {console2} from 'forge-std/console2.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
+import {ILiquidityLauncher} from 'src/interfaces/ILiquidityLauncher.sol';
+import {IStrategyFactory} from 'src/interfaces/IStrategyFactory.sol';
+import {FullRangeLBPStrategy} from 'src/strategies/lbp/FullRangeLBPStrategy.sol';
+import {Distribution} from 'src/types/Distribution.sol';
 
 /// @notice Example script for a token distribution
 /// @dev You should fork this and fill in the values in `example.json`
@@ -17,15 +17,15 @@ contract DeployExample is Script {
     function run() external {
         vm.startBroadcast();
 
-        string memory input = vm.readFile("script/example.json");
+        string memory input = vm.readFile('script/example.json');
 
         string memory chainIdSlug = string(abi.encodePacked('["', vm.toString(block.chainid), '"]'));
-        address token = input.readAddress(string.concat(chainIdSlug, ".token"));
-        uint128 totalSupply = uint128(input.readUint(string.concat(chainIdSlug, ".totalSupply")));
-        bytes memory configData = input.readBytes(string.concat(chainIdSlug, ".configData"));
-        bytes32 salt = input.readBytes32(string.concat(chainIdSlug, ".salt"));
-        address liquidityLauncher = input.readAddress(string.concat(chainIdSlug, ".liquidityLauncher"));
-        address strategyFactory = input.readAddress(string.concat(chainIdSlug, ".strategyFactory"));
+        address token = input.readAddress(string.concat(chainIdSlug, '.token'));
+        uint128 totalSupply = uint128(input.readUint(string.concat(chainIdSlug, '.totalSupply')));
+        bytes memory configData = input.readBytes(string.concat(chainIdSlug, '.configData'));
+        bytes32 salt = input.readBytes32(string.concat(chainIdSlug, '.salt'));
+        address liquidityLauncher = input.readAddress(string.concat(chainIdSlug, '.liquidityLauncher'));
+        address strategyFactory = input.readAddress(string.concat(chainIdSlug, '.strategyFactory'));
 
         // Salts end up being nested with the msg.sender of each call
         // The first salt calculated by liquidity launcher uses the originator of the call
@@ -46,10 +46,10 @@ contract DeployExample is Script {
         // Begin the distribution
         ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, payerIsUser, salt);
 
-        vm.assertGt(strategy.code.length, 0, "Strategy contract not deployed");
-        console2.log("Strategy contract deployed at:", address(strategy));
+        vm.assertGt(strategy.code.length, 0, 'Strategy contract not deployed');
+        console2.log('Strategy contract deployed at:', address(strategy));
         // sanity check
-        vm.assertEq(ILBPStrategyBase(strategy).token(), token, "Token mismatch");
+        vm.assertEq(ILBPStrategyBase(strategy).token(), token, 'Token mismatch');
 
         vm.stopBroadcast();
     }

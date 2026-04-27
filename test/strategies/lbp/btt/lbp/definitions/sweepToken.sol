@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BttBase} from "../BttBase.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FuzzConstructorParameters} from "../BttBase.sol";
+import {BttBase} from '../BttBase.sol';
+import {FuzzConstructorParameters} from '../BttBase.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
 
 // Tests have to be namespaced since it would conflict with the SweepCurrencyTest
 abstract contract SweepTokenTest is BttBase {
@@ -81,7 +81,7 @@ abstract contract SweepTokenTest is BttBase {
         vm.prank(_parameters.migratorParams.operator);
         lbp.sweepToken();
         uint256 operatorTokenBalanceAfter = Currency.wrap(address(token)).balanceOf(_parameters.migratorParams.operator);
-        assertEq(operatorTokenBalanceAfter, operatorTokenBalanceBefore, "Operator token balance should not change");
+        assertEq(operatorTokenBalanceAfter, operatorTokenBalanceBefore, 'Operator token balance should not change');
     }
 
     modifier SweepToken_whenTokenBalanceIsGreaterThanZero() {

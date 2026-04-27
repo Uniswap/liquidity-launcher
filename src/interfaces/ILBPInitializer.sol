@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
+import {IDistributionContract} from './IDistributionContract.sol';
+import {IERC165} from '@openzeppelin/contracts/utils/introspection/IERC165.sol';
 
 /// @dev The interface id of the ILBPInitializer interface
 /// @dev Per ERC165, the interface selector is the XOR of the selectors of the interfaces implemented by the contract

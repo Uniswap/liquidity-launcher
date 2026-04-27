@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {LBPStrategyBase} from "@lbp/strategies/LBPStrategyBase.sol";
-import {MigrationData} from "../../types/MigrationData.sol";
-import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {BasePositionParams, FullRangeParams} from "../../types/PositionTypes.sol";
-import {Plan, StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
+import {Plan, StrategyPlanner} from '../../libraries/StrategyPlanner.sol';
+import {MigrationData} from '../../types/MigrationData.sol';
+import {MigratorParameters} from '../../types/MigratorParameters.sol';
+import {BasePositionParams, FullRangeParams} from '../../types/PositionTypes.sol';
+import {LBPStrategyBase} from '@lbp/strategies/LBPStrategyBase.sol';
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
 
 /// @title FullRangeLBPStrategy
 /// @notice Strategy to initialize a Uniswap v4 pool and migrate the tokens and raised funds into a full range position

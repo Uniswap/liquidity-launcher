@@ -1,30 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {LBPTestHelpers} from "../../helpers/LBPTestHelpers.sol";
-import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {MigratorParameters} from "src/types/MigratorParameters.sol";
-import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {MockERC20} from "test/mocks/MockERC20.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
-import {
-    IContinuousClearingAuctionFactory
-} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol";
+import {LBPTestHelpers} from '../../helpers/LBPTestHelpers.sol';
 import {
     ContinuousClearingAuctionFactory
-} from "@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {MockVirtualERC20} from "test/mocks/MockVirtualERC20.sol";
-import {IVirtualERC20} from "src/interfaces/external/IVirtualERC20.sol";
+} from '@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {
+    IContinuousClearingAuctionFactory
+} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuctionFactory.sol';
+import {AuctionStepsBuilder} from '@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol';
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {Hooks} from '@uniswap/v4-core/src/libraries/Hooks.sol';
+import {LPFeeLibrary} from '@uniswap/v4-core/src/libraries/LPFeeLibrary.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
+import {Test} from 'forge-std/Test.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
+import {LiquidityLauncher} from 'src/LiquidityLauncher.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
+import {IVirtualERC20} from 'src/interfaces/external/IVirtualERC20.sol';
+import {TokenDistribution} from 'src/libraries/TokenDistribution.sol';
+import {MigratorParameters} from 'src/types/MigratorParameters.sol';
+import {MockERC20} from 'test/mocks/MockERC20.sol';
+import {MockVirtualERC20} from 'test/mocks/MockVirtualERC20.sol';
 
 struct FuzzConstructorParameters {
     address token;
@@ -38,7 +38,7 @@ struct FuzzConstructorParameters {
 abstract contract BttBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
 
-    uint256 constant FORK_BLOCK = 23097193;
+    uint256 constant FORK_BLOCK = 23_097_193;
     address constant LIQUIDITY_LAUNCHER = 0x3333333333333333333333333333333333333333;
     address constant TOKEN = 0x1111111111111111111111111111111111111111;
     address constant ERC20_CURRENCY = 0x2222222222222222222222222222222222222222;
@@ -54,25 +54,25 @@ abstract contract BttBase is LBPTestHelpers {
     IContinuousClearingAuctionFactory initializerFactory;
 
     constructor() {
-        UNDERLYING_TOKEN = makeAddr("underlyingToken");
-        MOCK_VIRTUAL_TOKEN = makeAddr("mockVirtualToken");
+        UNDERLYING_TOKEN = makeAddr('underlyingToken');
+        MOCK_VIRTUAL_TOKEN = makeAddr('mockVirtualToken');
     }
 
     function setUp() public virtual {
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
+        vm.createSelectFork(vm.envString('QUICKNODE_RPC_URL'), FORK_BLOCK);
         liquidityLauncher = LiquidityLauncher(LIQUIDITY_LAUNCHER);
-        deployCodeTo("LiquidityLauncher", abi.encode(IAllowanceTransfer(PERMIT2)), LIQUIDITY_LAUNCHER);
-        vm.label(LIQUIDITY_LAUNCHER, "liquidityLauncher");
+        deployCodeTo('LiquidityLauncher', abi.encode(IAllowanceTransfer(PERMIT2)), LIQUIDITY_LAUNCHER);
+        vm.label(LIQUIDITY_LAUNCHER, 'liquidityLauncher');
 
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
         token = MockERC20(TOKEN);
-        vm.label(TOKEN, "token");
+        vm.label(TOKEN, 'token');
         erc20Currency = MockERC20(ERC20_CURRENCY);
-        vm.label(ERC20_CURRENCY, "erc20 currency");
+        vm.label(ERC20_CURRENCY, 'erc20 currency');
 
         initializerFactory = IContinuousClearingAuctionFactory(address(new ContinuousClearingAuctionFactory()));
-        vm.label(address(initializerFactory), "initializerFactory");
+        vm.label(address(initializerFactory), 'initializerFactory');
     }
 
     /// @dev Override with the desired hook address w/ permissions/// @inheritdoc Base
@@ -103,20 +103,20 @@ abstract contract BttBase is LBPTestHelpers {
     }
 
     function _deployMockToken(uint128 _totalSupply) internal {
-        deployCodeTo("MockERC20", abi.encode("Test Token", "TEST", _totalSupply, address(liquidityLauncher)), TOKEN);
+        deployCodeTo('MockERC20', abi.encode('Test Token', 'TEST', _totalSupply, address(liquidityLauncher)), TOKEN);
     }
 
     function _deployMockCurrency(uint128 _totalSupply) internal {
         deployCodeTo(
-            "MockERC20", abi.encode("Test Currency", "TEST", _totalSupply, address(liquidityLauncher)), ERC20_CURRENCY
+            'MockERC20', abi.encode('Test Currency', 'TEST', _totalSupply, address(liquidityLauncher)), ERC20_CURRENCY
         );
     }
 
     function _deployMockVirtualToken(uint128 _totalSupply) internal {
-        deployCodeTo("MockERC20", abi.encode("Test Token", "TEST", _totalSupply, LIQUIDITY_LAUNCHER), UNDERLYING_TOKEN);
+        deployCodeTo('MockERC20', abi.encode('Test Token', 'TEST', _totalSupply, LIQUIDITY_LAUNCHER), UNDERLYING_TOKEN);
         deployCodeTo(
-            "MockVirtualERC20",
-            abi.encode("Virtual Token", "VTKN", _totalSupply, LIQUIDITY_LAUNCHER, UNDERLYING_TOKEN),
+            'MockVirtualERC20',
+            abi.encode('Virtual Token', 'VTKN', _totalSupply, LIQUIDITY_LAUNCHER, UNDERLYING_TOKEN),
             MOCK_VIRTUAL_TOKEN
         );
     }
@@ -217,6 +217,6 @@ abstract contract BttBase is LBPTestHelpers {
         );
         deployCodeTo(_contractName(), _encodeConstructorArgs(_parameters), hookAddress);
         lbp = ILBPStrategyBase(payable(hookAddress));
-        vm.label(address(lbp), "lbp");
+        vm.label(address(lbp), 'lbp');
     }
 }

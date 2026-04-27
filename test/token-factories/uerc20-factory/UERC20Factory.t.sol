@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
-import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
-import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
-import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
+import {UERC20Factory} from '@uniswap/uerc20-factory/src/factories/UERC20Factory.sol';
+import {ITokenFactory} from '@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol';
+import {UERC20Metadata} from '@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol';
+import {UERC20} from '@uniswap/uerc20-factory/src/tokens/UERC20.sol';
+import {Test} from 'forge-std/Test.sol';
 
 contract UERC20FactoryTest is Test {
     UERC20Factory public factory;
     UERC20Metadata public tokenMetadata;
-    address recipient = makeAddr("recipient");
-    string name = "Test Token";
-    string symbol = "TOKEN";
+    address recipient = makeAddr('recipient');
+    string name = 'Test Token';
+    string symbol = 'TOKEN';
     uint8 decimals = 18;
-    address bob = makeAddr("bob");
+    address bob = makeAddr('bob');
 
     event TokenCreated(address tokenAddress);
 
     function setUp() public {
         factory = new UERC20Factory();
         tokenMetadata = UERC20Metadata({
-            description: "A test token", website: "https://example.com", image: "https://example.com/image.png"
+            description: 'A test token', website: 'https://example.com', image: 'https://example.com/image.png'
         });
     }
 
@@ -72,7 +72,7 @@ contract UERC20FactoryTest is Test {
             UERC20(factory.createToken(name, symbol, decimals, 1e18, recipient, abi.encode(tokenMetadata), bytes32(0)));
 
         // Deploy second token with different symbol
-        string memory differentSymbol = "TOKEN2";
+        string memory differentSymbol = 'TOKEN2';
         address expectedNewAddress =
             factory.getUERC20Address(name, differentSymbol, decimals, address(this), bytes32(0));
         UERC20 newToken = UERC20(
@@ -91,24 +91,24 @@ contract UERC20FactoryTest is Test {
     }
 
     function test_bytecodeSize_uerc20factory() public {
-        vm.snapshotValue("UERC20 Factory bytecode size", address(factory).code.length);
+        vm.snapshotValue('UERC20 Factory bytecode size', address(factory).code.length);
     }
 
     function test_bytecodeSize_uerc20() public {
         UERC20 token =
             UERC20(factory.createToken(name, symbol, decimals, 1e18, recipient, abi.encode(tokenMetadata), bytes32(0)));
-        vm.snapshotValue("UERC20 bytecode size", address(token).code.length);
+        vm.snapshotValue('UERC20 bytecode size', address(token).code.length);
     }
 
     function test_initcodeHash_uerc20() public {
         bytes32 initCodeHash = keccak256(abi.encodePacked(type(UERC20).creationCode));
-        vm.snapshotValue("UERC20 initcode hash", uint256(initCodeHash));
+        vm.snapshotValue('UERC20 initcode hash', uint256(initCodeHash));
     }
 
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
     function test_create_uerc20_succeeds_withMint_gas() public {
         UERC20(factory.createToken(name, symbol, decimals, 1e18, recipient, abi.encode(tokenMetadata), bytes32(0)));
-        vm.snapshotGasLastCall("deploy new UERC20");
+        vm.snapshotGasLastCall('deploy new UERC20');
     }
 }

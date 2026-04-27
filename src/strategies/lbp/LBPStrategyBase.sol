@@ -1,34 +1,34 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {SelfInitializerHook} from "periphery/hooks/SelfInitializerHook.sol";
-import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
-import {ILBPStrategyBase} from "../../interfaces/ILBPStrategyBase.sol";
-import {MigrationData} from "../../types/MigrationData.sol";
-import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {BasePositionParams} from "../../types/PositionTypes.sol";
-import {StrategyPlanner} from "../../libraries/StrategyPlanner.sol";
-import {TokenDistribution} from "../../libraries/TokenDistribution.sol";
-import {TokenPricing} from "../../libraries/TokenPricing.sol";
+import {IDistributionContract} from '../../interfaces/IDistributionContract.sol';
+import {IDistributionStrategy} from '../../interfaces/IDistributionStrategy.sol';
 import {
     ILBPInitializer,
-    LBPInitializationParams,
-    ILBP_INITIALIZER_INTERFACE_ID
-} from "../../interfaces/ILBPInitializer.sol";
-import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
+    ILBP_INITIALIZER_INTERFACE_ID,
+    LBPInitializationParams
+} from '../../interfaces/ILBPInitializer.sol';
+import {ILBPStrategyBase} from '../../interfaces/ILBPStrategyBase.sol';
+import {StrategyPlanner} from '../../libraries/StrategyPlanner.sol';
+import {TokenDistribution} from '../../libraries/TokenDistribution.sol';
+import {TokenPricing} from '../../libraries/TokenPricing.sol';
+import {MigrationData} from '../../types/MigrationData.sol';
+import {MigratorParameters} from '../../types/MigratorParameters.sol';
+import {BasePositionParams} from '../../types/PositionTypes.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {ERC165Checker} from '@openzeppelin/contracts/utils/introspection/ERC165Checker.sol';
+import {BlockNumberish} from '@uniswap/blocknumberish/src/BlockNumberish.sol';
+import {IHooks} from '@uniswap/v4-core/src/interfaces/IHooks.sol';
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {LPFeeLibrary} from '@uniswap/v4-core/src/libraries/LPFeeLibrary.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
+import {LiquidityAmounts} from '@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol';
+import {SelfInitializerHook} from 'periphery/hooks/SelfInitializerHook.sol';
+import {FixedPointMathLib} from 'solady/utils/FixedPointMathLib.sol';
 
 /// @title LBPStrategyBase
 /// @notice Base contract for derived LBPStrategies

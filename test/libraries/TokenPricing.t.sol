@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import {TokenPricing} from "src/libraries/TokenPricing.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {Math} from '@openzeppelin/contracts/utils/math/Math.sol';
+import {FixedPoint96} from '@uniswap/v4-core/src/libraries/FixedPoint96.sol';
+import {FullMath} from '@uniswap/v4-core/src/libraries/FullMath.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import 'forge-std/Test.sol';
+import {TokenPricing} from 'src/libraries/TokenPricing.sol';
 
 contract TokenPricingHelper is Test {
     function convertToPriceX192(uint256 price, bool currencyIsCurrency0) public pure returns (uint256 priceX192) {
@@ -102,26 +102,26 @@ contract TokenPricingTest is Test {
         // Test 1:1 price
         uint256 priceX192 = FullMath.mulDiv(1e18, Q192, 1e18);
         uint160 sqrtPriceX96 = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
-        assertEq(sqrtPriceX96, 79228162514264337593543950336);
+        assertEq(sqrtPriceX96, 79_228_162_514_264_337_593_543_950_336);
 
         // Test 100:1 price
         priceX192 = FullMath.mulDiv(100e18, Q192, 1e18);
         sqrtPriceX96 = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
-        assertEq(sqrtPriceX96, 792281625142643375935439503360);
+        assertEq(sqrtPriceX96, 792_281_625_142_643_375_935_439_503_360);
 
         // Test 1:100 price
         priceX192 = FullMath.mulDiv(1e18, Q192, 100e18);
         sqrtPriceX96 = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
-        assertEq(sqrtPriceX96, 7922816251426433759354395033);
+        assertEq(sqrtPriceX96, 7_922_816_251_426_433_759_354_395_033);
 
         // Test arbitrary price (111:333)
         priceX192 = FullMath.mulDiv(111e18, Q192, 333e18);
         sqrtPriceX96 = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
-        assertEq(sqrtPriceX96, 45742400955009932534161870629);
+        assertEq(sqrtPriceX96, 45_742_400_955_009_932_534_161_870_629);
 
         // Test inverse (333:111)
         priceX192 = FullMath.mulDiv(333e18, Q192, 111e18);
         sqrtPriceX96 = tokenPricingHelper.convertToSqrtPriceX96(priceX192);
-        assertEq(sqrtPriceX96, 137227202865029797602485611888);
+        assertEq(sqrtPriceX96, 137_227_202_865_029_797_602_485_611_888);
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IDistributionContract} from "./IDistributionContract.sol";
+import {IDistributionContract} from './IDistributionContract.sol';
 
 /// @title IDistributionStrategy
 /// @notice Interface for token distribution strategies.

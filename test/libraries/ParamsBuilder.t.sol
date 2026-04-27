@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {ParamsBuilder} from "src/libraries/ParamsBuilder.sol";
-import {FullRangeParams, OneSidedParams} from "src/types/PositionTypes.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {TickBounds} from "src/types/PositionTypes.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {DynamicArray} from "src/libraries/DynamicArray.sol";
+import {IHooks} from '@uniswap/v4-core/src/interfaces/IHooks.sol';
+import {FixedPoint96} from '@uniswap/v4-core/src/libraries/FixedPoint96.sol';
+import {FullMath} from '@uniswap/v4-core/src/libraries/FullMath.sol';
+import {SafeCast} from '@uniswap/v4-core/src/libraries/SafeCast.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
+import {LiquidityAmounts} from '@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol';
+import {Test} from 'forge-std/Test.sol';
+import {DynamicArray} from 'src/libraries/DynamicArray.sol';
+import {ParamsBuilder} from 'src/libraries/ParamsBuilder.sol';
+import {FullRangeParams, OneSidedParams} from 'src/types/PositionTypes.sol';
+import {TickBounds} from 'src/types/PositionTypes.sol';
 
 contract ParamsBuilderTest is Test {
     using ParamsBuilder for *;
@@ -35,7 +35,7 @@ contract ParamsBuilderTest is Test {
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
-                fee: 10000,
+                fee: 10_000,
                 tickSpacing: 1,
                 hooks: IHooks(address(0))
             }),
@@ -51,7 +51,7 @@ contract ParamsBuilderTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -129,7 +129,7 @@ contract ParamsBuilderTest is Test {
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
-                fee: 10000,
+                fee: 10_000,
                 tickSpacing: 1,
                 hooks: IHooks(address(0))
             }),
@@ -153,7 +153,7 @@ contract ParamsBuilderTest is Test {
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
-                fee: 10000,
+                fee: 10_000,
                 tickSpacing: 1,
                 hooks: IHooks(address(0))
             }),
@@ -170,7 +170,7 @@ contract ParamsBuilderTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -193,7 +193,7 @@ contract ParamsBuilderTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -222,7 +222,7 @@ contract ParamsBuilderTest is Test {
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
-                fee: 10000,
+                fee: 10_000,
                 tickSpacing: 1,
                 hooks: IHooks(address(0))
             }),
@@ -245,7 +245,7 @@ contract ParamsBuilderTest is Test {
             PoolKey({
                 currency0: Currency.wrap(address(0)),
                 currency1: Currency.wrap(address(1)),
-                fee: 10000,
+                fee: 10_000,
                 tickSpacing: 1,
                 hooks: IHooks(address(0))
             }),
@@ -262,7 +262,7 @@ contract ParamsBuilderTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -285,7 +285,7 @@ contract ParamsBuilderTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),

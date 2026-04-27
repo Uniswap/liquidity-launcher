@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {ERC20Mock} from "openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol";
-import {ProtocolFeeOperator} from "../../src/periphery/ProtocolFeeOperator.sol";
-import {ILBPStrategyBase} from "../../src/interfaces/ILBPStrategyBase.sol";
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {ILBPStrategyBase} from '../../src/interfaces/ILBPStrategyBase.sol';
+import {ProtocolFeeOperator} from '../../src/periphery/ProtocolFeeOperator.sol';
+import {Clones} from '@openzeppelin/contracts/proxy/Clones.sol';
+import {Initializable} from '@openzeppelin/contracts/proxy/utils/Initializable.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/v4-core/src/types/Currency.sol';
+import {Test} from 'forge-std/Test.sol';
+import {ERC20Mock} from 'openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol';
 
 /// @title MockLBP for testing the ProtocolFeeOperator
 /// @notice Sweeps its token and currency balance to the caller
@@ -44,7 +44,7 @@ contract MockProtocolFeeController {
 
 contract MockProtocolFeeControllerReverting {
     function getProtocolFeeBps(address, uint256) external pure returns (uint24) {
-        revert("reverting");
+        revert('reverting');
     }
 }
 
@@ -67,7 +67,7 @@ contract ProtocolFeeOperatorTest is Test {
 
     function setUp() public {
         protocolFeeController = new MockProtocolFeeController();
-        protocolFeeRecipient = makeAddr("protocolFeeRecipient");
+        protocolFeeRecipient = makeAddr('protocolFeeRecipient');
         implementation = new ProtocolFeeOperator(protocolFeeRecipient, address(protocolFeeController));
         token = new ERC20Mock();
         currency = new ERC20Mock();

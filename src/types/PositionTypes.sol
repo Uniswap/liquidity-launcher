@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IHooks} from '@uniswap/v4-core/src/interfaces/IHooks.sol';
 
 /// @notice Base parameters shared by all position types
 struct BasePositionParams {

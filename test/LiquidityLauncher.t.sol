@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
-import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
-import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
-import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {MockDistributionStrategy} from "./mocks/MockDistributionStrategy.sol";
-import {Distribution} from "src/types/Distribution.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
-import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
-import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
+import {MockDistributionStrategy} from './mocks/MockDistributionStrategy.sol';
+import {MockDistributionStrategyAndContract} from './mocks/MockDistributionStrategyAndContract.sol';
+import {MockERC20} from './mocks/MockERC20.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {UERC20Factory} from '@uniswap/uerc20-factory/src/factories/UERC20Factory.sol';
+import {UERC20Metadata} from '@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol';
+import {UERC20} from '@uniswap/uerc20-factory/src/tokens/UERC20.sol';
+import 'forge-std/Test.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
+import {DeployPermit2} from 'permit2/test/utils/DeployPermit2.sol';
+import {LiquidityLauncher} from 'src/LiquidityLauncher.sol';
+import {IDistributionContract} from 'src/interfaces/IDistributionContract.sol';
+import {ILiquidityLauncher} from 'src/interfaces/ILiquidityLauncher.sol';
+import {Distribution} from 'src/types/Distribution.sol';
 
 contract LiquidityLauncherTest is Test, DeployPermit2 {
     LiquidityLauncher public liquidityLauncher;
@@ -46,14 +46,14 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
     function test_createToken_succeeds() public {
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: 'Test token for launcher', website: 'https://test.com', image: 'https://test.com/image.png'
         });
 
         bytes memory tokenData = abi.encode(metadata);
         uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         address tokenAddress = liquidityLauncher.createToken(
-            address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(liquidityLauncher), tokenData
+            address(uerc20Factory), 'Test Token', 'TEST', 18, initialSupply, address(liquidityLauncher), tokenData
         );
 
         // Verify the token was created
@@ -61,8 +61,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
         // Cast to UERC20 and verify properties
         UERC20 token = UERC20(tokenAddress);
-        assertEq(token.name(), "Test Token");
-        assertEq(token.symbol(), "TEST");
+        assertEq(token.name(), 'Test Token');
+        assertEq(token.symbol(), 'TEST');
         assertEq(token.decimals(), 18);
         assertEq(token.totalSupply(), initialSupply);
 
@@ -77,25 +77,25 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
         // Verify metadata
         (string memory description, string memory website, string memory image) = token.metadata();
-        assertEq(description, "Test token for launcher");
-        assertEq(website, "https://test.com");
-        assertEq(image, "https://test.com/image.png");
+        assertEq(description, 'Test token for launcher');
+        assertEq(website, 'https://test.com');
+        assertEq(image, 'https://test.com/image.png');
     }
 
     function test_createToken_revertsWithRecipientCannotBeZeroAddress() public {
         vm.expectRevert(abi.encodeWithSelector(ILiquidityLauncher.RecipientCannotBeZeroAddress.selector));
         liquidityLauncher.createToken(
             address(uerc20Factory),
-            "Test Token",
-            "TEST",
+            'Test Token',
+            'TEST',
             18,
             1e18,
             address(0),
             abi.encode(
                 UERC20Metadata({
-                    description: "Test token for launcher",
-                    website: "https://test.com",
-                    image: "https://test.com/image.png"
+                    description: 'Test token for launcher',
+                    website: 'https://test.com',
+                    image: 'https://test.com/image.png'
                 })
             )
         );
@@ -103,14 +103,14 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
     function test_distributeToken_strategy_succeeds() public {
         uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, "Test Token", "TEST");
+        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, 'Test Token', 'TEST');
 
         // Create a distribution strategy
         MockDistributionStrategy distributionStrategy = new MockDistributionStrategy();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ''});
 
         // Distribute the token
         // payer is the liquidity launcher
@@ -126,14 +126,14 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
     function test_distributeToken_strategyAndContract_succeeds() public {
         uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, "Test Token", "TEST");
+        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, 'Test Token', 'TEST');
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ''});
 
         // Distribute the token
         IDistributionContract distributionContract =
@@ -151,14 +151,14 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
     function test_payerIsUser_succeeds() public {
         uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(this), initialSupply, "Test Token", "TEST");
+        address tokenAddress = _mockToken(address(this), initialSupply, 'Test Token', 'TEST');
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ''});
 
         // approve the liquidity launcher to spend the token
         IERC20(tokenAddress).approve(address(liquidityLauncher), initialSupply);
@@ -190,33 +190,33 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
     function test_createToken_gas() public {
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: 'Test token for launcher', website: 'https://test.com', image: 'https://test.com/image.png'
         });
 
         bytes memory tokenData = abi.encode(metadata);
         uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         liquidityLauncher.createToken(
-            address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(liquidityLauncher), tokenData
+            address(uerc20Factory), 'Test Token', 'TEST', 18, initialSupply, address(liquidityLauncher), tokenData
         );
-        vm.snapshotGasLastCall("createToken");
+        vm.snapshotGasLastCall('createToken');
     }
 
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
     function test_distributeToken_gas() public {
         uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, "Test Token", "TEST");
+        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, 'Test Token', 'TEST');
 
         // Create a distribution strategy
         MockDistributionStrategy distributionStrategy = new MockDistributionStrategy();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ''});
 
         // Distribute the token
         liquidityLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
-        vm.snapshotGasLastCall("distributeToken");
+        vm.snapshotGasLastCall('distributeToken');
     }
 }

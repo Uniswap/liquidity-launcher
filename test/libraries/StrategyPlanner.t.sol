@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {Plan, StrategyPlanner} from "src/libraries/StrategyPlanner.sol";
-import {BasePositionParams, FullRangeParams, OneSidedParams} from "src/types/PositionTypes.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
-import {ParamsBuilder} from "src/libraries/ParamsBuilder.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {TickBounds} from "src/types/PositionTypes.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {TickCalculations} from "src/libraries/TickCalculations.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {ActionsBuilder} from "src/libraries/ActionsBuilder.sol";
-import {DynamicArray} from "src/libraries/DynamicArray.sol";
+import {IHooks} from '@uniswap/v4-core/src/interfaces/IHooks.sol';
+import {FixedPoint96} from '@uniswap/v4-core/src/libraries/FixedPoint96.sol';
+import {FullMath} from '@uniswap/v4-core/src/libraries/FullMath.sol';
+import {LPFeeLibrary} from '@uniswap/v4-core/src/libraries/LPFeeLibrary.sol';
+import {SafeCast} from '@uniswap/v4-core/src/libraries/SafeCast.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
+import {LiquidityAmounts} from '@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol';
+import {Test} from 'forge-std/Test.sol';
+import {ActionsBuilder} from 'src/libraries/ActionsBuilder.sol';
+import {ActionsBuilder} from 'src/libraries/ActionsBuilder.sol';
+import {DynamicArray} from 'src/libraries/DynamicArray.sol';
+import {ParamsBuilder} from 'src/libraries/ParamsBuilder.sol';
+import {Plan, StrategyPlanner} from 'src/libraries/StrategyPlanner.sol';
+import {TickCalculations} from 'src/libraries/TickCalculations.sol';
+import {BasePositionParams, FullRangeParams, OneSidedParams} from 'src/types/PositionTypes.sol';
+import {TickBounds} from 'src/types/PositionTypes.sol';
 
 contract StrategyPlannerTest is Test {
     using TickCalculations for int24;
@@ -82,14 +82,14 @@ contract StrategyPlannerTest is Test {
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
-                poolLPFee: 10000,
+                poolLPFee: 10_000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
-                liquidity: 1000000000000000000,
+                liquidity: 1_000_000_000_000_000_000,
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
-            FullRangeParams({tokenAmount: 1000000000000000000, currencyAmount: 1000000000000000000})
+            FullRangeParams({tokenAmount: 1_000_000_000_000_000_000, currencyAmount: 1_000_000_000_000_000_000})
         );
         assertEq(plan.actions.length, 3);
         assertEq(plan.params.length, 3);
@@ -101,7 +101,7 @@ contract StrategyPlannerTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -111,11 +111,11 @@ contract StrategyPlannerTest is Test {
                     TickMath.getSqrtPriceAtTick(0),
                     TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
                     TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-                    1000000000000000000,
-                    1000000000000000000
+                    1_000_000_000_000_000_000,
+                    1_000_000_000_000_000_000
                 ),
-                1000000000000000000,
-                1000000000000000000,
+                1_000_000_000_000_000_000,
+                1_000_000_000_000_000_000,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
@@ -195,22 +195,22 @@ contract StrategyPlannerTest is Test {
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
             TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-            1000000000000000000,
-            1000000000000000000
+            1_000_000_000_000_000_000,
+            1_000_000_000_000_000_000
         );
         Plan memory plan = StrategyPlanner.planOneSidedPosition(
             StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
-                poolLPFee: 10000,
+                poolLPFee: 10_000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(0),
                 liquidity: liquidity,
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
-            OneSidedParams({amount: 1000000000000000000, inToken: true})
+            OneSidedParams({amount: 1_000_000_000_000_000_000, inToken: true})
         );
         assertEq(plan.actions.length, 1);
         assertEq(plan.params.length, 1);
@@ -221,7 +221,7 @@ contract StrategyPlannerTest is Test {
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
             TickMath.getSqrtPriceAtTick(0),
             0,
-            1000000000000000000
+            1_000_000_000_000_000_000
         );
 
         assertEq(
@@ -230,7 +230,7 @@ contract StrategyPlannerTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -238,7 +238,7 @@ contract StrategyPlannerTest is Test {
                 0,
                 oneSidedLiquidity,
                 0,
-                1000000000000000000,
+                1_000_000_000_000_000_000,
                 address(0),
                 ParamsBuilder.ZERO_BYTES
             )
@@ -252,22 +252,22 @@ contract StrategyPlannerTest is Test {
             TickMath.getSqrtPriceAtTick(0),
             TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK),
             TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-            1000000000000000000,
-            1000000000000000000
+            1_000_000_000_000_000_000,
+            1_000_000_000_000_000_000
         );
         Plan memory plan = StrategyPlanner.planOneSidedPosition(
             StrategyPlanner.init(),
             BasePositionParams({
                 currency: address(0),
                 poolToken: address(1),
-                poolLPFee: 10000,
+                poolLPFee: 10_000,
                 poolTickSpacing: 1,
                 initialSqrtPriceX96: TickMath.getSqrtPriceAtTick(0),
                 liquidity: liquidity,
                 positionRecipient: address(0),
                 hooks: IHooks(address(0))
             }),
-            OneSidedParams({amount: 1000000000000000000, inToken: false})
+            OneSidedParams({amount: 1_000_000_000_000_000_000, inToken: false})
         );
         assertEq(plan.actions.length, 1);
         assertEq(plan.params.length, 1);
@@ -278,7 +278,7 @@ contract StrategyPlannerTest is Test {
                 PoolKey({
                     currency0: Currency.wrap(address(0)),
                     currency1: Currency.wrap(address(1)),
-                    fee: 10000,
+                    fee: 10_000,
                     tickSpacing: 1,
                     hooks: IHooks(address(0))
                 }),
@@ -288,10 +288,10 @@ contract StrategyPlannerTest is Test {
                     TickMath.getSqrtPriceAtTick(0),
                     TickMath.getSqrtPriceAtTick(1),
                     TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK),
-                    1000000000000000000,
+                    1_000_000_000_000_000_000,
                     0
                 ),
-                1000000000000000000,
+                1_000_000_000_000_000_000,
                 0,
                 address(0),
                 ParamsBuilder.ZERO_BYTES

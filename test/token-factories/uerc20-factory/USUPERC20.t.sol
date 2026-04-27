@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {USUPERC20} from "@uniswap/uerc20-factory/src/tokens/USUPERC20.sol";
-import {USUPERC20Factory} from "@uniswap/uerc20-factory/src/factories/USUPERC20Factory.sol";
-import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC7802, IERC165} from "@optimism/interfaces/L2/IERC7802.sol";
-import {Base64} from "./libraries/base64.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {Base64} from './libraries/base64.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {IERC20Permit} from '@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol';
+import {Strings} from '@openzeppelin/contracts/utils/Strings.sol';
+import {IERC165, IERC7802} from '@optimism/interfaces/L2/IERC7802.sol';
+import {USUPERC20Factory} from '@uniswap/uerc20-factory/src/factories/USUPERC20Factory.sol';
+import {UERC20Metadata} from '@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol';
+import {USUPERC20} from '@uniswap/uerc20-factory/src/tokens/USUPERC20.sol';
+import {Test} from 'forge-std/Test.sol';
 
 contract USUPERC20Test is Test {
     using Base64 for string;
@@ -25,8 +25,8 @@ contract USUPERC20Test is Test {
     USUPERC20Factory factory;
     UERC20Metadata tokenMetadata;
 
-    address recipient = makeAddr("recipient");
-    address bob = makeAddr("bob");
+    address recipient = makeAddr('recipient');
+    address bob = makeAddr('bob');
 
     struct JsonTokenAllFields {
         string description;
@@ -67,13 +67,13 @@ contract USUPERC20Test is Test {
 
     function setUp() public {
         tokenMetadata = UERC20Metadata({
-            description: "A test token", website: "https://example.com", image: "https://example.com/image.png"
+            description: 'A test token', website: 'https://example.com', image: 'https://example.com/image.png'
         });
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -260,8 +260,8 @@ contract USUPERC20Test is Test {
     }
 
     function test_usuperc20_nameSymbolDecimalsTotalSupply() public view {
-        assertEq(token.name(), "Test");
-        assertEq(token.symbol(), "TEST");
+        assertEq(token.name(), 'Test');
+        assertEq(token.symbol(), 'TEST');
         assertEq(token.decimals(), DECIMALS);
         assertEq(token.totalSupply(), INITIAL_BALANCE);
     }
@@ -271,22 +271,22 @@ contract USUPERC20Test is Test {
         JsonTokenAllFields memory jsonToken = abi.decode(data, (JsonTokenAllFields));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.description, "A test token");
-        assertEq(jsonToken.website, "https://example.com");
-        assertEq(jsonToken.image, "https://example.com/image.png");
+        assertEq(jsonToken.description, 'A test token');
+        assertEq(jsonToken.website, 'https://example.com');
+        assertEq(jsonToken.image, 'https://example.com/image.png');
     }
 
     function test_usuperc20_tokenURI_maliciousInjectionDetected() public {
         tokenMetadata = UERC20Metadata({
-            description: "A test token",
-            website: "https://example.com",
-            image: "Normal description\" , \"Website\": \"https://malicious.com"
+            description: 'A test token',
+            website: 'https://example.com',
+            image: 'Normal description\" , \"Website\": \"https://malicious.com'
         });
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -299,18 +299,18 @@ contract USUPERC20Test is Test {
         JsonTokenAllFields memory jsonToken = abi.decode(data, (JsonTokenAllFields));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.description, "A test token");
-        assertEq(jsonToken.website, "https://example.com");
-        assertEq(jsonToken.image, "Normal description\" , \"Website\": \"https://malicious.com");
+        assertEq(jsonToken.description, 'A test token');
+        assertEq(jsonToken.website, 'https://example.com');
+        assertEq(jsonToken.image, 'Normal description\" , \"Website\": \"https://malicious.com');
     }
 
     function test_usuperc20_tokenURI_descriptionWebsite() public {
-        tokenMetadata = UERC20Metadata({description: "A test token", website: "https://example.com", image: ""});
+        tokenMetadata = UERC20Metadata({description: 'A test token', website: 'https://example.com', image: ''});
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -323,18 +323,18 @@ contract USUPERC20Test is Test {
         JsonTokenDescriptionWebsite memory jsonToken = abi.decode(data, (JsonTokenDescriptionWebsite));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.description, "A test token");
-        assertEq(jsonToken.website, "https://example.com");
+        assertEq(jsonToken.description, 'A test token');
+        assertEq(jsonToken.website, 'https://example.com');
     }
 
     function test_usuperc20_tokenURI_descriptionImage() public {
         tokenMetadata =
-            UERC20Metadata({description: "A test token", website: "", image: "https://example.com/image.png"});
+            UERC20Metadata({description: 'A test token', website: '', image: 'https://example.com/image.png'});
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -347,18 +347,18 @@ contract USUPERC20Test is Test {
         JsonTokenDescriptionImage memory jsonToken = abi.decode(data, (JsonTokenDescriptionImage));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.description, "A test token");
-        assertEq(jsonToken.image, "https://example.com/image.png");
+        assertEq(jsonToken.description, 'A test token');
+        assertEq(jsonToken.image, 'https://example.com/image.png');
     }
 
     function test_usuperc20_tokenURI_websiteImage() public {
         tokenMetadata =
-            UERC20Metadata({description: "", website: "https://example.com", image: "https://example.com/image.png"});
+            UERC20Metadata({description: '', website: 'https://example.com', image: 'https://example.com/image.png'});
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -371,17 +371,17 @@ contract USUPERC20Test is Test {
         JsonTokenWebsiteImage memory jsonToken = abi.decode(data, (JsonTokenWebsiteImage));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.website, "https://example.com");
-        assertEq(jsonToken.image, "https://example.com/image.png");
+        assertEq(jsonToken.website, 'https://example.com');
+        assertEq(jsonToken.image, 'https://example.com/image.png');
     }
 
     function test_usuperc20_tokenURI_description() public {
-        tokenMetadata = UERC20Metadata({description: "A test token", website: "", image: ""});
+        tokenMetadata = UERC20Metadata({description: 'A test token', website: '', image: ''});
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -394,16 +394,16 @@ contract USUPERC20Test is Test {
         JsonTokenDescription memory jsonToken = abi.decode(data, (JsonTokenDescription));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.description, "A test token");
+        assertEq(jsonToken.description, 'A test token');
     }
 
     function test_usuperc20_tokenURI_website() public {
-        tokenMetadata = UERC20Metadata({description: "", website: "https://example.com", image: ""});
+        tokenMetadata = UERC20Metadata({description: '', website: 'https://example.com', image: ''});
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -416,16 +416,16 @@ contract USUPERC20Test is Test {
         JsonTokenWebsite memory jsonToken = abi.decode(data, (JsonTokenWebsite));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.website, "https://example.com");
+        assertEq(jsonToken.website, 'https://example.com');
     }
 
     function test_usuperc20_tokenURI_image() public {
-        tokenMetadata = UERC20Metadata({description: "", website: "", image: "https://example.com/image.png"});
+        tokenMetadata = UERC20Metadata({description: '', website: '', image: 'https://example.com/image.png'});
         factory = new USUPERC20Factory();
         token = USUPERC20(
             factory.createToken(
-                "Test",
-                "TEST",
+                'Test',
+                'TEST',
                 DECIMALS,
                 INITIAL_BALANCE,
                 recipient,
@@ -438,12 +438,12 @@ contract USUPERC20Test is Test {
         JsonTokenImage memory jsonToken = abi.decode(data, (JsonTokenImage));
 
         // Parse JSON to extract individual fields
-        assertEq(jsonToken.image, "https://example.com/image.png");
+        assertEq(jsonToken.image, 'https://example.com/image.png');
     }
 
     function decode(USUPERC20 _token) private view returns (bytes memory) {
         // The prefix length is calculated by converting the string to bytes and finding its length
-        uint256 prefixLength = bytes("data:application/json;base64,").length;
+        uint256 prefixLength = bytes('data:application/json;base64,').length;
 
         string memory uri = _token.tokenURI();
         // Convert the uri to bytes
@@ -469,9 +469,9 @@ contract USUPERC20Test is Test {
     function test_usuperc20_crosschainMint_succeeds_gas() public {
         vm.startPrank(SUPERCHAIN_ERC20_BRIDGE);
         token.crosschainMint(bob, TRANSFER_AMOUNT);
-        vm.snapshotGasLastCall("crosschainMint: first mint");
+        vm.snapshotGasLastCall('crosschainMint: first mint');
         token.crosschainMint(bob, TRANSFER_AMOUNT);
-        vm.snapshotGasLastCall("crosschainMint: second mint");
+        vm.snapshotGasLastCall('crosschainMint: second mint');
     }
 
     /// forge-config: default.isolate = true
@@ -480,7 +480,7 @@ contract USUPERC20Test is Test {
         deal(address(token), bob, TRANSFER_AMOUNT);
         vm.prank(SUPERCHAIN_ERC20_BRIDGE);
         token.crosschainBurn(bob, TRANSFER_AMOUNT);
-        vm.snapshotGasLastCall("crosschainBurn");
+        vm.snapshotGasLastCall('crosschainBurn');
     }
 
     /// forge-config: default.isolate = true
@@ -499,11 +499,11 @@ contract USUPERC20Test is Test {
         // Calculate the permit digest
         bytes32 domainSeparator = token.DOMAIN_SEPARATOR();
         bytes32 permitTypehash =
-            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+            keccak256('Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)');
 
         bytes32 digest = keccak256(
             abi.encodePacked(
-                "\x19\x01",
+                '\x19\x01',
                 domainSeparator,
                 keccak256(abi.encode(permitTypehash, owner, bob, TRANSFER_AMOUNT, nonce, deadline))
             )
@@ -514,7 +514,7 @@ contract USUPERC20Test is Test {
 
         // Execute permit with valid signature
         token.permit(owner, bob, TRANSFER_AMOUNT, deadline, v, r, s);
-        vm.snapshotGasLastCall("USUPERC20 permit");
+        vm.snapshotGasLastCall('USUPERC20 permit');
 
         // Verify that permit worked correctly
         assertEq(token.allowance(owner, bob), TRANSFER_AMOUNT);
@@ -523,9 +523,9 @@ contract USUPERC20Test is Test {
     function test_usuperc20_domainSeparator() public view {
         bytes32 domainSeparator = keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)'),
                 keccak256(bytes(token.name())),
-                keccak256("1"),
+                keccak256('1'),
                 block.chainid,
                 address(token)
             )
