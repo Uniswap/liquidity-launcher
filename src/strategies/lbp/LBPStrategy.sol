@@ -11,6 +11,9 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
@@ -26,6 +29,9 @@ import {
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStrategy {
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
+
     /// @notice Internal helper struct
     struct MigrationData {
         uint160 sqrtPriceX96;
@@ -214,6 +220,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     }
 
     /// @notice Initializes the pool with the calculated price
+    /// @dev If lpHook only has the beforeInitialize flag (frontrunning protection only), attempts to create a hookless
+    ///      pool first for better aggregator compatibility. Falls back to the hooked pool if the hookless pool is already
+    ///      initialized. If lpHook has other flags (e.g. governance/timelock), it is always used directly.
     /// @param _data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
     function _initializePool(
@@ -224,18 +233,37 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         int24 poolTickSpacing,
         address lpHook
     ) private returns (PoolKey memory key) {
+        address hook = lpHook;
+
+        // Check if the hook has any flags beyond beforeInitialize
+        bool hasOtherFlags = uint160(lpHook) & (Hooks.ALL_HOOK_MASK & ~Hooks.BEFORE_INITIALIZE_FLAG) != 0;
+
+        // If the hook is purely for frontrunning protection, try to create a hookless pool first
+        if (!hasOtherFlags) {
+            PoolKey memory hooklessKey = PoolKey({
+                currency0: _currency0(currency, token),
+                currency1: _currency1(currency, token),
+                fee: poolLPFee,
+                tickSpacing: poolTickSpacing,
+                hooks: IHooks(address(0))
+            });
+
+            (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(hooklessKey.toId());
+
+            if (existingSqrtPriceX96 == 0) {
+                // Hookless pool is available — use it
+                hook = address(0);
+            }
+        }
+
         key = PoolKey({
             currency0: _currency0(currency, token),
             currency1: _currency1(currency, token),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
-            hooks: IHooks(lpHook)
+            hooks: IHooks(hook)
         });
 
-        // Initialize the pool with the returned initial price
-        // Will revert if:
-        //      - Pool is already initialized
-        //      - Initial price is not set (sqrtPriceX96 = 0)
         poolManager.initialize(key, _data.sqrtPriceX96);
 
         return key;

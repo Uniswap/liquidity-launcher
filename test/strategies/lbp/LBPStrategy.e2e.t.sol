@@ -50,6 +50,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
 
         // Mock v4 calls
+        vm.mockCall(poolManager, abi.encodeWithSelector(bytes4(keccak256("extsload(bytes32)"))), abi.encode(bytes32(0)));
         vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
@@ -119,6 +120,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         token.transfer(address(initializer), DEFAULT_SUPPLY_FOR_LP + DEFAULT_CUSTODY_TOKENS);
 
         vm.roll(mp.migrationBlock);
+        vm.mockCall(poolManager, abi.encodeWithSelector(bytes4(keccak256("extsload(bytes32)"))), abi.encode(bytes32(0)));
         vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 

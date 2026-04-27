@@ -18,7 +18,7 @@ interface ILBPStrategy {
         uint128 custodyTokens; // additional amount of the token that will be hold in custody during the auction (additionally to supplyForLP)
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
-        address lpHook; // the hook that will be used to initialize the pool
+        address lpHook; // the hook that will be used for the pool (used as fallback if only beforeInitialize is set)
     }
 
     struct OwnerControlled {

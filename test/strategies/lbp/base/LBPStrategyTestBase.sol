@@ -103,6 +103,8 @@ abstract contract LBPStrategyTestBase is Test {
         }
         token.transfer(address(initializer), DEFAULT_SUPPLY_FOR_LP + DEFAULT_CUSTODY_TOKENS);
         vm.roll(mp.migrationBlock);
+        // Mock extsload to return 0 (hookless pool not initialized — happy path for conditional hook logic)
+        vm.mockCall(poolManager, abi.encodeWithSelector(bytes4(keccak256("extsload(bytes32)"))), abi.encode(bytes32(0)));
         vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
         vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
