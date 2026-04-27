@@ -2,8 +2,8 @@
 set -e
 forge build
 rm -rf docs/autogen
-# generate docs
-forge doc -b -o docs/autogen
+# generate docs using the doc profile to exclude test/script files
+FOUNDRY_PROFILE=doc forge doc -b -o docs/autogen
 
 # Unstage all docs where only the commit hash changed
 # Get a list of all unstaged files in the directory
