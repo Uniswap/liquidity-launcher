@@ -165,8 +165,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
-        // TODO: Implement fallback full range position plan into _transferAssetsAndExecutePlan if modify liquidities reverts
-
         // Transfer all leftover currency and tokens to the funds recipient (non LP currency and tokens, unsold & custody tokens and dust)
         uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
