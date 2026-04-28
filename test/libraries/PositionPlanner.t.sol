@@ -134,7 +134,7 @@ contract PositionPlannerTest is Test {
         // rather than reverting on int24 arithmetic overflow.
         int24 tickSpacing = 60;
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: type(int24).max, offsetUpper: type(int24).max, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: type(int24).min, offsetUpper: type(int24).max, weight: 1e7});
 
         (Position[] memory positions,,) = mockPositionPlanner.resolve(defs, 0, tickSpacing, 100e18, 100e18);
 
@@ -194,9 +194,10 @@ contract PositionPlannerTest is Test {
     }
 
     function test_resolve_oneSidedAboveCurrentTick() public view {
-        // Range [+50, +100] sits entirely above currentTick -> token0 only
+        // offsetLower: 50, offsetUpper: 100 should intuitively mean
+        // [currentTick + 50, currentTick + 100] — entirely above, token0 only
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -50, offsetUpper: 100, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: 50, offsetUpper: 100, weight: 1e7});
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(defs, 0, 10, 100e18, 100e18);
@@ -209,9 +210,10 @@ contract PositionPlannerTest is Test {
     }
 
     function test_resolve_oneSidedBelowCurrentTick() public view {
-        // Range [-100, -50] sits entirely below currentTick -> token1 only
+        // offsetLower: -100, offsetUpper: -50 should intuitively mean
+        // [currentTick - 100, currentTick - 50] — entirely below, token1 only
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: 100, offsetUpper: -50, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: -100, offsetUpper: -50, weight: 1e7});
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(defs, 0, 10, 100e18, 100e18);
@@ -223,11 +225,31 @@ contract PositionPlannerTest is Test {
         assertLt(remaining1, 100e18);
     }
 
+    function test_resolve_singlePositionConsumedTokensAccountedFor() public view {
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
+
+        // First resolve to find exact amounts the position consumes
+        (Position[] memory probe,,) = mockPositionPlanner.resolve(defs, 0, 10, 100e18, 100e18);
+        assertEq(probe.length, 1, "probe should create 1 position");
+
+        // Use exact consumed amounts as budget — triggers the bug when budget hits zero
+        uint128 currency0Amount = probe[0].amount0;
+        uint128 currency1Amount = probe[0].amount1;
+
+        (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
+            mockPositionPlanner.resolve(defs, 0, 10, currency0Amount, currency1Amount);
+
+        assertEq(positions.length, 1, "position should be created");
+        assertEq(positions[0].amount0 + remaining0, currency0Amount, "token0 not accounted for");
+        assertEq(positions[0].amount1 + remaining1, currency1Amount, "token1 not accounted for");
+    }
+
     function test_resolve_truncatesWhenBudgetExhausted() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](3);
-        defs[0] = PositionDefinition({offsetLower: 20, offsetUpper: 20, weight: 4e6});
-        defs[1] = PositionDefinition({offsetLower: 40, offsetUpper: 40, weight: 3e6});
-        defs[2] = PositionDefinition({offsetLower: 60, offsetUpper: 60, weight: 3e6});
+        defs[0] = PositionDefinition({offsetLower: -20, offsetUpper: 20, weight: 4e6});
+        defs[1] = PositionDefinition({offsetLower: -40, offsetUpper: 40, weight: 3e6});
+        defs[2] = PositionDefinition({offsetLower: -60, offsetUpper: 60, weight: 3e6});
 
         // Tiny budget cannot fit the full plan; saturating subtraction drops later positions
         (Position[] memory positions,,) = mockPositionPlanner.resolve(defs, 0, 10, 1000, 1000);
@@ -245,7 +267,7 @@ contract PositionPlannerTest is Test {
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-        defs[1] = PositionDefinition({offsetLower: 20, offsetUpper: 20, weight: 5e6});
+        defs[1] = PositionDefinition({offsetLower: -20, offsetUpper: 20, weight: 5e6});
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(defs, currentTick, tickSpacing, currency0Amount, currency1Amount);

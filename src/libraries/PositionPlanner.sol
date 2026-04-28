@@ -65,7 +65,7 @@ library PositionPlanner {
     }
 
     /// @notice Converts each definition's relative offsets into absolute tick bounds snapped to `_tickSpacing`
-    /// @dev Will clamp to the usuable range if the offset exceeds it
+    /// @dev Will clamp to the usable range if the offset exceeds it
     function _resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
         private
         pure
@@ -86,7 +86,7 @@ library PositionPlanner {
             } else {
                 // Widen to int256 to avoid int24 overflow, clamp into the usable range, then snap
                 // to tick spacing. `minUsable`/`maxUsable` are spacing-aligned, so floor/ceil stay in range.
-                int256 lowerRaw = int256(_currentTick) - int256(offsetLower);
+                int256 lowerRaw = int256(_currentTick) + int256(offsetLower);
                 int256 upperRaw = int256(_currentTick) + int256(offsetUpper);
                 tickLower = int24(FixedPointMathLib.clamp(lowerRaw, minUsable, maxUsable)).tickFloor(_tickSpacing);
                 tickUpper = int24(FixedPointMathLib.clamp(upperRaw, minUsable, maxUsable)).tickCeil(_tickSpacing);
@@ -139,11 +139,10 @@ library PositionPlanner {
                 _currentTick, bounds.lowerTick, bounds.upperTick, SafeCastLib.toUint128(liquidity)
             );
 
-            assembly {
-                _currency0Amount := mul(gt(_currency0Amount, amount0), sub(_currency0Amount, amount0))
-                _currency1Amount := mul(gt(_currency1Amount, amount1), sub(_currency1Amount, amount1))
-            }
-            if (_currency0Amount == 0 || _currency1Amount == 0) continue;
+            if (amount0 > _currency0Amount || amount1 > _currency1Amount) continue;
+
+            _currency0Amount -= uint128(amount0);
+            _currency1Amount -= uint128(amount1);
 
             positions[cnt++] = Position({
                 amount0: SafeCastLib.toUint128(amount0),
