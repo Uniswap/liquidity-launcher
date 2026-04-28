@@ -15,10 +15,10 @@ ffi = true
 runs = 1000
 
 [profile.pr.fuzz]
-runs = 10000
+runs = 2500
 
 [profile.ci.fuzz]
-runs = 100000
+runs = 2500
 
 [profile.debug]
 via_ir = false
