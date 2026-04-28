@@ -13,13 +13,22 @@ interface ILBPStrategy {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
         int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // additional amount of the token that will be used to create the LP position
+        uint128 supplyForLP; // amount of the token that will be used to create the LP position (held as custody in the CCA)
         address fundsRecipient; // the address that will receive the funds from the auction
-        uint128 custodyTokens; // additional amount of the token that will be hold in custody during the auction (additionally to supplyForLP)
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
         address lpHook; // the hook that will be used to initialize the pool
         bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
+    }
+
+    /// @notice Internal helper struct
+    struct MigrationData {
+        uint160 sqrtPriceX96;
+        uint128 fullRangeTokenAmount;
+        uint128 fullRangeCurrencyAmount;
+        uint128 leftoverToken;
+        uint128 leftoverCurrency;
+        uint128 liquidity;
     }
 
     struct OwnerControlled {
@@ -98,10 +107,10 @@ interface ILBPStrategy {
     /// @param maxTotalSupply The max total supply
     error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
 
-    /// @notice Error thrown when the custody supply (supplyForLP + custodyTokens) is not equal to the expected custody supply
-    /// @param custodySupply The invalid custody supply
-    /// @param expectedCustodySupply The expected custody supply
-    error InvalidCustodySupply(uint256 custodySupply, uint256 expectedCustodySupply);
+    /// @notice Error thrown when the CCA's custody tokens do not match the expected supplyForLP
+    /// @param custodyTokens The CCA's reported custody tokens
+    /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
+    error InvalidCustodySupply(uint256 custodyTokens, uint256 expectedCustodyTokens);
 
     /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount

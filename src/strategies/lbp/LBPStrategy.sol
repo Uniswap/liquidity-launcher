@@ -85,13 +85,13 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Validate the migrator parameters
         _validateMigratorParams(migrationParams);
 
-        // Subtract custody tokens so the initializer is only given the remaining portion of supply.
-        uint256 initializerSupply = totalSupply - migrationParams.custodyTokens;
-        // Deploy the initializer contract via factory
+        // Deploy the initializer contract via factory.
+        // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
+        // LiquidityLauncher transfers the full totalSupply to the CCA, which validates balance >= auctionSupply + custodyTokens.
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, initializerSupply, initializerParams, bytes32(0))
+                    .initializeDistribution(token, totalSupply, initializerParams, bytes32(0))
             )
         );
 
@@ -283,12 +283,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(MigratorParameters memory _migratorParams) private view {
-        // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
-        if (uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens) > type(uint128).max) {
-            revert InvalidCustodySupply(
-                uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
-            );
-        }
         // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
         (, uint24 minSplitForLP) = _readOwnerControlledParams();
         if (
@@ -334,10 +328,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
         }
-        // Ensure the custody tokens are correct inside the auction parameters
-        uint256 expectedCustodyTokens = migrationParams.supplyForLP + migrationParams.custodyTokens;
-        if (initializer.custodyTokens() != expectedCustodyTokens) {
-            revert InvalidCustodySupply(initializer.custodyTokens(), expectedCustodyTokens);
+        // Ensure the CCA's custody tokens match the supplyForLP
+        if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
+            revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
         }
     }
 

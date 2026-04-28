@@ -5,12 +5,13 @@ import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
 
-/// @notice Mock factory that deploys MockLBPInitializers
+/// @notice Mock factory that deploys MockLBPInitializers.
+/// Reads custodyTokens and endBlock from the configData bytes, mirroring how the real CCA factory
+/// reads AuctionParameters from configData.
 contract MockInitializerFactory is IDistributionStrategy {
     MockLBPInitializer public deployedInitializer;
 
     address public strategyAddress;
-    uint128 public custodyTokensOverride;
 
     constructor(address _strategyAddress) {
         strategyAddress = _strategyAddress;
@@ -20,18 +21,14 @@ contract MockInitializerFactory is IDistributionStrategy {
         strategyAddress = _strategyAddress;
     }
 
-    /// @notice Set the custodyTokens value that deployed initializers will report
-    function setCustodyTokens(uint128 _custodyTokens) external {
-        custodyTokensOverride = _custodyTokens;
-    }
-
-    function initializeDistribution(address token, uint256, bytes calldata, bytes32)
+    function initializeDistribution(address token, uint256, bytes calldata configData, bytes32)
         external
         returns (IDistributionContract)
     {
-        MockLBPInitializer initializer = new MockLBPInitializer(
-            token, address(0), 0, custodyTokensOverride, strategyAddress, strategyAddress, 0, uint64(block.number) + 50
-        );
+        (uint128 custodyTokens, uint64 endBlock) = abi.decode(configData, (uint128, uint64));
+
+        MockLBPInitializer initializer =
+            new MockLBPInitializer(token, address(0), 0, custodyTokens, strategyAddress, strategyAddress, 0, endBlock);
 
         deployedInitializer = initializer;
         return IDistributionContract(address(initializer));
