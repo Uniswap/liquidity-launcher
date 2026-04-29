@@ -63,6 +63,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @inheritdoc IDistributionStrategy
+    /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
+    /// are validated before storage. Callers cannot overwrite existing initializer registrations.
     function initializeDistribution(
         address token,
         uint256 totalSupply,
@@ -107,6 +109,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @notice Migrates the raised funds and tokens to a v4 pool and sweep the raised funds, unsold and custody tokens to the fundsRecipient
+    /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
+    /// immutably set during initializeDistribution. Anyone can trigger migration
     function migrate(ILBPInitializer initializer) external {
         // Load the migration parameters that were stored when the initializer was registered
         MigratorParameters memory migrationParams = initializers[initializer];
@@ -168,7 +172,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
         }
 
-        emit Migrated(key, data.sqrtPriceX96);
+        emit Migrated(initializer, key, data.sqrtPriceX96);
     }
 
     /// @notice Receive native currency
@@ -249,9 +253,11 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
         if (
             _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLp
-                || _migratorParams.currencySplitForLP > 1e7
+                || _migratorParams.currencySplitForLP > LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
         ) {
-            revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLp, 1e7);
+            revert InvalidCurrencySplitForLP(
+                _migratorParams.currencySplitForLP, minSplitForLp, LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
+            );
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
@@ -357,7 +363,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         pure
         returns (uint256 currencyAmountForLp)
     {
-        currencyAmountForLp = currencyAmount * currencySplitForLP / 1e7;
+        currencyAmountForLp = currencyAmount * currencySplitForLP / LBPStrategyConfiguration.MAX_SPLIT_FOR_LP;
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {

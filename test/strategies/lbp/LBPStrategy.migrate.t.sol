@@ -59,7 +59,9 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         vm.expectEmit(false, false, false, false);
         emit ILBPStrategy.Migrated(
-            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))), 0
+            ILBPInitializer(address(0)),
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
+            0
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
