@@ -7,6 +7,9 @@ import {ILBPStrategyConfiguration} from "../../interfaces/ILBPStrategyConfigurat
 /// @title LBPStrategyConfiguration
 /// @notice Abstract configuration contract for LBPStrategy owner-controlled parameters
 abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration {
+    /// @notice The maximum split for LP (100%)
+    uint24 public constant MAX_SPLIT_FOR_LP = 1e7;
+
     /// @notice The protocol fee controller
     address public protocolFeeController;
     /// @notice The min split for LP
@@ -27,7 +30,7 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
     /// @notice Sets the min split for LP
     /// @param _minSplitForLp The min split for LP
     function _setMinSplitForLp(uint24 _minSplitForLp) internal {
-        if (_minSplitForLp == 0 || _minSplitForLp > 10_000) {
+        if (_minSplitForLp == 0 || _minSplitForLp > MAX_SPLIT_FOR_LP) {
             revert InvalidMinSplitForLp();
         }
         minSplitForLp = _minSplitForLp;

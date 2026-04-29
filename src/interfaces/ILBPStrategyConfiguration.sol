@@ -15,7 +15,7 @@ interface ILBPStrategyConfiguration {
     /// @notice Error thrown when the protocol fee controller is the zero address
     error InvalidProtocolFeeController();
 
-    /// @notice Error thrown when the min split for LP is zero or greater than 10_000
+    /// @notice Error thrown when the min split for LP is zero or greater than MAX_SPLIT_FOR_LP (1e7)
     error InvalidMinSplitForLp();
 
     /// @notice Sets the protocol fee controller

@@ -82,7 +82,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public {
-        _minSplit = uint24(bound(_minSplit, 2, 10_000));
+        _minSplit = uint24(bound(_minSplit, 2, strategy.MAX_SPLIT_FOR_LP()));
         _split = uint24(bound(_split, 1, _minSplit - 1));
 
         strategy.setMinSplitForLp(_minSplit);

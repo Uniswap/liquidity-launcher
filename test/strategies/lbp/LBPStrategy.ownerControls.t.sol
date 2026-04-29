@@ -17,7 +17,7 @@ contract LBPStrategy_OwnerControls_Test is LBPStrategyTestBase {
 
     function test_storageUpdatesAreIndependent(address _controller, uint24 _minSplit, address _controller2) public {
         vm.assume(_controller != address(0) && _controller2 != address(0));
-        _minSplit = uint24(bound(_minSplit, 1, 10_000));
+        _minSplit = uint24(bound(_minSplit, 1, strategy.MAX_SPLIT_FOR_LP()));
 
         strategy.setProtocolFeeController(_controller);
         strategy.setMinSplitForLp(_minSplit);

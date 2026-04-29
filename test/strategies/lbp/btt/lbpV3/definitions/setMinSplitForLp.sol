@@ -14,9 +14,9 @@ import {Ownable} from "solady/auth/Ownable.sol";
 /// └── when caller is owner
 ///     ├── when minSplitForLp is 0
 ///     │   └── it reverts with InvalidMinSplitForLp
-///     ├── when minSplitForLp > 10_000
+///     ├── when minSplitForLp > MAX_SPLIT_FOR_LP
 ///     │   └── it reverts with InvalidMinSplitForLp
-///     └── when minSplitForLp is in [1, 10_000]
+///     └── when minSplitForLp is in [1, MAX_SPLIT_FOR_LP]
 ///         ├── it sets the minSplitForLp
 ///         ├── it preserves the protocolFeeController
 ///         └── it emits MinSplitForLpSet
@@ -38,8 +38,8 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
         strategy.setMinSplitForLp(0);
     }
 
-    function test_SetMinSplitForLp_WhenValueIsOverMAX_BPS(uint24 _value) public whenCallerIsOwner_setMinSplit {
-        _value = uint24(bound(_value, 10_001, type(uint24).max));
+    function test_SetMinSplitForLp_WhenValueIsOverMAX(uint24 _value) public whenCallerIsOwner_setMinSplit {
+        _value = uint24(bound(_value, strategy.MAX_SPLIT_FOR_LP() + 1, type(uint24).max));
 
         vm.expectRevert(ILBPStrategyConfiguration.InvalidMinSplitForLp.selector);
         strategy.setMinSplitForLp(_value);
@@ -50,7 +50,7 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
     }
 
     function test_SetMinSplitForLp_WhenValid(uint24 _value) public whenCallerIsOwner_setMinSplit whenValueIsInRange {
-        _value = uint24(bound(_value, 1, 10_000));
+        _value = uint24(bound(_value, 1, strategy.MAX_SPLIT_FOR_LP()));
 
         vm.expectEmit();
         emit ILBPStrategyConfiguration.MinSplitForLpSet(_value);
@@ -64,7 +64,7 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
         whenCallerIsOwner_setMinSplit
         whenValueIsInRange
     {
-        _value = uint24(bound(_value, 1, 10_000));
+        _value = uint24(bound(_value, 1, strategy.MAX_SPLIT_FOR_LP()));
         vm.assume(_controller != address(0));
 
         strategy.setProtocolFeeController(_controller);
