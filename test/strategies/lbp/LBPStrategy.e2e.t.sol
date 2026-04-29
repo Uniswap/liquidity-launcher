@@ -8,6 +8,7 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
@@ -106,5 +107,58 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // no currency actually goes to LP — it all gets swept). Pool initialization may consume dust.
         uint256 received = fundsRecipient.balance - recipientBalBefore;
         assertGe(received, _currencyRaised - 1);
+    }
+
+    /// @notice E2E test with ERC20 currency (not native ETH)
+    function test_fuzz_erc20Currency_initAndMigrate(
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP,
+        uint24 _currencySplitForLP,
+        uint128 _currencyRaised,
+        uint160 _initialPriceX96,
+        uint128 _tokensSold
+    ) public {
+        // Deploy an ERC20 to use as currency
+        MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
+        factory.setCurrencyOverride(address(currencyToken));
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) = _boundMigratorParams(
+            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
+        );
+        _currencyRaised = _boundCurrencyRaised(_currencyRaised, mp.currencySplitForLP);
+        _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
+        _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
+
+        // Initialize distribution
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({
+                initialPriceX96: _initialPriceX96, tokensSold: _tokensSold, currencyRaised: _currencyRaised
+            })
+        );
+
+        // Fund the initializer with ERC20 currency (not native ETH)
+        currencyToken.transfer(address(initializer), _currencyRaised);
+        token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
+        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+
+        uint256 recipientCurrencyBefore = currencyToken.balanceOf(fundsRecipient);
+        uint256 recipientTokenBefore = token.balanceOf(fundsRecipient);
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // Strategy should be empty
+        assertEq(currencyToken.balanceOf(address(strategy)), 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
+
+        // fundsRecipient should have received something
+        assertTrue(
+            currencyToken.balanceOf(fundsRecipient) > recipientCurrencyBefore
+                || token.balanceOf(fundsRecipient) > recipientTokenBefore
+        );
     }
 }
