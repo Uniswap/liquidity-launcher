@@ -5,7 +5,6 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MockERC20} from "test/mocks/MockERC20.sol";
 
 contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
     function test_twoAuctions_independentParams() public {
@@ -13,10 +12,11 @@ contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
 
         ILBPStrategy.MigratorParameters memory params2 = _defaultMigratorParams();
         params2.migrationBlock = uint64(block.number) + 300;
-        factory.setCustodyTokens(params2.supplyForLP + params2.custodyTokens);
-
         strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(params2, _defaultBreakpoints(), hex""), bytes32(0)
+            address(token),
+            DEFAULT_TOTAL_SUPPLY,
+            _encodeConfigData(params2, _defaultBreakpoints(), _defaultInitializerParams(params2)),
+            bytes32(0)
         );
         MockLBPInitializer init2 = factory.deployedInitializer();
 

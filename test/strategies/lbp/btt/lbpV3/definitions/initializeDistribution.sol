@@ -9,7 +9,6 @@ import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MockERC20} from "test/mocks/MockERC20.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
@@ -35,7 +34,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///     │   └── it reverts with InvalidRecipient
 ///     ├── when initializer.endBlock >= migrationBlock
 ///     │   └── it reverts with InvalidEndBlock
-///     ├── when initializer.custody tokens mismatch
+///     ├── when initializer.custodyTokens mismatch
 ///     │   └── it reverts with InvalidCustodySupply
 ///     └── when initializer is valid
 ///         ├── it stores the identifier
@@ -189,20 +188,18 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenInitializerFundsRecipientIsWrong(address _wrongRecipient) public whenMigratorParamsAreValid {
-        vm.assume(_wrongRecipient != address(strategy));
-
+    function test_WhenInitializerFundsRecipientIsWrong() public whenMigratorParamsAreValid {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), // token placeholder
+            address(token),
             address(0),
             0,
-            mp.supplyForLP + mp.custodyTokens,
+            uint128(mp.supplyForLP),
             address(strategy),
-            _wrongRecipient,
+            makeAddr("wrongRecipient"),
             0,
-            uint64(block.number)
+            uint64(block.number) + 50
         );
 
         vm.mockCall(
@@ -224,7 +221,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), 0, mp.supplyForLP + mp.custodyTokens, address(strategy), address(strategy), 0, endBlock
+            address(token), address(0), 0, uint128(mp.supplyForLP), address(strategy), address(strategy), 0, endBlock
         );
 
         vm.mockCall(
@@ -242,11 +239,18 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody) public whenMigratorParamsAreValid {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
 
-        uint128 expectedCustody = mp.supplyForLP + mp.custodyTokens;
+        uint128 expectedCustody = uint128(mp.supplyForLP);
         vm.assume(_wrongCustody != expectedCustody);
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), 0, _wrongCustody, address(strategy), address(strategy), 0, uint64(block.number)
+            address(token),
+            address(0),
+            0,
+            _wrongCustody,
+            address(strategy),
+            address(strategy),
+            0,
+            uint64(block.number) + 50
         );
 
         vm.mockCall(
@@ -270,11 +274,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     function test_WhenInitializerIsNew() public whenMigratorParamsAreValid whenInitializerIsValid {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
-        factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-
         vm.recordLogs();
         strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, _defaultInitializerParams(mp)), bytes32(0)
         );
 
         MockLBPInitializer initializer = factory.deployedInitializer();

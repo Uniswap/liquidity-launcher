@@ -11,28 +11,20 @@ import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
-/// @notice Base test contract for LBPStrategy tests.
-/// Forks mainnet to use real v4 PoolManager and PositionManager.
-/// Uses mock CCA (MockInitializerFactory + MockLBPInitializer) for auction simulation.
 abstract contract LBPStrategyTestBase is Test {
-    // Mainnet v4 deployments
-    IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
-    IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
-
     LBPStrategy strategy;
     MockInitializerFactory factory;
+    MockERC20 token;
 
+    address poolManager = makeAddr("poolManager");
+    address positionManager = makeAddr("positionManager");
     address owner;
     address fundsRecipient = makeAddr("fundsRecipient");
     address lpPositionRecipient = makeAddr("lpPositionRecipient");
 
     uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
     uint128 constant DEFAULT_SUPPLY_FOR_LP = 200e18;
-    uint128 constant DEFAULT_CUSTODY_TOKENS = 50e18;
     uint24 constant DEFAULT_RATE = 5e6; // 50% flat rate
     uint24 constant DEFAULT_POOL_FEE = 500;
     int24 constant DEFAULT_TICK_SPACING = 10;
@@ -40,15 +32,18 @@ abstract contract LBPStrategyTestBase is Test {
     uint128 constant DEFAULT_TOKENS_SOLD = 100e18;
 
     function setUp() public virtual {
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"));
-
         owner = address(this);
 
+        token = new MockERC20("Test Token", "TT", DEFAULT_TOTAL_SUPPLY, address(this));
+
+        // Deploy factory first with a placeholder strategy address.
+        // Then deploy strategy with the real factory.
+        // Then update the factory's strategyAddress to match.
         factory = new MockInitializerFactory(address(0));
 
         strategy = new LBPStrategy(
-            POSITION_MANAGER,
-            POOL_MANAGER,
+            IPositionManager(positionManager),
+            IPoolManager(poolManager),
             IDistributionStrategy(address(factory)),
             1,
             makeAddr("protocolFeeController"),
@@ -65,7 +60,6 @@ abstract contract LBPStrategyTestBase is Test {
             poolTickSpacing: DEFAULT_TICK_SPACING,
             supplyForLP: DEFAULT_SUPPLY_FOR_LP,
             fundsRecipient: fundsRecipient,
-            custodyTokens: DEFAULT_CUSTODY_TOKENS,
             lpPositionRecipient: lpPositionRecipient,
             lpHook: address(0)
         });
@@ -91,51 +85,48 @@ abstract contract LBPStrategyTestBase is Test {
         return _encodeConfigData(_defaultMigratorParams(), _defaultBreakpoints(), hex"");
     }
 
-    /// @notice Initializes distribution with default parameters and returns the deployed initializer
+    /// @notice Encodes the default initializer params (custodyTokens + endBlock) for the MockInitializerFactory
+    function _defaultInitializerParams(ILBPStrategy.MigratorParameters memory mp) internal pure returns (bytes memory) {
+        uint128 custodyTokens = mp.supplyForLP;
+        uint64 endBlock = mp.migrationBlock - 1;
+        return abi.encode(custodyTokens, endBlock);
+    }
+
     function _initializeWithDefaults()
         internal
         returns (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp)
     {
         mp = _defaultMigratorParams();
-        // Set custody tokens on the factory so the deployed initializer reports the expected value
-        factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-        bytes memory configData = _encodeConfigData(mp, _defaultBreakpoints(), hex"");
+        bytes memory initializerParams = _defaultInitializerParams(mp);
+        bytes memory configData = _encodeConfigData(mp, _defaultBreakpoints(), initializerParams);
         strategy.initializeDistribution(address(token), DEFAULT_TOTAL_SUPPLY, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
 
-    /// @notice Sets up a fully funded initializer ready for migration
-    function _setupForMigration(uint128 currencyRaised, uint160 initialPriceX96)
+    function _setupForMigration(uint256 currencyRaised, uint256 initialPriceX96)
+        internal
+        returns (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp)
+    {
+        return _setupForMigration(currencyRaised, initialPriceX96, DEFAULT_TOKENS_SOLD);
+    }
+
+    function _setupForMigration(uint256 currencyRaised, uint256 initialPriceX96, uint256 tokensSold)
         internal
         returns (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp)
     {
         (initializer, mp) = _initializeWithDefaults();
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
-                initialPriceX96: initialPriceX96,
-                tokensSold: DEFAULT_TOKENS_SOLD,
-                currencyRaised: currencyRaised
+                initialPriceX96: initialPriceX96, tokensSold: tokensSold, currencyRaised: currencyRaised
             })
         );
-        if (currencyRaised > 0) {
+        if (currencyRaised > 0 && currencyRaised <= type(uint128).max) {
             vm.deal(address(initializer), currencyRaised);
         }
-        token.transfer(address(initializer), DEFAULT_TOTAL_SUPPLY);
+        token.transfer(address(initializer), DEFAULT_SUPPLY_FOR_LP);
         vm.roll(mp.migrationBlock);
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
-    }
-
-    /// @notice Bounds currencyRaised so that currencyRaised * split / 1e7 > 0.
-    /// Without this, the currency amount for LP can round to zero and revert with NoCurrencyRaised.
-    function _boundCurrencyRaised(uint128 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint128) {
-        return uint128(bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max));
-    }
-
-    /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.
-    /// Very small prices get inverted to values exceeding uint160.max, causing PriceTooHigh reverts.
-    /// Lower bound of Q96/1e9 allows prices down to one-billionth of 1:1.
-    function _boundInitialPriceX96(uint160 _initialPriceX96) internal pure returns (uint160) {
-        return uint160(bound(_initialPriceX96, FixedPoint96.Q96 / 1e9, type(uint160).max));
+        vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
+        vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
     /// @notice Helper to call migrate

@@ -6,7 +6,6 @@ import {LBPStrategyTestBase} from "../../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MockERC20} from "test/mocks/MockERC20.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @title ValidateMigrationTest
@@ -62,9 +61,9 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer, ILBPStrategy.MigratorParameters memory mp) = _initializeWithDefaults();
 
         initializer.setLbpInitializationParams(
-            LBPInitializationParams({initialPriceX96: uint160(_initialPriceX96), tokensSold: 0, currencyRaised: 0})
+            LBPInitializationParams({initialPriceX96: _initialPriceX96, tokensSold: 0, currencyRaised: 0})
         );
-        token.transfer(address(initializer), mp.supplyForLP);
+        token.transfer(address(initializer), DEFAULT_SUPPLY_FOR_LP);
         vm.roll(mp.migrationBlock);
 
         vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);

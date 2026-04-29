@@ -251,12 +251,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(MigratorParameters memory _migratorParams) private pure {
-        // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
-        if (uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens) > type(uint128).max) {
-            revert InvalidCustodySupply(
-                uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
-            );
-        }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
             _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
@@ -292,10 +286,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
         }
-        // Ensure the custody tokens are correct inside the auction parameters
-        uint256 expectedCustodyTokens = migrationParams.supplyForLP + migrationParams.custodyTokens;
-        if (initializer.custodyTokens() != expectedCustodyTokens) {
-            revert InvalidCustodySupply(initializer.custodyTokens(), expectedCustodyTokens);
+        // Ensure the CCA's custody tokens match the supplyForLP
+        if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
+            revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
         }
     }
 

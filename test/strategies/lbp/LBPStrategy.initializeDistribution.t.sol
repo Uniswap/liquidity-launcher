@@ -5,16 +5,15 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MockERC20} from "test/mocks/MockERC20.sol";
 
+/// @notice Integration and specific-value tests for initializeDistribution
+/// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/initializeDistribution.sol
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     function test_storesMigrationParameters() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
-        factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-
         strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, _defaultInitializerParams(mp)), bytes32(0)
         );
         MockLBPInitializer init1 = factory.deployedInitializer();
 
@@ -29,12 +28,10 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     function test_emitsInitializerCreated() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
         ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
-        factory.setCustodyTokens(mp.supplyForLP + mp.custodyTokens);
-
         vm.expectEmit(false, false, false, false);
         emit ILBPStrategy.InitializerCreated(ILBPInitializer(address(0)), mp, bp);
         strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, hex""), bytes32(0)
+            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, _defaultInitializerParams(mp)), bytes32(0)
         );
     }
 }
