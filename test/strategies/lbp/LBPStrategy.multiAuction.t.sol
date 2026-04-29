@@ -5,6 +5,7 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 
 contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
     function test_twoAuctions_independentParams() public {

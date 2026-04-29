@@ -80,13 +80,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         _validateMigratorParams(migrationParams);
         _validateBreakpoints(breakpoints);
 
-        // Subtract custody tokens so the initializer is only given the remaining portion of supply.
-        uint256 initializerSupply = totalSupply - migrationParams.custodyTokens;
-        // Deploy the initializer contract via factory
+        // Deploy the initializer contract via factory.
+        // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
+        // LiquidityLauncher transfers the full totalSupply to the CCA, which validates balance >= auctionSupply + custodyTokens.
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, initializerSupply, initializerParams, bytes32(0))
+                    .initializeDistribution(token, totalSupply, initializerParams, bytes32(0))
             )
         );
 

@@ -9,6 +9,7 @@ import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
@@ -34,7 +35,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///     │   └── it reverts with InvalidRecipient
 ///     ├── when initializer.endBlock >= migrationBlock
 ///     │   └── it reverts with InvalidEndBlock
-///     ├── when initializer.custodyTokens mismatch
+///     ├── when initializer.custody tokens mismatch
 ///     │   └── it reverts with InvalidCustodySupply
 ///     └── when initializer is valid
 ///         ├── it stores the identifier
@@ -188,18 +189,20 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenInitializerFundsRecipientIsWrong() public whenMigratorParamsAreValid {
+    function test_WhenInitializerFundsRecipientIsWrong(address _wrongRecipient) public whenMigratorParamsAreValid {
+        vm.assume(_wrongRecipient != address(strategy));
+
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(token),
+            address(1), // token placeholder
             address(0),
             0,
-            uint128(mp.supplyForLP + mp.custodyTokens),
+            mp.supplyForLP + mp.custodyTokens,
             address(strategy),
-            makeAddr("wrongRecipient"),
+            _wrongRecipient,
             0,
-            uint64(block.number) + 50
+            uint64(block.number)
         );
 
         vm.mockCall(
@@ -221,14 +224,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(token),
-            address(0),
-            0,
-            uint128(mp.supplyForLP + mp.custodyTokens),
-            address(strategy),
-            address(strategy),
-            0,
-            endBlock
+            address(1), address(0), 0, mp.supplyForLP + mp.custodyTokens, address(strategy), address(strategy), 0, endBlock
         );
 
         vm.mockCall(
@@ -246,18 +242,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody) public whenMigratorParamsAreValid {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
 
-        uint128 expectedCustody = uint128(mp.supplyForLP + mp.custodyTokens);
+        uint128 expectedCustody = mp.supplyForLP + mp.custodyTokens;
         vm.assume(_wrongCustody != expectedCustody);
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(token),
-            address(0),
-            0,
-            _wrongCustody,
-            address(strategy),
-            address(strategy),
-            0,
-            uint64(block.number) + 50
+            address(1), address(0), 0, _wrongCustody, address(strategy), address(strategy), 0, uint64(block.number)
         );
 
         vm.mockCall(

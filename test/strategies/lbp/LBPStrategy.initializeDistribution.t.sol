@@ -5,9 +5,8 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 
-/// @notice Integration and specific-value tests for initializeDistribution
-/// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/initializeDistribution.sol
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     function test_storesMigrationParameters() public {
         ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
