@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {ILBPStrategyConfiguration} from "src/interfaces/ILBPStrategyConfiguration.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 
 /// @title SetMinSplitForLpTest
@@ -34,14 +34,14 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
     }
 
     function test_SetMinSplitForLp_WhenValueIsZero() public whenCallerIsOwner_setMinSplit {
-        vm.expectRevert(ILBPStrategy.InvalidMinSplitForLp.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidMinSplitForLp.selector);
         strategy.setMinSplitForLp(0);
     }
 
     function test_SetMinSplitForLp_WhenValueIsOverMAX_BPS(uint24 _value) public whenCallerIsOwner_setMinSplit {
         _value = uint24(bound(_value, 10_001, type(uint24).max));
 
-        vm.expectRevert(ILBPStrategy.InvalidMinSplitForLp.selector);
+        vm.expectRevert(ILBPStrategyConfiguration.InvalidMinSplitForLp.selector);
         strategy.setMinSplitForLp(_value);
     }
 
@@ -53,11 +53,10 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
         _value = uint24(bound(_value, 1, 10_000));
 
         vm.expectEmit();
-        emit ILBPStrategy.MinSplitForLpSet(_value);
+        emit ILBPStrategyConfiguration.MinSplitForLpSet(_value);
         strategy.setMinSplitForLp(_value);
 
-        (, uint24 stored) = strategy.ownerControlledParams();
-        assertEq(stored, _value);
+        assertEq(strategy.minSplitForLp(), _value);
     }
 
     function test_SetMinSplitForLp_PreservesProtocolFeeController(uint24 _value, address _controller)
@@ -71,8 +70,7 @@ contract SetMinSplitForLpTest is LBPStrategyTestBase {
         strategy.setProtocolFeeController(_controller);
         strategy.setMinSplitForLp(_value);
 
-        (address readCtrl, uint24 readSplit) = strategy.ownerControlledParams();
-        assertEq(readCtrl, _controller);
-        assertEq(readSplit, _value);
+        assertEq(strategy.protocolFeeController(), _controller);
+        assertEq(strategy.minSplitForLp(), _value);
     }
 }

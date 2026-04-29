@@ -49,7 +49,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, 0, 0, 1e7));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, 0, 1, 1e7));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
@@ -69,7 +69,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, _split, 0, 1e7));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidCurrencySplitForLP.selector, _split, 1, 1e7));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 

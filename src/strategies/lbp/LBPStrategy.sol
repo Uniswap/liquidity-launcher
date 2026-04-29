@@ -11,7 +11,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Ownable} from "solady/auth/Ownable.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
@@ -21,17 +20,28 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
+import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStrategy {
-    IPoolManager public immutable poolManager;
-    IPositionManager public immutable positionManager;
-    IDistributionStrategy public immutable initializerFactory;
+contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, IDistributionStrategy {
+    /// @notice Internal helper struct
+    struct MigrationData {
+        uint160 sqrtPriceX96;
+        uint128 fullRangeTokenAmount;
+        uint128 fullRangeCurrencyAmount;
+        uint128 leftoverToken;
+        uint128 leftoverCurrency;
+        uint128 liquidity;
+    }
 
-    // Owner controlled parameters
-    OwnerControlled public ownerControlledParams;
+    /// @notice The v4 pool manager
+    IPoolManager public immutable poolManager;
+    /// @notice The v4 position manager
+    IPositionManager public immutable positionManager;
+    /// @notice The initializer factory
+    IDistributionStrategy public immutable initializerFactory;
 
     /// @notice The mapping of initializers to their stored migration parameters, used to drive migration
     mapping(ILBPInitializer initializer => MigratorParameters) public initializers;
@@ -39,32 +49,17 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributionStrategy _initializerFactory
+        IDistributionStrategy _initializerFactory,
+        uint24 _minSplitForLp,
+        address _protocolFeeController,
+        address _owner
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        _initializeOwner(msg.sender);
-    }
-
-    function setProtocolFeeController(address protocolFeeController) external onlyOwner {
-        if (protocolFeeController == address(0)) {
-            revert InvalidProtocolFeeController();
-        }
-
-        ownerControlledParams.protocolFeeController = protocolFeeController;
-
-        emit ProtocolFeeControllerSet(protocolFeeController);
-    }
-
-    function setMinSplitForLp(uint24 minSplitForLp) external onlyOwner {
-        if (minSplitForLp == 0 || minSplitForLp > 10_000) {
-            revert InvalidMinSplitForLp();
-        }
-
-        ownerControlledParams.minSplitForLp = minSplitForLp;
-
-        emit MinSplitForLpSet(minSplitForLp);
+        _initializeOwner(_owner);
+        _setMinSplitForLp(_minSplitForLp);
+        _setProtocolFeeController(_protocolFeeController);
     }
 
     /// @inheritdoc IDistributionStrategy
@@ -252,12 +247,11 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(MigratorParameters memory _migratorParams) private view {
         // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
-        (, uint24 minSplitForLP) = _readOwnerControlledParams();
         if (
-            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLP
+            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLp
                 || _migratorParams.currencySplitForLP > 1e7
         ) {
-            revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLP, 1e7);
+            revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLp, 1e7);
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
@@ -297,20 +291,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Ensure the CCA's custody tokens match the supplyForLP
         if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
             revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
-        }
-    }
-
-    function _readOwnerControlledParams() private view returns (address protocolFeeController, uint24 minSplitForLP) {
-        assembly ("memory-safe") {
-            let slotContent := sload(ownerControlledParams.slot)
-            protocolFeeController := and(
-                slotContent,
-                0xffffffffffffffffffffffffffffffffffffffff /* address mask */
-            )
-            minSplitForLP := and(
-                shr(160, slotContent),
-                0xffffff /* uint24 mask */
-            )
         }
     }
 
