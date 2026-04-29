@@ -114,6 +114,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @inheritdoc ILBPStrategy
+    /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
+    /// immutably set during initializeDistribution. Anyone can trigger migration
     function migrate(ILBPInitializer initializer) external {
         // Load the stored record for the initializer
         InitializerRecord storage record = initializers[initializer];

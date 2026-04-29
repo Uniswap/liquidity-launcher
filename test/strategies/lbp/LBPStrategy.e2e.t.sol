@@ -7,9 +7,6 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution -> migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
@@ -29,7 +26,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
         _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
 
-        (MockLBPInitializer initializer, MockERC20 erc20Token) =
+        (MockLBPInitializer initializer, MockERC20 token) =
             _setupForMigration(mp, totalSupply, endBlock, _currencyRaised, _initialPriceX96, _tokensSold);
 
         // Verify migration params were stored
@@ -39,19 +36,18 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         // Record balances before migration
         uint256 recipientBalBefore = fundsRecipient.balance;
-        uint256 recipientTokenBalBefore = erc20Token.balanceOf(fundsRecipient);
+        uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
 
         // Migrate
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // Strategy should be empty after migration
-        assertEq(erc20Token.balanceOf(address(strategy)), 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
         assertEq(address(strategy).balance, 0);
 
         // fundsRecipient should have received something
         assertTrue(
-            fundsRecipient.balance > recipientBalBefore
-                || erc20Token.balanceOf(fundsRecipient) > recipientTokenBalBefore
+            fundsRecipient.balance > recipientBalBefore || token.balanceOf(fundsRecipient) > recipientTokenBalBefore
         );
     }
 
@@ -127,7 +123,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
 
         // Initialize distribution
-        (MockLBPInitializer initializer, MockERC20 erc20Token) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: _initialPriceX96, tokensSold: _tokensSold, currencyRaised: _currencyRaised
@@ -136,23 +132,23 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         // Fund the initializer with ERC20 currency (not native ETH)
         currencyToken.transfer(address(initializer), _currencyRaised);
-        erc20Token.transfer(address(initializer), totalSupply);
+        token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientCurrencyBefore = currencyToken.balanceOf(fundsRecipient);
-        uint256 recipientTokenBefore = erc20Token.balanceOf(fundsRecipient);
+        uint256 recipientTokenBefore = token.balanceOf(fundsRecipient);
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // Strategy should be empty
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
-        assertEq(erc20Token.balanceOf(address(strategy)), 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
 
         // fundsRecipient should have received something
         assertTrue(
             currencyToken.balanceOf(fundsRecipient) > recipientCurrencyBefore
-                || erc20Token.balanceOf(fundsRecipient) > recipientTokenBefore
+                || token.balanceOf(fundsRecipient) > recipientTokenBefore
         );
     }
 }
