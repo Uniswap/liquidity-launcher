@@ -14,17 +14,19 @@ contract LBPStrategyConfiguration_Test is LBPStrategyTestBase {
         assertEq(strategy.minBracketRate(), 1);
     }
 
-    function test_storageSurvivesUpdates() public {
-        address controller = makeAddr("controller");
-        strategy.setProtocolFeeController(controller);
-        strategy.setMinBracketRate(7777);
+    function test_storageSurvivesUpdates(address _controller, uint24 _minBracketRate, address _controller2) public {
+        vm.assume(_controller != address(0) && _controller2 != address(0));
+        _minBracketRate = uint24(bound(_minBracketRate, 1, 1e7));
 
-        assertEq(strategy.protocolFeeController(), controller);
-        assertEq(strategy.minBracketRate(), 7777);
+        strategy.setProtocolFeeController(_controller);
+        strategy.setMinBracketRate(_minBracketRate);
+
+        assertEq(strategy.protocolFeeController(), _controller);
+        assertEq(strategy.minBracketRate(), _minBracketRate);
 
         // Update one, verify other survives
-        strategy.setProtocolFeeController(makeAddr("ctrl2"));
-        assertEq(strategy.protocolFeeController(), makeAddr("ctrl2"));
-        assertEq(strategy.minBracketRate(), 7777);
+        strategy.setProtocolFeeController(_controller2);
+        assertEq(strategy.protocolFeeController(), _controller2);
+        assertEq(strategy.minBracketRate(), _minBracketRate);
     }
 }

@@ -40,9 +40,10 @@ interface ILBPStrategy {
     );
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
+    /// @param initializer The initializer that was migrated
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
-    event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
+    event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);
@@ -59,7 +60,7 @@ interface ILBPStrategy {
     /// @param currentBlock The current block number
     error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
 
-    /// @notice Error thrown when the end block is at orafter the migration block
+    /// @notice Error thrown when the end block is at or after the migration block
     /// @param endBlock The invalid end block
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);

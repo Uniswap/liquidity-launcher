@@ -12,9 +12,21 @@ contract MockInitializerFactory is IDistributionStrategy {
     MockLBPInitializer public deployedInitializer;
 
     address public strategyAddress;
+    address public currencyOverride;
+
+    /// @notice If set, initializeDistribution returns this address instead of deploying a new one
+    MockLBPInitializer public overrideInitializer;
 
     constructor(address _strategyAddress) {
         strategyAddress = _strategyAddress;
+    }
+
+    function setOverrideInitializer(MockLBPInitializer _initializer) external {
+        overrideInitializer = _initializer;
+    }
+
+    function setCurrencyOverride(address _currency) external {
+        currencyOverride = _currency;
     }
 
     function setStrategyAddress(address _strategyAddress) external {
@@ -27,8 +39,14 @@ contract MockInitializerFactory is IDistributionStrategy {
     {
         (uint128 custodyTokens, uint64 endBlock) = abi.decode(configData, (uint128, uint64));
 
-        MockLBPInitializer initializer =
-            new MockLBPInitializer(token, address(0), 0, custodyTokens, strategyAddress, strategyAddress, 0, endBlock);
+        MockLBPInitializer initializer;
+        if (address(overrideInitializer) != address(0)) {
+            initializer = overrideInitializer;
+        } else {
+            initializer = new MockLBPInitializer(
+                token, currencyOverride, 0, custodyTokens, strategyAddress, strategyAddress, 0, endBlock
+            );
+        }
 
         deployedInitializer = initializer;
         return IDistributionContract(address(initializer));

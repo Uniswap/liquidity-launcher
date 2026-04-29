@@ -63,6 +63,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @inheritdoc IDistributionStrategy
+    /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
+    /// are validated before storage. Callers cannot overwrite existing initializer registrations.
     function initializeDistribution(
         address token,
         uint256 totalSupply,
@@ -173,7 +175,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
         }
 
-        emit Migrated(key, data.sqrtPriceX96);
+        emit Migrated(initializer, key, data.sqrtPriceX96);
     }
 
     /// @notice Receive native currency

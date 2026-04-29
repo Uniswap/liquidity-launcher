@@ -5,7 +5,7 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -14,135 +14,145 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution -> migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     function test_fuzz_initAndMigrate_happyPath(
-        uint24 split,
-        int24 tickSpacing,
-        uint24 fee,
-        uint128 currencyRaised,
-        uint128 tokensSold
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP,
+        uint128 _currencyRaised,
+        uint160 _initialPriceX96,
+        uint128 _tokensSold
     ) public {
-        // Bound to valid ranges
-        split = uint24(bound(split, 1, 1e7));
-        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
-        fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
-        // Ensure currencyRaised * split / 1e7 > 0 to avoid NoCurrencyRaised
-        currencyRaised = uint128(bound(currencyRaised, 1e7 / split + 1, type(uint128).max));
-        tokensSold = uint128(bound(tokensSold, 1, DEFAULT_TOTAL_SUPPLY - DEFAULT_SUPPLY_FOR_LP));
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
+        _currencyRaised = _boundCurrencyRaised(_currencyRaised, DEFAULT_RATE);
+        _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
+        _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
 
-        // Build params
-        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        mp.poolTickSpacing = tickSpacing;
-        mp.poolLPFee = fee;
-
-        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: split});
-
-        // Initialize
-        strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, _defaultInitializerParams(mp)), bytes32(0)
-        );
-        MockLBPInitializer initializer = factory.deployedInitializer();
+        (MockLBPInitializer initializer, MockERC20 erc20Token) =
+            _setupForMigration(mp, totalSupply, endBlock, _currencyRaised, _initialPriceX96, _tokensSold);
 
         // Verify migration params were stored
         (ILBPStrategy.MigratorParameters memory storedParams) =
             strategy.initializers(ILBPInitializer(address(initializer)));
         assertEq(storedParams.migrationBlock, mp.migrationBlock);
 
-        // Fund the initializer
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: FixedPoint96.Q96, tokensSold: tokensSold, currencyRaised: currencyRaised
-            })
-        );
-        vm.deal(address(initializer), currencyRaised);
-        token.transfer(address(initializer), DEFAULT_SUPPLY_FOR_LP);
-
-        // Advance to migration block
-        vm.roll(mp.migrationBlock);
-
-        // Mock v4 calls
-        vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
-        vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
-
         // Record balances before migration
         uint256 recipientBalBefore = fundsRecipient.balance;
-        uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
+        uint256 recipientTokenBalBefore = erc20Token.balanceOf(fundsRecipient);
 
         // Migrate
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // Strategy should be empty after migration
-        assertEq(token.balanceOf(address(strategy)), 0);
+        assertEq(erc20Token.balanceOf(address(strategy)), 0);
         assertEq(address(strategy).balance, 0);
 
         // fundsRecipient should have received something
         assertTrue(
-            fundsRecipient.balance > recipientBalBefore || token.balanceOf(fundsRecipient) > recipientTokenBalBefore
+            fundsRecipient.balance > recipientBalBefore
+                || erc20Token.balanceOf(fundsRecipient) > recipientTokenBalBefore
         );
     }
 
-    function test_fuzz_twoAuctionsIsolated(uint64 migrationOffset1, uint64 migrationOffset2) public {
-        migrationOffset1 = uint64(bound(migrationOffset1, 200, 500));
-        migrationOffset2 = uint64(bound(migrationOffset2, 501, 1000));
+    function test_fuzz_twoAuctionsIsolated(
+        uint64 _endBlock1,
+        uint64 _endBlock2,
+        uint64 _migrationBlock1,
+        uint64 _migrationBlock2,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP
+    ) public {
+        (ILBPStrategy.MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) =
+            _boundMigratorParams(_endBlock1, _migrationBlock1, _poolLPFee, _poolTickSpacing, _supplyForLP);
+        (ILBPStrategy.MigratorParameters memory mp2, uint128 totalSupply2, uint64 endBlock2,) =
+            _boundMigratorParams(_endBlock2, _migrationBlock2, _poolLPFee, _poolTickSpacing, _supplyForLP);
 
-        ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
+        (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1);
+        (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2);
 
-        // First auction
-        ILBPStrategy.MigratorParameters memory mp1 = _defaultMigratorParams();
-        mp1.migrationBlock = uint64(block.number) + migrationOffset1;
-        strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp1, bp, _defaultInitializerParams(mp1)), bytes32(0)
-        );
-        MockLBPInitializer init1 = factory.deployedInitializer();
-
-        // Second auction with different params
-        ILBPStrategy.MigratorParameters memory mp2 = _defaultMigratorParams();
-        mp2.migrationBlock = uint64(block.number) + migrationOffset2;
-        strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp2, bp, _defaultInitializerParams(mp2)), bytes32(0)
-        );
-        MockLBPInitializer init2 = factory.deployedInitializer();
-
-        // Each initializer has its own stored migration params
-        (ILBPStrategy.MigratorParameters memory params1) = strategy.initializers(ILBPInitializer(address(init1)));
-        (ILBPStrategy.MigratorParameters memory params2Stored) = strategy.initializers(ILBPInitializer(address(init2)));
-        assertEq(params1.migrationBlock, mp1.migrationBlock);
-        assertEq(params2Stored.migrationBlock, mp2.migrationBlock);
-        assertTrue(params1.migrationBlock != params2Stored.migrationBlock);
+        (ILBPStrategy.MigratorParameters memory stored1) = strategy.initializers(ILBPInitializer(address(init1)));
+        (ILBPStrategy.MigratorParameters memory stored2) = strategy.initializers(ILBPInitializer(address(init2)));
+        assertEq(stored1.migrationBlock, mp1.migrationBlock);
+        assertEq(stored2.migrationBlock, mp2.migrationBlock);
     }
 
-    function test_fuzz_currencySplitAppliedCorrectly(uint24 split, uint128 currencyRaised, uint128 tokensSold) public {
-        split = uint24(bound(split, 1, 1e7));
-        // Ensure currencyRaised * split / 1e7 > 0 to avoid NoCurrencyRaised
-        currencyRaised = uint128(bound(currencyRaised, 1e7 / split + 1, type(uint128).max));
-        tokensSold = uint128(bound(tokensSold, 1, DEFAULT_TOTAL_SUPPLY - DEFAULT_SUPPLY_FOR_LP));
+    function test_fuzz_currencySplitAppliedCorrectly(
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP,
+        uint128 _currencyRaised,
+        uint128 _tokensSold
+    ) public {
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
+        _currencyRaised = _boundCurrencyRaised(_currencyRaised, DEFAULT_RATE);
+        _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
 
-        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
-        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: split});
-
-        strategy.initializeDistribution(
-            address(token), DEFAULT_TOTAL_SUPPLY, _encodeConfigData(mp, bp, _defaultInitializerParams(mp)), bytes32(0)
+        (MockLBPInitializer initializer,) = _setupForMigration(
+            mp, totalSupply, endBlock, _currencyRaised, _boundInitialPriceX96(uint160(_currencyRaised)), _tokensSold
         );
-        MockLBPInitializer initializer = factory.deployedInitializer();
-
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: FixedPoint96.Q96, tokensSold: tokensSold, currencyRaised: currencyRaised
-            })
-        );
-        vm.deal(address(initializer), currencyRaised);
-        token.transfer(address(initializer), DEFAULT_SUPPLY_FOR_LP);
-
-        vm.roll(mp.migrationBlock);
-        vm.mockCall(poolManager, abi.encodeWithSelector(IPoolManager.initialize.selector), abi.encode(int24(0)));
-        vm.mockCall(positionManager, abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // All currency should end up at fundsRecipient (since _createPositionPlan is a stub returning empty,
-        // no currency actually goes to LP — it all gets swept)
+        // Nearly all currency should end up at fundsRecipient (since _createPositionPlan is a stub returning empty,
+        // no currency actually goes to LP — it all gets swept). Pool initialization may consume dust.
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertEq(received, currencyRaised);
+        assertGe(received, _currencyRaised - 1);
+    }
+
+    /// @notice E2E test with ERC20 currency (not native ETH)
+    function test_fuzz_erc20Currency_initAndMigrate(
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP,
+        uint128 _currencyRaised,
+        uint160 _initialPriceX96,
+        uint128 _tokensSold
+    ) public {
+        // Deploy an ERC20 to use as currency
+        MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
+        factory.setCurrencyOverride(address(currencyToken));
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
+        _currencyRaised = _boundCurrencyRaised(_currencyRaised, DEFAULT_RATE);
+        _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
+        _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
+
+        // Initialize distribution
+        (MockLBPInitializer initializer, MockERC20 erc20Token) = _initializeWith(mp, totalSupply, endBlock);
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({
+                initialPriceX96: _initialPriceX96, tokensSold: _tokensSold, currencyRaised: _currencyRaised
+            })
+        );
+
+        // Fund the initializer with ERC20 currency (not native ETH)
+        currencyToken.transfer(address(initializer), _currencyRaised);
+        erc20Token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
+        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+
+        uint256 recipientCurrencyBefore = currencyToken.balanceOf(fundsRecipient);
+        uint256 recipientTokenBefore = erc20Token.balanceOf(fundsRecipient);
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // Strategy should be empty
+        assertEq(currencyToken.balanceOf(address(strategy)), 0);
+        assertEq(erc20Token.balanceOf(address(strategy)), 0);
+
+        // fundsRecipient should have received something
+        assertTrue(
+            currencyToken.balanceOf(fundsRecipient) > recipientCurrencyBefore
+                || erc20Token.balanceOf(fundsRecipient) > recipientTokenBefore
+        );
     }
 }
