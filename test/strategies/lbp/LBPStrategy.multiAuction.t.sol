@@ -16,18 +16,20 @@ contract LBPStrategy_MultiAuction_Test is LBPStrategyTestBase {
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public {
-        (ILBPStrategy.MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) =
+        (ILBPStrategy.MigratorParameters memory params1, uint128 totalSupply1, uint64 endBlock1,) =
             _boundMigratorParams(_endBlock1, _migrationBlock1, _poolLPFee, _poolTickSpacing, _supplyForLP);
-        (ILBPStrategy.MigratorParameters memory mp2, uint128 totalSupply2, uint64 endBlock2,) =
+        (ILBPStrategy.MigratorParameters memory params2, uint128 totalSupply2, uint64 endBlock2,) =
             _boundMigratorParams(_endBlock2, _migrationBlock2, _poolLPFee, _poolTickSpacing, _supplyForLP);
+        vm.assume(params1.migrationBlock != params2.migrationBlock);
 
-        (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1);
-        (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2);
+        (MockLBPInitializer init1,) = _initializeWith(params1, totalSupply1, endBlock1);
+        (MockLBPInitializer init2,) = _initializeWith(params2, totalSupply2, endBlock2);
 
         (ILBPStrategy.MigratorParameters memory stored1) = strategy.initializers(ILBPInitializer(address(init1)));
         (ILBPStrategy.MigratorParameters memory stored2) = strategy.initializers(ILBPInitializer(address(init2)));
 
-        assertEq(stored1.migrationBlock, mp1.migrationBlock);
-        assertEq(stored2.migrationBlock, mp2.migrationBlock);
+        assertEq(stored1.migrationBlock, params1.migrationBlock);
+        assertEq(stored2.migrationBlock, params2.migrationBlock);
+        assertTrue(stored1.migrationBlock != stored2.migrationBlock);
     }
 }

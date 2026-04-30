@@ -74,7 +74,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         uint256 hugeRaise = uint256(type(uint128).max) * 3;
 
-        (MockLBPInitializer initializer, MockERC20 erc20Token) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: hugeRaise
@@ -83,7 +83,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         // Fund the initializer with the huge raise + tokens
         vm.deal(address(initializer), hugeRaise);
-        erc20Token.transfer(address(initializer), totalSupply);
+        token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
@@ -98,6 +98,6 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         // Strategy should be empty
         assertEq(address(strategy).balance, 0);
-        assertEq(erc20Token.balanceOf(address(strategy)), 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
     }
 }

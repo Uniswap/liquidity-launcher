@@ -38,7 +38,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint128 currencyRaised;
     }
 
-    function _boundAndSetup(MigrationFuzzParams memory p)
+    function _setupMigration(MigrationFuzzParams memory p)
         internal
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
@@ -89,14 +89,14 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     }
 
     function test_WhenCurrencyRaisedIsZero(
-        uint256 _initialPriceX96,
+        uint160 _initialPriceX96,
         uint64 _endBlock,
         uint64 _migrationBlock,
         uint24 _poolLPFee,
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public whenBlockIsGTEMigrationBlock {
-        _initialPriceX96 = bound(_initialPriceX96, 1, type(uint160).max);
+        _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
@@ -122,7 +122,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero
     {
-        (MockLBPInitializer initializer,) = _boundAndSetup(p);
+        (MockLBPInitializer initializer,) = _setupMigration(p);
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
@@ -135,7 +135,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero
     {
-        (MockLBPInitializer initializer,) = _boundAndSetup(p);
+        (MockLBPInitializer initializer,) = _setupMigration(p);
 
         uint256 balBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
@@ -147,7 +147,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero
     {
-        (MockLBPInitializer initializer, MockERC20 token) = _boundAndSetup(p);
+        (MockLBPInitializer initializer, MockERC20 token) = _setupMigration(p);
 
         strategy.migrate(ILBPInitializer(address(initializer)));
         assertEq(token.balanceOf(address(strategy)), 0);

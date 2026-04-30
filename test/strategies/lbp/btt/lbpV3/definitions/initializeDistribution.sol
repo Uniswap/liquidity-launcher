@@ -271,7 +271,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
 
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), 0, mp.supplyForLP, address(strategy), _wrongRecipient, 0, endBlock
+            address(1), // token placeholder
+            address(0),
+            0,
+            mp.supplyForLP,
+            address(strategy),
+            _wrongRecipient,
+            0,
+            endBlock
         );
 
         vm.mockCall(

@@ -8,7 +8,7 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
-/// @notice End-to-end fuzz tests exercising the full initializeDistribution -> migrate flow
+/// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     function test_fuzz_initAndMigrate_happyPath(
         uint64 _endBlock,
