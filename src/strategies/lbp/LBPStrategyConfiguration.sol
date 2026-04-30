@@ -9,9 +9,9 @@ import {ILBPStrategyConfiguration} from "../../interfaces/ILBPStrategyConfigurat
 /// @notice Abstract configuration contract for LBPStrategy owner-controlled parameters and breakpoint validation
 abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration {
     /// @notice The maximum bracket rate (100% in mps)
-    uint24 constant MAX_BRACKET_RATE = 1e7;
+    uint24 public constant MAX_BRACKET_RATE = 1e7;
     /// @notice The maximum number of breakpoints
-    uint256 constant MAX_BREAKPOINTS = 3;
+    uint256 public constant MAX_BREAKPOINTS = 3;
 
     /// @notice The protocol fee controller
     address public protocolFeeController;

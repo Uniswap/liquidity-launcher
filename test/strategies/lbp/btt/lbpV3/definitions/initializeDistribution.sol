@@ -84,7 +84,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public {
-        _rate = uint24(bound(_rate, 1e7 + 1, type(uint24).max));
+        _rate = uint24(bound(_rate, strategy.MAX_BRACKET_RATE() + 1, type(uint24).max));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);

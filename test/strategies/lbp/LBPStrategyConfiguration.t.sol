@@ -16,7 +16,7 @@ contract LBPStrategyConfiguration_Test is LBPStrategyTestBase {
 
     function test_storageSurvivesUpdates(address _controller, uint24 _minBracketRate, address _controller2) public {
         vm.assume(_controller != address(0) && _controller2 != address(0));
-        _minBracketRate = uint24(bound(_minBracketRate, 1, 1e7));
+        _minBracketRate = uint24(bound(_minBracketRate, 1, strategy.MAX_BRACKET_RATE()));
 
         strategy.setProtocolFeeController(_controller);
         strategy.setMinBracketRate(_minBracketRate);

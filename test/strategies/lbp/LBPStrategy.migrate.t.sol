@@ -12,8 +12,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
-/// @notice Integration and event tests for migrate
-/// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/migrate/validateMigration.sol
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     struct MigrateFuzzParams {
         uint128 currencyRaised;
@@ -85,14 +83,16 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         vm.deal(address(initializer), hugeRaise);
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
+        // Mock modifyLiquidities — _createPositionPlan is a stub
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
 
-        // Migrate — should not revert, currency amount gets capped at uint128.max
+        // Migration should not revert even when currencyRaised exceeds uint128.max
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Nearly all currency ends up at fundsRecipient
+        // All currency swept to fundsRecipient (modifyLiquidities is mocked, so no currency goes to the pool right now)
+        // Up to 1 wei may be lost to rounding in the bracket calculation
         uint256 received = fundsRecipient.balance - recipientBalBefore;
         assertGe(received, hugeRaise - 1);
 

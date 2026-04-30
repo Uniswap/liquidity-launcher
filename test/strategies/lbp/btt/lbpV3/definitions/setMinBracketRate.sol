@@ -39,7 +39,7 @@ contract SetMinBracketRateTest is LBPStrategyTestBase {
     }
 
     function test_SetMinBracketRate_WhenValueIsOverMaxBracketRate(uint24 _value) public whenCallerIsOwner {
-        _value = uint24(bound(_value, 1e7 + 1, type(uint24).max));
+        _value = uint24(bound(_value, strategy.MAX_BRACKET_RATE() + 1, type(uint24).max));
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidMinBracketRate.selector, _value));
         strategy.setMinBracketRate(_value);
@@ -50,7 +50,7 @@ contract SetMinBracketRateTest is LBPStrategyTestBase {
     }
 
     function test_SetMinBracketRate_WhenValid(uint24 _value) public whenCallerIsOwner whenValueIsInRange {
-        _value = uint24(bound(_value, 1, 1e7));
+        _value = uint24(bound(_value, 1, strategy.MAX_BRACKET_RATE()));
 
         vm.expectEmit();
         emit ILBPStrategyConfiguration.MinBracketRateSet(_value);
@@ -64,7 +64,7 @@ contract SetMinBracketRateTest is LBPStrategyTestBase {
         whenCallerIsOwner
         whenValueIsInRange
     {
-        _value = uint24(bound(_value, 1, 1e7));
+        _value = uint24(bound(_value, 1, strategy.MAX_BRACKET_RATE()));
 
         address controller = makeAddr("controller");
         strategy.setProtocolFeeController(controller);

@@ -52,6 +52,21 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         );
     }
 
+    function test_WhenInitializerIsUnregistered(uint64 _currentBlock) public {
+        _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
+        vm.roll(_currentBlock);
+
+        ILBPInitializer unregistered = ILBPInitializer(
+            address(new MockLBPInitializer(address(1), address(0), 0, 0, address(strategy), address(strategy), 0, 0))
+        );
+
+        (ILBPStrategy.MigratorParameters memory storedParams) = strategy.initializers(unregistered);
+        assertEq(storedParams.migrationBlock, 0);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), _currentBlock));
+        strategy.migrate(unregistered);
+    }
+
     function test_WhenBlockIsLTMigrationBlock(
         uint64 _currentBlock,
         uint64 _endBlock,
@@ -76,16 +91,6 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
 
     modifier whenBlockIsGTEMigrationBlock() {
         _;
-    }
-
-    function test_WhenInitializerIsUnregistered() public whenBlockIsGTEMigrationBlock {
-        vm.roll(1000);
-
-        MockLBPInitializer fake =
-            new MockLBPInitializer(address(1), address(0), 0, 0, address(strategy), address(strategy), 0, 0);
-
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), uint64(1000)));
-        strategy.migrate(ILBPInitializer(address(fake)));
     }
 
     function test_WhenCurrencyRaisedIsZero(
