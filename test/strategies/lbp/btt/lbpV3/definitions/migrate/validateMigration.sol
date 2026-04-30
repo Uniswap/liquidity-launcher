@@ -8,6 +8,7 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @title ValidateMigrationTest
 /// @notice BTT tests for LBPStrategy.migrate validation
@@ -30,12 +31,14 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 ///         └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
     struct MigrationFuzzParams {
+        uint128 currencyRaised;
+        uint160 initialPriceX96;
+        uint128 tokensSold;
         uint64 endBlock;
         uint64 migrationBlock;
         uint24 poolLPFee;
         int24 poolTickSpacing;
         uint128 supplyForLP;
-        uint128 currencyRaised;
     }
 
     function _setupMigration(MigrationFuzzParams memory p)
@@ -45,11 +48,11 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p.endBlock, p.migrationBlock, p.poolLPFee, p.poolTickSpacing, p.supplyForLP);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, DEFAULT_RATE);
-        uint128 tokensSold = uint128(bound(p.currencyRaised, 1, auctionSupply));
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        (initializer, token) = _setupForMigration(
-            mp, totalSupply, endBlock, p.currencyRaised, _boundInitialPriceX96(uint160(p.currencyRaised)), tokensSold
-        );
+        (initializer, token) =
+            _setupForMigration(mp, totalSupply, endBlock, p.currencyRaised, p.initialPriceX96, p.tokensSold);
     }
 
     function test_WhenInitializerIsUnregistered(uint64 _currentBlock) public {
@@ -127,12 +130,15 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero
     {
-        (MockLBPInitializer initializer,) = _setupMigration(p);
+        (MockLBPInitializer initializer, MockERC20 token) = _setupMigration(p);
+
+        assertGt(Currency.wrap(initializer.currency()).balanceOfSelf(), 0);
+        assertGt(token.balanceOf(address(initializer)), 0);
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertTrue(initializer.sweepCurrencyCalled());
-        assertTrue(initializer.sweepUnsoldTokensCalled());
+        assertEq(address(initializer).balance, 0);
+        assertEq(token.balanceOf(address(initializer)), 0);
     }
 
     function test_SweepsLeftoverCurrencyToFundsRecipient(MigrationFuzzParams memory p)
@@ -145,6 +151,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint256 balBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
         assertGe(fundsRecipient.balance, balBefore);
+        assertEq(address(strategy).balance, 0); // Strategy should be empty
     }
 
     function test_SweepsLeftoverTokensToFundsRecipient(MigrationFuzzParams memory p)
@@ -154,7 +161,9 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     {
         (MockLBPInitializer initializer, MockERC20 token) = _setupMigration(p);
 
+        uint256 balBefore = token.balanceOf(fundsRecipient);
         strategy.migrate(ILBPInitializer(address(initializer)));
         assertEq(token.balanceOf(address(strategy)), 0);
+        assertGe(token.balanceOf(fundsRecipient), balBefore);
     }
 }
