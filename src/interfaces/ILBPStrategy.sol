@@ -92,5 +92,6 @@ interface ILBPStrategy {
     error NoCurrencyRaised();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
+    /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
 }
