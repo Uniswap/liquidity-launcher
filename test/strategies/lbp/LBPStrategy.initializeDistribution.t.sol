@@ -15,12 +15,14 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         uint64 _migrationBlock,
         uint24 _poolLPFee,
         int24 _poolTickSpacing,
-        uint128 _supplyForLP
+        uint128 _supplyForLP,
+        BreakpointFuzzParams memory _bpParams
     ) public {
+        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(_bpParams);
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
 
-        (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock, bp);
 
         (ILBPStrategy.MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(init1)));
 
@@ -35,13 +37,14 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         uint64 _migrationBlock,
         uint24 _poolLPFee,
         int24 _poolTickSpacing,
-        uint128 _supplyForLP
+        uint128 _supplyForLP,
+        BreakpointFuzzParams memory _bpParams
     ) public {
+        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(_bpParams);
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        ILBPStrategy.Breakpoint[] memory bp = _defaultBreakpoints();
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
 
         vm.expectEmit(false, false, false, false);
@@ -56,13 +59,15 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         uint64 _migrationBlock,
         uint24 _poolLPFee,
         int24 _poolTickSpacing,
-        uint128 _supplyForLP
+        uint128 _supplyForLP,
+        BreakpointFuzzParams memory _bpParams
     ) public {
+        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(_bpParams);
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
 
         // First initialization succeeds
-        (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock, bp);
 
         // Force the factory to return the same initializer address
         factory.setOverrideInitializer(init1);
@@ -70,7 +75,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         // Second initialization with the same initializer should revert
         MockERC20 token2 = new MockERC20("Test Token 2", "TT2", totalSupply, address(this));
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
-        bytes memory configData = _encodeConfigData(mp, _defaultBreakpoints(), initializerParams);
+        bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InitializerAlreadyCreated.selector, init1));
         strategy.initializeDistribution(address(token2), totalSupply, configData, bytes32(0));

@@ -30,8 +30,6 @@ abstract contract LBPStrategyTestBase is Test {
     address fundsRecipient = makeAddr("fundsRecipient");
     address lpPositionRecipient = makeAddr("lpPositionRecipient");
 
-    uint24 constant DEFAULT_RATE = 5e6; // 50% flat rate — used in _defaultBreakpoints
-
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"));
 
@@ -51,11 +49,48 @@ abstract contract LBPStrategyTestBase is Test {
         factory.setStrategyAddress(address(strategy));
     }
 
-    /// @notice Returns a single flat-rate breakpoint (percent-committed specific)
-    function _defaultBreakpoints() internal pure returns (ILBPStrategy.Breakpoint[] memory) {
-        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: DEFAULT_RATE});
-        return bp;
+    /// @notice Raw fuzz inputs for breakpoint generation — pass this as a fuzz parameter
+    struct BreakpointFuzzParams {
+        uint8 count;
+        uint24 rate0;
+        uint24 rate1;
+        uint24 rate2;
+        uint128 threshold0;
+        uint128 threshold1;
+    }
+
+    /// @notice Bounds raw fuzz inputs into a valid breakpoint array (1-3 breakpoints)
+    /// @return bp Valid breakpoints with ascending thresholds and rates in [1, strategy.MAX_BRACKET_RATE()]
+    /// @return minRate The smallest rate across all breakpoints
+    function _boundBreakpoints(BreakpointFuzzParams memory p)
+        internal
+        view
+        returns (ILBPStrategy.Breakpoint[] memory bp, uint24 minRate)
+    {
+        uint256 count = bound(p.count, 1, 3);
+        bp = new ILBPStrategy.Breakpoint[](count);
+
+        uint24 r0 = uint24(bound(p.rate0, 1, strategy.MAX_BRACKET_RATE()));
+        minRate = r0;
+
+        if (count == 1) {
+            bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: r0});
+        } else if (count == 2) {
+            uint24 r1 = uint24(bound(p.rate1, 1, strategy.MAX_BRACKET_RATE()));
+            uint128 t0 = uint128(bound(p.threshold0, 1, type(uint128).max));
+            bp[0] = ILBPStrategy.Breakpoint({threshold: t0, rate: r0});
+            bp[1] = ILBPStrategy.Breakpoint({threshold: 0, rate: r1});
+            minRate = r0 < r1 ? r0 : r1;
+        } else {
+            uint24 r1 = uint24(bound(p.rate1, 1, strategy.MAX_BRACKET_RATE()));
+            uint24 r2 = uint24(bound(p.rate2, 1, strategy.MAX_BRACKET_RATE()));
+            uint128 t0 = uint128(bound(p.threshold0, 1, type(uint128).max - 1));
+            uint128 t1 = uint128(bound(p.threshold1, t0 + 1, type(uint128).max));
+            bp[0] = ILBPStrategy.Breakpoint({threshold: t0, rate: r0});
+            bp[1] = ILBPStrategy.Breakpoint({threshold: t1, rate: r1});
+            bp[2] = ILBPStrategy.Breakpoint({threshold: 0, rate: r2});
+            minRate = r0 < r1 ? (r0 < r2 ? r0 : r2) : (r1 < r2 ? r1 : r2);
+        }
     }
 
     /// @notice Encodes MigratorParameters + breakpoints + initializerParams into configData
@@ -102,17 +137,18 @@ abstract contract LBPStrategyTestBase is Test {
         });
     }
 
-    /// @notice Initializes distribution with custom MigratorParameters and totalSupply
+    /// @notice Initializes distribution with custom MigratorParameters, totalSupply, and breakpoints
     /// @return initializer The deployed MockLBPInitializer
     /// @return token The token created for this distribution
-    function _initializeWith(ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock)
-        internal
-        returns (MockLBPInitializer initializer, MockERC20 token)
-    {
+    function _initializeWith(
+        ILBPStrategy.MigratorParameters memory mp,
+        uint128 totalSupply,
+        uint64 endBlock,
+        ILBPStrategy.Breakpoint[] memory breakpoints
+    ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        // Encode custodyTokens and endBlock into initializerParams — the mock factory reads these from configData
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
-        bytes memory configData = _encodeConfigData(mp, _defaultBreakpoints(), initializerParams);
+        bytes memory configData = _encodeConfigData(mp, breakpoints, initializerParams);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
@@ -122,11 +158,12 @@ abstract contract LBPStrategyTestBase is Test {
         ILBPStrategy.MigratorParameters memory mp,
         uint128 totalSupply,
         uint64 endBlock,
-        uint128 currencyRaised,
-        uint160 initialPriceX96,
-        uint128 tokensSold
+        uint256 currencyRaised,
+        uint256 initialPriceX96,
+        uint256 tokensSold,
+        ILBPStrategy.Breakpoint[] memory breakpoints
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
-        (initializer, token) = _initializeWith(mp, totalSupply, endBlock);
+        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, breakpoints);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: initialPriceX96, tokensSold: tokensSold, currencyRaised: currencyRaised
@@ -142,10 +179,52 @@ abstract contract LBPStrategyTestBase is Test {
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
-    /// @notice Bounds currencyRaised so that currencyRaised * rate / 1e7 > 0.
-    /// Without this, the currency amount for LP can round to zero and revert with NoCurrencyRaised.
-    function _boundCurrencyRaised(uint128 _currencyRaised, uint24 _rate) internal pure returns (uint128) {
-        return uint128(bound(_currencyRaised, 1e7 / _rate + 1, type(uint128).max));
+    /// @notice Bounds currencyRaised so that the total LP amount across all brackets is non-zero.
+    ///
+    /// Mirrors the strategy's _calculateCurrencyAmountForLp bracket loop to find the minimum
+    /// currencyRaised that produces a non-zero total. This avoids excluding valid configs where
+    /// some brackets round to 0 but the total is still positive.
+    ///
+    /// Upper bound prevents overflow in the strategy's bracketAmount * rate multiplication.
+    function _boundCurrencyRaised(uint256 _currencyRaised, ILBPStrategy.Breakpoint[] memory _breakpoints)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 minCurrency = _minCurrencyForNonZeroLp(_breakpoints);
+        return bound(_currencyRaised, minCurrency, type(uint256).max / strategy.MAX_BRACKET_RATE());
+    }
+
+    /// @notice Finds the minimum currencyRaised that produces non-zero LP via the bracket calculation.
+    /// Iterates through each bracket and returns as soon as one produces >= 1 wei of LP.
+    function _minCurrencyForNonZeroLp(ILBPStrategy.Breakpoint[] memory _breakpoints) internal view returns (uint256) {
+        uint256 len = _breakpoints.length;
+        uint256 prevThreshold;
+
+        for (uint256 i; i < len; ++i) {
+            uint24 rate = _breakpoints[i].rate;
+            // The minimum bracketAmount for this bracket to produce >= 1 LP: strategy.MAX_BRACKET_RATE() / rate + 1
+            uint256 minBracketAmount = strategy.MAX_BRACKET_RATE() / rate + 1;
+
+            if (i == len - 1) {
+                // Last bracket: receives all remaining currency above prevThreshold
+                // Need: currencyRaised - prevThreshold >= minBracketAmount
+                return prevThreshold + minBracketAmount;
+            }
+
+            uint256 threshold = uint256(_breakpoints[i].threshold);
+            uint256 bracketSize = threshold - prevThreshold;
+
+            // If this bracket is large enough to produce >= 1 LP, currencyRaised just needs
+            // to reach far enough into this bracket
+            if (bracketSize >= minBracketAmount) {
+                return prevThreshold + minBracketAmount;
+            }
+
+            // Otherwise this bracket rounds to 0 — move on to the next
+            prevThreshold = threshold;
+        }
+        revert(); // Should never reach here
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.

@@ -31,7 +31,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 ///         └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
     struct MigrationFuzzParams {
-        uint128 currencyRaised;
+        uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
         uint64 endBlock;
@@ -39,20 +39,22 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint24 poolLPFee;
         int24 poolTickSpacing;
         uint128 supplyForLP;
+        BreakpointFuzzParams bpParams;
     }
 
     function _setupMigration(MigrationFuzzParams memory p)
         internal
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
+        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p.endBlock, p.migrationBlock, p.poolLPFee, p.poolTickSpacing, p.supplyForLP);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, DEFAULT_RATE);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         (initializer, token) =
-            _setupForMigration(mp, totalSupply, endBlock, p.currencyRaised, p.initialPriceX96, p.tokensSold);
+            _setupForMigration(mp, totalSupply, endBlock, p.currencyRaised, p.initialPriceX96, p.tokensSold, bp);
     }
 
     function test_WhenInitializerIsUnregistered(uint64 _currentBlock) public {
@@ -70,18 +72,21 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         strategy.migrate(unregistered);
     }
 
-    function test_WhenBlockIsLTMigrationBlock(
-        uint64 _currentBlock,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP
-    ) public {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
+    struct InitFuzzParams {
+        uint64 endBlock;
+        uint64 migrationBlock;
+        uint24 poolLPFee;
+        int24 poolTickSpacing;
+        uint128 supplyForLP;
+        BreakpointFuzzParams bpParams;
+    }
 
-        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock);
+    function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock, InitFuzzParams memory p) public {
+        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
+            _boundMigratorParams(p.endBlock, p.migrationBlock, p.poolLPFee, p.poolTickSpacing, p.supplyForLP);
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, bp);
 
         _currentBlock = uint64(bound(_currentBlock, 0, mp.migrationBlock - 1));
         vm.roll(_currentBlock);
@@ -96,20 +101,17 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenCurrencyRaisedIsZero(
-        uint160 _initialPriceX96,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP
-    ) public whenBlockIsGTEMigrationBlock {
+    function test_WhenCurrencyRaisedIsZero(uint160 _initialPriceX96, InitFuzzParams memory p)
+        public
+        whenBlockIsGTEMigrationBlock
+    {
+        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
         _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
+            _boundMigratorParams(p.endBlock, p.migrationBlock, p.poolLPFee, p.poolTickSpacing, p.supplyForLP);
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
 
         initializer.setLbpInitializationParams(
             LBPInitializationParams({initialPriceX96: _initialPriceX96, tokensSold: 0, currencyRaised: 0})
