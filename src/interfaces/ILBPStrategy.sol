@@ -9,11 +9,11 @@ import {ILBPInitializer} from "./ILBPInitializer.sol";
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
 interface ILBPStrategy {
-    /// @notice A breakpoint in the currency split curve. Defines a bracket's rate and upper bound.
-    /// Breakpoints are sorted ascending by threshold. The last breakpoint's threshold is
-    /// ignored — its rate applies to all remaining currency above the previous threshold.
+    /// @notice A breakpoint in the LP allocation bracket schedule. Defines a bracket's rate and lower bound.
+    /// Breakpoints are sorted ascending by lowerThreshold. Each breakpoint's rate applies from its
+    /// lowerThreshold up to the next breakpoint's lowerThreshold (or infinity for the last breakpoint).
     struct Breakpoint {
-        uint128 threshold; // upper bound of this bracket in cumulative currency amount (ignored for last breakpoint)
+        uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first breakpoint must be 0)
         uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
     }
 

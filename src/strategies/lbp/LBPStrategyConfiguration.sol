@@ -15,7 +15,7 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
 
     /// @notice The protocol fee controller
     address public protocolFeeController;
-    /// @notice The min bracket rate
+    /// @notice The minimum rate that any bracket can have, set by the owner
     uint24 public minBracketRate;
 
     /// @inheritdoc ILBPStrategyConfiguration
@@ -49,12 +49,16 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
     }
 
     /// @notice Validates the breakpoint configuration
-    /// @param _breakpoints The breakpoint array defining the split curve
+    /// @param _breakpoints The breakpoint array defining the bracket schedule
     function _validateBreakpoints(ILBPStrategy.Breakpoint[] memory _breakpoints) internal view {
         uint256 len = _breakpoints.length;
         if (len == 0 || len > MAX_BREAKPOINTS) revert InvalidBreakpointLength(len);
 
-        uint128 prevThreshold;
+        // First breakpoint must start at 0
+        if (_breakpoints[0].lowerThreshold != 0) {
+            revert InvalidBreakpointThreshold(_breakpoints[0].lowerThreshold);
+        }
+
         for (uint256 i; i < len; ++i) {
             uint24 rate = _breakpoints[i].rate;
             // Every rate must be within [minBracketRate, MAX_BRACKET_RATE]
@@ -62,13 +66,12 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
                 revert InvalidBreakpointRate(rate);
             }
 
-            // For non-last breakpoints, thresholds must be ascending and non-zero
-            if (i < len - 1) {
-                uint128 threshold = _breakpoints[i].threshold;
-                if (threshold == 0 || threshold <= prevThreshold) {
-                    revert InvalidBreakpointThreshold(threshold);
+            // For non-first breakpoints, lowerThresholds must be strictly ascending
+            if (i > 0) {
+                uint128 lowerThreshold = _breakpoints[i].lowerThreshold;
+                if (lowerThreshold <= _breakpoints[i - 1].lowerThreshold) {
+                    revert InvalidBreakpointThreshold(lowerThreshold);
                 }
-                prevThreshold = threshold;
             }
         }
     }

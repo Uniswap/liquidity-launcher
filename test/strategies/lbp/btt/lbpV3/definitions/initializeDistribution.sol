@@ -58,6 +58,29 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
+    function test_WhenFirstBreakpointLowerThresholdIsNonZero(
+        uint128 _threshold,
+        uint24 _rate,
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP
+    ) public {
+        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
+        _rate = uint24(bound(_rate, 1, strategy.MAX_BRACKET_RATE()));
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
+            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: _threshold, rate: _rate});
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointThreshold.selector, _threshold));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
     function test_WhenBreakpointRateIsZero(
         uint64 _endBlock,
         uint64 _migrationBlock,
@@ -70,7 +93,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: 0});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: 0});
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointRate.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -91,7 +114,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: _rate});
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointRate.selector, _rate));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -116,7 +139,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: _rate});
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointRate.selector, _rate));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -139,8 +162,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](2);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate0});
-        bp[1] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate1});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: _rate0});
+        bp[1] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: _rate1});
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointThreshold.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -171,9 +194,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](3);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: p.threshold0, rate: p.rate0});
-        bp[1] = ILBPStrategy.Breakpoint({threshold: p.threshold1, rate: p.rate1});
-        bp[2] = ILBPStrategy.Breakpoint({threshold: 0, rate: p.rate2});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: p.rate0});
+        bp[1] = ILBPStrategy.Breakpoint({lowerThreshold: p.threshold0, rate: p.rate1});
+        bp[2] = ILBPStrategy.Breakpoint({lowerThreshold: p.threshold1, rate: p.rate2});
 
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointThreshold.selector, p.threshold1)
@@ -214,10 +237,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](4);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: p.threshold0, rate: p.rate0});
-        bp[1] = ILBPStrategy.Breakpoint({threshold: p.threshold1, rate: p.rate1});
-        bp[2] = ILBPStrategy.Breakpoint({threshold: p.threshold2, rate: p.rate2});
-        bp[3] = ILBPStrategy.Breakpoint({threshold: 0, rate: p.rate3});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: p.rate0});
+        bp[1] = ILBPStrategy.Breakpoint({lowerThreshold: p.threshold0, rate: p.rate1});
+        bp[2] = ILBPStrategy.Breakpoint({lowerThreshold: p.threshold1, rate: p.rate2});
+        bp[3] = ILBPStrategy.Breakpoint({lowerThreshold: p.threshold2, rate: p.rate3});
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointLength.selector, 4));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -244,9 +267,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](3);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: _threshold, rate: _rate0});
-        bp[1] = ILBPStrategy.Breakpoint({threshold: _threshold, rate: _rate1});
-        bp[2] = ILBPStrategy.Breakpoint({threshold: 0, rate: _rate2});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: _rate0});
+        bp[1] = ILBPStrategy.Breakpoint({lowerThreshold: _threshold, rate: _rate1});
+        bp[2] = ILBPStrategy.Breakpoint({lowerThreshold: _threshold, rate: _rate2});
 
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointThreshold.selector, _threshold)
@@ -270,7 +293,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: _minRate});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: _minRate});
 
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
         // Should not revert — rate is exactly at minBracketRate
@@ -291,7 +314,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: strategy.MAX_BRACKET_RATE()});
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: strategy.MAX_BRACKET_RATE()});
 
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
         // Should not revert — rate is exactly MAX_BRACKET_RATE

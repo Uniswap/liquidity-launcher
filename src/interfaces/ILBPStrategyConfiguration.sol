@@ -35,7 +35,7 @@ interface ILBPStrategyConfiguration {
     /// @param protocolFeeController The protocol fee controller
     function setProtocolFeeController(address protocolFeeController) external;
 
-    /// @notice Sets the min bracket rate
-    /// @param minBracketRate The min bracket rate
+    /// @notice Sets the minimum rate that any bracket can have, set by the owner
+    /// @param minBracketRate The minimum rate that any bracket can have
     function setMinBracketRate(uint24 minBracketRate) external;
 }

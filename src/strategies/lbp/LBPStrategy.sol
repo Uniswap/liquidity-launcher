@@ -74,13 +74,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         external
         returns (IDistributionContract)
     {
-        // Decode the migration parameters, breakpoints, and auction parameters
-        (MigratorParameters memory migrationParams, Breakpoint[] memory breakpoints, bytes memory initializerParams) =
-            abi.decode(configData, (MigratorParameters, Breakpoint[], bytes));
+        // Decode the initializer record and auction parameters
+        (InitializerRecord memory initRecord, bytes memory initializerParams) =
+            abi.decode(configData, (InitializerRecord, bytes));
 
         // Validate the migrator parameters and breakpoints
-        _validateMigratorParams(migrationParams);
-        _validateBreakpoints(breakpoints);
+        _validateMigratorParams(initRecord.params);
+        _validateBreakpoints(initRecord.breakpoints);
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -99,16 +99,17 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         }
 
         // Validate the initializer parameters are set as expected
-        _validateInitializer(initializer, migrationParams);
+        _validateInitializerParams(initializer, initRecord.params);
 
         // Store the parameters and breakpoints for the initializer
         InitializerRecord storage record = initializers[initializer];
-        record.params = migrationParams;
-        for (uint256 i; i < breakpoints.length; ++i) {
-            record.breakpoints.push(breakpoints[i]);
+        record.params = initRecord.params;
+        uint256 len = initRecord.breakpoints.length;
+        for (uint256 i; i < len; ++i) {
+            record.breakpoints.push(initRecord.breakpoints[i]);
         }
 
-        emit InitializerCreated(initializer, migrationParams, breakpoints);
+        emit InitializerCreated(initializer, initRecord.params, initRecord.breakpoints);
 
         return IDistributionContract(address(initializer));
     }
@@ -179,6 +180,14 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
         emit Migrated(initializer, key, data.sqrtPriceX96);
     }
+
+    /// @notice Returns the breakpoints for a given initializer
+    /// @param initializer The initializer to get breakpoints for
+    /// @return The breakpoints array
+    function getBreakpoints(ILBPInitializer initializer) external view returns (Breakpoint[] memory) {
+        return initializers[initializer].breakpoints;
+    }
+
 
     /// @notice Receive native currency
     receive() external payable {}
@@ -281,7 +290,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
     /// @param initializer The initializer contract
     /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateInitializer(ILBPInitializer initializer, MigratorParameters memory migrationParams) private view {
+    function _validateInitializerParams(ILBPInitializer initializer, MigratorParameters memory migrationParams) private view {
         // Ensure the funds recipient is indeed this contract
         if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
             revert InvalidRecipient(address(this));
@@ -356,7 +365,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
     /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve
     /// @param currencyAmount The total currency raised
-    /// @param breakpoints The breakpoint array defining the split curve
+    /// @param breakpoints The breakpoint array defining the bracket schedule
     /// @return lpAmount The currency amount allocated to the LP
     function _calculateCurrencyAmountForLp(uint256 currencyAmount, Breakpoint[] storage breakpoints)
         private
@@ -364,23 +373,25 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         returns (uint256 lpAmount)
     {
         uint256 remaining = currencyAmount;
-        uint256 prevThreshold;
         uint256 len = breakpoints.length;
 
         for (uint256 i; i < len; ++i) {
+            Breakpoint memory bp = breakpoints[i];
+
             if (i == len - 1) {
                 // Last breakpoint: its rate applies to all remaining currency
-                lpAmount += remaining * breakpoints[i].rate / MAX_BRACKET_RATE;
+                lpAmount += remaining * bp.rate / MAX_BRACKET_RATE;
                 break;
             }
 
-            uint256 bracketSize = uint256(breakpoints[i].threshold) - prevThreshold;
+            uint256 bracketSize = uint256(breakpoints[i + 1].lowerThreshold) - uint256(bp.lowerThreshold);
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
-            lpAmount += bracketAmount * breakpoints[i].rate / MAX_BRACKET_RATE;
-            remaining -= bracketAmount;
+            lpAmount += bracketAmount * bp.rate / MAX_BRACKET_RATE;
+            unchecked {
+                remaining -= bracketAmount;
+            }
 
             if (remaining == 0) break;
-            prevThreshold = breakpoints[i].threshold;
         }
     }
 

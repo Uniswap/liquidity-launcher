@@ -60,7 +60,7 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds raw fuzz inputs into a valid breakpoint array (1-3 breakpoints)
-    /// @return bp Valid breakpoints with ascending thresholds and rates in [1, strategy.MAX_BRACKET_RATE()]
+    /// @return bp Valid breakpoints with ascending lowerThresholds and rates in [1, strategy.MAX_BRACKET_RATE()]
     /// @return minRate The smallest rate across all breakpoints
     function _boundBreakpoints(BreakpointFuzzParams memory p)
         internal
@@ -74,32 +74,34 @@ abstract contract LBPStrategyTestBase is Test {
         minRate = r0;
 
         if (count == 1) {
-            bp[0] = ILBPStrategy.Breakpoint({threshold: 0, rate: r0});
+            bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: r0});
         } else if (count == 2) {
             uint24 r1 = uint24(bound(p.rate1, 1, strategy.MAX_BRACKET_RATE()));
-            uint128 t0 = uint128(bound(p.threshold0, 1, type(uint128).max));
-            bp[0] = ILBPStrategy.Breakpoint({threshold: t0, rate: r0});
-            bp[1] = ILBPStrategy.Breakpoint({threshold: 0, rate: r1});
+            uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max));
+            bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: r0});
+            bp[1] = ILBPStrategy.Breakpoint({lowerThreshold: t1, rate: r1});
             minRate = r0 < r1 ? r0 : r1;
         } else {
             uint24 r1 = uint24(bound(p.rate1, 1, strategy.MAX_BRACKET_RATE()));
             uint24 r2 = uint24(bound(p.rate2, 1, strategy.MAX_BRACKET_RATE()));
-            uint128 t0 = uint128(bound(p.threshold0, 1, type(uint128).max - 1));
-            uint128 t1 = uint128(bound(p.threshold1, t0 + 1, type(uint128).max));
-            bp[0] = ILBPStrategy.Breakpoint({threshold: t0, rate: r0});
-            bp[1] = ILBPStrategy.Breakpoint({threshold: t1, rate: r1});
-            bp[2] = ILBPStrategy.Breakpoint({threshold: 0, rate: r2});
+            uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max - 1));
+            uint128 t2 = uint128(bound(p.threshold1, t1 + 1, type(uint128).max));
+            bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: r0});
+            bp[1] = ILBPStrategy.Breakpoint({lowerThreshold: t1, rate: r1});
+            bp[2] = ILBPStrategy.Breakpoint({lowerThreshold: t2, rate: r2});
             minRate = r0 < r1 ? (r0 < r2 ? r0 : r2) : (r1 < r2 ? r1 : r2);
         }
     }
 
-    /// @notice Encodes MigratorParameters + breakpoints + initializerParams into configData
+    /// @notice Encodes InitializerRecord + initializerParams into configData
     function _encodeConfigData(
         ILBPStrategy.MigratorParameters memory mp,
         ILBPStrategy.Breakpoint[] memory breakpoints,
         bytes memory initializerParams
     ) internal pure returns (bytes memory) {
-        return abi.encode(mp, breakpoints, initializerParams);
+        ILBPStrategy.InitializerRecord memory record =
+            ILBPStrategy.InitializerRecord({params: mp, breakpoints: breakpoints});
+        return abi.encode(record, initializerParams);
     }
 
     /// @notice Bounds raw fuzz inputs into valid MigratorParameters and a matching totalSupply
@@ -199,30 +201,32 @@ abstract contract LBPStrategyTestBase is Test {
     /// Iterates through each bracket and returns as soon as one produces >= 1 wei of LP.
     function _minCurrencyForNonZeroLp(ILBPStrategy.Breakpoint[] memory _breakpoints) internal view returns (uint256) {
         uint256 len = _breakpoints.length;
-        uint256 prevThreshold;
 
         for (uint256 i; i < len; ++i) {
             uint24 rate = _breakpoints[i].rate;
+            uint256 lowerThreshold = uint256(_breakpoints[i].lowerThreshold);
+
+            // Skip brackets with rate 0 — they can't produce LP
+            if (rate == 0) continue;
+
             // The minimum bracketAmount for this bracket to produce >= 1 LP: strategy.MAX_BRACKET_RATE() / rate + 1
             uint256 minBracketAmount = strategy.MAX_BRACKET_RATE() / rate + 1;
 
             if (i == len - 1) {
-                // Last bracket: receives all remaining currency above prevThreshold
-                // Need: currencyRaised - prevThreshold >= minBracketAmount
-                return prevThreshold + minBracketAmount;
+                // Last bracket: receives all remaining currency above lowerThreshold
+                return lowerThreshold + minBracketAmount;
             }
 
-            uint256 threshold = uint256(_breakpoints[i].threshold);
-            uint256 bracketSize = threshold - prevThreshold;
+            uint256 nextThreshold = uint256(_breakpoints[i + 1].lowerThreshold);
+            uint256 bracketSize = nextThreshold - lowerThreshold;
 
             // If this bracket is large enough to produce >= 1 LP, currencyRaised just needs
             // to reach far enough into this bracket
             if (bracketSize >= minBracketAmount) {
-                return prevThreshold + minBracketAmount;
+                return lowerThreshold + minBracketAmount;
             }
 
             // Otherwise this bracket rounds to 0 — move on to the next
-            prevThreshold = threshold;
         }
         revert(); // Should never reach here
     }
