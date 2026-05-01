@@ -77,7 +77,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
         bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: _threshold, rate: _rate});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointThreshold.selector, _threshold));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBreakpointThreshold.selector, _threshold)
+        );
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 

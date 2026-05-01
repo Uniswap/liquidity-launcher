@@ -188,7 +188,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         return initializers[initializer].breakpoints;
     }
 
-
     /// @notice Receive native currency
     receive() external payable {}
 
@@ -290,7 +289,10 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
     /// @param initializer The initializer contract
     /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateInitializerParams(ILBPInitializer initializer, MigratorParameters memory migrationParams) private view {
+    function _validateInitializerParams(ILBPInitializer initializer, MigratorParameters memory migrationParams)
+        private
+        view
+    {
         // Ensure the funds recipient is indeed this contract
         if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
             revert InvalidRecipient(address(this));
