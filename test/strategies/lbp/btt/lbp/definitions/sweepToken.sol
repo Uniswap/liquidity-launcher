@@ -8,6 +8,22 @@ import {FuzzConstructorParameters} from "../BttBase.sol";
 
 // Tests have to be namespaced since it would conflict with the SweepCurrencyTest
 abstract contract SweepTokenTest is BttBase {
+    function test_SweepToken_WhenMigrationHasNotOccurred(FuzzConstructorParameters memory _parameters) public {
+        // it reverts with {MigrationNotComplete}
+
+        _parameters = _toValidConstructorParameters(_parameters);
+        _deployMockToken(_parameters.totalSupply);
+
+        _deployStrategy(_parameters);
+
+        // Roll past sweepBlock so the only failing guard is the migration check
+        vm.roll(_parameters.migratorParams.sweepBlock);
+
+        vm.prank(_parameters.migratorParams.operator);
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
+        lbp.sweepToken();
+    }
+
     function test_SweepToken_WhenBlockNumberLTSweepBlock(
         FuzzConstructorParameters memory _parameters,
         uint64 _blockNumber

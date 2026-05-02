@@ -68,6 +68,9 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, Bloc
     /// @notice The position manager that will be used to create the position
     IPositionManager public immutable positionManager;
 
+    /// @notice The block number at which migration was completed, or 0 if migration has not occurred
+    uint64 public migratedBlock;
+
     /// @notice The initializer of the pool
     ILBPInitializer public initializer;
     /// @notice The initializer parameters used to initialize the initializer via the factory
@@ -161,11 +164,14 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, Bloc
 
         _transferAssetsAndExecutePlan(_getTokenTransferAmount(data), _getCurrencyTransferAmount(data), plan);
 
+        migratedBlock = uint64(_getBlockNumberish());
+
         emit Migrated(key, data.sqrtPriceX96);
     }
 
     /// @inheritdoc ILBPStrategyBase
     function sweepToken() external {
+        if (migratedBlock == 0) revert MigrationNotComplete();
         if (_getBlockNumberish() < sweepBlock) revert SweepNotAllowed(sweepBlock, _getBlockNumberish());
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
 
@@ -178,6 +184,7 @@ abstract contract LBPStrategyBase is ILBPStrategyBase, SelfInitializerHook, Bloc
 
     /// @inheritdoc ILBPStrategyBase
     function sweepCurrency() external {
+        if (migratedBlock == 0) revert MigrationNotComplete();
         if (_getBlockNumberish() < sweepBlock) revert SweepNotAllowed(sweepBlock, _getBlockNumberish());
         if (msg.sender != operator) revert NotOperator(msg.sender, operator);
 

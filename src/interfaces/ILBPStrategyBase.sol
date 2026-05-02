@@ -114,6 +114,9 @@ interface ILBPStrategyBase is IDistributionContract {
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
 
+    /// @notice Error thrown when a sweep function is called before migration has occurred
+    error MigrationNotComplete();
+
     /// @notice Error thrown when the token amount is too high
     /// @param tokenAmount The invalid token amount
     error AmountOverflow(uint256 tokenAmount);
@@ -137,6 +140,7 @@ interface ILBPStrategyBase is IDistributionContract {
     function positionManager() external view returns (IPositionManager);
     function positionRecipient() external view returns (address);
     function migrationBlock() external view returns (uint64);
+    function migratedBlock() external view returns (uint64);
     function sweepBlock() external view returns (uint64);
     function operator() external view returns (address);
     function initializer() external view returns (ILBPInitializer);

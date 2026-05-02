@@ -9,19 +9,25 @@ contract AdvancedLBPStrategySweepTest is AdvancedLBPStrategyTestBase {
     event TokensSwept(address indexed operator, uint256 amount);
     event CurrencySwept(address indexed operator, uint256 amount);
 
+    function test_sweepToken_revertsWithMigrationNotComplete() public {
+        // migration has not been called; migratedBlock == 0
+        vm.roll(lbp.sweepBlock());
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
+        vm.prank(migratorParams.operator);
+        lbp.sweepToken();
+    }
+
     function test_sweepToken_revertsWithSweepNotAllowed() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBase.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
-        );
+        // migration guard fires before sweep-block guard; MigrationNotComplete is the first revert
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
         vm.prank(migratorParams.operator);
         lbp.sweepToken();
     }
 
     function test_sweepToken_revertsWithNotOperator() public {
+        // migration guard fires before operator guard; MigrationNotComplete is the first revert
         vm.roll(lbp.sweepBlock());
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBase.NotOperator.selector, address(liquidityLauncher), lbp.operator())
-        );
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
         vm.prank(address(liquidityLauncher));
         lbp.sweepToken();
     }
@@ -31,6 +37,8 @@ contract AdvancedLBPStrategySweepTest is AdvancedLBPStrategyTestBase {
         assertEq(token.balanceOf(address(lbp)), DEFAULT_TOTAL_SUPPLY / 2);
         assertEq(Currency.wrap(lbp.token()).balanceOf(address(lbp)), lbp.reserveTokenAmount());
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), 0);
+        // Simulate migration having occurred by writing migratedBlock via stdstore
+        stdstore.target(address(lbp)).sig("migratedBlock()").checked_write(uint256(lbp.migrationBlock()));
         vm.roll(lbp.sweepBlock());
         vm.expectEmit(true, true, true, true);
         emit TokensSwept(lbp.operator(), lbp.reserveTokenAmount());
@@ -40,19 +48,25 @@ contract AdvancedLBPStrategySweepTest is AdvancedLBPStrategyTestBase {
         assertEq(Currency.wrap(lbp.token()).balanceOf(lbp.operator()), lbp.reserveTokenAmount());
     }
 
+    function test_sweepCurrency_revertsWithMigrationNotComplete() public {
+        // migration has not been called; migratedBlock == 0
+        vm.roll(lbp.sweepBlock());
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
+        vm.prank(migratorParams.operator);
+        lbp.sweepCurrency();
+    }
+
     function test_sweepCurrency_revertsWithSweepNotAllowed() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBase.SweepNotAllowed.selector, lbp.sweepBlock(), block.number)
-        );
+        // migration guard fires before sweep-block guard; MigrationNotComplete is the first revert
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
         vm.prank(migratorParams.operator);
         lbp.sweepCurrency();
     }
 
     function test_sweepCurrency_revertsWithNotOperator() public {
+        // migration guard fires before operator guard; MigrationNotComplete is the first revert
         vm.roll(lbp.sweepBlock());
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategyBase.NotOperator.selector, address(liquidityLauncher), lbp.operator())
-        );
+        vm.expectRevert(ILBPStrategyBase.MigrationNotComplete.selector);
         vm.prank(address(liquidityLauncher));
         lbp.sweepCurrency();
     }
@@ -61,6 +75,8 @@ contract AdvancedLBPStrategySweepTest is AdvancedLBPStrategyTestBase {
         vm.deal(address(lbp), 1 ether); // give LBP some ETH
         assertEq(Currency.wrap(address(0)).balanceOf(address(lbp)), 1 ether);
         assertEq(Currency.wrap(address(0)).balanceOf(lbp.operator()), 0);
+        // Simulate migration having occurred by writing migratedBlock via stdstore
+        stdstore.target(address(lbp)).sig("migratedBlock()").checked_write(uint256(lbp.migrationBlock()));
         vm.roll(lbp.sweepBlock());
         vm.expectEmit(true, true, true, true);
         emit CurrencySwept(lbp.operator(), 1 ether);
