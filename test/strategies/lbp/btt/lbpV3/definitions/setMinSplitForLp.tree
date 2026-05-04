@@ -4,9 +4,9 @@ SetMinSplitForLpTest
 └── when caller is owner
     ├── when value is 0
     │   └── it reverts with {InvalidMinSplitForLp}
-    ├── when value is greater than 10_000
+    ├── when value is over MAX_SPLIT_FOR_LP
     │   └── it reverts with {InvalidMinSplitForLp}
-    └── when value is in [1, 10_000]
+    └── when value is in [1, MAX_SPLIT_FOR_LP]
         ├── it sets the minSplitForLp
         ├── it preserves the protocolFeeController
         └── it emits {MinSplitForLpSet}

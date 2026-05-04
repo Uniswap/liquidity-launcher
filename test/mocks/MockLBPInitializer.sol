@@ -18,7 +18,7 @@ contract MockLBPInitializer is ILBPInitializer {
     address public token;
     address public currency;
     uint128 public totalSupply;
-    uint128 public custodyTokens;
+    uint128 public custodyTokensAmount;
     address public tokensRecipient;
     address public fundsRecipient;
     uint64 public startBlock;
@@ -33,7 +33,7 @@ contract MockLBPInitializer is ILBPInitializer {
         address _token,
         address _currency,
         uint128 _totalSupply,
-        uint128 _custodyTokens,
+        uint128 _custodyTokensAmount,
         address _tokensRecipient,
         address _fundsRecipient,
         uint64 _startBlock,
@@ -42,7 +42,7 @@ contract MockLBPInitializer is ILBPInitializer {
         token = _token;
         currency = _currency;
         totalSupply = _totalSupply;
-        custodyTokens = _custodyTokens;
+        custodyTokensAmount = _custodyTokensAmount;
         tokensRecipient = _tokensRecipient;
         fundsRecipient = _fundsRecipient;
         startBlock = _startBlock;
@@ -51,10 +51,6 @@ contract MockLBPInitializer is ILBPInitializer {
 
     function setLbpInitializationParams(LBPInitializationParams memory _params) external {
         storedLbpParams = _params;
-    }
-
-    function setCustodyTokens(uint128 _custodyTokens) external {
-        custodyTokens = _custodyTokens;
     }
 
     function lbpInitializationParams() external view returns (LBPInitializationParams memory) {

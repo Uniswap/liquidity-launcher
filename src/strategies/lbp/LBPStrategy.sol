@@ -14,7 +14,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {Ownable} from "solady/auth/Ownable.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
@@ -24,11 +23,12 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
+import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStrategy {
+contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, IDistributionStrategy {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
@@ -42,49 +42,35 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         uint128 liquidity;
     }
 
+    /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
+    /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
+    /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    // Owner controlled parameters
-    OwnerControlled public ownerControlledParams;
-
-    /// @notice The mapping of initializers to their identifiers ensuring the validity of provided calldata during migration
-    mapping(ILBPInitializer initializer => bytes32 identifier) public initializers;
-
-    // TODO: Add functionality to fully replace GovernedLBPStrategy
+    /// @notice The mapping of initializers to their stored migration parameters, used to drive migration
+    mapping(ILBPInitializer initializer => MigratorParameters) public initializers;
 
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributionStrategy _initializerFactory
+        IDistributionStrategy _initializerFactory,
+        uint24 _minSplitForLp,
+        address _protocolFeeController,
+        address _owner
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        _initializeOwner(msg.sender);
+        _initializeOwner(_owner);
+        _setMinSplitForLp(_minSplitForLp);
+        _setProtocolFeeController(_protocolFeeController);
     }
 
-    function setProtocolFeeController(address protocolFeeController) external onlyOwner {
-        if (protocolFeeController == address(0)) {
-            revert InvalidProtocolFeeController();
-        }
-
-        ownerControlledParams.protocolFeeController = protocolFeeController;
-
-        emit ProtocolFeeControllerSet(protocolFeeController);
-    }
-
-    function setMinSplitForLp(uint24 minSplitForLp) external onlyOwner {
-        if (minSplitForLp == 0 || minSplitForLp > 10_000) {
-            revert InvalidMinSplitForLp();
-        }
-
-        ownerControlledParams.minSplitForLp = minSplitForLp;
-
-        emit MinSplitForLpSet(minSplitForLp);
-    }
-
+    /// @inheritdoc IDistributionStrategy
+    /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
+    /// are validated before storage. Callers cannot overwrite existing initializer registrations.
     function initializeDistribution(
         address token,
         uint256 totalSupply,
@@ -101,52 +87,43 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Validate the migrator parameters
         _validateMigratorParams(migrationParams);
 
-        // Subtract custody tokens so the initializer is only given the remaining portion of supply.
-        uint256 initializerSupply = totalSupply - migrationParams.custodyTokens;
-        // Deploy the initializer contract via factory
+        // Deploy the initializer contract via factory.
+        // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
+        // LiquidityLauncher transfers the full totalSupply to the CCA, which validates balance >= auctionSupply + custodyTokens.
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, initializerSupply, initializerParams, bytes32(0))
+                    .initializeDistribution(token, totalSupply, initializerParams, bytes32(0))
             )
         );
 
-        // Check if the initializer was already set to ensure identifier is not rewritten
-        if (initializers[initializer] != bytes32(0)) {
-            revert InitializerAlreadyCreated(initializers[initializer]);
+        // Check if the initializer was already registered to ensure parameters are not overwritten.
+        // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
+        if (initializers[initializer].migrationBlock != 0) {
+            revert InitializerAlreadyCreated(initializer);
         }
 
         // Validate the initializer parameters are set as expected
         _validateInitializer(initializer, migrationParams);
 
-        // Create the unique identifier for the auction by hashing the MigratorParameters struct
-        bytes32 identifier = _createIdentifier(migrationParams);
-        // Store the identifier for the initializer to validate migration parameters during migration
-        initializers[initializer] = identifier;
+        // Store the parameters for the initializer to validate migration parameters during migration
+        initializers[initializer] = migrationParams;
 
-        // TODO: does DistributionInitialized event make sense here?
-        // Emit the distribution initialized event
-        // emit DistributionInitialized(address(this), token, totalSupply);
-
-        // Emit the auction initialized event to allow indexing all the migration and auction parameters
         emit InitializerCreated(initializer, migrationParams);
 
         return IDistributionContract(address(initializer));
     }
 
     /// @notice Migrates the raised funds and tokens to a v4 pool and sweep the raised funds, unsold and custody tokens to the fundsRecipient
-    function migrate(ILBPInitializer initializer, MigratorParameters calldata migrationParams) external {
-        // Ensure the migration block is after the current block
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
+    /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
+    /// immutably set during initializeDistribution. Anyone can trigger migration
+    function migrate(ILBPInitializer initializer) external {
+        // Load the migration parameters that were stored when the initializer was registered
+        MigratorParameters memory migrationParams = initializers[initializer];
+
+        // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
+        if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
-        }
-
-        // Get the identifier for the initializer
-        bytes32 identifier = initializers[initializer];
-
-        // Validate the migration parameters by comparing the stored identifier to the recreated identifier
-        if (identifier != _createIdentifier(migrationParams)) {
-            revert InvalidMigrationParameters();
         }
 
         // Get the LBP initialization parameters. Trust the initializer to return the correct parameters.
@@ -192,7 +169,6 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         // Transfer all leftover currency and tokens to the funds recipient (non LP currency and tokens, unsold & custody tokens and dust)
         uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
-            // TODO: Handle blocked native currency transfers
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
@@ -202,7 +178,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
         }
 
-        emit Migrated(key, data.sqrtPriceX96);
+        emit Migrated(initializer, key, data.sqrtPriceX96);
     }
 
     /// @notice Receive native currency
@@ -302,19 +278,14 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(MigratorParameters memory _migratorParams) private view {
-        // Ensure the token supply for the LP and the custody tokens combined are less than or equal to type(uint128).max
-        if (uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens) > type(uint128).max) {
-            revert InvalidCustodySupply(
-                uint256(_migratorParams.supplyForLP) + uint256(_migratorParams.custodyTokens), type(uint128).max
-            );
-        }
         // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
-        (, uint24 minSplitForLP) = _readOwnerControlledParams();
         if (
-            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLP
-                || _migratorParams.currencySplitForLP > 1e7
+            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLp
+                || _migratorParams.currencySplitForLP > LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
         ) {
-            revert InvalidCurrencySplitForLP(_migratorParams.currencySplitForLP, minSplitForLP, 1e7);
+            revert InvalidCurrencySplitForLP(
+                _migratorParams.currencySplitForLP, minSplitForLp, LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
+            );
         }
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
@@ -351,24 +322,9 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
         }
-        // Ensure the custody tokens are correct inside the auction parameters
-        uint256 expectedCustodyTokens = migrationParams.supplyForLP + migrationParams.custodyTokens;
-        if (initializer.custodyTokens() != expectedCustodyTokens) {
-            revert InvalidCustodySupply(initializer.custodyTokens(), expectedCustodyTokens);
-        }
-    }
-
-    function _readOwnerControlledParams() private view returns (address protocolFeeController, uint24 minSplitForLP) {
-        assembly ("memory-safe") {
-            let slotContent := sload(ownerControlledParams.slot)
-            protocolFeeController := and(
-                slotContent,
-                0xffffffffffffffffffffffffffffffffffffffff /* address mask */
-            )
-            minSplitForLP := and(
-                shr(160, slotContent),
-                0xffffff /* uint24 mask */
-            )
+        // Ensure the CCA's custody tokens match the supplyForLP
+        if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
+            revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
         }
     }
 
@@ -435,13 +391,7 @@ contract LBPStrategy is Ownable, BlockNumberish, ILBPStrategy, IDistributionStra
         pure
         returns (uint256 currencyAmountForLp)
     {
-        currencyAmountForLp = currencyAmount * currencySplitForLP / 1e7;
-    }
-
-    function _createIdentifier(MigratorParameters memory migrationParams) private pure returns (bytes32 identifier) {
-        assembly ("memory-safe") {
-            identifier := keccak256(migrationParams, 0x120)
-        }
+        currencyAmountForLp = currencyAmount * currencySplitForLP / LBPStrategyConfiguration.MAX_SPLIT_FOR_LP;
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {

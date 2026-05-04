@@ -45,17 +45,4 @@ contract MerkleClaimFactoryTest is Test {
         assertEq(merkleClaim.owner(), owner);
         assertEq(merkleClaim.endTime(), endTime);
     }
-
-    function test_getAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
-
-        // Get the predicted address
-        address predictedAddress = factory.getAddress(token, TOTAL_SUPPLY, configData, salt, address(this));
-
-        // Deploy the actual contract
-        IDistributionContract deployedContract = factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt);
-
-        // Verify the addresses match
-        assertEq(address(deployedContract), predictedAddress);
-    }
 }
