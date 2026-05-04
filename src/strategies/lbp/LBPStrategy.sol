@@ -209,8 +209,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         int24 poolTickSpacing,
         address lpHook
     ) private returns (PoolKey memory key) {
-        address hook = lpHook;
-
         // Check if the hook has any flags beyond beforeInitialize
         bool hasOtherFlags = uint160(lpHook) & (Hooks.ALL_HOOK_MASK & ~Hooks.BEFORE_INITIALIZE_FLAG) != 0;
 
@@ -228,7 +226,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
             if (existingSqrtPriceX96 == 0) {
                 // Hookless pool is available — use it
-                hook = address(0);
+                lpHook = address(0);
             }
         }
 
@@ -237,9 +235,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             currency1: _currency1(currency, token),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
-            hooks: IHooks(hook)
+            hooks: IHooks(lpHook)
         });
 
+        // Initialize the pool with the returned initial price
+        // Will revert if:
+        //      - Pool is already initialized
+        //      - Initial price is not set (sqrtPriceX96 = 0)
         poolManager.initialize(key, _data.sqrtPriceX96);
 
         return key;
