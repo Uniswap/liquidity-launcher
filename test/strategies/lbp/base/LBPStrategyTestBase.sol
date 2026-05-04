@@ -41,7 +41,6 @@ abstract contract LBPStrategyTestBase is Test {
             POSITION_MANAGER,
             POOL_MANAGER,
             IDistributionStrategy(address(factory)),
-            1, // minBracketRate
             makeAddr("protocolFeeController"),
             owner
         );

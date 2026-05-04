@@ -50,7 +50,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        uint24 _minBracketRate,
         address _protocolFeeController,
         address _owner
     ) {
@@ -58,7 +57,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         _initializeOwner(_owner);
-        _setMinBracketRate(_minBracketRate);
         _setProtocolFeeController(_protocolFeeController);
     }
 
@@ -214,8 +212,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         address lpHook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
-            currency0: _currency0(currency, token),
-            currency1: _currency1(currency, token),
+            currency0: currency < token ? currency : token,
+            currency1: currency < token ? token : currency,
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(lpHook)
@@ -336,7 +334,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         uint256 initialPriceX96,
         int24 poolTickSpacing
     ) private pure returns (MigrationData memory) {
-        bool currencyIsCurrency0 = _currencyIsCurrency0(currency, token);
+        bool currencyIsCurrency0 = currency < token;
 
         uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currencyIsCurrency0);
         uint160 sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
@@ -395,19 +393,5 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
             if (remaining == 0) break;
         }
-    }
-
-    function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
-        assembly ("memory-safe") {
-            currencyIsCurrency0 := lt(currency, token)
-        }
-    }
-
-    function _currency0(Currency currency, Currency token) private pure returns (Currency) {
-        return (_currencyIsCurrency0(currency, token) ? currency : token);
-    }
-
-    function _currency1(Currency currency, Currency token) private pure returns (Currency) {
-        return (_currencyIsCurrency0(currency, token) ? token : currency);
     }
 }

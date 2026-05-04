@@ -15,28 +15,11 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
 
     /// @notice The protocol fee controller
     address public protocolFeeController;
-    /// @notice The minimum rate that any bracket can have, set by the owner
-    uint24 public minBracketRate;
 
     /// @inheritdoc ILBPStrategyConfiguration
     function setProtocolFeeController(address _protocolFeeController) external onlyOwner {
         _setProtocolFeeController(_protocolFeeController);
         emit ProtocolFeeControllerSet(_protocolFeeController);
-    }
-
-    /// @inheritdoc ILBPStrategyConfiguration
-    function setMinBracketRate(uint24 _minBracketRate) external onlyOwner {
-        _setMinBracketRate(_minBracketRate);
-        emit MinBracketRateSet(_minBracketRate);
-    }
-
-    /// @notice Sets the min bracket rate
-    /// @param _minBracketRate The min bracket rate
-    function _setMinBracketRate(uint24 _minBracketRate) internal {
-        if (_minBracketRate == 0 || _minBracketRate > MAX_BRACKET_RATE) {
-            revert InvalidMinBracketRate(_minBracketRate);
-        }
-        minBracketRate = _minBracketRate;
     }
 
     /// @notice Sets the protocol fee controller
@@ -50,7 +33,7 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
 
     /// @notice Validates the breakpoint configuration
     /// @param _breakpoints The breakpoint array defining the bracket schedule
-    function _validateBreakpoints(ILBPStrategy.Breakpoint[] memory _breakpoints) internal view {
+    function _validateBreakpoints(ILBPStrategy.Breakpoint[] memory _breakpoints) internal pure {
         uint256 len = _breakpoints.length;
         if (len == 0 || len > MAX_BREAKPOINTS) revert InvalidBreakpointLength(len);
 
@@ -61,8 +44,8 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
 
         for (uint256 i; i < len; ++i) {
             uint24 rate = _breakpoints[i].rate;
-            // Every rate must be within [minBracketRate, MAX_BRACKET_RATE]
-            if (rate < minBracketRate || rate > MAX_BRACKET_RATE) {
+            // Every rate must be within [0, MAX_BRACKET_RATE]
+            if (rate > MAX_BRACKET_RATE) {
                 revert InvalidBreakpointRate(rate);
             }
 

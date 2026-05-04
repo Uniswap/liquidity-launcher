@@ -1,11 +1,7 @@
 InitializeDistributionTest
 ├── when breakpoints array is empty
 │   └── it reverts with {InvalidBreakpointLength}
-├── when breakpoint rate is 0
-│   └── it reverts with {InvalidBreakpointRate}
 ├── when breakpoint rate is greater than 1e7
-│   └── it reverts with {InvalidBreakpointRate}
-├── when breakpoint rate is less than minBracketRate
 │   └── it reverts with {InvalidBreakpointRate}
 ├── when non-last breakpoint threshold is 0
 │   └── it reverts with {InvalidBreakpointThreshold}
