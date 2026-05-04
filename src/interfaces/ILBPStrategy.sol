@@ -17,7 +17,7 @@ interface ILBPStrategy {
         address fundsRecipient; // the address that will receive the funds from the auction
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
-        address lpHook; // the hook that will be used for the pool (used as fallback if only beforeInitialize is set)
+        address lpHook; // the hook for the LP pool; used directly if it has flags beyond beforeInitialize, otherwise a hookless pool is created unless one already exists
     }
 
     /// @notice Emitted when the auction is initialized

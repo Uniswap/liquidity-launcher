@@ -12,11 +12,11 @@ import {LBPHookBase} from "./LBPHookBase.sol";
 /// @title GovernanceHook
 /// @notice Hook that requires governance approval before swaps are allowed on the pool
 contract GovernanceHook is LBPHookBase {
+    /// @notice Emitted when swaps are approved by governance
     event SwapsApproved();
 
     /// @notice Error thrown when a swap is attempted before governance approval
-    /// @param sender The address that attempted the swap
-    error SwapsNotApproved(address sender);
+    error SwapsNotApproved();
 
     /// @notice Error thrown when a non-governance address attempts to approve swaps
     /// @param caller The address that attempted the call
@@ -61,13 +61,13 @@ contract GovernanceHook is LBPHookBase {
         });
     }
 
-    function _beforeSwap(address sender, PoolKey calldata, SwapParams calldata, bytes calldata)
+    function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         internal
         view
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        if (!isApproved) revert SwapsNotApproved(sender);
+        if (!isApproved) revert SwapsNotApproved();
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 }
