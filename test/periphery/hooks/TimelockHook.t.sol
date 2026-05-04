@@ -31,49 +31,75 @@ contract TimelockHookTest is HookTestBase {
         hook = TimelockHook(hookAddr);
     }
 
-    function test_afterInitialize_setsInitializedBlock() public {
+    function test_fuzz_afterInitialize_setsInitializedBlock(uint128 blockNumber, uint160 sqrtPriceX96, int24 tick)
+        public
+    {
+        vm.assume(blockNumber > 0);
         PoolKey memory key = _defaultPoolKey(address(hook));
 
-        vm.roll(50);
+        vm.roll(blockNumber);
         vm.prank(poolManager);
-        hook.afterInitialize(strategy, key, 0, 0);
+        hook.afterInitialize(strategy, key, sqrtPriceX96, tick);
 
-        assertEq(hook.initializedBlock(), 50);
+        assertEq(hook.initializedBlock(), blockNumber);
     }
 
-    function test_beforeRemoveLiquidity_revertsBeforeUnlock() public {
+    function test_fuzz_beforeRemoveLiquidity_revertsBeforeUnlock(
+        uint128 initBlock,
+        uint128 removeBlock,
+        int24 tickLower,
+        int24 tickUpper,
+        int256 liquidityDelta,
+        bytes32 salt,
+        address sender
+    ) public {
+        initBlock = uint128(bound(initBlock, 1, type(uint128).max - TIMELOCK_DURATION));
+        removeBlock = uint128(bound(removeBlock, initBlock, initBlock + TIMELOCK_DURATION - 1));
+
         PoolKey memory key = _defaultPoolKey(address(hook));
 
-        // Initialize at block 50
-        vm.roll(50);
+        vm.roll(initBlock);
         vm.prank(poolManager);
         hook.afterInitialize(strategy, key, 0, 0);
 
-        // Try to remove at block 100 (unlock is at 150)
-        vm.roll(100);
-        ModifyLiquidityParams memory params =
-            ModifyLiquidityParams({tickLower: -100, tickUpper: 100, liquidityDelta: -1e18, salt: bytes32(0)});
+        vm.roll(removeBlock);
+        ModifyLiquidityParams memory params = ModifyLiquidityParams({
+            tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta, salt: salt
+        });
 
+        uint256 unlockBlock = uint256(initBlock) + TIMELOCK_DURATION;
         vm.prank(poolManager);
-        vm.expectRevert(abi.encodeWithSelector(TimelockHook.Timelocked.selector, 150, 100));
-        hook.beforeRemoveLiquidity(address(this), key, params, hex"");
+        vm.expectRevert(abi.encodeWithSelector(TimelockHook.Timelocked.selector, unlockBlock, removeBlock));
+        hook.beforeRemoveLiquidity(sender, key, params, hex"");
     }
 
-    function test_beforeRemoveLiquidity_succeedsAfterUnlock() public {
+    function test_fuzz_beforeRemoveLiquidity_succeedsAfterUnlock(
+        uint128 initBlock,
+        uint128 blocksAfterUnlock,
+        int24 tickLower,
+        int24 tickUpper,
+        int256 liquidityDelta,
+        bytes32 salt,
+        address sender
+    ) public {
+        vm.assume(initBlock > 0);
+        uint256 unlockBlock = uint256(initBlock) + TIMELOCK_DURATION;
+        vm.assume(unlockBlock + blocksAfterUnlock <= type(uint128).max);
+        uint256 removeBlock = unlockBlock + blocksAfterUnlock;
+
         PoolKey memory key = _defaultPoolKey(address(hook));
 
-        // Initialize at block 50
-        vm.roll(50);
+        vm.roll(initBlock);
         vm.prank(poolManager);
         hook.afterInitialize(strategy, key, 0, 0);
 
-        // Remove at block 150 (unlock block)
-        vm.roll(150);
-        ModifyLiquidityParams memory params =
-            ModifyLiquidityParams({tickLower: -100, tickUpper: 100, liquidityDelta: -1e18, salt: bytes32(0)});
+        vm.roll(removeBlock);
+        ModifyLiquidityParams memory params = ModifyLiquidityParams({
+            tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta, salt: salt
+        });
 
         vm.prank(poolManager);
-        bytes4 result = hook.beforeRemoveLiquidity(address(this), key, params, hex"");
+        bytes4 result = hook.beforeRemoveLiquidity(sender, key, params, hex"");
         assertEq(result, IHooks.beforeRemoveLiquidity.selector);
     }
 }

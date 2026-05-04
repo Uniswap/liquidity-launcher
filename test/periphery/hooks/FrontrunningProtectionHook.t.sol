@@ -29,20 +29,20 @@ contract FrontrunningProtectionHookTest is HookTestBase {
         hook = FrontrunningProtectionHook(hookAddr);
     }
 
-    function test_beforeInitialize_revertsIfNotStrategy() public {
-        address notStrategy = makeAddr("notStrategy");
+    function test_fuzz_beforeInitialize_revertsIfNotStrategy(address notStrategy, uint160 sqrtPriceX96) public {
+        vm.assume(notStrategy != strategy);
         PoolKey memory key = _defaultPoolKey(address(hook));
 
         vm.prank(poolManager);
         vm.expectRevert(abi.encodeWithSelector(LBPHookBase.InvalidInitializer.selector, notStrategy, strategy));
-        hook.beforeInitialize(notStrategy, key, 0);
+        hook.beforeInitialize(notStrategy, key, sqrtPriceX96);
     }
 
-    function test_beforeInitialize_succeedsForStrategy() public {
+    function test_fuzz_beforeInitialize_succeedsForStrategy(uint160 sqrtPriceX96) public {
         PoolKey memory key = _defaultPoolKey(address(hook));
 
         vm.prank(poolManager);
-        bytes4 result = hook.beforeInitialize(strategy, key, 0);
+        bytes4 result = hook.beforeInitialize(strategy, key, sqrtPriceX96);
         assertEq(result, IHooks.beforeInitialize.selector);
     }
 }

@@ -31,52 +31,69 @@ contract GovernanceHookTest is HookTestBase {
         hook = GovernanceHook(hookAddr);
     }
 
-    function test_beforeInitialize_revertsIfNotStrategy() public {
-        address notStrategy = makeAddr("notStrategy");
+    function test_fuzz_beforeInitialize_revertsIfNotStrategy(address notStrategy, uint160 sqrtPriceX96) public {
+        vm.assume(notStrategy != strategy);
         PoolKey memory key = _defaultPoolKey(address(hook));
 
         vm.prank(poolManager);
         vm.expectRevert(abi.encodeWithSelector(LBPHookBase.InvalidInitializer.selector, notStrategy, strategy));
-        hook.beforeInitialize(notStrategy, key, 0);
+        hook.beforeInitialize(notStrategy, key, sqrtPriceX96);
     }
 
-    function test_beforeInitialize_succeedsForStrategy() public {
+    function test_fuzz_beforeInitialize_succeedsForStrategy(uint160 sqrtPriceX96) public {
         PoolKey memory key = _defaultPoolKey(address(hook));
 
         vm.prank(poolManager);
-        bytes4 result = hook.beforeInitialize(strategy, key, 0);
+        bytes4 result = hook.beforeInitialize(strategy, key, sqrtPriceX96);
         assertEq(result, IHooks.beforeInitialize.selector);
     }
 
-    function test_beforeSwap_revertsIfNotApproved() public {
+    function test_fuzz_beforeSwap_revertsIfNotApproved(
+        address sender,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96
+    ) public {
         PoolKey memory key = _defaultPoolKey(address(hook));
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 1e18, sqrtPriceLimitX96: 0});
+        SwapParams memory params = SwapParams({
+            zeroForOne: zeroForOne, amountSpecified: amountSpecified, sqrtPriceLimitX96: sqrtPriceLimitX96
+        });
 
         vm.prank(poolManager);
-        vm.expectRevert(abi.encodeWithSelector(GovernanceHook.SwapsNotApproved.selector, address(this)));
-        hook.beforeSwap(address(this), key, params, hex"");
+        vm.expectRevert(abi.encodeWithSelector(GovernanceHook.SwapsNotApproved.selector));
+        hook.beforeSwap(sender, key, params, hex"");
     }
 
-    function test_approveSwaps_revertsIfNotGovernance() public {
-        vm.expectRevert(abi.encodeWithSelector(GovernanceHook.NotGovernance.selector, address(this), governance));
+    function test_fuzz_approveSwaps_revertsIfNotGovernance(address caller) public {
+        vm.assume(caller != governance);
+        vm.prank(caller);
+        vm.expectRevert(abi.encodeWithSelector(GovernanceHook.NotGovernance.selector, caller, governance));
         hook.approveSwaps();
     }
 
     function test_approveSwaps_succeedsForGovernance() public {
+        assertFalse(hook.isApproved());
         vm.prank(governance);
         hook.approveSwaps();
         assertTrue(hook.isApproved());
     }
 
-    function test_beforeSwap_succeedsAfterApproval() public {
+    function test_fuzz_beforeSwap_succeedsAfterApproval(
+        address sender,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96
+    ) public {
         vm.prank(governance);
         hook.approveSwaps();
 
         PoolKey memory key = _defaultPoolKey(address(hook));
-        SwapParams memory params = SwapParams({zeroForOne: true, amountSpecified: 1e18, sqrtPriceLimitX96: 0});
+        SwapParams memory params = SwapParams({
+            zeroForOne: zeroForOne, amountSpecified: amountSpecified, sqrtPriceLimitX96: sqrtPriceLimitX96
+        });
 
         vm.prank(poolManager);
-        (bytes4 result,,) = hook.beforeSwap(address(this), key, params, hex"");
+        (bytes4 result,,) = hook.beforeSwap(sender, key, params, hex"");
         assertEq(result, IHooks.beforeSwap.selector);
     }
 }
