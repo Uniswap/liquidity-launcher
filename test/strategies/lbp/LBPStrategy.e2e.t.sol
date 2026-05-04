@@ -9,9 +9,38 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {FrontrunningProtectionHook} from "src/periphery/hooks/FrontrunningProtectionHook.sol";
+import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+
+contract FrontrunningProtectionHookNoValidation is FrontrunningProtectionHook {
+    constructor(IPoolManager _pm, address _strategy) FrontrunningProtectionHook(_pm, _strategy) {}
+
+    function validateHookAddress(BaseHook) internal pure override {}
+}
 
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
+
+    uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << 14;
+
+    function _deployFrontrunningHook() internal returns (address hookAddr) {
+        uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG;
+        hookAddr = address(uint160(uint256(type(uint160).max) & CLEAR_ALL_HOOK_PERMISSIONS_MASK | flags));
+
+        FrontrunningProtectionHookNoValidation impl =
+            new FrontrunningProtectionHookNoValidation(POOL_MANAGER, address(strategy));
+        vm.etch(hookAddr, address(impl).code);
+    }
+
     function test_fuzz_initAndMigrate_happyPath(
         uint64 _endBlock,
         uint64 _migrationBlock,
@@ -160,5 +189,112 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             currencyToken.balanceOf(fundsRecipient) > recipientCurrencyBefore
                 || token.balanceOf(fundsRecipient) > recipientTokenBefore
         );
+    }
+
+    /// @notice Helper to build a sorted pool key for a native-currency token pair
+    function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
+        internal
+        pure
+        returns (PoolKey memory)
+    {
+        Currency c0 = Currency.wrap(address(0));
+        Currency c1 = Currency.wrap(token);
+        if (uint160(address(0)) > uint160(token)) {
+            (c0, c1) = (c1, c0);
+        }
+        return PoolKey({currency0: c0, currency1: c1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hook)});
+    }
+
+    /// @notice When lpHook only has beforeInitialize and the hookless pool doesn't exist yet,
+    /// migration should create a hookless pool (hooks = address(0))
+    function test_fuzz_beforeInitializeHook_createsHooklessPool(
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP,
+        uint24 _currencySplitForLP,
+        uint128 _currencyRaised,
+        uint160 _initialPriceX96,
+        uint128 _tokensSold
+    ) public {
+        address hookAddr = _deployFrontrunningHook();
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) = _boundMigratorParams(
+            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
+        );
+        mp.lpHook = hookAddr;
+        _currencyRaised = _boundCurrencyRaised(_currencyRaised, mp.currencySplitForLP);
+        _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
+        _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
+
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _setupForMigration(mp, totalSupply, endBlock, _currencyRaised, _initialPriceX96, _tokensSold);
+
+        PoolKey memory hooklessKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
+        (uint160 hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
+        assertEq(hooklessSqrtPrice, 0); // hookless pool should not be initialized yet
+
+        PoolKey memory hookedKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, hookAddr);
+        (uint160 hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
+        assertEq(hookedSqrtPrice, 0); // hooked pool should not be initialized yet
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // The hookless pool should be initialized (hook = address(0))
+        (hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
+        assertGt(hooklessSqrtPrice, 0); // hookless pool should be initialized
+
+        (hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
+        assertEq(hookedSqrtPrice, 0); // hooked pool should still not be initialized
+    }
+
+    /// @notice When lpHook only has beforeInitialize but the hookless pool already exists,
+    /// migration should fall back to the hooked pool
+    function test_fuzz_beforeInitializeHook_fallsBackToHookedPool(
+        uint64 _endBlock,
+        uint64 _migrationBlock,
+        uint24 _poolLPFee,
+        int24 _poolTickSpacing,
+        uint128 _supplyForLP,
+        uint24 _currencySplitForLP,
+        uint128 _currencyRaised,
+        uint160 _initialPriceX96,
+        uint128 _tokensSold
+    ) public {
+        address hookAddr = _deployFrontrunningHook();
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) = _boundMigratorParams(
+            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
+        );
+        mp.lpHook = hookAddr;
+        _currencyRaised = _boundCurrencyRaised(_currencyRaised, mp.currencySplitForLP);
+        _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
+        _tokensSold = uint128(bound(_tokensSold, 1, auctionSupply));
+
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _setupForMigration(mp, totalSupply, endBlock, _currencyRaised, _initialPriceX96, _tokensSold);
+
+        // Pre-initialize the hookless pool so strategy must fall back to the hooked pool
+        PoolKey memory hooklessKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
+        PoolKey memory hookedKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, hookAddr);
+
+        (uint160 hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
+        assertEq(hooklessSqrtPrice, 0); // hookless pool should not be initialized yet
+
+        (uint160 hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
+        assertEq(hookedSqrtPrice, 0); // hooked pool should not be initialized yet
+
+        POOL_MANAGER.initialize(hooklessKey, TickMath.MIN_SQRT_PRICE + 1);
+        (hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
+        assertGt(hooklessSqrtPrice, 0); // hookless pool should be initialized
+
+        (hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
+        assertEq(hookedSqrtPrice, 0); // hooked pool should still not be initialized
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        (hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
+        assertGt(hookedSqrtPrice, 0); // hooked pool should be initialized
     }
 }
