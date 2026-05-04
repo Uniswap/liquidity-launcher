@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
 
 /// @title TickCalculations
 /// @notice Library for tick calculations
@@ -14,7 +14,7 @@ library TickCalculations {
     function tickSpacingToMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128 result) {
         int24 MAX_TICK = TickMath.MAX_TICK;
         int24 MIN_TICK = TickMath.MIN_TICK;
-        assembly ("memory-safe") {
+        assembly ('memory-safe') {
             tickSpacing := signextend(2, tickSpacing)
             let minTick := sub(sdiv(MIN_TICK, tickSpacing), slt(smod(MIN_TICK, tickSpacing), 0))
             let maxTick := sdiv(MAX_TICK, tickSpacing)

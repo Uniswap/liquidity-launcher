@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "src/strategies/lbp/FullRangeLBPStrategy.sol";
-import {BttTests} from "../definitions/BttTests.sol";
-import {BttBase} from "../BttBase.sol";
-import {ILBPStrategyTestExtension} from "./ILBPStrategyTestExtension.sol";
-import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {BttBase} from '../BttBase.sol';
+import {BttTests} from '../definitions/BttTests.sol';
+import {ILBPStrategyTestExtension} from './ILBPStrategyTestExtension.sol';
+import {LBPInitializationParams} from 'src/interfaces/ILBPInitializer.sol';
+import 'src/strategies/lbp/FullRangeLBPStrategy.sol';
 
 contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategyTestExtension {
     constructor(
@@ -55,6 +55,6 @@ contract FullRangeLBPStrategyTestExtension is FullRangeLBPStrategy, ILBPStrategy
 contract FullRangeLBPStrategyTest is BttTests {
     /// @inheritdoc BttBase
     function _contractName() internal pure override returns (string memory) {
-        return "FullRangeLBPStrategyTestExtension";
+        return 'FullRangeLBPStrategyTestExtension';
     }
 }

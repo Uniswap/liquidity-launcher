@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BttBase, FuzzConstructorParameters} from "../BttBase.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {FullRangeLBPStrategyNoValidation} from "test/mocks/FullRangeLBPStrategyNoValidation.sol";
-import {TokenDistribution} from "src/libraries/TokenDistribution.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {BttBase, FuzzConstructorParameters} from '../BttBase.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {LPFeeLibrary} from '@uniswap/v4-core/src/libraries/LPFeeLibrary.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
+import {TokenDistribution} from 'src/libraries/TokenDistribution.sol';
+import {FullRangeLBPStrategyNoValidation} from 'test/mocks/FullRangeLBPStrategyNoValidation.sol';
 
 abstract contract ConstructorTest is BttBase {
     function test_WhenSweepBlockIsLTEMigrationBlock(

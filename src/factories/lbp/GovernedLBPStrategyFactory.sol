@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {GovernedLBPStrategy} from "@lbp/strategies/GovernedLBPStrategy.sol";
-import {MigratorParameters} from "../../types/MigratorParameters.sol";
-import {StrategyFactory} from "../StrategyFactory.sol";
+import {MigratorParameters} from '../../types/MigratorParameters.sol';
+import {StrategyFactory} from '../StrategyFactory.sol';
+import {GovernedLBPStrategy} from '@lbp/strategies/GovernedLBPStrategy.sol';
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
 
 /// @title GovernedLBPStrategyFactory
 /// @notice Factory for the GovernedLBPStrategy contract

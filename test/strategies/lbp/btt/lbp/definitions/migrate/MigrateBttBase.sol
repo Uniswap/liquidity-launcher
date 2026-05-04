@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BttBase, FuzzConstructorParameters} from "../../BttBase.sol";
+import {BttBase, FuzzConstructorParameters} from '../../BttBase.sol';
 
 /// @title MigrateBttBase
 /// @notice Base contract for migrate tests to support arbitrary actions before and after migration

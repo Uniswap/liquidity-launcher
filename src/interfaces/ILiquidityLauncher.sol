@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Distribution} from "../types/Distribution.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
+import {Distribution} from '../types/Distribution.sol';
+import {IDistributionContract} from './IDistributionContract.sol';
 
 /// @title ILiquidityLauncher
 /// @notice Interface for the LiquidityLauncher contract

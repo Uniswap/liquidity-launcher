@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
 
 interface ITimelockedPositionRecipient {
     /// @notice Thrown when trying to approve the operator before the timelock period has passed

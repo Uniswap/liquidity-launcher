@@ -1,21 +1,22 @@
 # Technical Reference
 
 ## Table of Contents
+
 - [Core Components](#core-components)
-    - [LiquidityLauncher](#liquiditylauncher)
-    - [Token Factories](#token-factories)
-        - [UERC20Factory](#uerc20factory)
-        - [USUPERC20Factory](#usuperc20factory)
-    - [Distribution Strategies](#distribution-strategies)
-        - [FullRangeLBPStrategy](#fullrangelbpstrategy)
-        - [AdvancedLBPStrategy](#advancedlbpstrategy)
-        - [GovernedLBPStrategy](#governedlbpstrategy)
-        - [VirtualLBPStrategy](#virtuallbpstrategy)
-    - [Warnings](#warnings)
-    - [Periphery contracts](#periphery-contracts)
-        - [TimelockedPositionRecipient](#timelockedpositionrecipient)
-        - [PositionFeesForwarder](#positionfeesforwarder)
-        - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
+  - [LiquidityLauncher](#liquiditylauncher)
+  - [Token Factories](#token-factories)
+    - [UERC20Factory](#uerc20factory)
+    - [USUPERC20Factory](#usuperc20factory)
+  - [Distribution Strategies](#distribution-strategies)
+    - [FullRangeLBPStrategy](#fullrangelbpstrategy)
+    - [AdvancedLBPStrategy](#advancedlbpstrategy)
+    - [GovernedLBPStrategy](#governedlbpstrategy)
+    - [VirtualLBPStrategy](#virtuallbpstrategy)
+  - [Warnings](#warnings)
+  - [Periphery contracts](#periphery-contracts)
+    - [TimelockedPositionRecipient](#timelockedpositionrecipient)
+    - [PositionFeesForwarder](#positionfeesforwarder)
+    - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
 - [Contract Interactions](#contract-interactions)
 - [Key Interfaces](#key-interfaces)
 - [Important Safety Notes](#important-safety-notes)
@@ -35,26 +36,33 @@ The main entry point contract that orchestrates token creation and distribution.
 The system includes two token factory implementations:
 
 #### UERC20Factory
+
 Creates standard ERC20 tokens with extended metadata. These tokens support Permit2 by default and include on-chain metadata storage. The factory uses CREATE2 for deterministic addresses based on token parameters.
 
 #### USUPERC20Factory
+
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
+
 The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4.
 
 They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
 
 #### FullRangeLBPStrategy
+
 A simple implementation that migrates raised funds to Uniswap V4 as a single full-range position. It is the simplest strategy and is suitable for most use cases.
 
 #### AdvancedLBPStrategy
+
 A more advanced strategy that uses any excess tokens or currency after the full-range position is created to seed one-sided positions.
 
 #### GovernedLBPStrategy
+
 A strategy that lets a trusted entity restrict swapping on the liquidity pool.
 
 #### VirtualLBPStrategy
+
 A strategy that implements a virtual token backed by an underlying token. This is useful for tokens with complex vesting or lockup schedules.
 
 All of the above strategies are provided as-is, and custom strategies can be implemented by extending the `LBPStrategyBase` contract.
@@ -68,17 +76,21 @@ Since LBPStrategies cannot control the final price of the Auction, or how much c
 We strongly recommend that a token with value such as ETH or USDC is used as the `currency`.
 
 ### Periphery contracts
+
 The following periphery contracts are provided as examples.
 
 #### TimelockedPositionRecipient
+
 The `TimelockedPositionRecipient` contract is a utility contract for holding a v4 LP position until a timelock period has passed. It is used to ensure that the position is not transferred to the recipient before the timelock expires.
 
 A deployed instance can be used as the `positionRecipient` when using an LBPStrategy.
 
 #### PositionFeesForwarder
+
 The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract and forwards all collected fees to a recipient.
 
 #### BuybackAndBurnPositionRecipient
+
 The `BuybackAndBurnPositionRecipient` extends the `TimelockedPositionRecipient` contract and facilitates burning the collected fees and tokens from the position.
 
 ## Contract Interactions

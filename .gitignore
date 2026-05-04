@@ -1,11 +1,18 @@
 # Compiler files
-cache/
-out/
+/target
+/out
+/cache
+/coverage
+/report
+lcov.info
 
 # Dotenv file
+.DS_Store
 .env
+.vscode
+.password
 
-broadcast/
+broadcast/*/31337
+deployments/**/31337.*
 
-# Rust project
-**/target
+.worktrees/

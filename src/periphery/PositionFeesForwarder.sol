@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
-import {Multicall} from "../Multicall.sol";
+import {Multicall} from '../Multicall.sol';
+import {TimelockedPositionRecipient} from './TimelockedPositionRecipient.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {Actions} from '@uniswap/v4-periphery/src/libraries/Actions.sol';
 
 /// @title PositionFeesForwarder
 /// @notice Utility contract for holding v4 LP positions and forwarding fees to a recipient
@@ -36,7 +36,7 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
         // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
-        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
+        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(''));
         // Call TAKE_PAIR to close the open deltas and send the fees to the fee recipient
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1, feeRecipient);
 

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {AdvancedLBPStrategyTestBase} from "./base/AdvancedLBPStrategyTestBase.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {AdvancedLBPStrategyTestBase} from './base/AdvancedLBPStrategyTestBase.sol';
+import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import {ICheckpointStorage} from '@uniswap/continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol';
 import {
     IContinuousClearingAuction
-} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {Checkpoint, ValueX7} from "@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {ICheckpointStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
-import {ITickStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ITickStorage.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {ITickStorage} from '@uniswap/continuous-clearing-auction/src/interfaces/ITickStorage.sol';
+import {Checkpoint, ValueX7} from '@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol';
+import {FullMath} from '@uniswap/v4-core/src/libraries/FullMath.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
 
 contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
     /// @notice Test gas consumption for onTokensReceived
@@ -20,7 +20,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         vm.prank(address(liquidityLauncher));
         token.transfer(address(lbp), DEFAULT_TOTAL_SUPPLY);
         lbp.onTokensReceived();
-        vm.snapshotGasLastCall("onTokensReceived");
+        vm.snapshotGasLastCall('onTokensReceived');
     }
 
     /// @notice Test gas consumption for migrate with ETH (full range)
@@ -59,7 +59,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
 
         vm.roll(lbp.migrationBlock());
         lbp.migrate();
-        vm.snapshotGasLastCall("migrateWithETH");
+        vm.snapshotGasLastCall('migrateWithETH');
     }
 
     /// @notice Test gas consumption for migrate with ETH (one-sided position)
@@ -95,7 +95,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
 
         vm.roll(lbp.migrationBlock());
         lbp.migrate();
-        vm.snapshotGasLastCall("migrateWithETH_withOneSidedPosition");
+        vm.snapshotGasLastCall('migrateWithETH_withOneSidedPosition');
     }
 
     /// @notice Test gas consumption for migrate with non-ETH currency
@@ -144,7 +144,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         vm.roll(lbp.migrationBlock());
 
         lbp.migrate();
-        vm.snapshotGasLastCall("migrateWithNonETHCurrency");
+        vm.snapshotGasLastCall('migrateWithNonETHCurrency');
     }
 
     /// @notice Test gas consumption for migrate with non-ETH currency (one-sided position)
@@ -159,7 +159,7 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
             8e6, // 80% of the total supply to the auction (800 tokens) to create a one-sided position in DAI
             address(3),
             uint64(block.number + 500),
-            uint64(block.number + 1_000),
+            uint64(block.number + 1000),
             address(this),
             DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP
         );
@@ -203,6 +203,6 @@ contract AdvancedLBPStrategyGasTest is AdvancedLBPStrategyTestBase {
         vm.roll(lbp.migrationBlock());
 
         lbp.migrate();
-        vm.snapshotGasLastCall("migrateWithNonETHCurrency_withOneSidedPosition");
+        vm.snapshotGasLastCall('migrateWithNonETHCurrency_withOneSidedPosition');
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IDistributionStrategy} from "./IDistributionStrategy.sol";
+import {IDistributionStrategy} from './IDistributionStrategy.sol';
 
 /// @title IStrategyFactory
 /// @notice Interface for strategy factories

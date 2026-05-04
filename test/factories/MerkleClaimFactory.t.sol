@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import "forge-std/Test.sol";
-import {MerkleClaimFactory} from "src/factories/periphery/MerkleClaimFactory.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+import 'forge-std/Test.sol';
+import {MerkleClaimFactory} from 'src/factories/periphery/MerkleClaimFactory.sol';
+import {IDistributionContract} from 'src/interfaces/IDistributionContract.sol';
 
 interface IMerkleClaim {
     function token() external view returns (address);
@@ -25,11 +25,11 @@ contract MerkleClaimFactoryTest is Test {
 
     function setUp() public {
         factory = new MerkleClaimFactory();
-        token = makeAddr("token");
+        token = makeAddr('token');
 
         // Setup merkle claim parameters
-        merkleRoot = keccak256("test merkle root");
-        owner = makeAddr("owner");
+        merkleRoot = keccak256('test merkle root');
+        owner = makeAddr('owner');
         endTime = block.timestamp + 1 days;
         configData = abi.encode(merkleRoot, owner, endTime);
     }

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
+import {TimelockedPositionRecipient} from './TimelockedPositionRecipient.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/v4-core/src/types/Currency.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {ActionConstants} from '@uniswap/v4-periphery/src/libraries/ActionConstants.sol';
+import {Actions} from '@uniswap/v4-periphery/src/libraries/Actions.sol';
+import {SafeTransferLib} from 'solady/utils/SafeTransferLib.sol';
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
@@ -65,7 +65,7 @@ contract BuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
             abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE), uint8(Actions.TAKE));
         bytes[] memory params = new bytes[](3);
         // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
-        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
+        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(''));
         // Call TAKE to send the tokens to the burn address
         params[1] = abi.encode(token, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
         // Call TAKE to send the currency to this contract

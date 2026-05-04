@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {ICheckpointStorage} from '@uniswap/continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol';
 import {
     IContinuousClearingAuction
-} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {ICheckpointStorage} from "@uniswap/continuous-clearing-auction/src/interfaces/ICheckpointStorage.sol";
-import {Checkpoint, ValueX7} from "@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {Checkpoint, ValueX7} from '@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol';
+import {FullMath} from '@uniswap/v4-core/src/libraries/FullMath.sol';
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import {LiquidityAmounts} from '@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol';
+import {PositionInfo} from '@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol';
+import 'forge-std/Test.sol';
+import {ILBPInitializer, LBPInitializationParams} from 'src/interfaces/ILBPInitializer.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
 
 abstract contract LBPTestHelpers is Test {
     struct BalanceSnapshot {
@@ -37,10 +37,10 @@ abstract contract LBPTestHelpers is Test {
     uint160 internal constant CLEAR_ALL_HOOK_PERMISSIONS_MASK = ~uint160(0) << (HOOK_PERMISSION_COUNT);
     uint160 constant HOOK_PERMISSION_COUNT = 14;
 
-    address testOperator = makeAddr("testOperator");
-    address alice = makeAddr("alice");
-    address bob = makeAddr("bob");
-    address tokensRecipient = makeAddr("tokensRecipient");
+    address testOperator = makeAddr('testOperator');
+    address alice = makeAddr('alice');
+    address bob = makeAddr('bob');
+    address tokensRecipient = makeAddr('tokensRecipient');
 
     uint256 constant DUST_AMOUNT = 15e18;
 
@@ -128,7 +128,7 @@ abstract contract LBPTestHelpers is Test {
 
     function mockAuctionEndBlock(ILBPStrategyBase lbp, uint64 blockNumber) internal {
         // Mock the auction's endBlock function
-        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature("endBlock()"), abi.encode(blockNumber));
+        vm.mockCall(address(lbp.initializer()), abi.encodeWithSignature('endBlock()'), abi.encode(blockNumber));
     }
 
     /// @dev Mock the auction's checkpoint function with the given parameters

@@ -1,28 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {USUPERC20Factory} from "@uniswap/uerc20-factory/src/factories/USUPERC20Factory.sol";
-import {USUPERC20} from "@uniswap/uerc20-factory/src/tokens/USUPERC20.sol";
-import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
-import {IUSUPERC20Factory} from "@uniswap/uerc20-factory/src/interfaces/IUSUPERC20Factory.sol";
-import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
+import {USUPERC20Factory} from '@uniswap/uerc20-factory/src/factories/USUPERC20Factory.sol';
+import {ITokenFactory} from '@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol';
+import {IUSUPERC20Factory} from '@uniswap/uerc20-factory/src/interfaces/IUSUPERC20Factory.sol';
+import {UERC20Metadata} from '@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol';
+import {USUPERC20} from '@uniswap/uerc20-factory/src/tokens/USUPERC20.sol';
+import {Test} from 'forge-std/Test.sol';
 
 contract USUPERC20FactoryTest is Test {
     USUPERC20Factory public factory;
     UERC20Metadata public tokenMetadata;
-    address recipient = makeAddr("recipient");
-    string name = "Test Token";
-    string symbol = "TOKEN";
+    address recipient = makeAddr('recipient');
+    string name = 'Test Token';
+    string symbol = 'TOKEN';
     uint8 decimals = 18;
-    address bob = makeAddr("bob");
+    address bob = makeAddr('bob');
 
     event TokenCreated(address tokenAddress);
 
     function setUp() public {
         factory = new USUPERC20Factory();
         tokenMetadata = UERC20Metadata({
-            description: "A test token", website: "https://example.com", image: "https://example.com/image.png"
+            description: 'A test token', website: 'https://example.com', image: 'https://example.com/image.png'
         });
     }
 
@@ -35,7 +35,7 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
 
@@ -58,7 +58,7 @@ contract USUPERC20FactoryTest is Test {
             1e18,
             recipient,
             abi.encode(block.chainid, address(this), tokenMetadata),
-            bytes32("test")
+            bytes32('test')
         );
     }
 
@@ -91,7 +91,7 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid + 1, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         ); // the home chain of this token is different than the current chain
 
@@ -116,7 +116,7 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid + 1, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         ); // the home chain of this token is different than the current chain
 
@@ -134,7 +134,7 @@ contract USUPERC20FactoryTest is Test {
     function test_getUSUPERC20Address_succeeds() public {
         // Calculate expected address using getUSUPERC20Address and verify against actual deployment
         address expectedAddress =
-            factory.getUSUPERC20Address(name, symbol, decimals, block.chainid, address(this), bytes32("test"));
+            factory.getUSUPERC20Address(name, symbol, decimals, block.chainid, address(this), bytes32('test'));
 
         USUPERC20 token = USUPERC20(
             factory.createToken(
@@ -144,7 +144,7 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
 
@@ -153,7 +153,7 @@ contract USUPERC20FactoryTest is Test {
 
     function test_create_succeeds_withEventEmitted() public {
         address tokenAddress =
-            factory.getUSUPERC20Address(name, symbol, decimals, block.chainid, address(this), bytes32("test"));
+            factory.getUSUPERC20Address(name, symbol, decimals, block.chainid, address(this), bytes32('test'));
 
         vm.expectEmit(true, true, true, true);
         emit TokenCreated(tokenAddress);
@@ -164,7 +164,7 @@ contract USUPERC20FactoryTest is Test {
             1e18,
             recipient,
             abi.encode(block.chainid, address(this), tokenMetadata),
-            bytes32("test")
+            bytes32('test')
         );
     }
 
@@ -178,14 +178,14 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
 
         // Deploy second token with different symbol
-        string memory differentSymbol = "TOKEN2";
+        string memory differentSymbol = 'TOKEN2';
         address expectedNewAddress =
-            factory.getUSUPERC20Address(name, differentSymbol, decimals, block.chainid, address(this), bytes32("test"));
+            factory.getUSUPERC20Address(name, differentSymbol, decimals, block.chainid, address(this), bytes32('test'));
         USUPERC20 newToken = USUPERC20(
             factory.createToken(
                 name,
@@ -194,7 +194,7 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
 
@@ -210,7 +210,7 @@ contract USUPERC20FactoryTest is Test {
             1e18,
             recipient,
             abi.encode(block.chainid, address(this), tokenMetadata),
-            bytes32("test")
+            bytes32('test')
         );
 
         vm.expectRevert();
@@ -221,7 +221,7 @@ contract USUPERC20FactoryTest is Test {
             1e18,
             recipient,
             abi.encode(block.chainid, address(this), tokenMetadata),
-            bytes32("test")
+            bytes32('test')
         );
     }
 
@@ -234,18 +234,18 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid + 1, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
 
         (string memory description, string memory website, string memory image) = token.metadata();
-        assertEq(description, "");
-        assertEq(image, "");
-        assertEq(website, "");
+        assertEq(description, '');
+        assertEq(image, '');
+        assertEq(website, '');
     }
 
     function test_bytecodeSize_usuperc20factory() public {
-        vm.snapshotValue("USUPERC20 Factory bytecode size", address(factory).code.length);
+        vm.snapshotValue('USUPERC20 Factory bytecode size', address(factory).code.length);
     }
 
     function test_bytecodeSize_usuperc20() public {
@@ -257,15 +257,15 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
-        vm.snapshotValue("USUPERC20 bytecode size", address(token).code.length);
+        vm.snapshotValue('USUPERC20 bytecode size', address(token).code.length);
     }
 
     function test_initcodeHash_usuperc20() public {
         bytes32 initCodeHash = keccak256(abi.encodePacked(type(USUPERC20).creationCode));
-        vm.snapshotValue("USUPERC20 initcode hash", uint256(initCodeHash));
+        vm.snapshotValue('USUPERC20 initcode hash', uint256(initCodeHash));
     }
 
     /// forge-config: default.isolate = true
@@ -279,9 +279,9 @@ contract USUPERC20FactoryTest is Test {
                 1e18,
                 recipient,
                 abi.encode(block.chainid, address(this), tokenMetadata),
-                bytes32("test")
+                bytes32('test')
             )
         );
-        vm.snapshotGasLastCall("deploy new USUPERC20");
+        vm.snapshotGasLastCall('deploy new USUPERC20');
     }
 }

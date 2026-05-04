@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {MigrationData} from "src/types/MigrationData.sol";
-import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {LBPInitializationParams} from 'src/interfaces/ILBPInitializer.sol';
+import {MigrationData} from 'src/types/MigrationData.sol';
 
 /// @title ILBPStrategyTestExtension
 /// @notice Extension for testing LBPStrategy contracts

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Script} from "forge-std/Script.sol";
-import {console} from "forge-std/console.sol";
-import {GovernedLBPStrategyFactory} from "@lbp/factories/GovernedLBPStrategyFactory.sol";
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
-import {DeployParameters, Parameters} from "./Parameters.sol";
+import {DeployParameters, Parameters} from './Parameters.sol';
+import {GovernedLBPStrategyFactory} from '@lbp/factories/GovernedLBPStrategyFactory.sol';
+import {Create2} from '@openzeppelin/contracts/utils/Create2.sol';
+import {Script} from 'forge-std/Script.sol';
+import {console} from 'forge-std/console.sol';
 
 /// @title DeployGovernedLBPStrategyFactoryScript
 /// @notice Deploys the GovernedLBPStrategyFactory contract given a position manager and pool manager
@@ -20,7 +20,7 @@ contract DeployGovernedLBPStrategyFactoryScript is Script, Parameters {
         address factoryAddress = Create2.computeAddress(params.salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
 
         if (address(factoryAddress).code.length > 0) {
-            console.log("Skipping deployment of GovernedLBPStrategyFactory as it already exists at", factoryAddress);
+            console.log('Skipping deployment of GovernedLBPStrategyFactory as it already exists at', factoryAddress);
             return;
         }
 
@@ -28,6 +28,6 @@ contract DeployGovernedLBPStrategyFactoryScript is Script, Parameters {
         GovernedLBPStrategyFactory factory =
             new GovernedLBPStrategyFactory{salt: params.salt}(params.positionManager, params.poolManager);
 
-        console.log("GovernedLBPStrategyFactory deployed to:", address(factory));
+        console.log('GovernedLBPStrategyFactory deployed to:', address(factory));
     }
 }

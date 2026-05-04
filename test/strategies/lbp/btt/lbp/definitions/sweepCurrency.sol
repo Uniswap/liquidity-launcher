@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BttBase} from "../BttBase.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FuzzConstructorParameters} from "../BttBase.sol";
+import {BttBase} from '../BttBase.sol';
+import {FuzzConstructorParameters} from '../BttBase.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
 
 // Tests have to be namespaced since it would conflict with the SweepTokenTest
 abstract contract SweepCurrencyTest is BttBase {
@@ -89,7 +89,7 @@ abstract contract SweepCurrencyTest is BttBase {
         uint256 operatorCurrencyBalanceAfter =
             Currency.wrap(address(_parameters.migratorParams.currency)).balanceOf(_parameters.migratorParams.operator);
         assertEq(
-            operatorCurrencyBalanceAfter, operatorCurrencyBalanceBefore, "Operator currency balance should not change"
+            operatorCurrencyBalanceAfter, operatorCurrencyBalanceBefore, 'Operator currency balance should not change'
         );
     }
 

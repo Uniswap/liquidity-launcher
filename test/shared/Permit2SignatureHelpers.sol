@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {Vm} from "forge-std/Vm.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {Vm} from 'forge-std/Vm.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
 
 /// taken from permit2 utils PermitSignature files
 contract Permit2SignatureHelpers {
-    Vm private constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    Vm private constant vm = Vm(address(uint160(uint256(keccak256('hevm cheat code')))));
 
     bytes32 public constant _PERMIT_DETAILS_TYPEHASH =
-        keccak256("PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)");
+        keccak256('PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)');
 
     bytes32 public constant _PERMIT_SINGLE_TYPEHASH = keccak256(
-        "PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)"
+        'PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)'
     );
 
     function getPermitSignatureRaw(
@@ -24,7 +24,7 @@ contract Permit2SignatureHelpers {
 
         bytes32 msgHash = keccak256(
             abi.encodePacked(
-                "\x19\x01",
+                '\x19\x01',
                 domainSeparator,
                 keccak256(abi.encode(_PERMIT_SINGLE_TYPEHASH, permitHash, permit.spender, permit.sigDeadline))
             )

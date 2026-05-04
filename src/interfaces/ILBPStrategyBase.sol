@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {ILBPInitializer} from "./ILBPInitializer.sol";
+import {IDistributionContract} from './IDistributionContract.sol';
+import {ILBPInitializer} from './ILBPInitializer.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
 
 /// @title ILBPStrategyBase
 /// @notice Base interface for derived LBPStrategy contracts

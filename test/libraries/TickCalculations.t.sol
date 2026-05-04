@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Test} from "forge-std/Test.sol";
-import {TickCalculations} from "src/libraries/TickCalculations.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {TickMath} from '@uniswap/v4-core/src/libraries/TickMath.sol';
+import {Test} from 'forge-std/Test.sol';
+import {TickCalculations} from 'src/libraries/TickCalculations.sol';
 
 contract TickCalculationsHelper is Test {
     function tickSpacingToMaxLiquidityPerTick(int24 tickSpacing) public pure returns (uint128) {
@@ -28,22 +28,22 @@ contract TickCalculationsTest is Test {
 
     function test_tickSpacingToMaxLiquidityPerTick() public view {
         uint128 liquidity = tickCalculationsHelper.tickSpacingToMaxLiquidityPerTick(10);
-        assertEq(liquidity, 1917559095893846719543856547154045);
+        assertEq(liquidity, 1_917_559_095_893_846_719_543_856_547_154_045);
 
         liquidity = tickCalculationsHelper.tickSpacingToMaxLiquidityPerTick(60);
-        assertEq(liquidity, 11505354575363080317263139282924270);
+        assertEq(liquidity, 11_505_354_575_363_080_317_263_139_282_924_270);
 
         liquidity = tickCalculationsHelper.tickSpacingToMaxLiquidityPerTick(200);
-        assertEq(liquidity, 38345995821606768476828330790147420);
+        assertEq(liquidity, 38_345_995_821_606_768_476_828_330_790_147_420);
 
         liquidity = tickCalculationsHelper.tickSpacingToMaxLiquidityPerTick(TickMath.MIN_TICK_SPACING);
-        assertEq(liquidity, 191757530477355301479181766273477);
+        assertEq(liquidity, 191_757_530_477_355_301_479_181_766_273_477);
 
         liquidity = tickCalculationsHelper.tickSpacingToMaxLiquidityPerTick(TickMath.MAX_TICK_SPACING);
-        assertEq(liquidity, 6076470837873901133274546561281575204);
+        assertEq(liquidity, 6_076_470_837_873_901_133_274_546_561_281_575_204);
 
         liquidity = tickCalculationsHelper.tickSpacingToMaxLiquidityPerTick(2302);
-        assertEq(liquidity, 440780268032303709149448973357212709);
+        assertEq(liquidity, 440_780_268_032_303_709_149_448_973_357_212_709);
     }
 
     function test_tickFloor() public view {

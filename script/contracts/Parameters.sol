@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
 
 struct DeployParameters {
     IPositionManager positionManager;
@@ -43,8 +43,8 @@ contract Parameters {
     uint256 public constant MAINNET_CHAIN_ID = 1;
     uint256 public constant BASE_CHAIN_ID = 8453;
     uint256 public constant UNICHAIN_CHAIN_ID = 130;
-    uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
-    uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84532;
+    uint256 public constant SEPOLIA_CHAIN_ID = 11_155_111;
+    uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84_532;
 
     bytes32 public DEFAULT_SALT = 0x0000000000000000000000000000000000000000000000000000000000000000;
 

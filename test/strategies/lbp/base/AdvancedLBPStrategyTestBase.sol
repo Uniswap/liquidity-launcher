@@ -1,43 +1,43 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import {LBPTestHelpers} from "../helpers/LBPTestHelpers.sol";
-import {AdvancedLBPStrategy} from "@lbp/strategies/AdvancedLBPStrategy.sol";
-import {MigratorParameters} from "@lbp/strategies/LBPStrategyBase.sol";
-import {MockERC20} from "../../../mocks/MockERC20.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {AdvancedLBPStrategyNoValidation} from "../../../mocks/AdvancedLBPStrategyNoValidation.sol";
-import {FullRangeLBPStrategy} from "@lbp/strategies/FullRangeLBPStrategy.sol";
-import {FullRangeLBPStrategyNoValidation} from "../../../mocks/FullRangeLBPStrategyNoValidation.sol";
-import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {AuctionStepsBuilder} from "@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol";
+import {AdvancedLBPStrategyNoValidation} from '../../../mocks/AdvancedLBPStrategyNoValidation.sol';
+import {FullRangeLBPStrategyNoValidation} from '../../../mocks/FullRangeLBPStrategyNoValidation.sol';
+import {MockERC20} from '../../../mocks/MockERC20.sol';
+import {LBPTestHelpers} from '../helpers/LBPTestHelpers.sol';
+import {AdvancedLBPStrategy} from '@lbp/strategies/AdvancedLBPStrategy.sol';
+import {FullRangeLBPStrategy} from '@lbp/strategies/FullRangeLBPStrategy.sol';
+import {MigratorParameters} from '@lbp/strategies/LBPStrategyBase.sol';
 import {
     ContinuousClearingAuctionFactory
-} from "@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+} from '@uniswap/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol';
+import {AuctionParameters} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
 import {
     IContinuousClearingAuction
-} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
-import {ValueX7} from "@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol";
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {ILBPStrategyBase} from "src/interfaces/ILBPStrategyBase.sol";
+} from '@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol';
+import {ValueX7} from '@uniswap/continuous-clearing-auction/src/libraries/CheckpointLib.sol';
+import {AuctionStepsBuilder} from '@uniswap/continuous-clearing-auction/test/utils/AuctionStepsBuilder.sol';
+import {IHooks} from '@uniswap/v4-core/src/interfaces/IHooks.sol';
+import {IPoolManager} from '@uniswap/v4-core/src/interfaces/IPoolManager.sol';
+import {FixedPoint96} from '@uniswap/v4-core/src/libraries/FixedPoint96.sol';
+import {Hooks} from '@uniswap/v4-core/src/libraries/Hooks.sol';
+import {Currency} from '@uniswap/v4-core/src/types/Currency.sol';
+import {PoolKey} from '@uniswap/v4-core/src/types/PoolKey.sol';
+import {IPositionManager} from '@uniswap/v4-periphery/src/interfaces/IPositionManager.sol';
+import 'forge-std/Test.sol';
+import {IAllowanceTransfer} from 'permit2/src/interfaces/IAllowanceTransfer.sol';
+import {FixedPointMathLib} from 'solady/utils/FixedPointMathLib.sol';
+import {LiquidityLauncher} from 'src/LiquidityLauncher.sol';
+import {ILBPStrategyBase} from 'src/interfaces/ILBPStrategyBase.sol';
 
 abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
     using AuctionStepsBuilder for bytes;
     using FixedPointMathLib for *;
 
     // Default values
-    uint128 constant DEFAULT_TOTAL_SUPPLY = 1_000e18;
+    uint128 constant DEFAULT_TOTAL_SUPPLY = 1000e18;
     uint24 constant DEFAULT_TOKEN_SPLIT = 5e6;
-    uint256 constant FORK_BLOCK = 23097193;
+    uint256 constant FORK_BLOCK = 23_097_193;
     uint256 public constant FLOOR_PRICE = 1000 << FixedPoint96.RESOLUTION;
     uint256 public constant TICK_SPACING = 100 << FixedPoint96.RESOLUTION;
     uint128 constant DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP = type(uint128).max;
@@ -61,7 +61,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
     bytes auctionParams;
 
     function setUp() public virtual {
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
+        vm.createSelectFork(vm.envString('QUICKNODE_RPC_URL'), FORK_BLOCK);
         _setupContracts();
         _setupDefaultMigratorParams();
         _setupDefaultAuctionParams();
@@ -75,7 +75,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
         nextTokenId = IPositionManager(POSITION_MANAGER).nextTokenId();
 
         // Give test contract some DAI
-        deal(DAI, address(this), 1_000e18);
+        deal(DAI, address(this), 1000e18);
     }
 
     function _setupDefaultMigratorParams() internal {
@@ -86,7 +86,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
             DEFAULT_TOKEN_SPLIT,
             address(3), // position recipient
             uint64(block.number + 500),
-            uint64(block.number + 1_000),
+            uint64(block.number + 1000),
             testOperator, // operator (receive function for checking ETH balance)
             DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP // maxCurrencyAmountForLP
         );
@@ -94,7 +94,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
 
     function _setUpToken(uint128 totalSupply) internal {
         token = MockERC20(TEST_TOKEN_ADDRESS);
-        implToken = new MockERC20("Test Token", "TEST", totalSupply, address(liquidityLauncher));
+        implToken = new MockERC20('Test Token', 'TEST', totalSupply, address(liquidityLauncher));
         vm.etch(TEST_TOKEN_ADDRESS, address(implToken).code);
         deal(address(token), address(liquidityLauncher), totalSupply);
     }
@@ -188,7 +188,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
         auctionParams = abi.encode(
             AuctionParameters({
                 currency: currency, // Currency (could be ETH or ERC20)
-                tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                tokensRecipient: makeAddr('tokensRecipient'), // Some valid address
                 fundsRecipient: address(1),
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
@@ -208,7 +208,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
         auctionParams = abi.encode(
             AuctionParameters({
                 currency: address(0), // ETH
-                tokensRecipient: makeAddr("tokensRecipient"), // Some valid address
+                tokensRecipient: makeAddr('tokensRecipient'), // Some valid address
                 fundsRecipient: address(1),
                 startBlock: uint64(block.number),
                 endBlock: uint64(block.number + 100),
@@ -253,7 +253,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
             tokenSplit, // Use custom tokenSplit
             address(3), // position recipient (same as default),
             uint64(block.number + 500), // migration block
-            uint64(block.number + 1_000), // sweep block
+            uint64(block.number + 1000), // sweep block
             testOperator, // operator
             DEFAULT_MAX_CURRENCY_AMOUNT_FOR_LP // maxCurrencyAmountForLP
         );
@@ -283,7 +283,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
             inputAmount, // amount
             bidder, // owner
             prevPriceX96, // prevTickPrice hint
-            bytes("") // hookData
+            bytes('') // hookData
         );
 
         assertEq(bidId, expectedBidId);
@@ -309,7 +309,7 @@ abstract contract AdvancedLBPStrategyTestBase is LBPTestHelpers {
             inputAmount, // amount
             bidder, // owner
             prevPriceX96, // prevTickPrice hint
-            bytes("") // hookData
+            bytes('') // hookData
         );
 
         assertEq(bidId, expectedBidId);
