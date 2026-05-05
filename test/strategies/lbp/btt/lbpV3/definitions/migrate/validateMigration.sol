@@ -7,6 +7,7 @@ import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @title ValidateMigrationTest
 /// @notice BTT tests for LBPStrategy.migrate validation
@@ -55,13 +56,19 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             _setupForMigration(mp, totalSupply, endBlock, p.currencyRaised, p.initialPriceX96, p.tokensSold);
     }
 
-    function test_WhenInitializerIsUnregistered(uint64 _currentBlock) public {
+    function test_WhenInitializerIsUnregistered(uint64 _currentBlock, uint128 _tokensSold) public {
         // it reverts with {MigrationNotAllowed}
         _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
         vm.roll(_currentBlock);
 
+        _tokensSold = uint128(bound(_tokensSold, 1, uint128(1 << 100)));
+
         ILBPInitializer unregistered = ILBPInitializer(
-            address(new MockLBPInitializer(address(1), address(0), 0, 0, address(strategy), address(strategy), 0, 0))
+            address(
+                new MockLBPInitializer(
+                    address(1), address(0), _tokensSold, 0, address(strategy), address(strategy), 0, 0
+                )
+            )
         );
 
         (uint64 storedMigrationBlock,,,,,,,) = strategy.initializers(unregistered);

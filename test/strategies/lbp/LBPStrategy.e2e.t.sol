@@ -104,10 +104,10 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         uint256 recipientBalBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Nearly all currency should end up at fundsRecipient (since _createPositionPlan is a stub returning empty,
-        // no currency actually goes to LP — it all gets swept). Pool initialization may consume dust.
+        // Since _createPositionPlan is a stub, all currency gets swept — no LP is created.
+        // TODO: Once _createPositionPlan is implemented, assert at most currencySplitForLP share goes to LP.
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertGe(received, _currencyRaised - 1);
+        assertGe(received, _currencyRaised);
     }
 
     /// @notice E2E test with ERC20 currency (not native ETH)
