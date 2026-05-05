@@ -7,8 +7,6 @@ import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @title ValidateMigrationTest
 /// @notice BTT tests for LBPStrategy.migrate validation
@@ -58,6 +56,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     }
 
     function test_WhenInitializerIsUnregistered(uint64 _currentBlock) public {
+        // it reverts with {MigrationNotAllowed}
         _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
         vm.roll(_currentBlock);
 
@@ -81,6 +80,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public {
+        // it reverts with {MigrationNotAllowed}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
             _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
         );
@@ -109,6 +109,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenBlockIsGTEMigrationBlock {
+        // it reverts with {NoCurrencyRaised}
         _initialPriceX96 = _boundInitialPriceX96(_initialPriceX96);
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(

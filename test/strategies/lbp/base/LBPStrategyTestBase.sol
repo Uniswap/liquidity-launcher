@@ -13,7 +13,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Forks mainnet to use real v4 PoolManager and PositionManager.
@@ -143,9 +142,11 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.
-    /// Very small prices get inverted to values exceeding uint160.max, causing PriceTooHigh reverts.
-    /// Lower bound of Q96/1e9 allows prices down to one-billionth of 1:1.
+    /// When currencyIsCurrency0, the price is inverted: Q192/price. This reverts with PriceTooHigh
+    /// when the inverse exceeds uint160.max, i.e. when price <= Q192 / uint160.max ≈ 2^32.
+    /// The +1 gives us the first price where the inverse fits in uint160.
     function _boundInitialPriceX96(uint160 _initialPriceX96) internal pure returns (uint160) {
-        return uint160(bound(_initialPriceX96, FixedPoint96.Q96 / 1e9, type(uint160).max));
+        uint256 minPrice = (uint256(1) << 192) / type(uint160).max + 1;
+        return uint160(bound(_initialPriceX96, minPrice, type(uint160).max));
     }
 }

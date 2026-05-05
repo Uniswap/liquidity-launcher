@@ -54,7 +54,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         );
     }
 
-    function test_fuzz_twoAuctionsIsolated(
+    /// @notice Two independent distributions store separate migration parameters
+    function test_fuzz_twoDistributionsStoreSeparateParams(
         uint64 _endBlock1,
         uint64 _endBlock2,
         uint64 _migrationBlock1,

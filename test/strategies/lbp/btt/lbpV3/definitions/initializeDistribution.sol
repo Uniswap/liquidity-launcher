@@ -43,6 +43,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public {
+        // it reverts with {InvalidCurrencySplitForLP}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
             _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, 1);
         mp.currencySplitForLP = 0;
@@ -61,6 +62,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public {
+        // it reverts with {InvalidCurrencySplitForLP}
         _split = uint24(bound(_split, 1e7 + 1, type(uint24).max));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
@@ -82,6 +84,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         int24 _poolTickSpacing,
         uint128 _supplyForLP
     ) public {
+        // it reverts with {InvalidCurrencySplitForLP}
         _minSplit = uint24(bound(_minSplit, 2, strategy.MAX_SPLIT_FOR_LP()));
         _split = uint24(bound(_split, 1, _minSplit - 1));
 
@@ -109,6 +112,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenCurrencySplitIsValid {
+        // it reverts with {InvalidTickSpacing}
         vm.assume(_tickSpacing > TickMath.MAX_TICK_SPACING || _tickSpacing < TickMath.MIN_TICK_SPACING);
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
@@ -140,6 +144,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenCurrencySplitIsValid whenTickSpacingIsValid {
+        // it reverts with {InvalidFee}
         _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
@@ -165,6 +170,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenCurrencySplitIsValid whenTickSpacingIsValid whenFeeIsValid {
+        // it reverts with {InvalidPositionRecipient}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(
             _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
         );
@@ -200,6 +206,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenMigratorParamsAreValid {
+        // it reverts with {InvalidRecipient}
         vm.assume(_wrongRecipient != address(strategy));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
@@ -238,6 +245,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenMigratorParamsAreValid {
+        // it reverts with {InvalidEndBlock}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(
             _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
         );
@@ -270,6 +278,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenMigratorParamsAreValid {
+        // it reverts with {InvalidCustodySupply}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
             _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
         );
@@ -307,6 +316,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _supplyForLP,
         uint24 _currencySplitForLP
     ) public whenMigratorParamsAreValid whenInitializerIsValid {
+        // it saves the parameters to storage
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
             _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
         );
