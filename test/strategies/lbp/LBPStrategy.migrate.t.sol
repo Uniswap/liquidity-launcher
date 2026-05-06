@@ -43,7 +43,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
     function test_currencyAmountCappedAtInt128Max(FuzzParams memory p, uint256 _hugeRaise) public {
         // Floor split at 50% so minRaise stays in a practical range for vm.deal
-        p.currencySplitForLP = uint24(bound(p.currencySplitForLP, 5e6, type(uint24).max));
+        p.currencySplitForLP =
+            uint24(bound(p.currencySplitForLP, uint256(strategy.MAX_SPLIT_FOR_LP()) / 2, strategy.MAX_SPLIT_FOR_LP()));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
