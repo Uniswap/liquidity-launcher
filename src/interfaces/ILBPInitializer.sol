@@ -20,8 +20,13 @@ struct LBPInitializationParams {
 interface ILBPInitializer is IDistributionContract, IERC165 {
     /// @notice Returns the LBP initialization parameters as determined by the implementing contract
     /// @dev The implementing contract MUST ensure that these values are correct at the time of calling
-    /// @return params The LBP initialization parameters
-    function lbpInitializationParams() external view returns (LBPInitializationParams memory params);
+    function lbpInitializationParams() external view returns (LBPInitializationParams memory);
+
+    /// @notice Sweeps the raised currency from the initializer
+    function sweepCurrency() external;
+
+    /// @notice Sweeps the unsold and custody tokens from the initializer
+    function sweepUnsoldTokens() external;
 
     /// @notice Returns the token used by the initializer
     function token() external view returns (address);
@@ -29,6 +34,8 @@ interface ILBPInitializer is IDistributionContract, IERC165 {
     function currency() external view returns (address);
     /// @notice Returns the total supply of the token used by the initializer
     function totalSupply() external view returns (uint128);
+    /// @notice Returns the token amount in custody of the initializer
+    function custodyTokensAmount() external view returns (uint128);
     /// @notice Returns the address which will receive the unsold tokens
     function tokensRecipient() external view returns (address);
     /// @notice Returns the address which will receive the raised currency
