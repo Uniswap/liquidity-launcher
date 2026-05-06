@@ -98,6 +98,7 @@ library PositionPlanner {
 
     /// @notice Resolves a weighted position plan into concrete positions constrained by the supplied budgets
     /// @dev Callers should invoke `validate` beforehand to ensure weights sum to `MPS`
+    ///      and ensure that amounts do not exceed type(int128).max
     function resolve(
         PositionDefinition[] memory _definitions,
         uint160 _sqrtPriceX96,

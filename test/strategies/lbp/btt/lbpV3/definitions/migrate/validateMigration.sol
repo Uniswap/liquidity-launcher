@@ -8,7 +8,6 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {console} from "forge-std/console.sol";
 
 /// @title ValidateMigrationTest
 /// @notice BTT tests for LBPStrategy.migrate validation
@@ -19,8 +18,8 @@ import {console} from "forge-std/console.sol";
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotAllowed
 /// └── when block.number >= migrationBlock
-///     ├── when currencyRaised is 0 (after split)
-///     │   └── it reverts with NoCurrencyRaised
+///     ├── when currencyRaised is 0 or rounds to 0 after split
+///     │   └── it skips LP creation and sweeps assets
 ///     └── when currencyRaised > 0
 ///         ├── it calls sweepCurrency on initializer
 ///         ├── it calls sweepUnsoldTokens on initializer
@@ -72,7 +71,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     }
 
     function test_WhenCurrencyRaisedIsZero(FuzzParams memory p) public whenBlockIsGTEMigrationBlock {
-        // it reverts with {NoCurrencyRaised}
+        // it skips LP creation and sweeps assets
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
@@ -87,8 +86,37 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
 
-        vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);
+        uint256 tokenBalBefore = token.balanceOf(fundsRecipient);
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(address(strategy).balance, 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
+        assertGt(token.balanceOf(fundsRecipient), tokenBalBefore);
+    }
+
+    function test_WhenCurrencyRaisedRoundsToZero(FuzzParams memory p) public whenBlockIsGTEMigrationBlock {
+        // it skips LP creation and sweeps assets
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        mp.currencySplitForLP = 1;
+        p.tokensSold = uint128(bound(p.tokensSold, 0, auctionSupply));
+
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
+
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: 1})
+        );
+        vm.deal(address(initializer), 1);
+        token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
+
+        uint256 balBefore = fundsRecipient.balance;
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(address(strategy).balance, 0);
+        assertEq(fundsRecipient.balance - balBefore, 1);
     }
 
     modifier whenCurrencyRaisedIsGTZero() {

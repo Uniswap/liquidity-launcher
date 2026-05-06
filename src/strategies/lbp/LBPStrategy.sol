@@ -24,8 +24,6 @@ import {
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
-import {console} from "forge-std/console.sol";
-
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
@@ -131,12 +129,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp =
-            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.currencySplitForLP);
-
-        // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
-        // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
-        currencyAmountForLp = _validateCurrencyAmountForLp(currencyAmountForLp);
+        uint256 currencyAmountForLp = FixedPointMathLib.fullMulDiv(
+            lbpParams.currencyRaised, migrationParams.currencySplitForLP, LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
+        );
 
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
         // This requires trusting the initializer to return correct and immutable addresses.
@@ -155,6 +150,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             migrationParams.lpHook
         );
 
+        // v4 PoolManager accounts liquidity and token deltas as int128, so cap budgets before planning.
         (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
             key,
             currency,
@@ -163,9 +159,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             uint128(FixedPointMathLib.min(migrationParams.supplyForLP, uint128(type(int128).max))),
             migrationParams
         );
-
-        console.log("currencyTransferAmount", currencyTransferAmount);
-        console.log("tokenTransferAmount", tokenTransferAmount);
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
@@ -339,23 +332,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         }
     }
 
-    /// @notice Validates migration currency amount for the LP
-    /// @param currencyAmountForLp The currency amount raised for the LP
-    function _validateCurrencyAmountForLp(uint256 currencyAmountForLp) private pure returns (uint128) {
-        // Cannot create a v4 pool with no currency raised
-        if (currencyAmountForLp == 0) {
-            revert NoCurrencyRaised();
-        }
-
-        // Cannot create a v4 pool with more than type(int128).max currency amount since it is cast in PoolManager
-        if (currencyAmountForLp > uint128(type(int128).max)) {
-            // If the currency amount for the LP is greater than type(int128).max, cap to type(int128).max and sweep the rest to the funds recipient
-            return uint128(type(int128).max);
-        } else {
-            return uint128(currencyAmountForLp);
-        }
-    }
-
     /// @notice Derives the initial sqrt price for the v4 pool from the auction's final price
     /// @dev Adjusts the raw X96 price for currency ordering before converting to a sqrtPriceX96.
     /// @param currency The raised currency
@@ -369,14 +345,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     {
         uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, _currencyIsCurrency0(currency, token));
         sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
-    }
-
-    function _calculateCurrencyAmountForLp(uint256 currencyAmount, uint24 currencySplitForLP)
-        private
-        pure
-        returns (uint256 currencyAmountForLp)
-    {
-        currencyAmountForLp = currencyAmount * currencySplitForLP / LBPStrategyConfiguration.MAX_SPLIT_FOR_LP;
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {

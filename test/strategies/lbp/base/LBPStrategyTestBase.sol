@@ -98,9 +98,6 @@ abstract contract LBPStrategyTestBase is Test {
         }
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
-        // // Mock modifyLiquidities until PositionPlanner is implemented — _createPositionPlan returns empty bytes
-        // // which the real PositionManager would revert on. Pool initialization still hits real PoolManager.
-        // vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
     /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters.
@@ -161,12 +158,13 @@ abstract contract LBPStrategyTestBase is Test {
         _offsetUpper = int24(bound(_offsetUpper, 1, 10000));
         _fullRangeWeight = uint24(bound(_fullRangeWeight, 1, 1e7 - 1));
 
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] =
-            PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: uint24(1e7)});
-        // defs[1] = PositionDefinition({
-        //     offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
-        // });
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _fullRangeWeight
+        });
+        defs[1] = PositionDefinition({
+            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
+        });
         return abi.encode(defs);
     }
 
@@ -179,8 +177,7 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(mp, initializerParams);
     }
 
-    /// @notice Bounds currencyRaised so that currencyRaised * split / 1e7 > 0.
-    /// Without this, the currency amount for LP can round to zero and revert with NoCurrencyRaised.
+    /// @notice Bounds currencyRaised so happy-path migrations exercise nonzero LP currency.
     function _boundCurrencyRaised(uint128 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint128) {
         return uint128(bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max));
     }
