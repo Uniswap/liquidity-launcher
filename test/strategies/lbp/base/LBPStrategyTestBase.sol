@@ -39,7 +39,7 @@ abstract contract LBPStrategyTestBase is Test {
         uint128 supplyForLP;
         uint128 auctionSupply;
         uint24 currencySplitForLP;
-        uint128 currencyRaised;
+        uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
     }
@@ -148,10 +148,11 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(mp, initializerParams);
     }
 
-    /// @notice Bounds currencyRaised so that currencyRaised * split / 1e7 > 0.
-    /// Without this, the currency amount for LP can round to zero and revert with NoCurrencyRaised.
-    function _boundCurrencyRaised(uint128 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint128) {
-        return uint128(bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max));
+    /// @notice Bounds currencyRaised so that currencyAmountForLp fits in uint128 for pool creation.
+    /// Min: ensures currencyRaised * split / 1e7 > 0 (avoids NoCurrencyRaised revert).
+    /// Currency raised above uint128 is tested separately in test_currencyAmountCappedAtUint128Max.
+    function _boundCurrencyRaised(uint256 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint256) {
+        return bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max);
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.

@@ -21,6 +21,7 @@ import {
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -363,7 +364,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         pure
         returns (uint256 currencyAmountForLp)
     {
-        currencyAmountForLp = currencyAmount * currencySplitForLP / LBPStrategyConfiguration.MAX_SPLIT_FOR_LP;
+        currencyAmountForLp =
+            FullMath.mulDiv(currencyAmount, currencySplitForLP, LBPStrategyConfiguration.MAX_SPLIT_FOR_LP);
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
