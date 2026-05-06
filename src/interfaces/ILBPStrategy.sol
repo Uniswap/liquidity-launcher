@@ -13,7 +13,7 @@ interface ILBPStrategy {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
         int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // amount of the token that will be used to create the LP position (held as custody in the CCA)
+        uint128 supplyForLP; // amount of the token that will be used to create the LP position
         address fundsRecipient; // the address that will receive the funds from the auction
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
@@ -21,50 +21,22 @@ interface ILBPStrategy {
         bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     }
 
-    /// @notice Internal helper struct
-    struct MigrationData {
-        uint160 sqrtPriceX96;
-        uint128 fullRangeTokenAmount;
-        uint128 fullRangeCurrencyAmount;
-        uint128 leftoverToken;
-        uint128 leftoverCurrency;
-        uint128 liquidity;
-    }
-
-    struct OwnerControlled {
-        address protocolFeeController; // the address defining the protocol fee payed on non-LP currency
-        uint24 minSplitForLp; // the minimum percentage (in mps) of the total supply of the token that must be sent to an LP
-    }
-
-    /// @notice Emitted when the protocol fee controller is set
-    /// @param protocolFeeController The protocol fee controller
-    event ProtocolFeeControllerSet(address protocolFeeController);
-
-    /// @notice Emitted when the min split for LP is set
-    /// @param minSplitForLP The min split for LP
-    event MinSplitForLpSet(uint24 minSplitForLP);
-
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
+    /// @param initializer The initializer that was migrated
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
-    event Migrated(PoolKey indexed key, uint160 initialSqrtPriceX96);
+    event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96);
 
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);
 
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
-
-    /// @notice Error thrown when the protocol fee controller is the zero address
-    error InvalidProtocolFeeController();
-
-    /// @notice Error thrown when the min split for LP is zero or greater than 100%
-    error InvalidMinSplitForLp();
 
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
@@ -75,7 +47,7 @@ interface ILBPStrategy {
     /// @param currentBlock The current block number
     error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
 
-    /// @notice Error thrown when the end block is at orafter the migration block
+    /// @notice Error thrown when the end block is at or after the migration block
     /// @param endBlock The invalid end block
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
@@ -121,5 +93,6 @@ interface ILBPStrategy {
     error NoCurrencyRaised();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
+    /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
 }

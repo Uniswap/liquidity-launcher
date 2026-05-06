@@ -5,20 +5,12 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
+import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
-    function test_storesMigrationParameters(
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
-            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
-        );
+    function test_storesMigrationParameters(FuzzParams memory p) public {
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         // deployedInitializer() is a test helper on MockInitializerFactory that returns the last deployed MockLBPInitializer
         (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock);
@@ -44,5 +36,23 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         assertEq(currencySplitForLP, mp.currencySplitForLP);
         assertEq(lpHook, mp.lpHook);
         assertEq(positionDefinitions, mp.positionDefinitions);
+    }
+
+    function test_revertsIfInitializerAlreadyCreated(FuzzParams memory p) public {
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        // First initialization succeeds
+        (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock);
+
+        // Force the factory to return the same initializer address
+        factory.setOverrideInitializer(init1);
+
+        // Second initialization with the same initializer should revert
+        MockERC20 token2 = new MockERC20("Test Token 2", "TT2", totalSupply, address(this));
+        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory configData = _encodeConfigData(mp, initializerParams);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InitializerAlreadyCreated.selector, init1));
+        strategy.initializeDistribution(address(token2), totalSupply, configData, bytes32(0));
     }
 }

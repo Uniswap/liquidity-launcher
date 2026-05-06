@@ -14,7 +14,6 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Forks mainnet to use real v4 PoolManager and PositionManager.
@@ -31,6 +30,21 @@ abstract contract LBPStrategyTestBase is Test {
     address fundsRecipient = makeAddr("fundsRecipient");
     address lpPositionRecipient = makeAddr("lpPositionRecipient");
 
+    /// @notice Fuzz params for all LBPStrategy tests.
+    /// Tests that only need migrator params can ignore currencyRaised/initialPriceX96/tokensSold.
+    struct FuzzParams {
+        uint64 endBlock;
+        uint64 migrationBlock;
+        uint24 poolLPFee;
+        int24 poolTickSpacing;
+        uint128 supplyForLP;
+        uint128 auctionSupply;
+        uint24 currencySplitForLP;
+        uint128 currencyRaised;
+        uint160 initialPriceX96;
+        uint128 tokensSold;
+    }
+
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"));
 
@@ -38,80 +52,50 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        strategy = new LBPStrategy(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)));
+        strategy = new LBPStrategy(
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            IDistributionStrategy(address(factory)),
+            1, // minSplitForLp
+            makeAddr("protocolFeeController"),
+            owner
+        );
 
         factory.setStrategyAddress(address(strategy));
     }
 
-    function _defaultMigratorParams() internal view returns (ILBPStrategy.MigratorParameters memory) {
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
-        return ILBPStrategy.MigratorParameters({
-            migrationBlock: uint64(block.number) + 100,
-            poolLPFee: 3000,
-            poolTickSpacing: 60,
-            supplyForLP: 1000e18,
-            fundsRecipient: fundsRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            currencySplitForLP: 1e7,
-            lpHook: address(0),
-            positionDefinitions: abi.encode(defs)
-        });
-    }
-
-    /// @notice Encodes MigratorParameters + initializerParams into configData for initializeDistribution
-    function _encodeConfigData(ILBPStrategy.MigratorParameters memory mp, bytes memory initializerParams)
+    /// @notice One-liner for a happy-path migration setup: bounds all fuzz params, deploys and funds
+    /// the initializer, and rolls to the migration block. Use _boundMigratorParams + _initializeWith
+    /// directly when you need to customize the migration inputs (e.g., zero currency, ERC20 currency).
+    function _setupForMigration(FuzzParams memory p)
         internal
-        pure
-        returns (bytes memory)
+        returns (MockLBPInitializer initializer, MockERC20 token)
     {
-        return abi.encode(mp, initializerParams);
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, mp.currencySplitForLP);
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
+
+        (initializer, token) = _initializeWith(mp, totalSupply, endBlock);
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({
+                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+            })
+        );
+        if (p.currencyRaised > 0) {
+            vm.deal(address(initializer), p.currencyRaised);
+        }
+        token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
+        // Mock modifyLiquidities until PositionPlanner is implemented — _createPositionPlan returns empty bytes
+        // which the real PositionManager would revert on. Pool initialization still hits real PoolManager.
+        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
-    /// @notice Bounds raw fuzz inputs into valid MigratorParameters and a matching totalSupply
-    function _boundMigratorParams(
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    )
-        internal
-        view
-        returns (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
-    {
-        _poolLPFee = uint24(bound(_poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
-        _poolTickSpacing = int24(bound(_poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
-        _currencySplitForLP = uint24(bound(_currencySplitForLP, 1, 1e7));
-        // CCA's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
-        auctionSupply = uint128(bound(_supplyForLP, 1, uint128(1 << 100)));
-        // supplyForLP is held as CCA custody — unbounded uint128, but totalSupply must fit in uint128 (Distribution.amount)
-        _supplyForLP = uint128(bound(_supplyForLP, 1, type(uint128).max - auctionSupply));
-        totalSupply = _supplyForLP + auctionSupply;
-        // endBlock must be < migrationBlock (validated by _validateInitializer)
-        _endBlock = uint64(bound(_endBlock, uint64(block.number), type(uint64).max - 1));
-        _migrationBlock = uint64(bound(_migrationBlock, _endBlock + 1, type(uint64).max));
-        endBlock = _endBlock;
-
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
-        mp = ILBPStrategy.MigratorParameters({
-            migrationBlock: _migrationBlock,
-            poolLPFee: _poolLPFee,
-            poolTickSpacing: _poolTickSpacing,
-            supplyForLP: _supplyForLP,
-            fundsRecipient: fundsRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            currencySplitForLP: _currencySplitForLP,
-            lpHook: address(0),
-            positionDefinitions: abi.encode(defs)
-        });
-    }
-
-    /// @notice Initializes distribution with custom MigratorParameters and totalSupply
-    /// @return initializer The deployed MockLBPInitializer
-    /// @return token The token created for this distribution
+    /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters.
+    /// Use when you need valid migrator params but want to control currencyRaised/price/tokensSold yourself
+    /// (e.g., setting currencyRaised = 0 to test a revert, or wiring up an ERC20 currency).
     function _initializeWith(ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock)
         internal
         returns (MockLBPInitializer initializer, MockERC20 token)
@@ -124,29 +108,45 @@ abstract contract LBPStrategyTestBase is Test {
         initializer = factory.deployedInitializer();
     }
 
-    /// @notice Sets up a fully funded initializer ready for migration with fuzzed parameters
-    function _setupForMigration(
-        ILBPStrategy.MigratorParameters memory mp,
-        uint128 totalSupply,
-        uint64 endBlock,
-        uint128 currencyRaised,
-        uint160 initialPriceX96,
-        uint128 tokensSold
-    ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
-        (initializer, token) = _initializeWith(mp, totalSupply, endBlock);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: initialPriceX96, tokensSold: tokensSold, currencyRaised: currencyRaised
-            })
-        );
-        if (currencyRaised > 0) {
-            vm.deal(address(initializer), currencyRaised);
-        }
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
-        // Mock modifyLiquidities until PositionPlanner is implemented — _createPositionPlan returns empty bytes
-        // which the real PositionManager would revert on. Pool initialization still hits real PoolManager.
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+    /// @notice Bounds the migrator-related fields of FuzzParams into valid MigratorParameters.
+    /// Does NOT touch currencyRaised/initialPriceX96/tokensSold — use _setupForMigration for that.
+    function _boundMigratorParams(FuzzParams memory p)
+        internal
+        view
+        returns (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
+    {
+        p.poolLPFee = uint24(bound(p.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
+        p.poolTickSpacing = int24(bound(p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+        p.currencySplitForLP = uint24(bound(p.currencySplitForLP, 1, 1e7));
+        // CCA's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
+        auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
+        // supplyForLP is held as CCA custody — unbounded uint128, but totalSupply must fit in uint128 (Distribution.amount)
+        p.supplyForLP = uint128(bound(p.supplyForLP, 1, type(uint128).max - auctionSupply));
+        totalSupply = p.supplyForLP + auctionSupply;
+        // endBlock must be < migrationBlock (validated by _validateInitializer)
+        p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));
+        p.migrationBlock = uint64(bound(p.migrationBlock, p.endBlock + 1, type(uint64).max));
+        endBlock = p.endBlock;
+
+        mp = ILBPStrategy.MigratorParameters({
+            migrationBlock: p.migrationBlock,
+            poolLPFee: p.poolLPFee,
+            poolTickSpacing: p.poolTickSpacing,
+            supplyForLP: p.supplyForLP,
+            fundsRecipient: fundsRecipient,
+            lpPositionRecipient: lpPositionRecipient,
+            currencySplitForLP: p.currencySplitForLP,
+            lpHook: address(0)
+        });
+    }
+
+    /// @notice Encodes MigratorParameters + initializerParams into configData for initializeDistribution
+    function _encodeConfigData(ILBPStrategy.MigratorParameters memory mp, bytes memory initializerParams)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return abi.encode(mp, initializerParams);
     }
 
     /// @notice Bounds currencyRaised so that currencyRaised * split / 1e7 > 0.
@@ -156,9 +156,11 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.
-    /// Very small prices get inverted to values exceeding uint160.max, causing PriceTooHigh reverts.
-    /// Lower bound of Q96/1e9 allows prices down to one-billionth of 1:1.
+    /// When currencyIsCurrency0, the price is inverted: Q192/price. This reverts with PriceTooHigh
+    /// when the inverse exceeds uint160.max, i.e. when price <= Q192 / uint160.max ≈ 2^32.
+    /// The +1 gives us the first price where the inverse fits in uint160.
     function _boundInitialPriceX96(uint160 _initialPriceX96) internal pure returns (uint160) {
-        return uint160(bound(_initialPriceX96, FixedPoint96.Q96 / 1e9, type(uint160).max));
+        uint256 minPrice = (uint256(1) << 192) / type(uint160).max + 1;
+        return uint160(bound(_initialPriceX96, minPrice, type(uint160).max));
     }
 }
