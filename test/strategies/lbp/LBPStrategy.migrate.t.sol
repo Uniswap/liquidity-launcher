@@ -9,36 +9,11 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
-    struct MigrateFuzzParams {
-        uint256 currencyRaised;
-        uint160 initialPriceX96;
-        uint128 tokensSold;
-        uint64 endBlock;
-        uint64 migrationBlock;
-        uint24 poolLPFee;
-        int24 poolTickSpacing;
-        uint128 supplyForLP;
-        BreakpointFuzzParams bpParams;
-    }
-
-    function _setupMigration(MigrateFuzzParams memory p) internal returns (MockLBPInitializer initializer) {
-        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p.endBlock, p.migrationBlock, p.poolLPFee, p.poolTickSpacing, p.supplyForLP);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        (initializer,) =
-            _setupForMigration(mp, totalSupply, endBlock, p.currencyRaised, p.initialPriceX96, p.tokensSold, bp);
-    }
-
-    function test_emitsCurrencySwept(MigrateFuzzParams memory p) public {
-        MockLBPInitializer initializer = _setupMigration(p);
+    function test_emitsCurrencySwept(FuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         // Check indexed param (fundsRecipient) but not data — exact amount may differ due to pool initialization dust
         vm.expectEmit(true, false, false, false);
@@ -46,16 +21,16 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_emitsTokensSwept(MigrateFuzzParams memory p) public {
-        MockLBPInitializer initializer = _setupMigration(p);
+    function test_emitsTokensSwept(FuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.expectEmit(true, false, false, false);
         emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_emitsMigrated(MigrateFuzzParams memory p) public {
-        MockLBPInitializer initializer = _setupMigration(p);
+    function test_emitsMigrated(FuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.expectEmit(false, false, false, false);
         emit ILBPStrategy.Migrated(
@@ -66,14 +41,21 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_currencyAmountCappedAtUint128Max(MigrateFuzzParams memory p) public {
-        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
+    function test_currencyAmountCappedAtUint128Max(FuzzParams memory p, uint256 _hugeRaise) public {
+        // Use a single breakpoint with rate >= 50% so minRaise stays in a practical range for vm.deal
+        uint24 rate = uint24(bound(p.bpParams.rate0, strategy.MAX_BRACKET_RATE() / 2, strategy.MAX_BRACKET_RATE()));
+        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
+        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: rate});
+
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p.endBlock, p.migrationBlock, p.poolLPFee, p.poolTickSpacing, p.supplyForLP);
+            _boundMigratorParams(p);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
 
-        uint256 hugeRaise = uint256(type(uint128).max) * 3;
+        // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > uint128.max (triggers the cap).
+        // _calculateCurrencyAmountForLp does currencyRaised * rate, so cap hugeRaise to avoid that overflow.
+        uint256 minRaise = uint256(type(uint128).max) * strategy.MAX_BRACKET_RATE() / rate + 1;
+        uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
         (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
         initializer.setLbpInitializationParams(
@@ -91,13 +73,11 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         uint256 recipientBalBefore = fundsRecipient.balance;
 
-        // Migration should not revert even when currencyRaised exceeds uint128.max
+        // Migrate — should not revert, currency amount gets capped at uint128.max
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // All currency swept to fundsRecipient (modifyLiquidities is mocked, so no currency goes to the pool right now)
-        // Up to 1 wei may be lost to rounding in the bracket calculation
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertGe(received, hugeRaise - 1);
+        assertApproxEqAbs(received, hugeRaise, 2);
 
         // Strategy should be empty
         assertEq(address(strategy).balance, 0);
