@@ -12,7 +12,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
-    function test_emitsCurrencySwept(FuzzParams memory p) public {
+    function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         // Check indexed param (fundsRecipient) but not data — exact amount may differ due to pool initialization dust
@@ -21,7 +21,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_emitsTokensSwept(FuzzParams memory p) public {
+    function test_emitsTokensSwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.expectEmit(true, false, false, false);
@@ -29,7 +29,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_emitsMigrated(FuzzParams memory p) public {
+    function test_emitsMigrated(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.expectEmit(false, false, false, false);
@@ -41,7 +41,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_currencyAmountCappedAtUint128Max(FuzzParams memory p, uint256 _hugeRaise) public {
+    function test_currencyAmountCappedAtUint128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
         // Use a single breakpoint with rate >= 50% so minRaise stays in a practical range for vm.deal
         uint24 rate = uint24(bound(p.bpParams.rate0, strategy.MAX_BRACKET_RATE() / 2, strategy.MAX_BRACKET_RATE()));
         ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);

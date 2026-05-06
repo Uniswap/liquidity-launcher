@@ -47,7 +47,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint24 rate2;
         uint128 threshold0;
         uint128 threshold1;
-        FuzzParams fuzzParams;
+        MigrationFuzzParams fuzzParams;
     }
 
     struct TooManyBreakpointsParams {
@@ -58,10 +58,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 threshold0;
         uint128 threshold1;
         uint128 threshold2;
-        FuzzParams fuzzParams;
+        MigrationFuzzParams fuzzParams;
     }
 
-    function test_WhenBreakpointsEmpty(FuzzParams memory p) public {
+    function test_WhenBreakpointsEmpty(MigrationFuzzParams memory p) public {
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -71,9 +71,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
-    function test_WhenFirstBreakpointLowerThresholdIsNonZero(uint128 _threshold, uint24 _rate, FuzzParams memory p)
-        public
-    {
+    function test_WhenFirstBreakpointLowerThresholdIsNonZero(
+        uint128 _threshold,
+        uint24 _rate,
+        MigrationFuzzParams memory p
+    ) public {
         _threshold = uint128(bound(_threshold, 1, type(uint128).max));
         _rate = uint24(bound(_rate, 1, strategy.MAX_BRACKET_RATE()));
 
@@ -89,7 +91,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
-    function test_WhenBreakpointRateIsOver100Percent(uint24 _rate, FuzzParams memory p) public {
+    function test_WhenBreakpointRateIsOver100Percent(uint24 _rate, MigrationFuzzParams memory p) public {
         _rate = uint24(bound(_rate, strategy.MAX_BRACKET_RATE() + 1, type(uint24).max));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
@@ -102,7 +104,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
-    function test_WhenNonLastBreakpointThresholdIsZero(uint24 _rate0, uint24 _rate1, FuzzParams memory p) public {
+    function test_WhenNonLastBreakpointThresholdIsZero(uint24 _rate0, uint24 _rate1, MigrationFuzzParams memory p)
+        public
+    {
         _rate0 = uint24(bound(_rate0, 1, strategy.MAX_BRACKET_RATE()));
         _rate1 = uint24(bound(_rate1, 1, strategy.MAX_BRACKET_RATE()));
 
@@ -169,7 +173,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint24 _rate1,
         uint24 _rate2,
         uint128 _threshold,
-        FuzzParams memory p
+        MigrationFuzzParams memory p
     ) public {
         _rate0 = uint24(bound(_rate0, 1, strategy.MAX_BRACKET_RATE()));
         _rate1 = uint24(bound(_rate1, 1, strategy.MAX_BRACKET_RATE()));
@@ -190,7 +194,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
-    function test_WhenBreakpointRateExactlyAtMaxBracketRate(FuzzParams memory p) public {
+    function test_WhenBreakpointRateExactlyAtMaxBracketRate(MigrationFuzzParams memory p) public {
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -204,7 +208,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
     }
 
-    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing, FuzzParams memory p)
+    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing, MigrationFuzzParams memory p)
         public
         whenBreakpointConfigIsValid
     {
@@ -231,7 +235,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenFeeIsAboveMax(uint24 _fee, FuzzParams memory p)
+    function test_WhenFeeIsAboveMax(uint24 _fee, MigrationFuzzParams memory p)
         public
         whenBreakpointConfigIsValid
         whenTickSpacingIsValid
@@ -252,7 +256,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenPositionRecipientIsReserved(uint256 _seed, FuzzParams memory p)
+    function test_WhenPositionRecipientIsReserved(uint256 _seed, MigrationFuzzParams memory p)
         public
         whenBreakpointConfigIsValid
         whenTickSpacingIsValid
@@ -283,7 +287,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenInitializerFundsRecipientIsWrong(address _wrongRecipient, FuzzParams memory p)
+    function test_WhenInitializerFundsRecipientIsWrong(address _wrongRecipient, MigrationFuzzParams memory p)
         public
         whenMigratorParamsAreValid
     {
@@ -308,7 +312,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenInitializerEndBlockGTEMigrationBlock(uint64 _endBlockOffset, FuzzParams memory p)
+    function test_WhenInitializerEndBlockGTEMigrationBlock(uint64 _endBlockOffset, MigrationFuzzParams memory p)
         public
         whenMigratorParamsAreValid
     {
@@ -334,7 +338,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody, FuzzParams memory p)
+    function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody, MigrationFuzzParams memory p)
         public
         whenMigratorParamsAreValid
     {
@@ -366,7 +370,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenInitializerIsNew(FuzzParams memory p) public whenMigratorParamsAreValid whenInitializerIsValid {
+    function test_WhenInitializerIsNew(MigrationFuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+        whenInitializerIsValid
+    {
         // it saves the parameters to storage
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 

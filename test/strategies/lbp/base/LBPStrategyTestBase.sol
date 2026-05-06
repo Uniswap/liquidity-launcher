@@ -41,7 +41,7 @@ abstract contract LBPStrategyTestBase is Test {
 
     /// @notice Fuzz params for all LBPStrategy tests.
     /// Tests that only need migrator params can ignore currencyRaised/initialPriceX96/tokensSold.
-    struct FuzzParams {
+    struct MigrationFuzzParams {
         uint64 endBlock;
         uint64 migrationBlock;
         uint24 poolLPFee;
@@ -75,7 +75,7 @@ abstract contract LBPStrategyTestBase is Test {
     /// @notice One-liner for a happy-path migration setup: bounds all fuzz params, deploys and funds
     /// the initializer, and rolls to the migration block. Use _boundMigratorParams + _initializeWith
     /// directly when you need to customize the migration inputs (e.g., zero currency, ERC20 currency).
-    function _setupForMigration(FuzzParams memory p)
+    function _setupForMigration(MigrationFuzzParams memory p)
         internal
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
@@ -128,9 +128,9 @@ abstract contract LBPStrategyTestBase is Test {
         return _initializeWith(mp, totalSupply, endBlock, bp);
     }
 
-    /// @notice Bounds the migrator-related fields of FuzzParams into valid MigratorParameters.
+    /// @notice Bounds the migrator-related fields of MigrationFuzzParams into valid MigratorParameters.
     /// Does NOT touch currencyRaised/initialPriceX96/tokensSold — use _setupForMigration for that.
-    function _boundMigratorParams(FuzzParams memory p)
+    function _boundMigratorParams(MigrationFuzzParams memory p)
         internal
         view
         returns (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)

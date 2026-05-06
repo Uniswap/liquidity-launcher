@@ -10,7 +10,7 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 /// @notice Integration and specific-value tests for initializeDistribution
 /// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/initializeDistribution.sol
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
-    function test_storesMigrationParameters(FuzzParams memory p) public {
+    function test_storesMigrationParameters(MigrationFuzzParams memory p) public {
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock);
@@ -26,7 +26,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         assertEq(storedParams.lpHook, mp.lpHook);
     }
 
-    function test_emitsInitializerCreated(FuzzParams memory p) public {
+    function test_emitsInitializerCreated(MigrationFuzzParams memory p) public {
         (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
@@ -40,7 +40,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         );
     }
 
-    function test_revertsIfInitializerAlreadyCreated(FuzzParams memory p) public {
+    function test_revertsIfInitializerAlreadyCreated(MigrationFuzzParams memory p) public {
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         // First initialization succeeds

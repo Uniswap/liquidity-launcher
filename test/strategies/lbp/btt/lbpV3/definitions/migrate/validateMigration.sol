@@ -51,7 +51,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         strategy.migrate(unregistered);
     }
 
-    function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock, FuzzParams memory p) public {
+    function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock, MigrationFuzzParams memory p) public {
         // it reverts with {MigrationNotAllowed}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
@@ -70,7 +70,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenCurrencyRaisedIsZero(FuzzParams memory p) public whenBlockIsGTEMigrationBlock {
+    function test_WhenCurrencyRaisedIsZero(MigrationFuzzParams memory p) public whenBlockIsGTEMigrationBlock {
         // it reverts with {NoCurrencyRaised}
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
 
@@ -94,7 +94,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_CallsSweepOnInitializer(FuzzParams memory p)
+    function test_CallsSweepOnInitializer(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero
@@ -110,7 +110,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(initializer)), 0);
     }
 
-    function test_SweepsLeftoverCurrencyToFundsRecipient(FuzzParams memory p)
+    function test_SweepsLeftoverCurrencyToFundsRecipient(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero
@@ -123,7 +123,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         assertEq(address(strategy).balance, 0); // Strategy should be empty
     }
 
-    function test_SweepsLeftoverTokensToFundsRecipient(FuzzParams memory p)
+    function test_SweepsLeftoverTokensToFundsRecipient(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
         whenCurrencyRaisedIsGTZero

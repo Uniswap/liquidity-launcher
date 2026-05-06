@@ -15,7 +15,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// - it migrates successfully after migrationBlock
     /// - it leaves no funds in the strategy
     /// - it sends leftover currency and tokens to fundsRecipient
-    function test_fuzz_initAndMigrate_happyPath(FuzzParams memory p) public {
+    function test_fuzz_initAndMigrate_happyPath(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         // it stores the MigratorParameters
@@ -40,7 +40,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     /// @notice Two independent distributions store separate migration parameters
-    function test_fuzz_twoDistributionsStoreSeparateParams(FuzzParams memory p1, FuzzParams memory p2) public {
+    function test_fuzz_twoDistributionsStoreSeparateParams(MigrationFuzzParams memory p1, MigrationFuzzParams memory p2)
+        public
+    {
         (ILBPStrategy.MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) = _boundMigratorParams(p1);
         (ILBPStrategy.MigratorParameters memory mp2, uint128 totalSupply2, uint64 endBlock2,) = _boundMigratorParams(p2);
 
@@ -53,7 +55,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(stored2.migrationBlock, mp2.migrationBlock);
     }
 
-    function test_fuzz_currencySplitAppliedCorrectly(FuzzParams memory p) public {
+    function test_fuzz_currencySplitAppliedCorrectly(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
@@ -66,7 +68,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     /// @notice E2E test with ERC20 currency (not native ETH)
-    function test_fuzz_erc20Currency_initAndMigrate(FuzzParams memory p) public {
+    function test_fuzz_erc20Currency_initAndMigrate(MigrationFuzzParams memory p) public {
         // Deploy an ERC20 to use as currency
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
