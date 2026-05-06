@@ -8,6 +8,7 @@ fs_permissions = [
   { access = "read", path = "script/" }
 ]
 ffi = true
+ignored_error_codes = [2424]
 
 auto_detect_solc = true
 

@@ -22,6 +22,9 @@ import {
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+
+import {console} from "forge-std/console.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -156,10 +159,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             key,
             currency,
             sqrtPriceX96,
-            uint128(currencyAmountForLp), // Ensured to be less than or equal to type(uint128).max in _validateCurrencyAmountForLp
-            migrationParams.supplyForLP,
+            uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
+            uint128(FixedPointMathLib.min(migrationParams.supplyForLP, uint128(type(int128).max))),
             migrationParams
         );
+
+        console.log("currencyTransferAmount", currencyTransferAmount);
+        console.log("tokenTransferAmount", tokenTransferAmount);
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
@@ -176,7 +182,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
         }
 
-        emit Migrated(initializer, key, data.sqrtPriceX96);
+        emit Migrated(initializer, key, sqrtPriceX96);
     }
 
     /// @notice Receive native currency
@@ -193,7 +199,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         MigratorParameters memory mp
     ) internal virtual returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
         bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
-        int24 currentTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
 
         Position[] memory positions;
         {
@@ -203,7 +208,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             uint128 remaining1;
             (positions, remaining0, remaining1) = PositionPlanner.resolve(
                 abi.decode(mp.positionDefinitions, (PositionDefinition[])),
-                currentTick,
+                sqrtPriceX96,
                 mp.poolTickSpacing,
                 amount0In,
                 amount1In
@@ -342,10 +347,10 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             revert NoCurrencyRaised();
         }
 
-        // Cannot create a v4 pool with more than type(uint128).max currency amount
-        if (currencyAmountForLp > type(uint128).max) {
-            // If the currency amount for the LP is greater than type(uint128).max, cap to uint128.max sweep the rest to the funds recipient
-            return type(uint128).max;
+        // Cannot create a v4 pool with more than type(int128).max currency amount since it is cast in PoolManager
+        if (currencyAmountForLp > uint128(type(int128).max)) {
+            // If the currency amount for the LP is greater than type(int128).max, cap to type(int128).max and sweep the rest to the funds recipient
+            return uint128(type(int128).max);
         } else {
             return uint128(currencyAmountForLp);
         }

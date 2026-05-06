@@ -21,7 +21,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         // it stores the MigratorParameters
-        (uint64 storedMigrationBlock,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
+        (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertGt(storedMigrationBlock, 0);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
@@ -56,14 +56,16 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
     function test_fuzz_currencySplitAppliedCorrectly(FuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+        (,,,,,, uint24 currencySplitForLP,,) = strategy.initializers(ILBPInitializer(address(initializer)));
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Since _createPositionPlan is a stub, all currency gets swept — no LP is created.
-        // TODO: Once _createPositionPlan is implemented, assert at most currencySplitForLP share goes to LP.
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertGe(received, p.currencyRaised);
+        uint256 currencyForLp = uint256(lbpParams.currencyRaised) * currencySplitForLP / 1e7;
+        assertGe(received, lbpParams.currencyRaised - currencyForLp);
+        assertLe(received, lbpParams.currencyRaised);
     }
 
     /// @notice E2E test with ERC20 currency (not native ETH)

@@ -4,6 +4,8 @@ pragma solidity ^0.8.26;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
@@ -11,7 +13,6 @@ import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.
 import {TickBounds} from "../types/PositionTypes.sol";
 import {ActionsBuilder} from "./ActionsBuilder.sol";
 import {DynamicArray} from "./DynamicArray.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
@@ -99,25 +100,17 @@ library PositionPlanner {
     /// @dev Callers should invoke `validate` beforehand to ensure weights sum to `MPS`
     function resolve(
         PositionDefinition[] memory _definitions,
-        int24 _currentTick,
+        uint160 _sqrtPriceX96,
         int24 _tickSpacing,
         uint128 _currency0Amount,
         uint128 _currency1Amount
     ) internal pure returns (Position[] memory positions, uint128 remaining0, uint128 remaining1) {
-        TickBounds[] memory ticks = _resolveTicks(_definitions, _currentTick, _tickSpacing);
+        TickBounds[] memory ticks =
+            _resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
 
         uint256 liquidityPerAllocation;
         {
-            uint256 weightedAmount0;
-            uint256 weightedAmount1;
-            for (uint256 i; i < ticks.length; i++) {
-                TickBounds memory bounds = ticks[i];
-                if (bounds.lowerTick >= bounds.upperTick) continue;
-                (uint256 amount0, uint256 amount1) =
-                    getAmountsForLiquidity(_currentTick, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
-                weightedAmount0 += amount0 * _definitions[i].weight;
-                weightedAmount1 += amount1 * _definitions[i].weight;
-            }
+            (uint256 weightedAmount0, uint256 weightedAmount1) = _getWeightedAmounts(_definitions, ticks, _sqrtPriceX96);
             if (weightedAmount0 == 0 && weightedAmount1 == 0) {
                 return (new Position[](0), _currency0Amount, _currency1Amount);
             }
@@ -131,12 +124,12 @@ library PositionPlanner {
             TickBounds memory bounds = ticks[i];
             if (bounds.lowerTick >= bounds.upperTick) continue;
             uint256 liquidity = liquidityPerAllocation * _definitions[i].weight;
-            if (liquidity == 0 || liquidity > type(uint128).max) {
+            if (liquidity == 0 || liquidity > Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing)) {
                 continue;
             }
 
             (uint256 amount0, uint256 amount1) = getAmountsForLiquidity(
-                _currentTick, bounds.lowerTick, bounds.upperTick, SafeCastLib.toUint128(liquidity)
+                _sqrtPriceX96, bounds.lowerTick, bounds.upperTick, SafeCastLib.toUint128(liquidity)
             );
 
             if (amount0 > _currency0Amount || amount1 > _currency1Amount) continue;
@@ -158,6 +151,21 @@ library PositionPlanner {
         }
 
         return (positions, _currency0Amount, _currency1Amount);
+    }
+
+    function _getWeightedAmounts(
+        PositionDefinition[] memory _definitions,
+        TickBounds[] memory _ticks,
+        uint160 _sqrtPriceX96
+    ) private pure returns (uint256 weightedAmount0, uint256 weightedAmount1) {
+        for (uint256 i; i < _ticks.length; i++) {
+            TickBounds memory bounds = _ticks[i];
+            if (bounds.lowerTick >= bounds.upperTick) continue;
+            (uint256 amount0, uint256 amount1) =
+                getAmountsForLiquidity(_sqrtPriceX96, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
+            weightedAmount0 += amount0 * _definitions[i].weight;
+            weightedAmount1 += amount1 * _definitions[i].weight;
+        }
     }
 
     /// @notice Converts concrete positions into a PositionManager plan
@@ -192,17 +200,25 @@ library PositionPlanner {
         return Plan({actions: actions, params: params});
     }
 
-    /// @notice Wrapper around `LiquidityAmounts.getAmountsForLiquidity` which converts ticks into sqrt prices
-    function getAmountsForLiquidity(int24 _currentTick, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
+    /// @notice Quotes token amounts for a liquidity position using v4 core mint math.
+    /// @dev Uses SqrtPriceMath with roundUp=true so amount maxes cover PoolManager's required input deltas.
+    function getAmountsForLiquidity(uint160 _sqrtPriceX96, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
         internal
         pure
         returns (uint256, uint256)
     {
-        return LiquidityAmounts.getAmountsForLiquidity(
-            TickMath.getSqrtPriceAtTick(_currentTick),
-            TickMath.getSqrtPriceAtTick(_tickLower),
-            TickMath.getSqrtPriceAtTick(_tickUpper),
-            _liquidity
-        );
+        uint160 sqrtPriceLowerX96 = TickMath.getSqrtPriceAtTick(_tickLower);
+        uint160 sqrtPriceUpperX96 = TickMath.getSqrtPriceAtTick(_tickUpper);
+
+        if (_sqrtPriceX96 <= sqrtPriceLowerX96) {
+            return (SqrtPriceMath.getAmount0Delta(sqrtPriceLowerX96, sqrtPriceUpperX96, _liquidity, true), 0);
+        } else if (_sqrtPriceX96 < sqrtPriceUpperX96) {
+            return (
+                SqrtPriceMath.getAmount0Delta(_sqrtPriceX96, sqrtPriceUpperX96, _liquidity, true),
+                SqrtPriceMath.getAmount1Delta(sqrtPriceLowerX96, _sqrtPriceX96, _liquidity, true)
+            );
+        } else {
+            return (0, SqrtPriceMath.getAmount1Delta(sqrtPriceLowerX96, sqrtPriceUpperX96, _liquidity, true));
+        }
     }
 }

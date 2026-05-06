@@ -161,24 +161,23 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenPositionDefinitionsIsEmpty()
+    function test_WhenPositionDefinitionsIsEmpty(FuzzParams memory p)
         public
         whenCurrencySplitIsValid
         whenTickSpacingIsValid
         whenFeeIsValid
         whenPositionRecipientIsValid
     {
-        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
 
-        uint128 totalSupply = mp.supplyForLP + 1000e18;
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
 
         vm.expectRevert(PositionPlanner.EmptyPositionPlan.selector);
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight)
+    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight, FuzzParams memory p)
         public
         whenCurrencySplitIsValid
         whenTickSpacingIsValid
@@ -189,12 +188,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _weight = uint24(bound(_weight, 0, type(uint24).max));
         vm.assume(_weight != 1e7);
 
-        ILBPStrategy.MigratorParameters memory mp = _defaultMigratorParams();
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _weight});
         mp.positionDefinitions = abi.encode(defs);
 
-        uint128 totalSupply = mp.supplyForLP + 1000e18;
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
 
         vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
