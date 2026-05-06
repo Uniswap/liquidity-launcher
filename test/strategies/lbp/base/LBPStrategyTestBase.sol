@@ -215,11 +215,9 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds currencyRaised so that the total LP amount across all brackets is non-zero.
-    ///
     /// Mirrors the strategy's _calculateCurrencyAmountForLp bracket loop to find the minimum
     /// currencyRaised that produces a non-zero total. This avoids excluding valid configs where
     /// some brackets round to 0 but the total is still positive.
-    ///
     /// Upper bound prevents overflow in the strategy's bracketAmount * rate multiplication.
     function _boundCurrencyRaised(uint256 _currencyRaised, ILBPStrategy.Breakpoint[] memory _breakpoints)
         internal

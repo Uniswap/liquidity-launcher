@@ -21,6 +21,7 @@ import {
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -380,13 +381,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
             if (i == len - 1) {
                 // Last breakpoint: its rate applies to all remaining currency
-                lpAmount += remaining * bp.rate / MAX_BRACKET_RATE;
+                lpAmount += FullMath.mulDiv(remaining, bp.rate, MAX_BRACKET_RATE);
                 break;
             }
 
             uint256 bracketSize = uint256(breakpoints[i + 1].lowerThreshold) - uint256(bp.lowerThreshold);
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
-            lpAmount += bracketAmount * bp.rate / MAX_BRACKET_RATE;
+            lpAmount += FullMath.mulDiv(bracketAmount, bp.rate, MAX_BRACKET_RATE);
             unchecked {
                 remaining -= bracketAmount;
             }
