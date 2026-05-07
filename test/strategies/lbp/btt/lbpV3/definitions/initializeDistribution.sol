@@ -278,5 +278,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
         assertEq(currencySplitForLP, mp.currencySplitForLP);
         assertEq(lpHook, mp.lpHook);
+        assertEq(positionDefinitions, mp.positionDefinitions);
     }
 }

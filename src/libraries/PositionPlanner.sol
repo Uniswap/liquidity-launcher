@@ -11,8 +11,6 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {TickCalculations} from "./TickCalculations.sol";
 import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.sol";
 import {TickBounds} from "../types/PositionTypes.sol";
-import {ActionsBuilder} from "./ActionsBuilder.sol";
-import {DynamicArray} from "./DynamicArray.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
@@ -20,8 +18,6 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
     using TickCalculations for int24;
-    using ActionsBuilder for *;
-    using DynamicArray for bytes[];
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
@@ -176,28 +172,29 @@ library PositionPlanner {
         pure
         returns (Plan memory)
     {
-        bytes memory actions = ActionsBuilder.init();
-        bytes[] memory params = DynamicArray.init();
+        bytes memory actions = new bytes(positions.length + 3);
+        bytes[] memory params = new bytes[](positions.length + 3);
         for (uint256 i; i < positions.length; i++) {
             Position memory position = positions[i];
-            actions = actions.addMint();
-            params = params.append(
-                abi.encode(
-                    poolKey,
-                    position.tickLower,
-                    position.tickUpper,
-                    position.liquidity,
-                    position.amount0,
-                    position.amount1,
-                    positionRecipient,
-                    bytes("")
-                )
+            actions[i] = bytes1(uint8(Actions.MINT_POSITION));
+            params[i] = abi.encode(
+                poolKey,
+                position.tickLower,
+                position.tickUpper,
+                position.liquidity,
+                position.amount0,
+                position.amount1,
+                positionRecipient,
+                bytes("")
             );
         }
-        actions = actions.addSettle().addSettle().addTakePair();
-        params = params.append(abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false))
-            .append(abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false))
-            .append(abi.encode(poolKey.currency0, poolKey.currency1, positionRecipient));
+        uint256 offset = positions.length;
+        actions[offset] = bytes1(uint8(Actions.SETTLE));
+        actions[offset + 1] = bytes1(uint8(Actions.SETTLE));
+        actions[offset + 2] = bytes1(uint8(Actions.TAKE_PAIR));
+        params[offset] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[offset + 1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[offset + 2] = abi.encode(poolKey.currency0, poolKey.currency1, positionRecipient);
         return Plan({actions: actions, params: params});
     }
 

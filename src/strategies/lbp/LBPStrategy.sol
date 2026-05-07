@@ -23,22 +23,11 @@ import {
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, IDistributionStrategy {
-    /// @notice Internal helper struct
-    struct MigrationData {
-        uint160 sqrtPriceX96;
-        uint128 fullRangeTokenAmount;
-        uint128 fullRangeCurrencyAmount;
-        uint128 leftoverToken;
-        uint128 leftoverCurrency;
-        uint128 liquidity;
-    }
-
     /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
     /// @notice The v4 position manager

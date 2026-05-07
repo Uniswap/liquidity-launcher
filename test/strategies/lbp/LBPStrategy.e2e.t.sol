@@ -10,6 +10,10 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+interface IERC721Balance {
+    function balanceOf(address owner) external view returns (uint256);
+}
+
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// @notice Full init → migrate flow with native ETH currency:
@@ -38,6 +42,31 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertTrue(
             fundsRecipient.balance > recipientBalBefore || token.balanceOf(fundsRecipient) > recipientTokenBalBefore
         );
+    }
+
+    function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
+        FuzzParams memory p = FuzzParams({
+            endBlock: uint64(block.number),
+            migrationBlock: uint64(block.number + 1),
+            poolLPFee: 3000,
+            poolTickSpacing: 60,
+            supplyForLP: 100 ether,
+            auctionSupply: 10 ether,
+            currencySplitForLP: 5e6,
+            currencyRaised: 100 ether,
+            initialPriceX96: uint160(1 << 96),
+            tokensSold: 1 ether,
+            offsetLower: -600,
+            offsetUpper: 600,
+            fullRangeWeight: 5e6
+        });
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
+        assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(lpPositionRecipient), 0);
     }
 
     /// @notice Two independent distributions store separate migration parameters
