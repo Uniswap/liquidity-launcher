@@ -1,0 +1,235 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import {IProtocolFeeController} from "../interfaces/IProtocolFeeController.sol";
+import {Owned} from "@uniswap/v4-core/lib/solmate/src/auth/Owned.sol";
+
+/// @title ProtocolFeeController
+/// @notice Governance-controlled source of protocol fees for currency raised through token launches.
+/// @dev    Exposes a global flat fee used as the default for every currency, and an optional
+///         per-currency override with up to 3 progressive tiers.
+/// @custom:security-contact security@uniswap.org
+contract ProtocolFeeController is Owned, IProtocolFeeController {
+    uint24 public constant BPS = 10_000;
+
+    uint8 internal constant UINT8_MASK = 0xff;
+    uint16 internal constant UINT16_MASK = 0xffff;
+    uint24 internal constant UINT24_MASK = 0xffffff;
+    /// @dev bytes4(keccak256("CURRENCY_PROTOCOL_FEE"))
+    bytes4 internal constant CURRENCY_PROTOCOL_FEE_SLOT_PREFIX = 0x9562575e;
+
+    GlobalFee public globalProtocolFee;
+
+    constructor() Owned(msg.sender) {}
+
+    /// @inheritdoc IProtocolFeeController
+    function setGlobalProtocolFeeSettings(uint24 globalProtocolFeeBps, address recipient) external onlyOwner {
+        if (globalProtocolFeeBps > BPS) revert InvalidBps(globalProtocolFeeBps, BPS);
+        if (recipient == address(0)) revert InvalidInput();
+
+        globalProtocolFee =
+            GlobalFee({globalProtocolFeeBps: globalProtocolFeeBps, globalProtocolFeeRecipient: recipient});
+        emit GlobalProtocolFeeSettingsUpdated(globalProtocolFeeBps, recipient);
+    }
+
+    /// @inheritdoc IProtocolFeeController
+    function setProtocolFeePerCurrency(address currency, uint8 scale, Fee[] calldata fees, uint16 cap)
+        external
+        onlyOwner
+    {
+        // If no fees are provided, delete the currency's custom protocol fee.
+        if (fees.length == 0) {
+            assembly ("memory-safe") {
+                // Derive the slot and delete the currency's custom protocol fee.
+                let slot := or(CURRENCY_PROTOCOL_FEE_SLOT_PREFIX, currency)
+                sstore(slot, 0)
+            }
+
+            emit ProtocolFeePerCurrencyUpdated(currency, 0, fees, 0);
+            return;
+        }
+
+        // Limit the number of fee tiers to 3
+        if (fees.length > 3) revert InvalidFeeLength(uint8(fees.length), 3);
+        // Scale is a power-of-10 exponent (threshold = startAmount * 10^scale).
+        // Capped at 68 to prevent overflow: uint16 max (65,535) × 10^68 × feeBps < uint256 max.
+        if (scale > 68) revert InvalidScale(scale, 68);
+        // The first tier must start at 0, since it describes the base fee.
+        if (fees[0].startAmount != 0) revert InvalidStartAmount();
+
+        // Use assembly to pack all fee tiers into a single slot
+        assembly ("memory-safe") {
+            // Custom protocol fees storage layout (left-aligned high bits first; bits 0-143 unused buffer).
+            // `cap` always trails the last tier, so its position shifts with `length`:
+            // | 8 bits | 8 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 144 bits |
+            // | length | scale  | fee1    | start2  | fee2    | start3  | fee3    | cap     |  buffer  |  // 3 tiers
+            // | length | scale  | fee1    | start2  | fee2    | cap     |              zero            |  // 2 tiers
+            // | length | scale  | fee1    | cap     |                    zero                          |  // 1 tier
+
+            // Use errorBuffer to capture errors and revert if any are found.
+            let errorBuffer := 0
+
+            // Use previousStartAmount to ensure the startAmounts are in ascending order.
+            let previousStartAmount := 0
+
+            // Start at ptr 240. fees[0].startAmount is confirmed to be 0 and will be overwritten later by length & scale.
+            let contentPtr := 240
+            let content
+
+            for { let i := 0 } lt(i, fees.length) { i := add(i, 1) } {
+                let calldataPtr := add(fees.offset, mul(i, 0x40))
+                let startAmount := and(calldataload(calldataPtr), UINT16_MASK) // sanitize the calldata
+                let protocolFeeBps := and(calldataload(add(calldataPtr, 0x20)), UINT16_MASK) // sanitize the calldata
+
+                // Ensure the protocolFeeBps is within bounds (max 10,000bps)
+                errorBuffer := or(errorBuffer, gt(protocolFeeBps, BPS))
+                // Ensure the startAmounts are in ascending order, though only if it's not the first tier
+                errorBuffer := or(errorBuffer, mul(i, iszero(gt(startAmount, previousStartAmount))))
+                previousStartAmount := startAmount // cache the previous startAmount
+
+                // Pack the startAmount into the content
+                content := or(content, shl(contentPtr, startAmount))
+                contentPtr := sub(contentPtr, 16) // safe because fees.length is limited to 3
+                // Pack the protocolFeeBps for that startAmount into the content
+                content := or(content, shl(contentPtr, protocolFeeBps))
+                contentPtr := sub(contentPtr, 16) // safe because fees.length is limited to 3
+            }
+            // Ensure the cap is strictly greater than the last startAmount, or zero (indicating no cap set).
+            errorBuffer := or(errorBuffer, and(iszero(gt(cap, previousStartAmount)), gt(cap, 0)))
+
+            // Revert if any errors were found.
+            if errorBuffer {
+                mstore(0, 0xb4fa3fb3) // InvalidInput()
+                revert(0x1c, 0x04)
+            }
+            // Pack the cap after the fee tiers. Max of 65,535 fits into 16 bits.
+            content := or(content, shl(contentPtr, and(cap, UINT16_MASK)))
+
+            // Pack uint8 length & uint8 scale. Overrides uint16 fees[0].startAmount, confirmed to be zero:
+            // Pack the length of the fee tiers. Max length of three fits into 8 bits.
+            content := or(content, shl(248, and(fees.length, UINT8_MASK)))
+            // pack the scale of the fee tiers. Max of 68 fits into 8 bits.
+            content := or(content, shl(240, and(scale, UINT8_MASK)))
+
+            // Store the packed content in the currency's protocol fee slot.
+            let slot := or(CURRENCY_PROTOCOL_FEE_SLOT_PREFIX, currency)
+            sstore(slot, content)
+        }
+        emit ProtocolFeePerCurrencyUpdated(currency, scale, fees, cap);
+    }
+
+    /// @inheritdoc IProtocolFeeController
+    function getProtocolFeeBps(address currency, uint256 amount)
+        external
+        view
+        returns (uint24 protocolFeeBps, address protocolFeeRecipient)
+    {
+        if (amount == 0) {
+            protocolFeeBps = 0;
+            protocolFeeRecipient = globalProtocolFee.globalProtocolFeeRecipient;
+            return (protocolFeeBps, protocolFeeRecipient);
+        }
+        uint256 protocolFeeAmount;
+        (protocolFeeAmount, protocolFeeRecipient) = calculateProtocolFeeAmount(currency, amount);
+
+        protocolFeeBps = uint24(protocolFeeAmount * BPS / amount);
+    }
+
+    /// @inheritdoc IProtocolFeeController
+    function getProtocolFeeAmount(address currency, uint256 amount)
+        public
+        view
+        returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
+    {
+        if (amount == 0) {
+            protocolFeeAmount = 0;
+            protocolFeeRecipient = globalProtocolFee.globalProtocolFeeRecipient;
+            return (protocolFeeAmount, protocolFeeRecipient);
+        }
+        (protocolFeeAmount, protocolFeeRecipient) = calculateProtocolFeeAmount(currency, amount);
+    }
+
+    /// @notice Calculates the protocol fee amount for the given currency and amount.
+    ///         Honors custom protocol fee tiers and falls back to the global protocol fee if none were set.
+    function calculateProtocolFeeAmount(address currency, uint256 amount)
+        private
+        view
+        returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
+    {
+        // Cap amount to prevent silent overflow in unchecked assembly mul(amount, feeBps).
+        // Covers edge case tokens. Type(uint256).max / BPS ≈ 1.16 × 10^73, well beyond any usual token amount.
+        if (amount > type(uint256).max / BPS) amount = type(uint256).max / BPS;
+
+        assembly ("memory-safe") {
+            // Load the content of the global protocol fee slot.
+            // Use assembly to directly cast the slot content to stack and skip memory allocation.
+            // Global fee storage layout (right-aligned, native solidity packing):
+            // | 72 bits | 160 bits  | 24 bits |
+            // | buffer  | recipient | feeBps  |
+            let globalContent := sload(globalProtocolFee.slot)
+            // Get the global protocol fee basis points.
+            let globalProtocolFeeBps := and(globalContent, UINT24_MASK)
+            // Get the global protocol fee recipient.
+            protocolFeeRecipient := shr(24, globalContent)
+
+            // Custom protocol fees storage layout (left-aligned high bits first; bits 0-143 unused buffer).
+            // `cap` always trails the last tier, so its position shifts with `length`:
+            // | 8 bits | 8 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 16 bits | 144 bits |
+            // | length | scale  | fee1    | start2  | fee2    | start3  | fee3    | cap     |  buffer  |  // 3 tiers
+            // | length | scale  | fee1    | start2  | fee2    | cap     |              zero            |  // 2 tiers
+            // | length | scale  | fee1    | cap     |                    zero                          |  // 1 tier
+
+            // Read the content of the currency's protocol fee slot.
+            let slot := or(CURRENCY_PROTOCOL_FEE_SLOT_PREFIX, currency)
+            let content := sload(slot)
+
+            let length := shr(248, content)
+            if length {
+                // Custom protocol fees found.
+                let scale := and(shr(240, content), UINT8_MASK)
+                let scaleFactor := exp(10, scale)
+
+                // Point to the first tier's protocol fee basis points
+                let contentPtr := 224
+                let previousStartAmount := 0
+                for { let i := 0 } lt(i, length) { i := add(i, 1) } {
+                    // Retrieve the protocol fee basis points.
+                    let protocolFeeBpsInBracket := and(shr(contentPtr, content), UINT16_MASK)
+                    // Move the pointer to the next tier's start amount
+                    contentPtr := sub(contentPtr, 16)
+                    // Retrieve the next start amount or cap (ceiling of the current bracket).
+                    let ceiling := and(shr(contentPtr, content), UINT16_MASK)
+                    // Convert the ceiling to the scale factor.
+                    ceiling := mul(ceiling, scaleFactor)
+                    // Move the pointer to the next tier's protocol fee basis points
+                    contentPtr := sub(contentPtr, 16)
+
+                    // Determine if the amount is smaller than the ceiling, indicating the last bracket is reached.
+                    // If the ceiling is zero (indicating the cap is reached and no cap set), use the amount as the ceiling.
+                    let amountIsCeiling := or(gt(ceiling, amount), iszero(ceiling))
+                    // If the amount is smaller than the ceiling, use the amount as the ceiling.
+                    // equivalent to: ceiling = amountIsCeiling ? amount : ceiling
+                    ceiling := or(mul(ceiling, iszero(amountIsCeiling)), mul(amount, amountIsCeiling))
+                    // Calculate the amount of the current bracket.
+                    let bracketAmount := sub(ceiling, previousStartAmount)
+                    // Calculate the fee amount for the current bracket.
+                    let feeOnBracket := div(mul(bracketAmount, protocolFeeBpsInBracket), BPS)
+                    protocolFeeAmount := add(protocolFeeAmount, feeOnBracket)
+
+                    if amountIsCeiling {
+                        // The amount is less than the ceiling of the current bracket, no reason to continue.
+                        break
+                    }
+
+                    previousStartAmount := ceiling
+                }
+            }
+
+            // Use the global protocol fee, only if no custom protocol fees are configured.
+            protocolFeeAmount := add(
+                protocolFeeAmount,
+                mul(div(mul(amount, globalProtocolFeeBps), BPS), iszero(length))
+            )
+        }
+    }
+}

@@ -104,6 +104,9 @@ The GovernedLBPStrategyFactory contract is deployed to different addresses on di
 - 10/20/2025 [ABDK Consulting](./docs/audit/ABDK_Uniswap_TokenLauncher_v_1_0.pdf)
 - 10/1/2025 [OpenZeppelin](./docs/audit/Uniswap%20Token%20Launcher%20Audit.pdf)
 
+## Periphery
+Other contracts in the Liquidity Launcher ecosystem can be found in the [periphery](./src/periphery) directory.
+
 ### Bug bounty
 
 The files under `src/` are covered under the Uniswap Labs bug bounty program [here](https://cantina.xyz/code/f9df94db-c7b1-434b-bb06-d1360abdd1be/overview), subject to scope and other limitations.
