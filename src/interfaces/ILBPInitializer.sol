@@ -20,8 +20,7 @@ struct LBPInitializationParams {
 interface ILBPInitializer is IDistributionContract, IERC165 {
     /// @notice Returns the LBP initialization parameters as determined by the implementing contract
     /// @dev The implementing contract MUST ensure that these values are correct at the time of calling
-    /// @return params The LBP initialization parameters
-    function lbpInitializationParams() external view returns (LBPInitializationParams memory params);
+    function lbpInitializationParams() external view returns (LBPInitializationParams memory);
 
     /// @notice Sweeps the raised currency from the initializer
     /// @dev The initializer must ensure this can only be called by the currency recipient directly

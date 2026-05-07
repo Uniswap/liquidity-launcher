@@ -36,15 +36,9 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
-    function test_WhenCurrencySplitIsZero(
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP
-    ) public {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, 1);
+    function test_WhenCurrencySplitIsZero(FuzzParams memory p) public {
+        // it reverts with {InvalidCurrencySplitForLP}
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.currencySplitForLP = 0;
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -53,18 +47,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenCurrencySplitIsOver100Percent(
-        uint24 _split,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP
-    ) public {
+    function test_WhenCurrencySplitIsOver100Percent(uint24 _split, FuzzParams memory p) public {
+        // it reverts with {InvalidCurrencySplitForLP}
         _split = uint24(bound(_split, 1e7 + 1, type(uint24).max));
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, 1);
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.currencySplitForLP = _split;
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -73,22 +60,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenCurrencySplitIsBelowMinimum(
-        uint24 _minSplit,
-        uint24 _split,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP
-    ) public {
+    function test_WhenCurrencySplitIsBelowMinimum(uint24 _minSplit, uint24 _split, FuzzParams memory p) public {
+        // it reverts with {InvalidCurrencySplitForLP}
         _minSplit = uint24(bound(_minSplit, 2, strategy.MAX_SPLIT_FOR_LP()));
         _split = uint24(bound(_split, 1, _minSplit - 1));
 
         strategy.setMinSplitForLp(_minSplit);
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, 1);
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.currencySplitForLP = _split;
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -101,18 +80,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenTickSpacingIsOutOfBounds(
-        int24 _tickSpacing,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenCurrencySplitIsValid {
+    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing, FuzzParams memory p)
+        public
+        whenCurrencySplitIsValid
+    {
+        // it reverts with {InvalidTickSpacing}
         vm.assume(_tickSpacing > TickMath.MAX_TICK_SPACING || _tickSpacing < TickMath.MIN_TICK_SPACING);
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, _poolLPFee, 1, _supplyForLP, _currencySplitForLP);
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.poolTickSpacing = _tickSpacing;
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -132,18 +107,15 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenFeeIsAboveMax(
-        uint24 _fee,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenCurrencySplitIsValid whenTickSpacingIsValid {
+    function test_WhenFeeIsAboveMax(uint24 _fee, FuzzParams memory p)
+        public
+        whenCurrencySplitIsValid
+        whenTickSpacingIsValid
+    {
+        // it reverts with {InvalidFee}
         _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) =
-            _boundMigratorParams(_endBlock, _migrationBlock, 0, _poolTickSpacing, _supplyForLP, _currencySplitForLP);
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.poolLPFee = _fee;
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -156,18 +128,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenPositionRecipientIsReserved(
-        uint256 _seed,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenCurrencySplitIsValid whenTickSpacingIsValid whenFeeIsValid {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(
-            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
-        );
+    function test_WhenPositionRecipientIsReserved(uint256 _seed, FuzzParams memory p)
+        public
+        whenCurrencySplitIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+    {
+        // it reverts with {InvalidPositionRecipient}
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         if (_seed % 3 == 0) {
             mp.lpPositionRecipient = address(0);
@@ -191,20 +159,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenInitializerFundsRecipientIsWrong(
-        address _wrongRecipient,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenMigratorParamsAreValid {
+    function test_WhenInitializerFundsRecipientIsWrong(address _wrongRecipient, FuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidRecipient}
         vm.assume(_wrongRecipient != address(strategy));
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
-            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
-        );
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockLBPInitializer badInit = new MockLBPInitializer(
             address(1), // token placeholder
@@ -229,18 +191,12 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenInitializerEndBlockGTEMigrationBlock(
-        uint64 _endBlockOffset,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenMigratorParamsAreValid {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(
-            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
-        );
+    function test_WhenInitializerEndBlockGTEMigrationBlock(uint64 _endBlockOffset, FuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidEndBlock}
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         // endBlock >= migrationBlock
         uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
@@ -261,18 +217,12 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 
-    function test_WhenInitializerCustodyTokensMismatch(
-        uint128 _wrongCustody,
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenMigratorParamsAreValid {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
-            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
-        );
+    function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody, FuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidCustodySupply}
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         uint128 expectedCustody = mp.supplyForLP;
         vm.assume(_wrongCustody != expectedCustody);
@@ -299,17 +249,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenInitializerIsNew(
-        uint64 _endBlock,
-        uint64 _migrationBlock,
-        uint24 _poolLPFee,
-        int24 _poolTickSpacing,
-        uint128 _supplyForLP,
-        uint24 _currencySplitForLP
-    ) public whenMigratorParamsAreValid whenInitializerIsValid {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(
-            _endBlock, _migrationBlock, _poolLPFee, _poolTickSpacing, _supplyForLP, _currencySplitForLP
-        );
+    function test_WhenInitializerIsNew(FuzzParams memory p) public whenMigratorParamsAreValid whenInitializerIsValid {
+        // it saves the parameters to storage
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock);
 
