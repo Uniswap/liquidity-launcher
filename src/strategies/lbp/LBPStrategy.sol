@@ -132,7 +132,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
             _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
-        // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
+        // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
         currencyAmountForLp = _validateCurrencyAmountForLp(currencyAmountForLp);
 
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
@@ -144,7 +144,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         MigrationData memory data = _prepareMigrationData(
             currency,
             token,
-            uint128(currencyAmountForLp), // Ensured to be less than or equal to type(uint128).max in _validateCurrencyAmountForLp
+            uint128(currencyAmountForLp), // Ensured to be less than or equal to int128.max in _validateCurrencyAmountForLp
             migrationParams.supplyForLP,
             lbpParams.initialPriceX96,
             migrationParams.poolTickSpacing

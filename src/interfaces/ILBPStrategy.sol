@@ -27,7 +27,7 @@ interface ILBPStrategy is IDistributionStrategy {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
         int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // amount of the token that will be used to create the LP position (held as custody in the CCA)
+        uint128 supplyForLP; // amount of the token used for LP creation
         address fundsRecipient; // the address that will receive the funds from the auction
         address lpPositionRecipient; // the address that will receive the created LP position
         address lpHook; // the hook that will be used to initialize the pool
@@ -81,11 +81,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param expectedRecipient The expected recipient
     error InvalidRecipient(address expectedRecipient);
 
-    /// @notice Error thrown when the total supply is greater than the max total supply
-    /// @param totalSupply The invalid total supply
-    /// @param maxTotalSupply The max total supply
-    error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
-
     /// @notice Error thrown when the CCA's custody tokens do not match the expected supplyForLP
     /// @param custodyTokens The CCA's reported custody tokens
     /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
@@ -95,11 +90,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param supplyForLP The invalid supply
     /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
     error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
-
-    /// @notice Error thrown when the currency amount is greater than type(uint128).max
-    /// @param currencyAmount The invalid currency amount
-    /// @param maxCurrencyAmount The maximum currency amount (type(uint128).max)
-    error CurrencyAmountTooHigh(uint256 currencyAmount, uint256 maxCurrencyAmount);
 
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
