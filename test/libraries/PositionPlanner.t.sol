@@ -314,6 +314,40 @@ contract PositionPlannerTest is Test {
         assertTakePairParam(result.params[2], poolKey.currency0, poolKey.currency1, address(3));
     }
 
+    function test_fuzz_toPlan_supportsVariablePositionCount(uint8 positionCount, bytes32 seed) public view {
+        PoolKey memory poolKey = _poolKey(10);
+        positionCount = uint8(bound(positionCount, 0, 32));
+        Position[] memory positions = new Position[](positionCount);
+        for (uint256 i; i < positions.length; i++) {
+            uint256 entropy = uint256(keccak256(abi.encode(seed, i)));
+            int24 tickLower = int24(int256(bound(entropy, 1, 10_000)) * -1);
+            int24 tickUpper = int24(int256(bound(entropy >> 16, 1, 10_000)));
+            positions[i] = Position({
+                amount0: uint128(bound(entropy >> 32, 0, type(uint128).max)),
+                amount1: uint128(bound(entropy >> 64, 0, type(uint128).max)),
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidity: uint128(bound(entropy >> 96, 1, type(uint128).max))
+            });
+        }
+
+        Plan memory result = mockPositionPlanner.toPlan(positions, poolKey, address(3));
+
+        assertEq(result.params.length, positions.length + 3);
+        assertEq(result.actions.length, positions.length + 3);
+        for (uint256 i; i < positions.length; i++) {
+            assertEq(uint8(result.actions[i]), uint8(Actions.MINT_POSITION));
+            assertMintParam(result.params[i], poolKey.tickSpacing, positions[i], address(3));
+        }
+        uint256 offset = positions.length;
+        assertEq(uint8(result.actions[offset]), uint8(Actions.SETTLE));
+        assertEq(uint8(result.actions[offset + 1]), uint8(Actions.SETTLE));
+        assertEq(uint8(result.actions[offset + 2]), uint8(Actions.TAKE_PAIR));
+        assertSettleParam(result.params[offset], poolKey.currency0);
+        assertSettleParam(result.params[offset + 1], poolKey.currency1);
+        assertTakePairParam(result.params[offset + 2], poolKey.currency0, poolKey.currency1, address(3));
+    }
+
     function test_fuzz_resolveAndToPlan(
         int24 currentTick,
         int24 tickSpacing,

@@ -10,7 +10,6 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
 import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.sol";
-import {TickBounds} from "../types/PositionTypes.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
@@ -18,6 +17,12 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
     using TickCalculations for int24;
+
+    /// @notice Absolute tick boundaries for a resolved position
+    struct TickBounds {
+        int24 lowerTick;
+        int24 upperTick;
+    }
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
