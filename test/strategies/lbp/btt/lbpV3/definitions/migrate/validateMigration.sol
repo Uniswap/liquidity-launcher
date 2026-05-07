@@ -55,7 +55,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         // it reverts with {MigrationNotAllowed}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
-        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
         _currentBlock = uint64(bound(_currentBlock, 0, mp.migrationBlock - 1));
         vm.roll(_currentBlock);
@@ -78,7 +78,8 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             _boundMigratorParams(p);
         p.tokensSold = uint128(bound(p.tokensSold, 0, auctionSupply));
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
         initializer.setLbpInitializationParams(
             LBPInitializationParams({initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: 0})

@@ -3,41 +3,41 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
+import {IDistributionStrategy} from "./IDistributionStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
-interface ILBPStrategy {
-    /// @notice A breakpoint in the LP allocation bracket schedule. Defines a bracket's rate and lower bound.
-    /// Breakpoints are sorted ascending by lowerThreshold. Each breakpoint's rate applies from its
-    /// lowerThreshold up to the next breakpoint's lowerThreshold (or infinity for the last breakpoint).
-    struct Breakpoint {
-        uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first breakpoint must be 0)
+interface ILBPStrategy is IDistributionStrategy {
+    /// @notice A single bracket in the LP allocation schedule. Each bracket pairs a lower threshold
+    /// (in cumulative currency raised) with the rate of currency allocated to the LP within that bracket.
+    /// @dev Brackets MUST be supplied in strictly ascending order by lowerThreshold; the contract reverts
+    /// if not (no on-chain sort is performed). The first bracket's lowerThreshold MUST be 0. Each bracket's
+    /// rate applies from its lowerThreshold up to the next bracket's lowerThreshold (or infinity for the
+    /// last bracket).
+    struct LpAllocationBracket {
+        uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first bracket must be 0)
         uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
     }
 
+    /// @notice Migration parameters for an initializer. The lpAllocationSchedule is a packed encoding
+    /// of LpAllocationBracket entries (32 bytes lowerThreshold || 3 bytes rate per entry, 35 bytes each).
     struct MigratorParameters {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
         int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // amount of the token that will be used to create the LP position
+        uint128 supplyForLP; // amount of the token that will be used to create the LP position (held as custody in the CCA)
         address fundsRecipient; // the address that will receive the funds from the auction
         address lpPositionRecipient; // the address that will receive the created LP position
         address lpHook; // the hook that will be used to initialize the pool
-    }
-
-    struct InitializerRecord {
-        MigratorParameters params;
-        Breakpoint[] breakpoints;
+        bytes lpAllocationSchedule; // packed LpAllocationBracket[] (19 bytes each)
     }
 
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
-    /// @param migrationParams The migration parameters
-    event InitializerCreated(
-        ILBPInitializer indexed initializer, MigratorParameters migrationParams, Breakpoint[] breakpoints
-    );
+    /// @param migrationParams The migration parameters (lpAllocationSchedule embedded as packed bytes)
+    event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
     /// @param initializer The initializer that was migrated
@@ -91,6 +91,11 @@ interface ILBPStrategy {
     /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
     error InvalidCustodySupply(uint256 custodyTokens, uint256 expectedCustodyTokens);
 
+    /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
+    /// @param supplyForLP The invalid supply
+    /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
+    error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
+
     /// @notice Error thrown when the currency amount is greater than type(uint128).max
     /// @param currencyAmount The invalid currency amount
     /// @param maxCurrencyAmount The maximum currency amount (type(uint128).max)
@@ -102,4 +107,9 @@ interface ILBPStrategy {
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
+
+    /// @notice Returns the stored migration parameters for an initializer
+    /// @param initializer The initializer to look up
+    /// @return The stored MigratorParameters (lpAllocationSchedule embedded as packed bytes)
+    function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory);
 }

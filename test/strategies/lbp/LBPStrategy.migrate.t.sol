@@ -41,20 +41,20 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_currencyAmountCappedAtUint128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
-        // Use a single breakpoint with rate >= 50% so minRaise stays in a practical range for vm.deal
+    function test_currencyAmountCappedAtInt128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
+        // Use a single bracket with rate >= 50% so minRaise stays in a practical range for vm.deal
         uint24 rate = uint24(bound(p.bpParams.rate0, strategy.MAX_BRACKET_RATE() / 2, strategy.MAX_BRACKET_RATE()));
-        ILBPStrategy.Breakpoint[] memory bp = new ILBPStrategy.Breakpoint[](1);
-        bp[0] = ILBPStrategy.Breakpoint({lowerThreshold: 0, rate: rate});
+        ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
+        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: rate});
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
 
-        // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > uint128.max (triggers the cap).
+        // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > int128.max (triggers the cap).
         // _calculateCurrencyAmountForLp does currencyRaised * rate, so cap hugeRaise to avoid that overflow.
-        uint256 minRaise = uint256(type(uint128).max) * strategy.MAX_BRACKET_RATE() / rate + 1;
+        uint256 minRaise = uint256(uint128(type(int128).max)) * strategy.MAX_BRACKET_RATE() / rate + 1;
         uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
         (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
@@ -73,7 +73,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         uint256 recipientBalBefore = fundsRecipient.balance;
 
-        // Migrate — should not revert, currency amount gets capped at uint128.max
+        // Migrate — should not revert, currency amount gets capped at int128.max
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         uint256 received = fundsRecipient.balance - recipientBalBefore;

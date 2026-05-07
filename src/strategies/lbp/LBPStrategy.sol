@@ -12,6 +12,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
+import {BreakpointsLib} from "../../libraries/BreakpointsLib.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
@@ -26,7 +27,17 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, IDistributionStrategy {
+contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
+    /// @notice The v4 pool manager
+    IPoolManager public immutable poolManager;
+    /// @notice The v4 position manager
+    IPositionManager public immutable positionManager;
+    /// @notice The initializer factory
+    IDistributionStrategy public immutable initializerFactory;
+
+    /// @notice The mapping of initializers to their stored migration parameters (lpAllocationSchedule embedded as packed bytes)
+    mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
+
     /// @notice Internal helper struct
     struct MigrationData {
         uint160 sqrtPriceX96;
@@ -36,16 +47,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         uint128 leftoverCurrency;
         uint128 liquidity;
     }
-
-    /// @notice The v4 pool manager
-    IPoolManager public immutable poolManager;
-    /// @notice The v4 position manager
-    IPositionManager public immutable positionManager;
-    /// @notice The initializer factory
-    IDistributionStrategy public immutable initializerFactory;
-
-    /// @notice The mapping of initializers to their stored record (migration parameters + breakpoints)
-    mapping(ILBPInitializer initializer => InitializerRecord) public initializers;
 
     constructor(
         IPositionManager _positionManager,
@@ -73,13 +74,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         external
         returns (IDistributionContract)
     {
-        // Decode the initializer record and auction parameters
-        (InitializerRecord memory initRecord, bytes memory initializerParams) =
-            abi.decode(configData, (InitializerRecord, bytes));
+        // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
+        (MigratorParameters memory params, bytes memory initializerParams) =
+            abi.decode(configData, (MigratorParameters, bytes));
 
-        // Validate the migrator parameters and breakpoints
-        _validateMigratorParams(initRecord.params);
-        _validateBreakpoints(initRecord.breakpoints);
+        // Validate the migrator parameters and LP allocation schedule
+        _validateMigratorParams(params);
+        _validateLpAllocationSchedule(params.lpAllocationSchedule);
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -93,22 +94,17 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
         // Check if the initializer was already registered to ensure parameters are not overwritten.
         // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
-        if (initializers[initializer].params.migrationBlock != 0) {
+        if (_initializers[initializer].migrationBlock != 0) {
             revert InitializerAlreadyCreated(initializer);
         }
 
         // Validate the initializer parameters are set as expected
-        _validateInitializerParams(initializer, initRecord.params);
+        _validateInitializerParams(initializer, params);
 
-        // Store the parameters and breakpoints for the initializer
-        InitializerRecord storage record = initializers[initializer];
-        record.params = initRecord.params;
-        uint256 len = initRecord.breakpoints.length;
-        for (uint256 i; i < len; ++i) {
-            record.breakpoints.push(initRecord.breakpoints[i]);
-        }
+        // Store the parameters (single struct write — schedule travels along as packed bytes)
+        _initializers[initializer] = params;
 
-        emit InitializerCreated(initializer, initRecord.params, initRecord.breakpoints);
+        emit InitializerCreated(initializer, params);
 
         return IDistributionContract(address(initializer));
     }
@@ -117,9 +113,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
     /// immutably set during initializeDistribution. Anyone can trigger migration
     function migrate(ILBPInitializer initializer) external {
-        // Load the stored record for the initializer
-        InitializerRecord storage record = initializers[initializer];
-        MigratorParameters memory migrationParams = record.params;
+        // Load the stored migration parameters for the initializer
+        MigratorParameters memory migrationParams = _initializers[initializer];
 
         // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
         if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
@@ -133,7 +128,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(lbpParams.currencyRaised, record.breakpoints);
+        uint256 currencyAmountForLp =
+            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
 
         // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
         // Currency raised above uint128.max will not be used to create the v4 pool and instead swept to the funds recipient.
@@ -180,11 +176,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         emit Migrated(initializer, key, data.sqrtPriceX96);
     }
 
-    /// @notice Returns the breakpoints for a given initializer
-    /// @param initializer The initializer to get breakpoints for
-    /// @return The breakpoints array
-    function getBreakpoints(ILBPInitializer initializer) external view returns (Breakpoint[] memory) {
-        return initializers[initializer].breakpoints;
+    /// @inheritdoc ILBPStrategy
+    function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
+        return _initializers[initializer];
     }
 
     /// @notice Receive native currency
@@ -283,6 +277,11 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         ) {
             revert InvalidPositionRecipient(_migratorParams.lpPositionRecipient);
         }
+        // supplyForLP must fit in int128 — v4's PoolManager._accountDelta uses int128 for token deltas,
+        // so values above int128.max would revert with SafeCastOverflow at migration time.
+        if (_migratorParams.supplyForLP > uint128(type(int128).max)) {
+            revert InvalidSupplyForLp(_migratorParams.supplyForLP, uint128(type(int128).max));
+        }
     }
 
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
@@ -314,10 +313,10 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             revert NoCurrencyRaised();
         }
 
-        // Cannot create a v4 pool with more than type(uint128).max currency amount
-        if (currencyAmountForLp > type(uint128).max) {
-            // If the currency amount for the LP is greater than type(uint128).max, cap to uint128.max sweep the rest to the funds recipient
-            return type(uint128).max;
+        // v4's PoolManager._accountDelta uses int128 for currency deltas; amounts above int128.max
+        // revert with SafeCastOverflow. Cap here so the excess is swept to fundsRecipient instead.
+        if (currencyAmountForLp > uint128(type(int128).max)) {
+            return uint128(type(int128).max);
         } else {
             return uint128(currencyAmountForLp);
         }
@@ -365,29 +364,33 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve
+    /// @dev Iterates the packed schedule. Each non-last bracket allocates min(remaining, bracketSize) at its
+    /// rate, where bracketSize = next.lowerThreshold − this.lowerThreshold. The last bracket's rate applies
+    /// to all remaining currency (extends to infinity).
     /// @param currencyAmount The total currency raised
-    /// @param breakpoints The breakpoint array defining the bracket schedule
+    /// @param schedule The packed LP allocation schedule (32 bytes lowerThreshold || 3 bytes rate per bracket)
     /// @return lpAmount The currency amount allocated to the LP
-    function _calculateCurrencyAmountForLp(uint256 currencyAmount, Breakpoint[] storage breakpoints)
+    function _calculateCurrencyAmountForLp(uint256 currencyAmount, bytes memory schedule)
         private
-        view
+        pure
         returns (uint256 lpAmount)
     {
         uint256 remaining = currencyAmount;
-        uint256 len = breakpoints.length;
+        uint256 count = BreakpointsLib.bracketCount(schedule);
 
-        for (uint256 i; i < len; ++i) {
-            Breakpoint memory bp = breakpoints[i];
+        for (uint256 i = 0; i < count; i++) {
+            (uint256 lowerThreshold, uint24 rate) = BreakpointsLib.at(schedule, i);
 
-            if (i == len - 1) {
-                // Last breakpoint: its rate applies to all remaining currency
-                lpAmount += FullMath.mulDiv(remaining, bp.rate, MAX_BRACKET_RATE);
+            if (i == count - 1) {
+                // Last bracket: its rate applies to all remaining currency
+                lpAmount += FullMath.mulDiv(remaining, rate, MAX_BRACKET_RATE);
                 break;
             }
 
-            uint256 bracketSize = uint256(breakpoints[i + 1].lowerThreshold) - uint256(bp.lowerThreshold);
+            (uint256 nextLower,) = BreakpointsLib.at(schedule, i + 1);
+            uint256 bracketSize = nextLower - lowerThreshold;
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
-            lpAmount += FullMath.mulDiv(bracketAmount, bp.rate, MAX_BRACKET_RATE);
+            lpAmount += FullMath.mulDiv(bracketAmount, rate, MAX_BRACKET_RATE);
             unchecked {
                 remaining -= bracketAmount;
             }

@@ -46,8 +46,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (ILBPStrategy.MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) = _boundMigratorParams(p1);
         (ILBPStrategy.MigratorParameters memory mp2, uint128 totalSupply2, uint64 endBlock2,) = _boundMigratorParams(p2);
 
-        (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1);
-        (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2);
+        (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1, _boundBrackets(p1.bpParams));
+        (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2, _boundBrackets(p2.bpParams));
 
         (ILBPStrategy.MigratorParameters memory stored1) = strategy.initializers(ILBPInitializer(address(init1)));
         (ILBPStrategy.MigratorParameters memory stored2) = strategy.initializers(ILBPInitializer(address(init2)));
@@ -73,7 +73,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
 
-        (ILBPStrategy.Breakpoint[] memory bp,) = _boundBreakpoints(p.bpParams);
+        ILBPStrategy.LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
