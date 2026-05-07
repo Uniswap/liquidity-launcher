@@ -178,7 +178,7 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds currencyRaised so that currencyAmountForLp fits in uint128 for pool creation.
-    /// Min: ensures currencyRaised * split / 1e7 > 0 (avoids NoCurrencyRaised revert).
+    /// Min: ensures currencyRaised * split / 1e7 > 0.
     /// Currency raised above uint128 is tested separately in test_currencyAmountCappedAtUint128Max.
     function _boundCurrencyRaised(uint256 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint256) {
         return bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max);

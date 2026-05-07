@@ -84,14 +84,6 @@ interface ILBPStrategy {
     /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
     error InvalidCustodySupply(uint256 custodyTokens, uint256 expectedCustodyTokens);
 
-    /// @notice Error thrown when the currency amount is greater than type(uint128).max
-    /// @param currencyAmount The invalid currency amount
-    /// @param maxCurrencyAmount The maximum currency amount (type(uint128).max)
-    error CurrencyAmountTooHigh(uint256 currencyAmount, uint256 maxCurrencyAmount);
-
-    /// @notice Error thrown when no currency was raised
-    error NoCurrencyRaised();
-
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;

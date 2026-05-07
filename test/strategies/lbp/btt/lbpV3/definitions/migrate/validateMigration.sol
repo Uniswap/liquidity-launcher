@@ -18,16 +18,13 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotAllowed
 /// └── when block.number >= migrationBlock
-///     ├── when currencyRaised is 0 or rounds to 0 after split
-///     │   └── it skips LP creation and sweeps assets
-///     └── when currencyRaised > 0
-///         ├── it calls sweepCurrency on initializer
-///         ├── it calls sweepUnsoldTokens on initializer
-///         ├── it sweeps leftover currency to fundsRecipient
-///         ├── it sweeps leftover tokens to fundsRecipient
-///         ├── it emits CurrencySwept
-///         ├── it emits TokensSwept
-///         └── it emits Migrated
+///     ├── it calls sweepCurrency on initializer
+///     ├── it calls sweepUnsoldTokens on initializer
+///     ├── it sweeps leftover currency to fundsRecipient
+///     ├── it sweeps leftover tokens to fundsRecipient
+///     ├── it emits CurrencySwept
+///     ├── it emits TokensSwept
+///     └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
     function test_WhenInitializerIsUnregistered(uint64 _currentBlock, uint128 _tokensSold) public {
         // it reverts with {MigrationNotAllowed}

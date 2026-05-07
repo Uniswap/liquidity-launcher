@@ -35,6 +35,7 @@ library PositionPlanner {
     error InvalidAllocationWeights(uint24 totalWeight);
 
     /// @notice Validates that a position plan is non-empty and its weights sum to `MPS`
+    /// @param _definitions The weighted position definitions to validate
     function validate(PositionDefinition[] memory _definitions) internal pure {
         if (_definitions.length == 0) revert EmptyPositionPlan();
         uint256 totalWeight;
@@ -48,6 +49,11 @@ library PositionPlanner {
 
     /// @notice Solves for the maximum liquidity-per-allocation that fits within both currency budgets
     /// @dev Uses uint256 to avoid overflow; callers must downcast to uint128 before use
+    /// @param _currency0Amount The available currency0 budget
+    /// @param _currency1Amount The available currency1 budget
+    /// @param _weightedAmount0 The weighted currency0 amount for the plan at reference liquidity
+    /// @param _weightedAmount1 The weighted currency1 amount for the plan at reference liquidity
+    /// @return The maximum liquidity-per-allocation that fits both budgets
     function getLiquidityPerAllocation(
         uint128 _currency0Amount,
         uint128 _currency1Amount,
@@ -68,6 +74,10 @@ library PositionPlanner {
 
     /// @notice Converts each definition's relative offsets into absolute tick bounds snapped to `_tickSpacing`
     /// @dev Will clamp to the usable range if the offset exceeds it
+    /// @param _definitions The weighted position definitions to resolve
+    /// @param _currentTick The current pool tick
+    /// @param _tickSpacing The pool tick spacing
+    /// @return ticks The absolute tick bounds for each definition
     function _resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
         private
         pure
@@ -99,7 +109,16 @@ library PositionPlanner {
 
     /// @notice Resolves a weighted position plan into concrete positions constrained by the supplied budgets
     /// @dev Callers should invoke `validate` beforehand to ensure weights sum to `MPS`
-    ///      and ensure that amounts do not exceed type(int128).max
+    ///      and ensure that amounts do not exceed type(int128).max. Invalid or oversized positions are skipped,
+    ///      and skipped weights are not redistributed.
+    /// @param _definitions The weighted position definitions to resolve
+    /// @param _sqrtPriceX96 The pool price used to quote liquidity amounts
+    /// @param _tickSpacing The pool tick spacing
+    /// @param _currency0Amount The available currency0 budget
+    /// @param _currency1Amount The available currency1 budget
+    /// @return positions The resolved positions that fit within the supplied budgets
+    /// @return remaining0 The unconsumed currency0 budget
+    /// @return remaining1 The unconsumed currency1 budget
     function resolve(
         PositionDefinition[] memory _definitions,
         uint160 _sqrtPriceX96,
@@ -155,6 +174,12 @@ library PositionPlanner {
         return (positions, _currency0Amount, _currency1Amount);
     }
 
+    /// @notice Quotes the weighted currency amounts for all valid tick ranges at reference liquidity
+    /// @param _definitions The weighted position definitions
+    /// @param _ticks The resolved tick bounds for each definition
+    /// @param _sqrtPriceX96 The pool price used to quote liquidity amounts
+    /// @return weightedAmount0 The total weighted currency0 amount
+    /// @return weightedAmount1 The total weighted currency1 amount
     function _getWeightedAmounts(
         PositionDefinition[] memory _definitions,
         TickBounds[] memory _ticks,
@@ -172,6 +197,10 @@ library PositionPlanner {
 
     /// @notice Converts concrete positions into a PositionManager plan
     /// @dev Dust left over after minting is returned to `positionRecipient`
+    /// @param positions The positions to mint
+    /// @param poolKey The pool key for the positions
+    /// @param positionRecipient The recipient of minted positions and leftover dust
+    /// @return The encoded action and parameter plan
     function toPlan(Position[] memory positions, PoolKey memory poolKey, address positionRecipient)
         internal
         pure
@@ -205,6 +234,11 @@ library PositionPlanner {
 
     /// @notice Quotes token amounts for a liquidity position using v4 core mint math.
     /// @dev Uses SqrtPriceMath with roundUp=true so amount maxes cover PoolManager's required input deltas.
+    /// @param _sqrtPriceX96 The current pool price
+    /// @param _tickLower The lower tick of the position
+    /// @param _tickUpper The upper tick of the position
+    /// @param _liquidity The liquidity amount to quote
+    /// @return The quoted amount0 and amount1
     function getAmountsForLiquidity(uint160 _sqrtPriceX96, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
         internal
         pure

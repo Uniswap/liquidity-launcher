@@ -173,6 +173,15 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
     /// @notice Builds the weighted-position plan to be executed against the PositionManager
     /// @dev Returned transfer amounts are the amounts CONSUMED (not remaining), in (currency, token) order
+    /// @param key The initialized pool key
+    /// @param currency The raised currency
+    /// @param sqrtPriceX96 The initialized pool price
+    /// @param currencyAmountForLp The currency budget for LP positions
+    /// @param tokenAmountForLp The token budget for LP positions
+    /// @param mp The stored migration parameters
+    /// @return plan The encoded PositionManager plan
+    /// @return currencyTransferAmount The currency amount consumed by the plan
+    /// @return tokenTransferAmount The token amount consumed by the plan
     function _createPositionPlan(
         PoolKey memory key,
         Currency currency,
@@ -270,9 +279,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
     /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
     function _validateMigratorParams(MigratorParameters memory _migratorParams) private view {
-        // max currency amount for LP cannot be zero, smaller than the min split for LP or bigger than 100%
+        // currency split for LP cannot be smaller than the min split for LP or bigger than 100%
         if (
-            _migratorParams.currencySplitForLP == 0 || _migratorParams.currencySplitForLP < minSplitForLp
+            _migratorParams.currencySplitForLP < minSplitForLp
                 || _migratorParams.currencySplitForLP > LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
         ) {
             revert InvalidCurrencySplitForLP(
