@@ -25,6 +25,7 @@ import {
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {HookProxyLib} from "../../periphery/hooks/HookProxy.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -87,6 +88,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
         // Validate the migrator parameters
         _validateMigratorParams(migrationParams);
+
+        // Validate that the salt provided results in a valid hook proxy address
+        HookProxyLib.preflight(migrationParams.lpHook, migrationParams.hookProxySalt);
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -157,7 +161,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         );
 
         PoolKey memory key = _initializePool(
-            data, currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing, migrationParams.lpHook
+            data,
+            currency,
+            token,
+            migrationParams.poolLPFee,
+            migrationParams.poolTickSpacing,
+            migrationParams.lpHook,
+            migrationParams.hookProxySalt
         );
 
         (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(data);
@@ -208,29 +218,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         Currency token,
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        address lpHook
+        address lpHook,
+        bytes32 hookProxySalt
     ) private returns (PoolKey memory key) {
-        // Check if the hook has any flags beyond beforeInitialize
-        bool hasOtherFlags = uint160(lpHook) & (Hooks.ALL_HOOK_MASK & ~Hooks.BEFORE_INITIALIZE_FLAG) != 0;
-
-        // If the hook is purely for frontrunning protection, try to create a hookless pool first
-        if (!hasOtherFlags) {
-            PoolKey memory hooklessKey = PoolKey({
-                currency0: _currency0(currency, token),
-                currency1: _currency1(currency, token),
-                fee: poolLPFee,
-                tickSpacing: poolTickSpacing,
-                hooks: IHooks(address(0))
-            });
-
-            (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(hooklessKey.toId());
-
-            if (existingSqrtPriceX96 == 0) {
-                // Hookless pool is available — use it
-                lpHook = address(0);
-            }
-        }
-
         key = PoolKey({
             currency0: _currency0(currency, token),
             currency1: _currency1(currency, token),
@@ -238,6 +228,12 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
             tickSpacing: poolTickSpacing,
             hooks: IHooks(lpHook)
         });
+
+        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
+        // If the pool already exists, wrap the lpHook in a hook proxy and deploy with a new key
+        if (existingSqrtPriceX96 != 0) {
+            key.hooks = IHooks(HookProxyLib.deploy(lpHook, hookProxySalt));
+        }
 
         // Initialize the pool with the returned initial price
         // Will revert if:

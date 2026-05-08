@@ -25,6 +25,11 @@ contract FrontrunningProtectionHookNoValidation is FrontrunningProtectionHook {
     function validateHookAddress(BaseHook) internal pure override {}
 }
 
+interface IHookProxyView {
+    function impl() external view returns (IHooks);
+    function allowedInitializer() external view returns (address);
+}
+
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -50,7 +55,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         // it stores the MigratorParameters
-        (uint64 storedMigrationBlock,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
+        (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertGt(storedMigrationBlock, 0);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
@@ -77,8 +82,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1);
         (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2);
 
-        (uint64 stored1,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
-        (uint64 stored2,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
+        (uint64 stored1,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
+        (uint64 stored2,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
         assertEq(stored1, mp1.migrationBlock);
         assertEq(stored2, mp2.migrationBlock);
     }
@@ -151,14 +156,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         return PoolKey({currency0: c0, currency1: c1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hook)});
     }
 
-    /// @notice When lpHook only has beforeInitialize and the hookless pool doesn't exist yet,
-    /// migration should create a hookless pool (hooks = address(0))
-    function test_fuzz_beforeInitializeHook_createsHooklessPool(FuzzParams memory p) public {
+    /// @notice When the lpHook pool doesn't exist yet, migration should initialize that raw hook pool
+    function test_fuzz_beforeInitializeHook_createsRawHookPool(FuzzParams memory p) public {
         address hookAddr = _deployFrontrunningHook();
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         mp.lpHook = hookAddr;
+        mp.hookProxySalt = _findHookProxySalt(hookAddr);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, mp.currencySplitForLP);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
@@ -174,32 +179,25 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        PoolKey memory hooklessKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
-        (uint160 hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
-        assertEq(hooklessSqrtPrice, 0); // hookless pool should not be initialized yet
-
         PoolKey memory hookedKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, hookAddr);
         (uint160 hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
         assertEq(hookedSqrtPrice, 0); // hooked pool should not be initialized yet
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // The hookless pool should be initialized (hook = address(0))
-        (hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
-        assertGt(hooklessSqrtPrice, 0); // hookless pool should be initialized
-
         (hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
-        assertEq(hookedSqrtPrice, 0); // hooked pool should still not be initialized
+        assertGt(hookedSqrtPrice, 0); // raw hooked pool should be initialized
     }
 
-    /// @notice When lpHook only has beforeInitialize but the hookless pool already exists,
-    /// migration should fall back to the hooked pool
-    function test_fuzz_beforeInitializeHook_fallsBackToHookedPool(FuzzParams memory p) public {
+    /// @notice When the lpHook pool already exists, migration should deploy a proxy and initialize the proxy pool
+    function test_fuzz_beforeInitializeHook_wrapsHookIfRawHookPoolExists(FuzzParams memory p) public {
         address hookAddr = _deployFrontrunningHook();
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         mp.lpHook = hookAddr;
+        (address hookProxy, bytes32 hookProxySalt) = _findHookProxyAddress(hookAddr);
+        mp.hookProxySalt = hookProxySalt;
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, mp.currencySplitForLP);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
@@ -215,26 +213,28 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        // Pre-initialize the hookless pool so strategy must fall back to the hooked pool
-        PoolKey memory hooklessKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
+        // Pre-initialize the raw hooked pool so strategy must deploy and use the hook proxy
         PoolKey memory hookedKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, hookAddr);
-
-        (uint160 hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
-        assertEq(hooklessSqrtPrice, 0); // hookless pool should not be initialized yet
+        PoolKey memory proxyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, hookProxy);
 
         (uint160 hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
         assertEq(hookedSqrtPrice, 0); // hooked pool should not be initialized yet
 
-        POOL_MANAGER.initialize(hooklessKey, TickMath.MIN_SQRT_PRICE + 1);
-        (hooklessSqrtPrice,,,) = POOL_MANAGER.getSlot0(hooklessKey.toId());
-        assertGt(hooklessSqrtPrice, 0); // hookless pool should be initialized
-
+        vm.prank(address(strategy));
+        POOL_MANAGER.initialize(hookedKey, TickMath.MIN_SQRT_PRICE + 1);
         (hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
-        assertEq(hookedSqrtPrice, 0); // hooked pool should still not be initialized
+        assertGt(hookedSqrtPrice, 0); // raw hooked pool should be initialized
+
+        (uint160 proxySqrtPrice,,,) = POOL_MANAGER.getSlot0(proxyKey.toId());
+        assertEq(proxySqrtPrice, 0); // proxy pool should not be initialized yet
+        assertEq(hookProxy.code.length, 0);
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        (hookedSqrtPrice,,,) = POOL_MANAGER.getSlot0(hookedKey.toId());
-        assertGt(hookedSqrtPrice, 0); // hooked pool should be initialized
+        (proxySqrtPrice,,,) = POOL_MANAGER.getSlot0(proxyKey.toId());
+        assertGt(proxySqrtPrice, 0); // proxy pool should be initialized
+        assertGt(hookProxy.code.length, 0);
+        assertEq(address(IHookProxyView(hookProxy).impl()), hookAddr);
+        assertEq(IHookProxyView(hookProxy).allowedInitializer(), address(strategy));
     }
 }

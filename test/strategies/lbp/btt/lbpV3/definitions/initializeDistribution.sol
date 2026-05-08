@@ -266,7 +266,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             address storedFundsRecipient,
             address storedLpPositionRecipient,
             uint24 currencySplitForLP,
-            address lpHook
+            address lpHook,
+            bytes32 hookProxySalt
         ) = strategy.initializers(ILBPInitializer(address(initializer)));
 
         assertEq(migrationBlock, mp.migrationBlock);
@@ -277,5 +278,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
         assertEq(currencySplitForLP, mp.currencySplitForLP);
         assertEq(lpHook, mp.lpHook);
+        assertEq(hookProxySalt, mp.hookProxySalt);
     }
 }

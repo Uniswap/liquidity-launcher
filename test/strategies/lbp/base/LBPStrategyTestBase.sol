@@ -13,6 +13,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Forks mainnet to use real v4 PoolManager and PositionManager.
@@ -42,6 +44,7 @@ abstract contract LBPStrategyTestBase is Test {
         uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
+        bytes32 hookProxySalt;
     }
 
     function setUp() public virtual {
@@ -135,8 +138,20 @@ abstract contract LBPStrategyTestBase is Test {
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
             currencySplitForLP: p.currencySplitForLP,
-            lpHook: address(0)
+            lpHook: address(0),
+            hookProxySalt: _findHookProxySalt(address(0))
         });
+    }
+
+    function _findHookProxyAddress(address lpHook) internal view returns (address hookProxy, bytes32 hookProxySalt) {
+        uint160 flags = (uint160(lpHook) & HookMiner.FLAG_MASK) | Hooks.BEFORE_INITIALIZE_FLAG;
+        return HookMiner.find(
+            address(strategy), flags, vm.getCode("src/periphery/hooks/HookProxy.sol:HookProxy"), abi.encode(lpHook)
+        );
+    }
+
+    function _findHookProxySalt(address lpHook) internal view returns (bytes32 hookProxySalt) {
+        (, hookProxySalt) = _findHookProxyAddress(lpHook);
     }
 
     /// @notice Encodes MigratorParameters + initializerParams into configData for initializeDistribution

@@ -18,6 +18,7 @@ interface ILBPStrategy {
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
         address lpHook; // the hook for the LP pool; used directly if it has flags beyond beforeInitialize, otherwise a hookless pool is created unless one already exists
+        bytes32 hookProxySalt; // the salt to use for deploying the hook proxy
     }
 
     /// @notice Emitted when the auction is initialized

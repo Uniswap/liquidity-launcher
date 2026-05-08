@@ -23,7 +23,8 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
             address storedFundsRecipient,
             address storedLpPositionRecipient,
             uint24 currencySplitForLP,
-            address lpHook
+            address lpHook,
+            bytes32 hookProxySalt
         ) = strategy.initializers(ILBPInitializer(address(init1)));
 
         assertEq(migrationBlock, mp.migrationBlock);
@@ -34,6 +35,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         assertEq(storedLpPositionRecipient, mp.lpPositionRecipient);
         assertEq(currencySplitForLP, mp.currencySplitForLP);
         assertEq(lpHook, mp.lpHook);
+        assertEq(hookProxySalt, mp.hookProxySalt);
     }
 
     function test_revertsIfInitializerAlreadyCreated(FuzzParams memory p) public {
