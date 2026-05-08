@@ -9,6 +9,7 @@ import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
+import {MockProtocolFeeController} from "test/mocks/MockProtocolFeeController.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -62,12 +63,14 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
+        MockProtocolFeeController feeController = new MockProtocolFeeController();
+
         strategy = new LBPStrategy(
             POSITION_MANAGER,
             POOL_MANAGER,
             IDistributionStrategy(address(factory)),
             1, // minSplitForLp
-            makeAddr("protocolFeeController"),
+            address(feeController),
             owner
         );
 

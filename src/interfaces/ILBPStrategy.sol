@@ -38,6 +38,11 @@ interface ILBPStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
+    /// @notice Emitted when the protocol fee is paid during migration
+    /// @param recipient The address that received the protocol fee
+    /// @param amount The amount of currency paid as protocol fee
+    event ProtocolFeePaid(address indexed recipient, uint256 amount);
+
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);

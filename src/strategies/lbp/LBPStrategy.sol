@@ -23,6 +23,7 @@ import {
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {IProtocolFeeController} from "../../interfaces/IProtocolFeeController.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -119,14 +120,17 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp = FixedPointMathLib.fullMulDiv(
-            lbpParams.currencyRaised, migrationParams.currencySplitForLP, LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
-        );
-
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
         // This requires trusting the initializer to return correct and immutable addresses.
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
+
+        // Deduct protocol fee from currency raised before the LP split
+        uint256 currencyAmountForLp = FixedPointMathLib.fullMulDiv(
+            _deductProtocolFee(currency, lbpParams.currencyRaised),
+            migrationParams.currencySplitForLP,
+            LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
+        );
 
         // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
         uint160 sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
@@ -344,6 +348,22 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     {
         uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, _currencyIsCurrency0(currency, token));
         sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
+    }
+
+    /// @notice Deducts the protocol fee from the currency raised and transfers it to the fee recipient
+    /// @param currency The currency to deduct the fee from
+    /// @param currencyRaised The total currency raised from the auction
+    /// @return currencyAfterFee The currency remaining after the protocol fee is deducted
+    function _deductProtocolFee(Currency currency, uint256 currencyRaised) private returns (uint256 currencyAfterFee) {
+        (uint256 feeAmount, address feeRecipient) = IProtocolFeeController(protocolFeeController)
+            .getProtocolFeeAmount(Currency.unwrap(currency), currencyRaised);
+
+        if (feeAmount > 0 && feeRecipient != address(0)) {
+            currency.transfer(feeRecipient, feeAmount);
+            emit ProtocolFeePaid(feeRecipient, feeAmount);
+        }
+
+        currencyAfterFee = currencyRaised - feeAmount;
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
