@@ -7,26 +7,26 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {GovernanceHook} from "src/periphery/hooks/GovernanceHook.sol";
+import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
-contract GovernanceHookNoValidation is GovernanceHook {
-    constructor(IPoolManager _pm, address _governance) GovernanceHook(_pm, _governance) {}
+contract GatedSwapHookNoValidation is GatedSwapHook {
+    constructor(IPoolManager _pm, address _gatekeeper) GatedSwapHook(_pm, _gatekeeper) {}
 
     function validateHookAddress(BaseHook) internal pure override {}
 }
 
-contract GovernanceHookTest is HookTestBase {
-    GovernanceHook hook;
-    address governance = makeAddr("governance");
+contract GatedSwapHookTest is HookTestBase {
+    GatedSwapHook hook;
+    address gatekeeper = makeAddr("gatekeeper");
 
     function setUp() public {
         uint160 flags = Hooks.BEFORE_SWAP_FLAG;
         address hookAddr = _computeHookAddress(flags);
 
-        GovernanceHookNoValidation impl = new GovernanceHookNoValidation(IPoolManager(poolManager), governance);
+        GatedSwapHookNoValidation impl = new GatedSwapHookNoValidation(IPoolManager(poolManager), gatekeeper);
         vm.etch(hookAddr, address(impl).code);
-        hook = GovernanceHook(hookAddr);
+        hook = GatedSwapHook(hookAddr);
     }
 
     function test_fuzz_beforeSwap_revertsIfNotApproved(
@@ -41,20 +41,20 @@ contract GovernanceHookTest is HookTestBase {
         });
 
         vm.prank(poolManager);
-        vm.expectRevert(abi.encodeWithSelector(GovernanceHook.SwapsNotApproved.selector));
+        vm.expectRevert(abi.encodeWithSelector(GatedSwapHook.SwapsNotApproved.selector));
         hook.beforeSwap(sender, key, params, hex"");
     }
 
-    function test_fuzz_approveSwaps_revertsIfNotGovernance(address caller) public {
-        vm.assume(caller != governance);
+    function test_fuzz_approveSwaps_revertsIfNotGatekeeper(address caller) public {
+        vm.assume(caller != gatekeeper);
         vm.prank(caller);
-        vm.expectRevert(abi.encodeWithSelector(GovernanceHook.NotGovernance.selector, caller, governance));
+        vm.expectRevert(abi.encodeWithSelector(GatedSwapHook.NotGatekeeper.selector, caller, gatekeeper));
         hook.approveSwaps();
     }
 
-    function test_approveSwaps_succeedsForGovernance() public {
+    function test_approveSwaps_succeedsForGatekeeper() public {
         assertFalse(hook.isApproved());
-        vm.prank(governance);
+        vm.prank(gatekeeper);
         hook.approveSwaps();
         assertTrue(hook.isApproved());
     }
@@ -65,7 +65,7 @@ contract GovernanceHookTest is HookTestBase {
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96
     ) public {
-        vm.prank(governance);
+        vm.prank(gatekeeper);
         hook.approveSwaps();
 
         PoolKey memory key = _defaultPoolKey(address(hook));

@@ -9,33 +9,33 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
-/// @title GovernanceHook
-/// @notice Hook that requires governance approval before swaps are allowed on the pool
-contract GovernanceHook is BaseHook {
-    /// @notice Emitted when swaps are approved by governance
+/// @title GatedSwapHook
+/// @notice Hook that requires gatekeeper approval before swaps are allowed on the pool
+contract GatedSwapHook is BaseHook {
+    /// @notice Emitted when swaps are approved by the gatekeeper
     event SwapsApproved();
 
-    /// @notice Error thrown when a swap is attempted before governance approval
+    /// @notice Error thrown when a swap is attempted before approval
     error SwapsNotApproved();
 
-    /// @notice Error thrown when a non-governance address attempts to approve swaps
+    /// @notice Error thrown when a non-gatekeeper address attempts to approve swaps
     /// @param caller The address that attempted the call
-    /// @param expected The governance address
-    error NotGovernance(address caller, address expected);
+    /// @param expected The gatekeeper address
+    error NotGatekeeper(address caller, address expected);
 
-    /// @notice The governance address that must approve swaps
-    address public immutable governance;
+    /// @notice The gatekeeper address that must approve swaps
+    address public immutable gatekeeper;
 
-    /// @notice Whether swaps have been approved by governance
+    /// @notice Whether swaps have been approved by the gatekeeper
     bool public isApproved;
 
-    constructor(IPoolManager _poolManager, address _governance) BaseHook(_poolManager) {
-        governance = _governance;
+    constructor(IPoolManager _poolManager, address _gatekeeper) BaseHook(_poolManager) {
+        gatekeeper = _gatekeeper;
     }
 
-    /// @notice Approve swaps on the pool. Only callable by governance.
+    /// @notice Approve swaps on the pool. Only callable by the gatekeeper.
     function approveSwaps() external {
-        if (msg.sender != governance) revert NotGovernance(msg.sender, governance);
+        if (msg.sender != gatekeeper) revert NotGatekeeper(msg.sender, gatekeeper);
         isApproved = true;
         emit SwapsApproved();
     }
