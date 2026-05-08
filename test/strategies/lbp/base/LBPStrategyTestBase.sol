@@ -6,7 +6,6 @@ import {LBPStrategy} from "src/strategies/lbp/LBPStrategy.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
-import {BreakpointsTestLib} from "test/libraries/BreakpointsTestLib.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -181,13 +180,13 @@ abstract contract LBPStrategyTestBase is Test {
         }
     }
 
-    /// @notice Encodes MigratorParameters (with embedded packed schedule) + initializerParams into configData
+    /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData
     function _encodeConfigData(
         ILBPStrategy.MigratorParameters memory mp,
         ILBPStrategy.LpAllocationBracket[] memory brackets,
         bytes memory initializerParams
     ) internal pure returns (bytes memory) {
-        mp.lpAllocationSchedule = BreakpointsTestLib.encode(brackets);
+        mp.lpAllocationSchedule = abi.encode(brackets);
         return abi.encode(mp, initializerParams);
     }
 

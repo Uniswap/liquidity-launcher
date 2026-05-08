@@ -4,7 +4,6 @@ pragma solidity 0.8.26;
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {ILBPStrategyConfiguration} from "../../interfaces/ILBPStrategyConfiguration.sol";
-import {BreakpointsLib} from "../../libraries/BreakpointsLib.sol";
 
 /// @title LBPStrategyConfiguration
 /// @notice Abstract configuration contract for LBPStrategy owner-controlled parameters and bracket validation
@@ -32,18 +31,20 @@ abstract contract LBPStrategyConfiguration is Ownable, ILBPStrategyConfiguration
         protocolFeeController = _protocolFeeController;
     }
 
-    /// @notice Validates a packed LP allocation schedule
-    /// @dev Encoding: each bracket is 35 bytes (32 bytes lowerThreshold || 3 bytes rate). The schedule
-    /// must contain 1 to MAX_BRACKETS brackets, with the first bracket's lowerThreshold = 0, all rates
-    /// in [0, MAX_BRACKET_RATE], and strictly ascending lowerThresholds
-    /// @param _schedule The packed LP allocation schedule
+    /// @notice Validates an abi-encoded LP allocation schedule
+    /// @dev The schedule is an abi-encoded LpAllocationBracket[]. It must contain 1 to MAX_BRACKETS brackets,
+    /// with the first bracket's lowerThreshold = 0, all rates in [0, MAX_BRACKET_RATE], and strictly ascending
+    /// lowerThresholds.
+    /// @param _schedule The abi-encoded LP allocation schedule
     function _validateLpAllocationSchedule(bytes memory _schedule) internal pure {
-        uint256 count = BreakpointsLib.bracketCount(_schedule);
+        ILBPStrategy.LpAllocationBracket[] memory brackets = abi.decode(_schedule, (ILBPStrategy.LpAllocationBracket[]));
+        uint256 count = brackets.length;
         if (count == 0 || count > MAX_BRACKETS) revert InvalidBracketCount(count);
 
         uint256 prevLower;
         for (uint256 i = 0; i < count; i++) {
-            (uint256 lowerThreshold, uint24 rate) = BreakpointsLib.at(_schedule, i);
+            uint256 lowerThreshold = brackets[i].lowerThreshold;
+            uint24 rate = brackets[i].rate;
             if (rate > MAX_BRACKET_RATE) revert InvalidBracketRate(rate);
             if (i == 0 && lowerThreshold != 0) revert InvalidBracketThreshold(lowerThreshold);
             if (i > 0 && lowerThreshold <= prevLower) revert InvalidBracketThreshold(lowerThreshold);

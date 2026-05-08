@@ -21,8 +21,7 @@ interface ILBPStrategy is IDistributionStrategy {
         uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
     }
 
-    /// @notice Migration parameters for an initializer. The lpAllocationSchedule is a packed encoding
-    /// of LpAllocationBracket entries (32 bytes lowerThreshold || 3 bytes rate per entry, 35 bytes each).
+    /// @notice Migration parameters for an initializer
     struct MigratorParameters {
         uint64 migrationBlock; // block number when the migration can begin
         uint24 poolLPFee; // the LP fee that the v4 pool will use
@@ -31,12 +30,12 @@ interface ILBPStrategy is IDistributionStrategy {
         address fundsRecipient; // the address that will receive the funds from the auction
         address lpPositionRecipient; // the address that will receive the created LP position
         address lpHook; // the hook that will be used to initialize the pool
-        bytes lpAllocationSchedule; // packed LpAllocationBracket[] (19 bytes each)
+        bytes lpAllocationSchedule; // abi-encoded LpAllocationBracket[]
     }
 
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
-    /// @param migrationParams The migration parameters (lpAllocationSchedule embedded as packed bytes)
+    /// @param migrationParams The migration parameters
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
@@ -100,6 +99,6 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up
-    /// @return The stored MigratorParameters (lpAllocationSchedule embedded as packed bytes)
+    /// @return The stored MigratorParameters
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory);
 }

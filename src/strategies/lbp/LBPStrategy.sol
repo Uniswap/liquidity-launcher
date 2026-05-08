@@ -12,7 +12,6 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
-import {BreakpointsLib} from "../../libraries/BreakpointsLib.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
@@ -35,7 +34,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The mapping of initializers to their stored migration parameters (lpAllocationSchedule embedded as packed bytes)
+    /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     /// @notice Internal helper struct
@@ -101,7 +100,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         // Validate the initializer parameters are set as expected
         _validateInitializerParams(initializer, params);
 
-        // Store the parameters (single struct write — schedule travels along as packed bytes)
+        // Store the parameters
         _initializers[initializer] = params;
 
         emit InitializerCreated(initializer, params);
@@ -364,22 +363,24 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
     }
 
     /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve
-    /// @dev Iterates the packed schedule. Each non-last bracket allocates min(remaining, bracketSize) at its
-    /// rate, where bracketSize = next.lowerThreshold − this.lowerThreshold. The last bracket's rate applies
-    /// to all remaining currency (extends to infinity).
+    /// @dev Decodes the abi-encoded schedule and iterates it. Each non-last bracket allocates
+    /// min(remaining, bracketSize) at its rate, where bracketSize = next.lowerThreshold − this.lowerThreshold.
+    /// The last bracket's rate applies to all remaining currency (extends to infinity).
     /// @param currencyAmount The total currency raised
-    /// @param schedule The packed LP allocation schedule (32 bytes lowerThreshold || 3 bytes rate per bracket)
+    /// @param schedule The abi-encoded LpAllocationBracket[] schedule
     /// @return lpAmount The currency amount allocated to the LP
     function _calculateCurrencyAmountForLp(uint256 currencyAmount, bytes memory schedule)
         private
         pure
         returns (uint256 lpAmount)
     {
+        LpAllocationBracket[] memory brackets = abi.decode(schedule, (LpAllocationBracket[]));
         uint256 remaining = currencyAmount;
-        uint256 count = BreakpointsLib.bracketCount(schedule);
+        uint256 count = brackets.length;
 
         for (uint256 i = 0; i < count; i++) {
-            (uint256 lowerThreshold, uint24 rate) = BreakpointsLib.at(schedule, i);
+            uint256 lowerThreshold = brackets[i].lowerThreshold;
+            uint24 rate = brackets[i].rate;
 
             if (i == count - 1) {
                 // Last bracket: its rate applies to all remaining currency
@@ -387,7 +388,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
                 break;
             }
 
-            (uint256 nextLower,) = BreakpointsLib.at(schedule, i + 1);
+            uint256 nextLower = brackets[i + 1].lowerThreshold;
             uint256 bracketSize = nextLower - lowerThreshold;
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
             lpAmount += FullMath.mulDiv(bracketAmount, rate, MAX_BRACKET_RATE);
