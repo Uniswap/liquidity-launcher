@@ -207,9 +207,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @dev If lpHook only has the beforeInitialize flag (frontrunning protection only), attempts to create a hookless
-    ///      pool first for better aggregator compatibility. Falls back to the hooked pool if the hookless pool is already
-    ///      initialized. If lpHook has other flags (e.g. governance/timelock), it is always used directly.
+    /// @dev Uses the provided lpHook directly if that pool key is uninitialized. If that key already exists, deploys a
+    ///      HookProxy with the provided salt and initializes a new pool key that wraps the original hook.
     /// @param _data Migration data containing the sqrt price
     /// @return key The pool key for the initialized pool
     function _initializePool(

@@ -9,10 +9,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {GovernanceHook} from "src/periphery/hooks/GovernanceHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
-import {LBPHookBase} from "src/periphery/hooks/LBPHookBase.sol";
 
 contract GovernanceHookNoValidation is GovernanceHook {
-    constructor(IPoolManager _pm, address _strategy, address _governance) GovernanceHook(_pm, _strategy, _governance) {}
+    constructor(IPoolManager _pm, address _governance) GovernanceHook(_pm, _governance) {}
 
     function validateHookAddress(BaseHook) internal pure override {}
 }
@@ -22,30 +21,12 @@ contract GovernanceHookTest is HookTestBase {
     address governance = makeAddr("governance");
 
     function setUp() public {
-        uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG;
+        uint160 flags = Hooks.BEFORE_SWAP_FLAG;
         address hookAddr = _computeHookAddress(flags);
 
-        GovernanceHookNoValidation impl =
-            new GovernanceHookNoValidation(IPoolManager(poolManager), strategy, governance);
+        GovernanceHookNoValidation impl = new GovernanceHookNoValidation(IPoolManager(poolManager), governance);
         vm.etch(hookAddr, address(impl).code);
         hook = GovernanceHook(hookAddr);
-    }
-
-    function test_fuzz_beforeInitialize_revertsIfNotStrategy(address notStrategy, uint160 sqrtPriceX96) public {
-        vm.assume(notStrategy != strategy);
-        PoolKey memory key = _defaultPoolKey(address(hook));
-
-        vm.prank(poolManager);
-        vm.expectRevert(abi.encodeWithSelector(LBPHookBase.InvalidInitializer.selector, notStrategy, strategy));
-        hook.beforeInitialize(notStrategy, key, sqrtPriceX96);
-    }
-
-    function test_fuzz_beforeInitialize_succeedsForStrategy(uint160 sqrtPriceX96) public {
-        PoolKey memory key = _defaultPoolKey(address(hook));
-
-        vm.prank(poolManager);
-        bytes4 result = hook.beforeInitialize(strategy, key, sqrtPriceX96);
-        assertEq(result, IHooks.beforeInitialize.selector);
     }
 
     function test_fuzz_beforeSwap_revertsIfNotApproved(

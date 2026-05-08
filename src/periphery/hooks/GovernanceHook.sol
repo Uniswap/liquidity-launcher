@@ -7,11 +7,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {LBPHookBase} from "./LBPHookBase.sol";
+import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
 /// @title GovernanceHook
 /// @notice Hook that requires governance approval before swaps are allowed on the pool
-contract GovernanceHook is LBPHookBase {
+contract GovernanceHook is BaseHook {
     /// @notice Emitted when swaps are approved by governance
     event SwapsApproved();
 
@@ -29,9 +29,7 @@ contract GovernanceHook is LBPHookBase {
     /// @notice Whether swaps have been approved by governance
     bool public isApproved;
 
-    constructor(IPoolManager _poolManager, address _strategy, address _governance)
-        LBPHookBase(_poolManager, _strategy)
-    {
+    constructor(IPoolManager _poolManager, address _governance) BaseHook(_poolManager) {
         governance = _governance;
     }
 
@@ -44,7 +42,7 @@ contract GovernanceHook is LBPHookBase {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: true,
+            beforeInitialize: false,
             beforeAddLiquidity: false,
             beforeSwap: true,
             beforeSwapReturnDelta: false,
