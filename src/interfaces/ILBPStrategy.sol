@@ -30,6 +30,7 @@ interface ILBPStrategy is IDistributionStrategy {
         address fundsRecipient; // the address that will receive the funds from the auction
         address lpPositionRecipient; // the address that will receive the created LP position
         address lpHook; // the hook that will be used to initialize the pool
+        bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
         bytes lpAllocationSchedule; // abi-encoded LpAllocationBracket[]
     }
 
@@ -79,6 +80,11 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Error thrown when the funds recipient is not set to the strategy
     /// @param expectedRecipient The expected recipient
     error InvalidRecipient(address expectedRecipient);
+
+    /// @notice Error thrown when the total supply is greater than the max total supply
+    /// @param totalSupply The invalid total supply
+    /// @param maxTotalSupply The max total supply
+    error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
 
     /// @notice Error thrown when the CCA's custody tokens do not match the expected supplyForLP
     /// @param custodyTokens The CCA's reported custody tokens

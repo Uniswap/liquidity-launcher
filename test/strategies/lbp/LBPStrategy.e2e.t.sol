@@ -7,6 +7,12 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+
+interface IERC721Balance {
+    function balanceOf(address owner) external view returns (uint256);
+}
 
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
@@ -39,6 +45,44 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         );
     }
 
+    function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
+        ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
+        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
+
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
+        defs[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
+
+        ILBPStrategy.MigratorParameters memory mp = ILBPStrategy.MigratorParameters({
+            migrationBlock: uint64(block.number + 1),
+            poolLPFee: 3000,
+            poolTickSpacing: 60,
+            supplyForLP: 100 ether,
+            fundsRecipient: fundsRecipient,
+            lpPositionRecipient: lpPositionRecipient,
+            lpHook: address(0),
+            positionDefinitions: abi.encode(defs),
+            lpAllocationSchedule: new bytes(0)
+        });
+        uint128 totalSupply = mp.supplyForLP + 10 ether;
+
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, uint64(block.number), bp);
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether})
+        );
+
+        vm.deal(address(initializer), 100 ether);
+        token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
+
+        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
+        assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(lpPositionRecipient), 0);
+    }
+
     /// @notice Two independent distributions store separate migration parameters
     function test_fuzz_twoDistributionsStoreSeparateParams(MigrationFuzzParams memory p1, MigrationFuzzParams memory p2)
         public
@@ -57,14 +101,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
     function test_fuzz_currencySplitAppliedCorrectly(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Since _createPositionPlan is a stub, all currency gets swept — no LP is created.
-        // Up to 1 wei may be lost to rounding in the bracket calculation
+        // Currency goes to either LP positions or fundsRecipient. Total received <= raised (allow small rounding).
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertGe(received, p.currencyRaised - 1);
+        assertLe(received, lbpParams.currencyRaised + 2);
     }
 
     /// @notice E2E test with ERC20 currency (not native ETH)

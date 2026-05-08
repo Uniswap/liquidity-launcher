@@ -11,6 +11,7 @@ import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
@@ -52,6 +53,9 @@ abstract contract LBPStrategyTestBase is Test {
         uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
+        int24 offsetLower;
+        int24 offsetUpper;
+        uint24 fullRangeWeight;
     }
 
     function setUp() public virtual {
@@ -97,9 +101,6 @@ abstract contract LBPStrategyTestBase is Test {
         }
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
-        // Mock modifyLiquidities until PositionPlanner is implemented — _createPositionPlan returns empty bytes
-        // which the real PositionManager would revert on. Pool initialization still hits real PoolManager.
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
     /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters and bracket schedule.
@@ -146,6 +147,7 @@ abstract contract LBPStrategyTestBase is Test {
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
             lpHook: address(0),
+            positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
             lpAllocationSchedule: new bytes(0)
         });
     }
@@ -178,6 +180,26 @@ abstract contract LBPStrategyTestBase is Test {
             brackets[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: t1, rate: r1});
             brackets[2] = ILBPStrategy.LpAllocationBracket({lowerThreshold: t2, rate: r2});
         }
+    }
+
+    /// @notice Bounds fuzzed position inputs into a valid two-position plan.
+    function _boundPositionDefinitions(int24 _offsetLower, int24 _offsetUpper, uint24 _fullRangeWeight)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        _offsetLower = int24(bound(_offsetLower, -10000, -1));
+        _offsetUpper = int24(bound(_offsetUpper, 1, 10000));
+        _fullRangeWeight = uint24(bound(_fullRangeWeight, 1, 1e7 - 1));
+
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _fullRangeWeight
+        });
+        defs[1] = PositionDefinition({
+            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
+        });
+        return abi.encode(defs);
     }
 
     /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData

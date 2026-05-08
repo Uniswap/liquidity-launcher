@@ -3,7 +3,6 @@ pragma solidity 0.8.26;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
@@ -12,9 +11,11 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
+import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
+import {Plan, Position, PositionDefinition} from "../../types/PositionPlannerTypes.sol";
 import {
     ILBPInitializer,
     LBPInitializationParams,
@@ -22,6 +23,7 @@ import {
 } from "../../interfaces/ILBPInitializer.sol";
 import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -36,16 +38,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
-
-    /// @notice Internal helper struct
-    struct MigrationData {
-        uint160 sqrtPriceX96;
-        uint128 fullRangeTokenAmount;
-        uint128 fullRangeCurrencyAmount;
-        uint128 leftoverToken;
-        uint128 leftoverCurrency;
-        uint128 liquidity;
-    }
 
     constructor(
         IPositionManager _positionManager,
@@ -127,33 +119,34 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        uint256 currencyAmountForLp =
-            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
-
-        // Ensure the currency amount for the LP is in a valid range to create a v4 pool.
+        // Apply the bracket schedule to derive how much currency goes to the LP, then validate.
         // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
-        currencyAmountForLp = _validateCurrencyAmountForLp(currencyAmountForLp);
+        uint128 currencyAmountForLp = _validateCurrencyAmountForLp(
+            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule)
+        );
 
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
         // This requires trusting the initializer to return correct and immutable addresses.
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
 
-        // Prepare the migration data
-        MigrationData memory data = _prepareMigrationData(
-            currency,
-            token,
-            uint128(currencyAmountForLp), // Ensured to be less than or equal to int128.max in _validateCurrencyAmountForLp
-            migrationParams.supplyForLP,
-            lbpParams.initialPriceX96,
-            migrationParams.poolTickSpacing
-        );
+        // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
+        uint160 sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
 
         PoolKey memory key = _initializePool(
-            data, currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing, migrationParams.lpHook
+            currency,
+            token,
+            sqrtPriceX96,
+            migrationParams.poolLPFee,
+            migrationParams.poolTickSpacing,
+            migrationParams.lpHook
         );
 
-        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(data);
+        // currencyAmountForLp is already <= int128.max from _validateCurrencyAmountForLp;
+        // supplyForLP is enforced <= int128.max in _validateMigratorParams.
+        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
+            key, currency, sqrtPriceX96, currencyAmountForLp, migrationParams.supplyForLP, migrationParams
+        );
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
@@ -172,7 +165,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
         }
 
-        emit Migrated(initializer, key, data.sqrtPriceX96);
+        emit Migrated(initializer, key, sqrtPriceX96);
     }
 
     /// @inheritdoc ILBPStrategy
@@ -183,31 +176,67 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
     /// @notice Receive native currency
     receive() external payable {}
 
-    /// @notice Creates the position plan based on migration data
-    /// @param _data Migration data with all necessary parameters
-    /// @return plan The encoded position plan
-    function _createPositionPlan(MigrationData memory _data)
-        internal
-        virtual
-        returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount)
-    {
-        // TODO: Implement the position plan creation via the PositionPlanner library
+    /// @notice Builds the weighted-position plan to be executed against the PositionManager
+    /// @dev Returned transfer amounts are the amounts CONSUMED (not remaining), in (currency, token) order
+    /// @param key The initialized pool key
+    /// @param currency The raised currency
+    /// @param sqrtPriceX96 The initialized pool price
+    /// @param currencyAmountForLp The currency budget for LP positions
+    /// @param tokenAmountForLp The token budget for LP positions
+    /// @param mp The stored migration parameters
+    /// @return plan The encoded PositionManager plan
+    /// @return currencyTransferAmount The currency amount consumed by the plan
+    /// @return tokenTransferAmount The token amount consumed by the plan
+    function _createPositionPlan(
+        PoolKey memory key,
+        Currency currency,
+        uint160 sqrtPriceX96,
+        uint128 currencyAmountForLp,
+        uint128 tokenAmountForLp,
+        MigratorParameters memory mp
+    ) internal virtual returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
+        bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
+
+        Position[] memory positions;
+        {
+            uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : tokenAmountForLp;
+            uint128 amount1In = currencyIsCurrency0 ? tokenAmountForLp : currencyAmountForLp;
+            uint128 remaining0;
+            uint128 remaining1;
+            (positions, remaining0, remaining1) = PositionPlanner.resolve(
+                abi.decode(mp.positionDefinitions, (PositionDefinition[])),
+                sqrtPriceX96,
+                mp.poolTickSpacing,
+                amount0In,
+                amount1In
+            );
+            currencyTransferAmount = currencyIsCurrency0 ? amount0In - remaining0 : amount1In - remaining1;
+            tokenTransferAmount = currencyIsCurrency0 ? amount1In - remaining1 : amount0In - remaining0;
+        }
+
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.lpPositionRecipient);
+        plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @param _data Migration data containing the sqrt price
+    /// @param currency The currency paired with the launched token
+    /// @param token The launched token
+    /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
+    /// @param poolLPFee The LP fee for the pool
+    /// @param poolTickSpacing The tick spacing for the pool
+    /// @param lpHook The hook address for the pool
     /// @return key The pool key for the initialized pool
     function _initializePool(
-        MigrationData memory _data,
         Currency currency,
         Currency token,
+        uint160 initialSqrtPriceX96,
         uint24 poolLPFee,
         int24 poolTickSpacing,
         address lpHook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
-            currency0: currency < token ? currency : token,
-            currency1: currency < token ? token : currency,
+            currency0: _currency0(currency, token),
+            currency1: _currency1(currency, token),
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(lpHook)
@@ -217,7 +246,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         // Will revert if:
         //      - Pool is already initialized
         //      - Initial price is not set (sqrtPriceX96 = 0)
-        poolManager.initialize(key, _data.sqrtPriceX96);
+        poolManager.initialize(key, initialSqrtPriceX96);
 
         return key;
     }
@@ -281,6 +310,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         if (_migratorParams.supplyForLP > uint128(type(int128).max)) {
             revert InvalidSupplyForLp(_migratorParams.supplyForLP, uint128(type(int128).max));
         }
+        // Position plan validation (non-empty, weights sum to MPS)
+        PositionPlanner.validate(abi.decode(_migratorParams.positionDefinitions, (PositionDefinition[])));
     }
 
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
@@ -321,47 +352,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         }
     }
 
-    /// @notice Prepares all migration data including prices, amounts, and liquidity calculations
-    /// @param currencyAmountForLp The total currency amount for the LP
-    /// @param initialPriceX96 The initial price of the pool
-    /// @return data MigrationData struct containing all calculated values
-    function _prepareMigrationData(
-        Currency currency,
-        Currency token,
-        uint128 currencyAmountForLp,
-        uint128 tokenAmountForLp,
-        uint256 initialPriceX96,
-        int24 poolTickSpacing
-    ) private pure returns (MigrationData memory) {
-        bool currencyIsCurrency0 = currency < token;
-
-        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currencyIsCurrency0);
-        uint160 sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
-
-        (uint128 fullRangeTokenAmount, uint128 fullRangeCurrencyAmount) =
-            TokenPricing.calculateAmounts(priceX192, currencyAmountForLp, currencyIsCurrency0, tokenAmountForLp);
-
-        uint128 leftoverCurrency = currencyAmountForLp - fullRangeCurrencyAmount;
-        uint128 leftoverToken = tokenAmountForLp - fullRangeTokenAmount;
-
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(poolTickSpacing)),
-            TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(poolTickSpacing)),
-            currencyIsCurrency0 ? fullRangeCurrencyAmount : fullRangeTokenAmount,
-            currencyIsCurrency0 ? fullRangeTokenAmount : fullRangeCurrencyAmount
-        );
-
-        return MigrationData({
-            sqrtPriceX96: sqrtPriceX96,
-            fullRangeTokenAmount: fullRangeTokenAmount,
-            fullRangeCurrencyAmount: fullRangeCurrencyAmount,
-            leftoverCurrency: leftoverCurrency,
-            leftoverToken: leftoverToken,
-            liquidity: liquidity
-        });
-    }
-
     /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve
     /// @dev Decodes the abi-encoded schedule and iterates it. Each non-last bracket allocates
     /// min(remaining, bracketSize) at its rate, where bracketSize = next.lowerThreshold − this.lowerThreshold.
@@ -398,5 +388,34 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
 
             if (remaining == 0) break;
         }
+    }
+
+    /// @notice Derives the initial sqrt price for the v4 pool from the auction's final price
+    /// @dev Adjusts the raw X96 price for currency ordering before converting to a sqrtPriceX96.
+    /// @param currency The raised currency
+    /// @param token The launched token
+    /// @param initialPriceX96 The auction's final price expressed as currency-per-token (X96 fixed-point)
+    /// @return sqrtPriceX96 The initialization price to hand to the pool manager
+    function _computeSqrtPriceX96(Currency currency, Currency token, uint256 initialPriceX96)
+        private
+        pure
+        returns (uint160 sqrtPriceX96)
+    {
+        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, _currencyIsCurrency0(currency, token));
+        sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
+    }
+
+    function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
+        assembly ("memory-safe") {
+            currencyIsCurrency0 := lt(currency, token)
+        }
+    }
+
+    function _currency0(Currency currency, Currency token) private pure returns (Currency) {
+        return (_currencyIsCurrency0(currency, token) ? currency : token);
+    }
+
+    function _currency1(Currency currency, Currency token) private pure returns (Currency) {
+        return (_currencyIsCurrency0(currency, token) ? token : currency);
     }
 }

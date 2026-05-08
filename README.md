@@ -44,10 +44,13 @@ forge build
 ./script/build_rust.sh
 
 # Run tests
-forge test --isolate -vvv
+forge test
+
+# Run the LBP strategy suite
+forge test --match-path 'test/strategies/lbp/**/*.sol'
 ```
 
-The project requires the following environment variable for testing:
+Most tests run locally. The periphery position-recipient tests fork mainnet and require:
 
 - `QUICKNODE_RPC_URL`: An Ethereum mainnet RPC endpoint for fork testing
 

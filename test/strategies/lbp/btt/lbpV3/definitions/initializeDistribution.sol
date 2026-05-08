@@ -13,6 +13,8 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 
 /// @title InitializeDistributionTest
 /// @notice BTT tests for LBPStrategy.initializeDistribution
@@ -32,6 +34,10 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 /// │   └── it reverts with InvalidPositionRecipient
 /// ├── when supplyForLP > int128.max
 /// │   └── it reverts with InvalidSupplyForLp
+/// ├── when position definitions contain invalid tick bounds
+/// │   └── it reverts with InvalidTickBounds
+/// ├── when position definitions exceed the max position count
+/// │   └── it reverts with TooManyPositions
 /// └── when migrator params are valid
 ///     ├── when initializer.fundsRecipient != strategy
 ///     │   └── it reverts with InvalidRecipient
@@ -40,7 +46,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 ///     ├── when initializer.custodyTokens mismatch
 ///     │   └── it reverts with InvalidCustodySupply
 ///     └── when initializer is valid
-///         ├── it stores the identifier
+///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
     function test_WhenScheduleEmpty(MigrationFuzzParams memory p) public {
@@ -287,6 +293,107 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
     modifier whenSupplyForLpIsValid() {
         _;
+    }
+
+    function test_WhenPositionDefinitionsIsEmpty(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenSupplyForLpIsValid
+    {
+        // it reverts with {EmptyPositionPlan}
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(PositionPlanner.EmptyPositionPlan.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight, MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenSupplyForLpIsValid
+    {
+        // it reverts with {InvalidAllocationWeights}
+        _weight = uint24(bound(_weight, 0, type(uint24).max));
+        vm.assume(_weight != 1e7);
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _weight});
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionTickBoundsAreInvalid(
+        int24 _offsetLower,
+        int24 _offsetUpper,
+        MigrationFuzzParams memory p
+    )
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenSupplyForLpIsValid
+    {
+        // it reverts with {InvalidTickBounds}
+        _offsetLower = int24(bound(_offsetLower, TickMath.MIN_TICK, TickMath.MAX_TICK));
+        _offsetUpper = int24(bound(_offsetUpper, TickMath.MIN_TICK, _offsetLower));
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: 1e7});
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidTickBounds.selector, _offsetLower, _offsetUpper));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionCountExceedsMax(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenSupplyForLpIsValid
+    {
+        // it reverts with {TooManyPositions}
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN + 1);
+        for (uint256 i; i < defs.length; i++) {
+            uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_POSITIONS_PER_PLAN) : uint24(1);
+            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
+        }
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PositionPlanner.TooManyPositions.selector,
+                PositionPlanner.MAX_POSITIONS_PER_PLAN + 1,
+                PositionPlanner.MAX_POSITIONS_PER_PLAN
+            )
+        );
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
     modifier whenMigratorParamsAreValid() {
