@@ -28,18 +28,34 @@ library PositionPlanner {
     uint24 internal constant MPS = 1e7;
     /// @notice Reference liquidity used to quote weighted token consumption
     uint128 internal constant LIQUIDITY_PRECISION = 1e18;
+    /// @notice The maximum number of positions that can be included in a plan to prevent OOG
+    uint24 internal constant MAX_POSITIONS_PER_PLAN = 10;
 
     /// @notice Thrown when the position plan contains no definitions
     error EmptyPositionPlan();
     /// @notice Thrown when the weights across a plan do not sum to `MPS`
     error InvalidAllocationWeights(uint24 totalWeight);
+    /// @notice Thrown when the tick bounds are invalid
+    /// @param offsetLower The invalid lower tick bound
+    /// @param offsetUpper The invalid upper tick bound
+    error InvalidTickBounds(int24 offsetLower, int24 offsetUpper);
+    /// @notice Thrown when the number of positions exceeds the maximum allowed
+    /// @param actual The actual number of positions
+    /// @param max The maximum allowed number of positions
+    error TooManyPositions(uint24 actual, uint24 max);
 
     /// @notice Validates that a position plan is non-empty and its weights sum to `MPS`
     /// @param _definitions The weighted position definitions to validate
     function validate(PositionDefinition[] memory _definitions) internal pure {
         if (_definitions.length == 0) revert EmptyPositionPlan();
+        if (_definitions.length > MAX_POSITIONS_PER_PLAN) {
+            revert TooManyPositions(uint24(_definitions.length), MAX_POSITIONS_PER_PLAN);
+        }
         uint256 totalWeight;
         for (uint256 i; i < _definitions.length; i++) {
+            if (_definitions[i].offsetLower >= _definitions[i].offsetUpper) {
+                revert InvalidTickBounds(_definitions[i].offsetLower, _definitions[i].offsetUpper);
+            }
             totalWeight += _definitions[i].weight;
         }
         if (totalWeight != MPS) {

@@ -15,6 +15,10 @@ InitializeDistributionTest
             ├── when lpPositionRecipient is reserved
             │   └── it reverts with {InvalidPositionRecipient}
             └── when lpPositionRecipient is valid
+                ├── when position definition tick bounds are invalid
+                │   └── it reverts with {InvalidTickBounds}
+                ├── when position definition count exceeds max
+                │   └── it reverts with {TooManyPositions}
                 ├── when initializer fundsRecipient is not strategy
                 │   └── it reverts with {InvalidRecipient}
                 ├── when initializer tokensRecipient is not strategy
