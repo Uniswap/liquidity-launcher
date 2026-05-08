@@ -10,15 +10,18 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
-/// Forks mainnet to use real v4 PoolManager and PositionManager.
+/// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
 /// Uses mock CCA (MockInitializerFactory + MockLBPInitializer) for auction simulation.
 abstract contract LBPStrategyTestBase is Test {
-    // Mainnet v4 deployments
+    // Canonical v4 deployment addresses
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
@@ -42,12 +45,20 @@ abstract contract LBPStrategyTestBase is Test {
         uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
+        int24 offsetLower;
+        int24 offsetUpper;
+        uint24 fullRangeWeight;
     }
 
     function setUp() public virtual {
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"));
-
         owner = address(this);
+
+        deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(owner), address(POOL_MANAGER));
+        deployCodeTo(
+            "lib/v4-periphery/src/PositionManager.sol:PositionManager",
+            abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
+            address(POSITION_MANAGER)
+        );
 
         factory = new MockInitializerFactory(address(0));
 
@@ -87,9 +98,6 @@ abstract contract LBPStrategyTestBase is Test {
         }
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
-        // Mock modifyLiquidities until PositionPlanner is implemented — _createPositionPlan returns empty bytes
-        // which the real PositionManager would revert on. Pool initialization still hits real PoolManager.
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
     }
 
     /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters.
@@ -135,8 +143,29 @@ abstract contract LBPStrategyTestBase is Test {
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
             currencySplitForLP: p.currencySplitForLP,
-            lpHook: address(0)
+            lpHook: address(0),
+            positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight)
         });
+    }
+
+    /// @notice Bounds fuzzed position inputs into a valid two-position plan.
+    function _boundPositionDefinitions(int24 _offsetLower, int24 _offsetUpper, uint24 _fullRangeWeight)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        _offsetLower = int24(bound(_offsetLower, -10000, -1));
+        _offsetUpper = int24(bound(_offsetUpper, 1, 10000));
+        _fullRangeWeight = uint24(bound(_fullRangeWeight, 1, 1e7 - 1));
+
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _fullRangeWeight
+        });
+        defs[1] = PositionDefinition({
+            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
+        });
+        return abi.encode(defs);
     }
 
     /// @notice Encodes MigratorParameters + initializerParams into configData for initializeDistribution
@@ -149,7 +178,7 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds currencyRaised so that currencyAmountForLp fits in uint128 for pool creation.
-    /// Min: ensures currencyRaised * split / 1e7 > 0 (avoids NoCurrencyRaised revert).
+    /// Min: ensures currencyRaised * split / 1e7 > 0.
     /// Currency raised above uint128 is tested separately in test_currencyAmountCappedAtUint128Max.
     function _boundCurrencyRaised(uint256 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint256) {
         return bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max);

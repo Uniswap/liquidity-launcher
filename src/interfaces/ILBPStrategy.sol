@@ -18,6 +18,7 @@ interface ILBPStrategy {
         address lpPositionRecipient; // the address that will receive the created LP position
         uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
         address lpHook; // the hook that will be used to initialize the pool
+        bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     }
 
     /// @notice Emitted when the auction is initialized
@@ -82,14 +83,6 @@ interface ILBPStrategy {
     /// @param custodyTokens The CCA's reported custody tokens
     /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
     error InvalidCustodySupply(uint256 custodyTokens, uint256 expectedCustodyTokens);
-
-    /// @notice Error thrown when the currency amount is greater than type(uint128).max
-    /// @param currencyAmount The invalid currency amount
-    /// @param maxCurrencyAmount The maximum currency amount (type(uint128).max)
-    error CurrencyAmountTooHigh(uint256 currencyAmount, uint256 maxCurrencyAmount);
-
-    /// @notice Error thrown when no currency was raised
-    error NoCurrencyRaised();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created

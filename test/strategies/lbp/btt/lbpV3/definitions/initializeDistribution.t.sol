@@ -12,8 +12,8 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 
 /// @title InitializeDistributionTest
 /// @notice BTT tests for LBPStrategy.initializeDistribution
@@ -27,10 +27,10 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 /// │   └── it reverts with InvalidFee
 /// ├── when positionRecipient is reserved
 /// │   └── it reverts with InvalidPositionRecipient
-/// ├── when position definitions contain invalid tick bounds
-/// │   └── it reverts with InvalidTickBounds
-/// ├── when position definitions exceed the max position count
-/// │   └── it reverts with TooManyPositions
+/// ├── when positionDefinitions is empty
+/// │   └── it reverts with PositionPlanner.EmptyPositionPlan
+/// ├── when allocation weights don't sum to MPS (1e7)
+/// │   └── it reverts with PositionPlanner.InvalidAllocationWeights(total)
 /// └── when migrator params are valid
 ///     ├── when initializer.fundsRecipient != strategy
 ///     │   └── it reverts with InvalidRecipient
@@ -161,52 +161,46 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenPositionDefinitionTickBoundsAreInvalid(
-        int24 _offsetLower,
-        int24 _offsetUpper,
-        FuzzParams memory p
-    ) public whenCurrencySplitIsValid whenTickSpacingIsValid whenFeeIsValid whenPositionRecipientIsValid {
-        // it reverts with {InvalidTickBounds}
-        _offsetLower = int24(bound(_offsetLower, TickMath.MIN_TICK, TickMath.MAX_TICK));
-        _offsetUpper = int24(bound(_offsetUpper, TickMath.MIN_TICK, _offsetLower));
-
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: 1e7});
-        mp.positionDefinitions = abi.encode(defs);
-
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-
-        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidTickBounds.selector, _offsetLower, _offsetUpper));
-        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
-    }
-
-    function test_WhenPositionDefinitionCountExceedsMax(FuzzParams memory p)
+    function test_WhenPositionDefinitionsIsEmpty(FuzzParams memory p)
         public
         whenCurrencySplitIsValid
         whenTickSpacingIsValid
         whenFeeIsValid
         whenPositionRecipientIsValid
     {
-        // it reverts with {TooManyPositions}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
-        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN + 1);
-        for (uint256 i; i < defs.length; i++) {
-            uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_POSITIONS_PER_PLAN) : uint24(1);
-            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
-        }
+        mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+
+        vm.expectRevert(PositionPlanner.EmptyPositionPlan.selector);
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
+    }
+
+    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight, FuzzParams memory p)
+        public
+        whenCurrencySplitIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // Any single-element weight not equal to 1e7.
+        _weight = uint24(bound(_weight, 0, type(uint24).max));
+        vm.assume(_weight != 1e7);
+
+        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _weight});
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                PositionPlanner.TooManyPositions.selector,
-                PositionPlanner.MAX_POSITIONS_PER_PLAN + 1,
-                PositionPlanner.MAX_POSITIONS_PER_PLAN
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
+    }
+
+    modifier whenPositionPlanIsValid() {
+        _;
     }
 
     modifier whenMigratorParamsAreValid() {
