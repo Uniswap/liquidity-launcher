@@ -29,12 +29,12 @@ library PositionPlanner {
     /// @notice Reference liquidity used to quote weighted token consumption
     uint128 internal constant LIQUIDITY_PRECISION = 1e18;
     /// @notice The maximum number of positions that can be included in a plan to prevent OOG
-    uint24 internal constant MAX_POSITIONS_PER_PLAN = 10;
+    uint24 public constant MAX_POSITIONS_PER_PLAN = 10;
 
     /// @notice Thrown when the position plan contains no definitions
     error EmptyPositionPlan();
     /// @notice Thrown when the weights across a plan do not sum to `MPS`
-    error InvalidAllocationWeights(uint24 totalWeight);
+    error InvalidAllocationWeights(uint256 totalWeight);
     /// @notice Thrown when the tick bounds are invalid
     /// @param offsetLower The invalid lower tick bound
     /// @param offsetUpper The invalid upper tick bound
@@ -59,7 +59,7 @@ library PositionPlanner {
             totalWeight += _definitions[i].weight;
         }
         if (totalWeight != MPS) {
-            revert InvalidAllocationWeights(uint24(totalWeight));
+            revert InvalidAllocationWeights(totalWeight);
         }
     }
 

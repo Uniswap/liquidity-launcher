@@ -190,16 +190,22 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     {
         // it reverts with {TooManyPositions}
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
-        PositionDefinition[] memory defs = new PositionDefinition[](11);
+        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN + 1);
         for (uint256 i; i < defs.length; i++) {
-            uint24 weight = i == defs.length - 1 ? uint24(1e7 - 10) : uint24(1);
+            uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_POSITIONS_PER_PLAN) : uint24(1);
             defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
         }
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
 
-        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.TooManyPositions.selector, 11, 10));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PositionPlanner.TooManyPositions.selector,
+                PositionPlanner.MAX_POSITIONS_PER_PLAN + 1,
+                PositionPlanner.MAX_POSITIONS_PER_PLAN
+            )
+        );
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, hex""), bytes32(0));
     }
 

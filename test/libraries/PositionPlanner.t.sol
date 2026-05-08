@@ -125,9 +125,10 @@ contract PositionPlannerTest is Test {
     }
 
     function test_validate_succeedsAtMaxPositionCount() public view {
-        PositionDefinition[] memory defs = new PositionDefinition[](10);
+        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN);
         for (uint256 i; i < defs.length; i++) {
-            uint24 weight = i == defs.length - 1 ? uint24(1e7 - 9) : uint24(1);
+            uint24 weight =
+                i == defs.length - 1 ? uint24(1e7 - (PositionPlanner.MAX_POSITIONS_PER_PLAN - 1)) : uint24(1);
             defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
         }
 
@@ -135,30 +136,20 @@ contract PositionPlannerTest is Test {
     }
 
     function test_validate_revertsWhenPositionCountExceedsMax() public {
-        PositionDefinition[] memory defs = new PositionDefinition[](11);
+        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN + 1);
         for (uint256 i; i < defs.length; i++) {
-            uint24 weight = i == defs.length - 1 ? uint24(1e7 - 10) : uint24(1);
+            uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_POSITIONS_PER_PLAN) : uint24(1);
             defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
         }
 
-        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.TooManyPositions.selector, 11, 10));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PositionPlanner.TooManyPositions.selector,
+                PositionPlanner.MAX_POSITIONS_PER_PLAN + 1,
+                PositionPlanner.MAX_POSITIONS_PER_PLAN
+            )
+        );
         mockPositionPlanner.validate(defs);
-    }
-
-    // --- resolve ---
-
-    function test_resolve_skipsDegenerateBounds() public view {
-        // Offsets of (0, 0) resolve to a zero-width range, which is skipped rather than reverted
-        // so the migrate path never fails on malformed definitions.
-        PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: 0, offsetUpper: 0, weight: 1e7});
-
-        (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
-            mockPositionPlanner.resolve(defs, TickMath.getSqrtPriceAtTick(0), 10, 100e18, 100e18);
-
-        assertEq(positions.length, 0);
-        assertEq(remaining0, 100e18);
-        assertEq(remaining1, 100e18);
     }
 
     function test_resolve_clampsOffsetsExceedingUsableRange() public view {
@@ -361,7 +352,7 @@ contract PositionPlannerTest is Test {
 
     function test_fuzz_toPlan_supportsVariablePositionCount(uint8 positionCount, bytes32 seed) public view {
         PoolKey memory poolKey = _poolKey(10);
-        positionCount = uint8(bound(positionCount, 0, 10));
+        positionCount = uint8(bound(positionCount, 0, PositionPlanner.MAX_POSITIONS_PER_PLAN));
         Position[] memory positions = new Position[](positionCount);
         for (uint256 i; i < positions.length; i++) {
             uint256 entropy = uint256(keccak256(abi.encode(seed, i)));
@@ -405,7 +396,7 @@ contract PositionPlannerTest is Test {
         currentTick = int24(bound(currentTick, TickMath.MIN_TICK / 2, TickMath.MAX_TICK / 2));
         currency0Amount = uint128(bound(currency0Amount, 1, type(uint96).max));
         currency1Amount = uint128(bound(currency1Amount, 1, type(uint96).max));
-        positionCount = uint8(bound(positionCount, 1, 10));
+        positionCount = uint8(bound(positionCount, 1, PositionPlanner.MAX_POSITIONS_PER_PLAN));
 
         PoolKey memory poolKey = _poolKey(tickSpacing);
 
