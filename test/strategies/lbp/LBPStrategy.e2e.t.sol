@@ -21,6 +21,10 @@ interface IHookProxyView {
     function allowedInitializer() external view returns (address);
 }
 
+interface IERC721Balance {
+    function balanceOf(address owner) external view returns (uint256);
+}
+
 /// @notice End-to-end fuzz tests exercising the full initializeDistribution → migrate flow
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -35,7 +39,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         // it stores the MigratorParameters
-        (uint64 storedMigrationBlock,,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
+        (uint64 storedMigrationBlock,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertGt(storedMigrationBlock, 0);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
@@ -54,6 +58,32 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         );
     }
 
+    function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
+        FuzzParams memory p = FuzzParams({
+            endBlock: uint64(block.number),
+            migrationBlock: uint64(block.number + 1),
+            poolLPFee: 3000,
+            poolTickSpacing: 60,
+            supplyForLP: 100 ether,
+            auctionSupply: 10 ether,
+            currencySplitForLP: 5e6,
+            currencyRaised: 100 ether,
+            initialPriceX96: uint160(1 << 96),
+            tokensSold: 1 ether,
+            hookProxySalt: bytes32(0),
+            offsetLower: -600,
+            offsetUpper: 600,
+            fullRangeWeight: 5e6
+        });
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
+        assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(lpPositionRecipient), 0);
+    }
+
     /// @notice Two independent distributions store separate migration parameters
     function test_fuzz_twoDistributionsStoreSeparateParams(FuzzParams memory p1, FuzzParams memory p2) public {
         (ILBPStrategy.MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) = _boundMigratorParams(p1);
@@ -62,22 +92,24 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1);
         (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2);
 
-        (uint64 stored1,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
-        (uint64 stored2,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
+        (uint64 stored1,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init1)));
+        (uint64 stored2,,,,,,,,,) = strategy.initializers(ILBPInitializer(address(init2)));
         assertEq(stored1, mp1.migrationBlock);
         assertEq(stored2, mp2.migrationBlock);
     }
 
     function test_fuzz_currencySplitAppliedCorrectly(FuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+        (,,,,,, uint24 currencySplitForLP,,,) = strategy.initializers(ILBPInitializer(address(initializer)));
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Since _createPositionPlan is a stub, all currency gets swept — no LP is created.
-        // TODO: Once _createPositionPlan is implemented, assert at most currencySplitForLP share goes to LP.
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertGe(received, p.currencyRaised);
+        uint256 currencyForLp = uint256(lbpParams.currencyRaised) * currencySplitForLP / 1e7;
+        assertGe(received, lbpParams.currencyRaised - currencyForLp);
+        assertLe(received, lbpParams.currencyRaised);
     }
 
     /// @notice E2E test with ERC20 currency (not native ETH)
