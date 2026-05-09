@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
-import {ILBPStrategyConfiguration} from "src/interfaces/ILBPStrategyConfiguration.sol";
+import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 
 /// @title SetProtocolFeeControllerTest
@@ -31,7 +31,7 @@ contract SetProtocolFeeControllerTest is LBPStrategyTestBase {
     }
 
     function test_SetProtocolFeeController_WhenAddressIsZero() public whenCallerIsOwner_setFeeController {
-        vm.expectRevert(ILBPStrategyConfiguration.InvalidProtocolFeeController.selector);
+        vm.expectRevert(ILBPStrategy.InvalidProtocolFeeController.selector);
         strategy.setProtocolFeeController(address(0));
     }
 
@@ -47,7 +47,7 @@ contract SetProtocolFeeControllerTest is LBPStrategyTestBase {
         vm.assume(_controller != address(0));
 
         vm.expectEmit();
-        emit ILBPStrategyConfiguration.ProtocolFeeControllerSet(_controller);
+        emit ILBPStrategy.ProtocolFeeControllerSet(_controller);
         strategy.setProtocolFeeController(_controller);
 
         assertEq(strategy.protocolFeeController(), _controller);

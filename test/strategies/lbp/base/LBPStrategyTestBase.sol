@@ -12,6 +12,7 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {MigratorParams} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
@@ -153,7 +154,7 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Bounds raw fuzz inputs into a valid LP allocation bracket array (1-3 brackets)
-    /// @return brackets Valid brackets with first lowerThreshold = 0, strictly ascending lowerThresholds, and rates in [1, strategy.MAX_BRACKET_RATE()]
+    /// @return brackets Valid brackets with first lowerThreshold = 0, strictly ascending lowerThresholds, and rates in [1, MigratorParams.MAX_BRACKET_RATE]
     function _boundBrackets(BracketFuzzParams memory p)
         internal
         view
@@ -162,18 +163,18 @@ abstract contract LBPStrategyTestBase is Test {
         uint256 count = bound(p.count, 1, 3);
         brackets = new ILBPStrategy.LpAllocationBracket[](count);
 
-        uint24 r0 = uint24(bound(p.rate0, 1, strategy.MAX_BRACKET_RATE()));
+        uint24 r0 = uint24(bound(p.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
 
         if (count == 1) {
             brackets[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: r0});
         } else if (count == 2) {
-            uint24 r1 = uint24(bound(p.rate1, 1, strategy.MAX_BRACKET_RATE()));
+            uint24 r1 = uint24(bound(p.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
             uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max));
             brackets[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: r0});
             brackets[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: t1, rate: r1});
         } else {
-            uint24 r1 = uint24(bound(p.rate1, 1, strategy.MAX_BRACKET_RATE()));
-            uint24 r2 = uint24(bound(p.rate2, 1, strategy.MAX_BRACKET_RATE()));
+            uint24 r1 = uint24(bound(p.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+            uint24 r2 = uint24(bound(p.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
             uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max - 1));
             uint128 t2 = uint128(bound(p.threshold1, t1 + 1, type(uint128).max));
             brackets[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: r0});
@@ -235,7 +236,7 @@ abstract contract LBPStrategyTestBase is Test {
         returns (uint256)
     {
         uint256 len = _brackets.length;
-        uint256 maxRate = strategy.MAX_BRACKET_RATE();
+        uint256 maxRate = MigratorParams.MAX_BRACKET_RATE;
 
         for (uint256 i = 0; i < len; i++) {
             uint24 rate = _brackets[i].rate;

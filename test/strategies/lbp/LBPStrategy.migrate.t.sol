@@ -11,6 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {MigratorParams} from "src/libraries/MigratorParams.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
@@ -44,7 +45,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
     function test_currencyAmountCappedAtInt128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
         // Use a single bracket with rate >= 50% so minRaise stays in a practical range for vm.deal
-        uint24 rate = uint24(bound(p.bpParams.rate0, strategy.MAX_BRACKET_RATE() / 2, strategy.MAX_BRACKET_RATE()));
+        uint24 rate =
+            uint24(bound(p.bpParams.rate0, MigratorParams.MAX_BRACKET_RATE / 2, MigratorParams.MAX_BRACKET_RATE));
         ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
         bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: rate});
 
@@ -55,7 +57,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > int128.max (triggers the cap).
         // _calculateCurrencyAmountForLp does currencyRaised * rate, so cap hugeRaise to avoid that overflow.
-        uint256 minRaise = uint256(uint128(type(int128).max)) * strategy.MAX_BRACKET_RATE() / rate + 1;
+        uint256 minRaise = uint256(uint128(type(int128).max)) * MigratorParams.MAX_BRACKET_RATE / rate + 1;
         uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
         (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
@@ -90,7 +92,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         // Single bracket at 100% rate
         ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
-        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: strategy.MAX_BRACKET_RATE()});
+        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
         p.poolTickSpacing = 1;
         p.auctionSupply = 1;

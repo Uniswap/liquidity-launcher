@@ -12,6 +12,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
+import {MigratorParams} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
@@ -21,20 +22,25 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
-import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
+import {Ownable} from "solady/auth/Ownable.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
+contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
+    using MigratorParams for ILBPStrategy.MigratorParameters;
+
     /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
     /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
+
+    /// @notice The protocol fee controller
+    address public protocolFeeController;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
@@ -69,9 +75,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         (MigratorParameters memory params, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
-        // Validate the migrator parameters and LP allocation schedule
-        _validateMigratorParams(params);
-        _validateLpAllocationSchedule(params.lpAllocationSchedule);
+        // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
+        params.validate();
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -171,6 +176,18 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
     /// @inheritdoc ILBPStrategy
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
         return _initializers[initializer];
+    }
+
+    /// @inheritdoc ILBPStrategy
+    function setProtocolFeeController(address _protocolFeeController) external onlyOwner {
+        _setProtocolFeeController(_protocolFeeController);
+        emit ProtocolFeeControllerSet(_protocolFeeController);
+    }
+
+    /// @notice Sets the protocol fee controller
+    /// @param _protocolFeeController The protocol fee controller
+    function _setProtocolFeeController(address _protocolFeeController) internal {
+        protocolFeeController = _protocolFeeController;
     }
 
     /// @notice Receive native currency
@@ -281,39 +298,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
         }
     }
 
-    /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
-    /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(MigratorParameters memory _migratorParams) private pure {
-        // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
-        if (
-            _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
-                || _migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
-        ) {
-            revert InvalidTickSpacing(
-                _migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
-            );
-        }
-        // fee validation (cannot be greater than the v4 max fee)
-        if (_migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            revert InvalidFee(_migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
-        }
-        // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
-        if (
-            _migratorParams.lpPositionRecipient == address(0)
-                || _migratorParams.lpPositionRecipient == ActionConstants.MSG_SENDER
-                || _migratorParams.lpPositionRecipient == ActionConstants.ADDRESS_THIS
-        ) {
-            revert InvalidPositionRecipient(_migratorParams.lpPositionRecipient);
-        }
-        // supplyForLP must fit in int128 — v4's PoolManager._accountDelta uses int128 for token deltas,
-        // so values above int128.max would revert with SafeCastOverflow at migration time.
-        if (_migratorParams.supplyForLP > uint128(type(int128).max)) {
-            revert InvalidSupplyForLp(_migratorParams.supplyForLP, uint128(type(int128).max));
-        }
-        // Position plan validation (non-empty, weights sum to MPS)
-        PositionPlanner.validate(abi.decode(_migratorParams.positionDefinitions, (PositionDefinition[])));
-    }
-
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
     /// @param initializer The initializer contract
     /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
@@ -374,14 +358,14 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy {
 
             if (i == count - 1) {
                 // Last bracket: its rate applies to all remaining currency
-                lpAmount += FullMath.mulDiv(remaining, rate, MAX_BRACKET_RATE);
+                lpAmount += FullMath.mulDiv(remaining, rate, MigratorParams.MAX_BRACKET_RATE);
                 break;
             }
 
             uint256 nextLower = brackets[i + 1].lowerThreshold;
             uint256 bracketSize = nextLower - lowerThreshold;
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
-            lpAmount += FullMath.mulDiv(bracketAmount, rate, MAX_BRACKET_RATE);
+            lpAmount += FullMath.mulDiv(bracketAmount, rate, MigratorParams.MAX_BRACKET_RATE);
             unchecked {
                 remaining -= bracketAmount;
             }

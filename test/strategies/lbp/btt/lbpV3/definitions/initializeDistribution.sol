@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {ILBPStrategyConfiguration} from "src/interfaces/ILBPStrategyConfiguration.sol";
+import {MigratorParams} from "src/libraries/MigratorParams.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
@@ -55,7 +55,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](0);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketCount.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
@@ -65,7 +65,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         MigrationFuzzParams memory p
     ) public {
         _threshold = uint128(bound(_threshold, 1, type(uint128).max));
-        _rate = uint24(bound(_rate, 1, strategy.MAX_BRACKET_RATE()));
+        _rate = uint24(bound(_rate, 1, MigratorParams.MAX_BRACKET_RATE));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
@@ -73,12 +73,12 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
         bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: _threshold, rate: _rate});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketThreshold.selector, _threshold));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, _threshold));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
     function test_WhenBracketRateIsOver100Percent(uint24 _rate, MigrationFuzzParams memory p) public {
-        _rate = uint24(bound(_rate, strategy.MAX_BRACKET_RATE() + 1, type(uint24).max));
+        _rate = uint24(bound(_rate, MigratorParams.MAX_BRACKET_RATE + 1, type(uint24).max));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
@@ -86,15 +86,15 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
         bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: _rate});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketRate.selector, _rate));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, _rate));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
     function test_WhenNonLastBracketLowerThresholdIsZero(uint24 _rate0, uint24 _rate1, MigrationFuzzParams memory p)
         public
     {
-        _rate0 = uint24(bound(_rate0, 1, strategy.MAX_BRACKET_RATE()));
-        _rate1 = uint24(bound(_rate1, 1, strategy.MAX_BRACKET_RATE()));
+        _rate0 = uint24(bound(_rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        _rate1 = uint24(bound(_rate1, 1, MigratorParams.MAX_BRACKET_RATE));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
@@ -104,14 +104,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: _rate0});
         bp[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: _rate1});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketThreshold.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
     function test_WhenBracketLowerThresholdsNotAscending(MigrationFuzzParams memory p) public {
-        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, strategy.MAX_BRACKET_RATE()));
-        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, strategy.MAX_BRACKET_RATE()));
-        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, strategy.MAX_BRACKET_RATE()));
+        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
         uint128 threshold0 = uint128(bound(p.bpParams.threshold0, 2, type(uint128).max));
         uint128 threshold1 = uint128(bound(p.bpParams.threshold1, 1, threshold0 - 1));
 
@@ -123,7 +123,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: threshold0, rate: rate1});
         bp[2] = ILBPStrategy.LpAllocationBracket({lowerThreshold: threshold1, rate: rate2});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketThreshold.selector, threshold1));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, threshold1));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
@@ -132,10 +132,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     }
 
     function test_WhenTooManyBrackets(uint24 _rate3, uint128 _threshold2, MigrationFuzzParams memory p) public {
-        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, strategy.MAX_BRACKET_RATE()));
-        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, strategy.MAX_BRACKET_RATE()));
-        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, strategy.MAX_BRACKET_RATE()));
-        uint24 rate3 = uint24(bound(_rate3, 1, strategy.MAX_BRACKET_RATE()));
+        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate3 = uint24(bound(_rate3, 1, MigratorParams.MAX_BRACKET_RATE));
         uint128 threshold0 = uint128(bound(p.bpParams.threshold0, 1, type(uint128).max - 2));
         uint128 threshold1 = uint128(bound(p.bpParams.threshold1, threshold0 + 1, type(uint128).max - 1));
         uint128 threshold2 = uint128(bound(_threshold2, threshold1 + 1, type(uint128).max));
@@ -149,7 +149,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[2] = ILBPStrategy.LpAllocationBracket({lowerThreshold: threshold1, rate: rate2});
         bp[3] = ILBPStrategy.LpAllocationBracket({lowerThreshold: threshold2, rate: rate3});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketCount.selector, 4));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, 4));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
@@ -160,9 +160,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint128 _threshold,
         MigrationFuzzParams memory p
     ) public {
-        _rate0 = uint24(bound(_rate0, 1, strategy.MAX_BRACKET_RATE()));
-        _rate1 = uint24(bound(_rate1, 1, strategy.MAX_BRACKET_RATE()));
-        _rate2 = uint24(bound(_rate2, 1, strategy.MAX_BRACKET_RATE()));
+        _rate0 = uint24(bound(_rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        _rate1 = uint24(bound(_rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        _rate2 = uint24(bound(_rate2, 1, MigratorParams.MAX_BRACKET_RATE));
         _threshold = uint128(bound(_threshold, 1, type(uint128).max));
 
         (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
@@ -173,7 +173,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: _threshold, rate: _rate1});
         bp[2] = ILBPStrategy.LpAllocationBracket({lowerThreshold: _threshold, rate: _rate2});
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategyConfiguration.InvalidBracketThreshold.selector, _threshold));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, _threshold));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
@@ -182,7 +182,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
-        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: strategy.MAX_BRACKET_RATE()});
+        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
         // Should not revert — rate is exactly MAX_BRACKET_RATE
