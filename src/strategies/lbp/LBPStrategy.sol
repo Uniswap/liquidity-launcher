@@ -72,11 +72,11 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         returns (IDistributionContract)
     {
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
-        (MigratorParameters memory params, bytes memory initializerParams) =
+        (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
         // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
-        params.validate();
+        migrationParams.validate();
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -95,12 +95,12 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         }
 
         // Validate the initializer parameters are set as expected
-        _validateInitializerParams(initializer, params);
+        _validateInitializerParams(initializer, migrationParams);
 
         // Store the parameters
-        _initializers[initializer] = params;
+        _initializers[initializer] = migrationParams;
 
-        emit InitializerCreated(initializer, params);
+        emit InitializerCreated(initializer, migrationParams);
 
         return IDistributionContract(address(initializer));
     }
@@ -252,8 +252,8 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         address lpHook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
-            currency0: _currency0(currency, token),
-            currency1: _currency1(currency, token),
+            currency0: currency < token ? currency : token,
+            currency1: currency < token ? token : currency,
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(lpHook)
@@ -385,21 +385,7 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         pure
         returns (uint160 sqrtPriceX96)
     {
-        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, _currencyIsCurrency0(currency, token));
+        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currency < token);
         sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
-    }
-
-    function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
-        assembly ("memory-safe") {
-            currencyIsCurrency0 := lt(currency, token)
-        }
-    }
-
-    function _currency0(Currency currency, Currency token) private pure returns (Currency) {
-        return (_currencyIsCurrency0(currency, token) ? currency : token);
-    }
-
-    function _currency1(Currency currency, Currency token) private pure returns (Currency) {
-        return (_currencyIsCurrency0(currency, token) ? token : currency);
     }
 }

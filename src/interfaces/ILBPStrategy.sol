@@ -85,11 +85,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param expectedRecipient The expected recipient
     error InvalidRecipient(address expectedRecipient);
 
-    /// @notice Error thrown when the total supply is greater than the max total supply
-    /// @param totalSupply The invalid total supply
-    /// @param maxTotalSupply The max total supply
-    error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
-
     /// @notice Error thrown when the CCA's custody tokens do not match the expected supplyForLP
     /// @param custodyTokens The CCA's reported custody tokens
     /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
