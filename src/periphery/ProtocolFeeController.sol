@@ -39,6 +39,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
             return;
         }
 
+        if (globalProtocolFee.globalProtocolFeeRecipient == address(0)) revert InvalidInput();
         if (fees.length > MAX_FEES) revert InvalidFeeLength(fees.length);
 
         uint128 prevThreshold;

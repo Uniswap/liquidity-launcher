@@ -358,7 +358,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         (uint256 feeAmount, address feeRecipient) = IProtocolFeeController(protocolFeeController)
             .getProtocolFeeAmount(Currency.unwrap(currency), currencyRaised);
 
-        if (feeAmount > 0 && feeRecipient != address(0)) {
+        if (feeAmount > 0) {
             currency.transfer(feeRecipient, feeAmount);
             emit ProtocolFeePaid(feeRecipient, feeAmount);
         }
