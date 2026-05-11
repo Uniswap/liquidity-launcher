@@ -1,11 +1,13 @@
 InitializeDistributionTest
-├── when currencySplitForLP is invalid (0, >1e7, <min)
-│   └── it reverts with {InvalidCurrencySplitForLP}
-├── when currencySplitForLP is greater than 1e7
-│   └── it reverts with {InvalidCurrencySplitForLP}
-├── when currencySplitForLP is less than minSplitForLP
-│   └── it reverts with {InvalidCurrencySplitForLP}
-└── when currencySplitForLP is valid
+├── when breakpoints array is empty
+│   └── it reverts with {InvalidBreakpointLength}
+├── when breakpoint rate is greater than 1e7
+│   └── it reverts with {InvalidBreakpointRate}
+├── when non-last breakpoint threshold is 0
+│   └── it reverts with {InvalidBreakpointThreshold}
+├── when breakpoint thresholds are not ascending
+│   └── it reverts with {InvalidBreakpointThreshold}
+└── when breakpoint config is valid
     ├── when poolTickSpacing is out of bounds
     │   └── it reverts with {InvalidTickSpacing}
     └── when poolTickSpacing is valid

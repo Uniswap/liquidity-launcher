@@ -14,6 +14,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
@@ -32,16 +33,26 @@ abstract contract LBPStrategyTestBase is Test {
     address fundsRecipient = makeAddr("fundsRecipient");
     address lpPositionRecipient = makeAddr("lpPositionRecipient");
 
+    /// @notice Raw fuzz inputs for LP allocation bracket generation — pass this as a fuzz parameter
+    struct BracketFuzzParams {
+        uint8 count;
+        uint24 rate0;
+        uint24 rate1;
+        uint24 rate2;
+        uint128 threshold0;
+        uint128 threshold1;
+    }
+
     /// @notice Fuzz params for all LBPStrategy tests.
     /// Tests that only need migrator params can ignore currencyRaised/initialPriceX96/tokensSold.
-    struct FuzzParams {
+    struct MigrationFuzzParams {
         uint64 endBlock;
         uint64 migrationBlock;
         uint24 poolLPFee;
         int24 poolTickSpacing;
         uint128 supplyForLP;
         uint128 auctionSupply;
-        uint24 currencySplitForLP;
+        BracketFuzzParams bpParams;
         uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
@@ -66,7 +77,6 @@ abstract contract LBPStrategyTestBase is Test {
             POSITION_MANAGER,
             POOL_MANAGER,
             IDistributionStrategy(address(factory)),
-            1, // minSplitForLp
             makeAddr("protocolFeeController"),
             owner
         );
@@ -77,17 +87,18 @@ abstract contract LBPStrategyTestBase is Test {
     /// @notice One-liner for a happy-path migration setup: bounds all fuzz params, deploys and funds
     /// the initializer, and rolls to the migration block. Use _boundMigratorParams + _initializeWith
     /// directly when you need to customize the migration inputs (e.g., zero currency, ERC20 currency).
-    function _setupForMigration(FuzzParams memory p)
+    function _setupForMigration(MigrationFuzzParams memory p)
         internal
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+        LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, mp.currencySplitForLP);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        (initializer, token) = _initializeWith(mp, totalSupply, endBlock);
+        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, brackets);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
@@ -100,52 +111,83 @@ abstract contract LBPStrategyTestBase is Test {
         vm.roll(mp.migrationBlock);
     }
 
-    /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters.
+    /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters and bracket schedule.
     /// Use when you need valid migrator params but want to control currencyRaised/price/tokensSold yourself
     /// (e.g., setting currencyRaised = 0 to test a revert, or wiring up an ERC20 currency).
-    function _initializeWith(ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock)
-        internal
-        returns (MockLBPInitializer initializer, MockERC20 token)
-    {
+    function _initializeWith(
+        MigratorParameters memory mp,
+        uint128 totalSupply,
+        uint64 endBlock,
+        LiquidityAllocationBracket[] memory brackets
+    ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        // Encode custodyTokens and endBlock into initializerParams — the mock factory reads these from configData
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
-        bytes memory configData = _encodeConfigData(mp, initializerParams);
+        bytes memory configData = _encodeConfigData(mp, brackets, initializerParams);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
 
-    /// @notice Bounds the migrator-related fields of FuzzParams into valid MigratorParameters.
+    /// @notice Bounds the migrator-related fields of MigrationFuzzParams into valid MigratorParameters.
     /// Does NOT touch currencyRaised/initialPriceX96/tokensSold — use _setupForMigration for that.
-    function _boundMigratorParams(FuzzParams memory p)
+    /// The returned MigratorParameters has an empty lpAllocationSchedule; callers populate it via _encodeConfigData.
+    function _boundMigratorParams(MigrationFuzzParams memory p)
         internal
         view
-        returns (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
+        returns (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
     {
         p.poolLPFee = uint24(bound(p.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
         p.poolTickSpacing = int24(bound(p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
-        p.currencySplitForLP = uint24(bound(p.currencySplitForLP, 1, 1e7));
         // CCA's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
-        // supplyForLP is held as CCA custody — unbounded uint128, but totalSupply must fit in uint128 (Distribution.amount)
-        p.supplyForLP = uint128(bound(p.supplyForLP, 1, type(uint128).max - auctionSupply));
+        // supplyForLP must fit in int128 (v4 delta limit, enforced by _validateMigratorParams)
+        p.supplyForLP = uint128(bound(p.supplyForLP, 1, uint128(type(int128).max) - auctionSupply));
         totalSupply = p.supplyForLP + auctionSupply;
         // endBlock must be < migrationBlock (validated by _validateInitializer)
         p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));
         p.migrationBlock = uint64(bound(p.migrationBlock, p.endBlock + 1, type(uint64).max));
         endBlock = p.endBlock;
 
-        mp = ILBPStrategy.MigratorParameters({
+        mp = MigratorParameters({
             migrationBlock: p.migrationBlock,
             poolLPFee: p.poolLPFee,
             poolTickSpacing: p.poolTickSpacing,
             supplyForLP: p.supplyForLP,
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
-            currencySplitForLP: p.currencySplitForLP,
             lpHook: address(0),
-            positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight)
+            positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
+            lpAllocationSchedule: new bytes(0)
         });
+    }
+
+    /// @notice Bounds raw fuzz inputs into a valid LP allocation bracket array (1-3 brackets)
+    /// @return brackets Valid brackets with first lowerThreshold = 0, strictly ascending lowerThresholds, and rates in [1, MigratorParams.MAX_BRACKET_RATE]
+    function _boundBrackets(BracketFuzzParams memory p)
+        internal
+        pure
+        returns (LiquidityAllocationBracket[] memory brackets)
+    {
+        uint256 count = bound(p.count, 1, 3);
+        brackets = new LiquidityAllocationBracket[](count);
+
+        uint24 r0 = uint24(bound(p.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+
+        if (count == 1) {
+            brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: r0});
+        } else if (count == 2) {
+            uint24 r1 = uint24(bound(p.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+            uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max));
+            brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: r0});
+            brackets[1] = LiquidityAllocationBracket({lowerThreshold: t1, rate: r1});
+        } else {
+            uint24 r1 = uint24(bound(p.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+            uint24 r2 = uint24(bound(p.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
+            uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max - 1));
+            uint128 t2 = uint128(bound(p.threshold1, t1 + 1, type(uint128).max));
+            brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: r0});
+            brackets[1] = LiquidityAllocationBracket({lowerThreshold: t1, rate: r1});
+            brackets[2] = LiquidityAllocationBracket({lowerThreshold: t2, rate: r2});
+        }
     }
 
     /// @notice Bounds fuzzed position inputs into a valid two-position plan.
@@ -168,20 +210,53 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(defs);
     }
 
-    /// @notice Encodes MigratorParameters + initializerParams into configData for initializeDistribution
-    function _encodeConfigData(ILBPStrategy.MigratorParameters memory mp, bytes memory initializerParams)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData
+    function _encodeConfigData(
+        MigratorParameters memory mp,
+        LiquidityAllocationBracket[] memory brackets,
+        bytes memory initializerParams
+    ) internal pure returns (bytes memory) {
+        mp.lpAllocationSchedule = abi.encode(brackets);
         return abi.encode(mp, initializerParams);
     }
 
-    /// @notice Bounds currencyRaised so that currencyAmountForLp fits in uint128 for pool creation.
-    /// Min: ensures currencyRaised * split / 1e7 > 0.
-    /// Currency raised above uint128 is tested separately in test_currencyAmountCappedAtUint128Max.
-    function _boundCurrencyRaised(uint256 _currencyRaised, uint24 _currencySplitForLP) internal pure returns (uint256) {
-        return bound(_currencyRaised, 1e7 / _currencySplitForLP + 1, type(uint128).max);
+    /// @notice Bounds currencyRaised into a range that produces non-zero LP and migrates cleanly.
+    /// Lower bound: minimum currencyRaised that yields >= 1 LP (some brackets may round to 0).
+    /// Upper bound: int128.max — v4's PoolManager._accountDelta uses int128 for currency deltas
+    /// The cap-and-sweep path for currencyRaised > int128.max is covered by test_currencyAmountCappedAtInt128Max.
+    function _boundCurrencyRaised(uint256 _currencyRaised, LiquidityAllocationBracket[] memory _brackets)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 minCurrency = _minCurrencyForNonZeroLp(_brackets);
+        return bound(_currencyRaised, minCurrency, uint256(uint128(type(int128).max)));
+    }
+
+    /// @notice Finds the minimum currencyRaised such that the schedule's total LP is >= 1.
+    /// For each bracket, computes how much currency must flow INTO it to produce >= 1 LP, and how
+    /// much currency the bracket can actually hold. Returns at the first bracket where the latter
+    /// covers the former.
+    function _minCurrencyForNonZeroLp(LiquidityAllocationBracket[] memory _brackets) internal pure returns (uint256) {
+        uint256 len = _brackets.length;
+        uint256 maxRate = MigratorParams.MAX_BRACKET_RATE;
+
+        for (uint256 i = 0; i < len; i++) {
+            uint24 rate = _brackets[i].rate;
+            if (rate == 0) continue;
+
+            uint256 lowerThreshold = _brackets[i].lowerThreshold;
+            // Min currency inside this bracket so floor(amount * rate / maxRate) >= 1.
+            uint256 minAmountInBracket = maxRate / rate + 1;
+            // Last bracket has unbounded capacity; middle brackets are capped by the next threshold.
+            uint256 capacity =
+                i == len - 1 ? type(uint256).max : uint256(_brackets[i + 1].lowerThreshold) - lowerThreshold;
+
+            if (capacity >= minAmountInBracket) {
+                return lowerThreshold + minAmountInBracket;
+            }
+        }
+        revert(); // Should never reach here
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.
