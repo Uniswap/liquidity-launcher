@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {MigratorParams, MigratorParameters, LpAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
@@ -53,7 +53,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](0);
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](0);
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -70,8 +70,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
-        bp[0] = LpAllocationBracket({lowerThreshold: _threshold, rate: _rate});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: _threshold, rate: _rate});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, _threshold));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -83,8 +83,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: _rate});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, _rate));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -99,10 +99,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](2);
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](2);
         // Non-first bracket with lowerThreshold == previous fails the strict-ascend check on bp[1]
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: _rate0});
-        bp[1] = LpAllocationBracket({lowerThreshold: 0, rate: _rate1});
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate1});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -118,10 +118,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](3);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: rate0});
-        bp[1] = LpAllocationBracket({lowerThreshold: threshold0, rate: rate1});
-        bp[2] = LpAllocationBracket({lowerThreshold: threshold1, rate: rate2});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](3);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: threshold0, rate: rate1});
+        bp[2] = LiquidityAllocationBracket({lowerThreshold: threshold1, rate: rate2});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, threshold1));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -143,11 +143,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](4);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: rate0});
-        bp[1] = LpAllocationBracket({lowerThreshold: threshold0, rate: rate1});
-        bp[2] = LpAllocationBracket({lowerThreshold: threshold1, rate: rate2});
-        bp[3] = LpAllocationBracket({lowerThreshold: threshold2, rate: rate3});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](4);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: threshold0, rate: rate1});
+        bp[2] = LiquidityAllocationBracket({lowerThreshold: threshold1, rate: rate2});
+        bp[3] = LiquidityAllocationBracket({lowerThreshold: threshold2, rate: rate3});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, 4));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -168,10 +168,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](3);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: _rate0});
-        bp[1] = LpAllocationBracket({lowerThreshold: _threshold, rate: _rate1});
-        bp[2] = LpAllocationBracket({lowerThreshold: _threshold, rate: _rate2});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](3);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: _threshold, rate: _rate1});
+        bp[2] = LiquidityAllocationBracket({lowerThreshold: _threshold, rate: _rate2});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, _threshold));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
@@ -181,8 +181,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
         // Should not revert — rate is exactly MAX_BRACKET_RATE

@@ -12,7 +12,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
-import {MigratorParams, MigratorParameters, LpAllocationBracket} from "../../libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
@@ -339,14 +339,14 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     /// min(remaining, bracketSize) at its rate, where bracketSize = next.lowerThreshold − this.lowerThreshold.
     /// The last bracket's rate applies to all remaining currency (extends to infinity).
     /// @param currencyAmount The total currency raised
-    /// @param schedule The abi-encoded LpAllocationBracket[] schedule
+    /// @param schedule The abi-encoded LiquidityAllocationBracket[] schedule
     /// @return lpAmount The currency amount allocated to the LP
     function _calculateCurrencyAmountForLp(uint256 currencyAmount, bytes memory schedule)
         private
         pure
         returns (uint256 lpAmount)
     {
-        LpAllocationBracket[] memory brackets = abi.decode(schedule, (LpAllocationBracket[]));
+        LiquidityAllocationBracket[] memory brackets = abi.decode(schedule, (LiquidityAllocationBracket[]));
         uint256 remaining = currencyAmount;
         uint256 count = brackets.length;
 

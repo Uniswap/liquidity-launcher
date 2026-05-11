@@ -6,7 +6,7 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 import {IDistributionStrategy} from "./IDistributionStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
-import {MigratorParameters, LpAllocationBracket} from "../libraries/MigratorParams.sol";
+import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract

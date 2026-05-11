@@ -11,7 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
-import {MigratorParams, MigratorParameters, LpAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
@@ -47,8 +47,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         // Use a single bracket with rate >= 50% so minRaise stays in a practical range for vm.deal
         uint24 rate =
             uint24(bound(p.bpParams.rate0, MigratorParams.MAX_BRACKET_RATE / 2, MigratorParams.MAX_BRACKET_RATE));
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: rate});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate});
 
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
@@ -91,8 +91,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         uint128 maxV4Delta = uint128(type(int128).max);
 
         // Single bracket at 100% rate
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
         p.poolTickSpacing = 1;
         p.auctionSupply = 1;

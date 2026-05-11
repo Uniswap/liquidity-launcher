@@ -18,7 +18,7 @@ struct MigratorParameters {
     address lpPositionRecipient; // the address that will receive the created LP position
     address lpHook; // the hook that will be used to initialize the pool
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
-    bytes lpAllocationSchedule; // abi-encoded LpAllocationBracket[]
+    bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
 }
 
 /// @notice A single bracket in the LP allocation schedule. Each bracket pairs a lower threshold
@@ -27,7 +27,7 @@ struct MigratorParameters {
 /// if not (no on-chain sort is performed). The first bracket's lowerThreshold MUST be 0. Each bracket's
 /// rate applies from its lowerThreshold up to the next bracket's lowerThreshold (or infinity for the
 /// last bracket).
-struct LpAllocationBracket {
+struct LiquidityAllocationBracket {
     uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first bracket must be 0)
     uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
 }
@@ -86,12 +86,12 @@ library MigratorParams {
     }
 
     /// @notice Validates an abi-encoded LP allocation schedule
-    /// @dev The schedule is an abi-encoded LpAllocationBracket[]. It must contain 1 to MAX_BRACKETS brackets,
+    /// @dev The schedule is an abi-encoded LiquidityAllocationBracket[]. It must contain 1 to MAX_BRACKETS brackets,
     /// with the first bracket's lowerThreshold = 0, all rates in [0, MAX_BRACKET_RATE], and strictly ascending
     /// lowerThresholds.
     /// @param _schedule The abi-encoded LP allocation schedule
     function _validateLpAllocationSchedule(bytes memory _schedule) private pure {
-        LpAllocationBracket[] memory brackets = abi.decode(_schedule, (LpAllocationBracket[]));
+        LiquidityAllocationBracket[] memory brackets = abi.decode(_schedule, (LiquidityAllocationBracket[]));
         uint256 count = brackets.length;
         if (count == 0 || count > MAX_BRACKETS) revert InvalidBracketCount(count);
 

@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {MigratorParameters, LpAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -46,8 +46,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
-        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
-        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
@@ -117,7 +117,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
 
-        LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
