@@ -6,34 +6,11 @@ import {IDistributionContract} from "./IDistributionContract.sol";
 import {IDistributionStrategy} from "./IDistributionStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
+import {MigratorParameters, LpAllocationBracket} from "../libraries/MigratorParams.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
 interface ILBPStrategy is IDistributionStrategy {
-    /// @notice A single bracket in the LP allocation schedule. Each bracket pairs a lower threshold
-    /// (in cumulative currency raised) with the rate of currency allocated to the LP within that bracket.
-    /// @dev Brackets MUST be supplied in strictly ascending order by lowerThreshold; the contract reverts
-    /// if not (no on-chain sort is performed). The first bracket's lowerThreshold MUST be 0. Each bracket's
-    /// rate applies from its lowerThreshold up to the next bracket's lowerThreshold (or infinity for the
-    /// last bracket).
-    struct LpAllocationBracket {
-        uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first bracket must be 0)
-        uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
-    }
-
-    /// @notice Migration parameters for an initializer
-    struct MigratorParameters {
-        uint64 migrationBlock; // block number when the migration can begin
-        uint24 poolLPFee; // the LP fee that the v4 pool will use
-        int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // amount of the token used for LP creation
-        address fundsRecipient; // the address that will receive the funds from the auction
-        address lpPositionRecipient; // the address that will receive the created LP position
-        address lpHook; // the hook that will be used to initialize the pool
-        bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
-        bytes lpAllocationSchedule; // abi-encoded LpAllocationBracket[]
-    }
-
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters

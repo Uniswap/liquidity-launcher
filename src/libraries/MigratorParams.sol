@@ -8,9 +8,33 @@ import {ILBPStrategy} from "../interfaces/ILBPStrategy.sol";
 import {PositionPlanner} from "./PositionPlanner.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
 
+/// @notice Migration parameters for an initializer
+struct MigratorParameters {
+    uint64 migrationBlock; // block number when the migration can begin
+    uint24 poolLPFee; // the LP fee that the v4 pool will use
+    int24 poolTickSpacing; // the tick spacing that the v4 pool will use
+    uint128 supplyForLP; // amount of the token used for LP creation
+    address fundsRecipient; // the address that will receive the funds from the auction
+    address lpPositionRecipient; // the address that will receive the created LP position
+    address lpHook; // the hook that will be used to initialize the pool
+    bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
+    bytes lpAllocationSchedule; // abi-encoded LpAllocationBracket[]
+}
+
+/// @notice A single bracket in the LP allocation schedule. Each bracket pairs a lower threshold
+/// (in cumulative currency raised) with the rate of currency allocated to the LP within that bracket.
+/// @dev Brackets MUST be supplied in strictly ascending order by lowerThreshold; the contract reverts
+/// if not (no on-chain sort is performed). The first bracket's lowerThreshold MUST be 0. Each bracket's
+/// rate applies from its lowerThreshold up to the next bracket's lowerThreshold (or infinity for the
+/// last bracket).
+struct LpAllocationBracket {
+    uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first bracket must be 0)
+    uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
+}
+
 /// @title MigratorParams
-/// @notice Validation helpers for ILBPStrategy.MigratorParameters, including the embedded
-/// LP allocation schedule and the position-planner definitions.
+/// @notice Validation helpers for MigratorParameters, including the embedded LP allocation schedule
+/// and the position-planner definitions.
 library MigratorParams {
     /// @notice The maximum bracket rate (100% in mps)
     uint24 internal constant MAX_BRACKET_RATE = 1e7;
@@ -32,7 +56,7 @@ library MigratorParams {
     /// @notice Validates the full migrator parameters struct: scalar fields, supplyForLP cap,
     /// position plan definitions, and the embedded LP allocation schedule. Reverts on any invalidity.
     /// @param p The migrator parameters to validate
-    function validate(ILBPStrategy.MigratorParameters memory p) internal pure {
+    function validate(MigratorParameters memory p) internal pure {
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (p.poolTickSpacing > TickMath.MAX_TICK_SPACING || p.poolTickSpacing < TickMath.MIN_TICK_SPACING) {
             revert ILBPStrategy.InvalidTickSpacing(
@@ -67,7 +91,7 @@ library MigratorParams {
     /// lowerThresholds.
     /// @param _schedule The abi-encoded LP allocation schedule
     function _validateLpAllocationSchedule(bytes memory _schedule) private pure {
-        ILBPStrategy.LpAllocationBracket[] memory brackets = abi.decode(_schedule, (ILBPStrategy.LpAllocationBracket[]));
+        LpAllocationBracket[] memory brackets = abi.decode(_schedule, (LpAllocationBracket[]));
         uint256 count = brackets.length;
         if (count == 0 || count > MAX_BRACKETS) revert InvalidBracketCount(count);
 

@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {MigratorParameters} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -44,7 +45,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             )
         );
 
-        (ILBPStrategy.MigratorParameters memory storedParams) = strategy.initializers(unregistered);
+        (MigratorParameters memory storedParams) = strategy.initializers(unregistered);
         assertEq(storedParams.migrationBlock, 0);
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, uint64(0), _currentBlock));
@@ -53,7 +54,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
 
     function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock, MigrationFuzzParams memory p) public {
         // it reverts with {MigrationNotAllowed}
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
@@ -74,7 +75,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         // it reverts with {NoCurrencyRaised}
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.tokensSold = uint128(bound(p.tokensSold, 0, auctionSupply));
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {MigratorParameters, LpAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -25,8 +26,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         // it stores the MigratorParameters
-        (ILBPStrategy.MigratorParameters memory storedParams) =
-            strategy.initializers(ILBPInitializer(address(initializer)));
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertGt(storedParams.migrationBlock, 0);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
@@ -46,14 +46,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
-        ILBPStrategy.LpAllocationBracket[] memory bp = new ILBPStrategy.LpAllocationBracket[](1);
-        bp[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
+        LpAllocationBracket[] memory bp = new LpAllocationBracket[](1);
+        bp[0] = LpAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
         defs[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
 
-        ILBPStrategy.MigratorParameters memory mp = ILBPStrategy.MigratorParameters({
+        MigratorParameters memory mp = MigratorParameters({
             migrationBlock: uint64(block.number + 1),
             poolLPFee: 3000,
             poolTickSpacing: 60,
@@ -87,14 +87,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     function test_fuzz_twoDistributionsStoreSeparateParams(MigrationFuzzParams memory p1, MigrationFuzzParams memory p2)
         public
     {
-        (ILBPStrategy.MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) = _boundMigratorParams(p1);
-        (ILBPStrategy.MigratorParameters memory mp2, uint128 totalSupply2, uint64 endBlock2,) = _boundMigratorParams(p2);
+        (MigratorParameters memory mp1, uint128 totalSupply1, uint64 endBlock1,) = _boundMigratorParams(p1);
+        (MigratorParameters memory mp2, uint128 totalSupply2, uint64 endBlock2,) = _boundMigratorParams(p2);
 
         (MockLBPInitializer init1,) = _initializeWith(mp1, totalSupply1, endBlock1, _boundBrackets(p1.bpParams));
         (MockLBPInitializer init2,) = _initializeWith(mp2, totalSupply2, endBlock2, _boundBrackets(p2.bpParams));
 
-        (ILBPStrategy.MigratorParameters memory stored1) = strategy.initializers(ILBPInitializer(address(init1)));
-        (ILBPStrategy.MigratorParameters memory stored2) = strategy.initializers(ILBPInitializer(address(init2)));
+        (MigratorParameters memory stored1) = strategy.initializers(ILBPInitializer(address(init1)));
+        (MigratorParameters memory stored2) = strategy.initializers(ILBPInitializer(address(init2)));
         assertEq(stored1.migrationBlock, mp1.migrationBlock);
         assertEq(stored2.migrationBlock, mp2.migrationBlock);
     }
@@ -117,8 +117,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
 
-        ILBPStrategy.LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+        LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);

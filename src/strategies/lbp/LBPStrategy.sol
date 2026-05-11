@@ -12,7 +12,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
-import {MigratorParams} from "../../libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LpAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
@@ -30,7 +30,7 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
-    using MigratorParams for ILBPStrategy.MigratorParameters;
+    using MigratorParams for MigratorParameters;
 
     /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;

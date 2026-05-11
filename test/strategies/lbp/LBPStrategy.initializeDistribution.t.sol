@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {MigratorParameters, LpAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -11,11 +12,11 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 /// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/initializeDistribution.sol
 contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     function test_storesMigrationParameters(MigrationFuzzParams memory p) public {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
-        (ILBPStrategy.MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(init1)));
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(init1)));
 
         assertEq(storedParams.migrationBlock, mp.migrationBlock);
         assertEq(storedParams.poolLPFee, mp.poolLPFee);
@@ -27,8 +28,8 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     }
 
     function test_emitsInitializerCreated(MigrationFuzzParams memory p) public {
-        ILBPStrategy.LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
@@ -41,8 +42,8 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     }
 
     function test_revertsIfInitializerAlreadyCreated(MigrationFuzzParams memory p) public {
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
-        ILBPStrategy.LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LpAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
 
         // First initialization succeeds
         (MockLBPInitializer init1,) = _initializeWith(mp, totalSupply, endBlock, bp);

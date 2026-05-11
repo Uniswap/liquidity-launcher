@@ -12,7 +12,7 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
-import {MigratorParams} from "src/libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LpAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
@@ -84,8 +84,8 @@ abstract contract LBPStrategyTestBase is Test {
         internal
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
-        ILBPStrategy.LpAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+        LpAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
@@ -108,10 +108,10 @@ abstract contract LBPStrategyTestBase is Test {
     /// Use when you need valid migrator params but want to control currencyRaised/price/tokensSold yourself
     /// (e.g., setting currencyRaised = 0 to test a revert, or wiring up an ERC20 currency).
     function _initializeWith(
-        ILBPStrategy.MigratorParameters memory mp,
+        MigratorParameters memory mp,
         uint128 totalSupply,
         uint64 endBlock,
-        ILBPStrategy.LpAllocationBracket[] memory brackets
+        LpAllocationBracket[] memory brackets
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
@@ -126,7 +126,7 @@ abstract contract LBPStrategyTestBase is Test {
     function _boundMigratorParams(MigrationFuzzParams memory p)
         internal
         view
-        returns (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
+        returns (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
     {
         p.poolLPFee = uint24(bound(p.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
         p.poolTickSpacing = int24(bound(p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
@@ -140,7 +140,7 @@ abstract contract LBPStrategyTestBase is Test {
         p.migrationBlock = uint64(bound(p.migrationBlock, p.endBlock + 1, type(uint64).max));
         endBlock = p.endBlock;
 
-        mp = ILBPStrategy.MigratorParameters({
+        mp = MigratorParameters({
             migrationBlock: p.migrationBlock,
             poolLPFee: p.poolLPFee,
             poolTickSpacing: p.poolTickSpacing,
@@ -155,31 +155,27 @@ abstract contract LBPStrategyTestBase is Test {
 
     /// @notice Bounds raw fuzz inputs into a valid LP allocation bracket array (1-3 brackets)
     /// @return brackets Valid brackets with first lowerThreshold = 0, strictly ascending lowerThresholds, and rates in [1, MigratorParams.MAX_BRACKET_RATE]
-    function _boundBrackets(BracketFuzzParams memory p)
-        internal
-        view
-        returns (ILBPStrategy.LpAllocationBracket[] memory brackets)
-    {
+    function _boundBrackets(BracketFuzzParams memory p) internal view returns (LpAllocationBracket[] memory brackets) {
         uint256 count = bound(p.count, 1, 3);
-        brackets = new ILBPStrategy.LpAllocationBracket[](count);
+        brackets = new LpAllocationBracket[](count);
 
         uint24 r0 = uint24(bound(p.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
 
         if (count == 1) {
-            brackets[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: r0});
+            brackets[0] = LpAllocationBracket({lowerThreshold: 0, rate: r0});
         } else if (count == 2) {
             uint24 r1 = uint24(bound(p.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
             uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max));
-            brackets[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: r0});
-            brackets[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: t1, rate: r1});
+            brackets[0] = LpAllocationBracket({lowerThreshold: 0, rate: r0});
+            brackets[1] = LpAllocationBracket({lowerThreshold: t1, rate: r1});
         } else {
             uint24 r1 = uint24(bound(p.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
             uint24 r2 = uint24(bound(p.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
             uint128 t1 = uint128(bound(p.threshold0, 1, type(uint128).max - 1));
             uint128 t2 = uint128(bound(p.threshold1, t1 + 1, type(uint128).max));
-            brackets[0] = ILBPStrategy.LpAllocationBracket({lowerThreshold: 0, rate: r0});
-            brackets[1] = ILBPStrategy.LpAllocationBracket({lowerThreshold: t1, rate: r1});
-            brackets[2] = ILBPStrategy.LpAllocationBracket({lowerThreshold: t2, rate: r2});
+            brackets[0] = LpAllocationBracket({lowerThreshold: 0, rate: r0});
+            brackets[1] = LpAllocationBracket({lowerThreshold: t1, rate: r1});
+            brackets[2] = LpAllocationBracket({lowerThreshold: t2, rate: r2});
         }
     }
 
@@ -205,8 +201,8 @@ abstract contract LBPStrategyTestBase is Test {
 
     /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData
     function _encodeConfigData(
-        ILBPStrategy.MigratorParameters memory mp,
-        ILBPStrategy.LpAllocationBracket[] memory brackets,
+        MigratorParameters memory mp,
+        LpAllocationBracket[] memory brackets,
         bytes memory initializerParams
     ) internal pure returns (bytes memory) {
         mp.lpAllocationSchedule = abi.encode(brackets);
@@ -217,7 +213,7 @@ abstract contract LBPStrategyTestBase is Test {
     /// Lower bound: minimum currencyRaised that yields >= 1 LP (some brackets may round to 0).
     /// Upper bound: int128.max — v4's PoolManager._accountDelta uses int128 for currency deltas
     /// The cap-and-sweep path for currencyRaised > int128.max is covered by test_currencyAmountCappedAtInt128Max.
-    function _boundCurrencyRaised(uint256 _currencyRaised, ILBPStrategy.LpAllocationBracket[] memory _brackets)
+    function _boundCurrencyRaised(uint256 _currencyRaised, LpAllocationBracket[] memory _brackets)
         internal
         view
         returns (uint256)
@@ -230,11 +226,7 @@ abstract contract LBPStrategyTestBase is Test {
     /// For each bracket, computes how much currency must flow INTO it to produce >= 1 LP, and how
     /// much currency the bracket can actually hold. Returns at the first bracket where the latter
     /// covers the former.
-    function _minCurrencyForNonZeroLp(ILBPStrategy.LpAllocationBracket[] memory _brackets)
-        internal
-        view
-        returns (uint256)
-    {
+    function _minCurrencyForNonZeroLp(LpAllocationBracket[] memory _brackets) internal view returns (uint256) {
         uint256 len = _brackets.length;
         uint256 maxRate = MigratorParams.MAX_BRACKET_RATE;
 
