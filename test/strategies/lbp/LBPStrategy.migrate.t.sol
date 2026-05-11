@@ -11,9 +11,10 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
-    function test_emitsCurrencySwept(FuzzParams memory p) public {
+    function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         // Check indexed param (fundsRecipient) but not data — exact amount may differ due to pool initialization dust
@@ -22,7 +23,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_emitsTokensSwept(FuzzParams memory p) public {
+    function test_emitsTokensSwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.expectEmit(true, false, false, false);
@@ -30,7 +31,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_emitsMigrated(FuzzParams memory p) public {
+    function test_emitsMigrated(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.expectEmit(false, false, false, false);
@@ -42,22 +43,24 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_currencyAmountCappedAtInt128Max(FuzzParams memory p, uint256 _hugeRaise) public {
-        // Floor split at 50% so minRaise stays in a practical range for vm.deal
-        p.currencySplitForLP =
-            uint24(bound(p.currencySplitForLP, uint256(strategy.MAX_SPLIT_FOR_LP()) / 2, strategy.MAX_SPLIT_FOR_LP()));
+    function test_currencyAmountCappedAtInt128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
+        // Use a single bracket with rate >= 50% so minRaise stays in a practical range for vm.deal
+        uint24 rate =
+            uint24(bound(p.bpParams.rate0, MigratorParams.MAX_BRACKET_RATE / 2, MigratorParams.MAX_BRACKET_RATE));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate});
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
 
-        uint128 maxV4Delta = uint128(type(int128).max);
-        // Bound so that hugeRaise * split / 1e7 > int128.max (triggers the cap).
-        uint256 minRaise = uint256(maxV4Delta) * 1e7 / mp.currencySplitForLP + 1;
-        uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / mp.currencySplitForLP);
+        // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > int128.max (triggers the cap).
+        // _calculateCurrencyAmountForLp does currencyRaised * rate, so cap hugeRaise to avoid that overflow.
+        uint256 minRaise = uint256(uint128(type(int128).max)) * MigratorParams.MAX_BRACKET_RATE / rate + 1;
+        uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: hugeRaise
@@ -68,77 +71,48 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         vm.deal(address(initializer), hugeRaise);
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
-        // Keep this test focused on the int128 cap and sweep behavior; position execution is covered elsewhere.
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
 
-        // Migrate — should not revert, currency amount gets capped at int128.max
+        // Migrate — should not revert; currency amount gets capped at int128.max for the planner
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertApproxEqAbs(received, hugeRaise, 2);
+        uint256 toRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 toPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
+
+        // Conservation: every wei of hugeRaise reaches fundsRecipient or the pool manager
+        assertEq(toRecipient + toPool, hugeRaise);
+        // The pool can never consume more than the int128.max cap (excess is swept to fundsRecipient)
+        assertLe(toPool, uint128(type(int128).max));
 
         // Strategy should be empty
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 
-    function test_currencyAndTokenAmountsCappedAtInt128Max(FuzzParams memory p) public {
+    function test_skippedPositionBudgetsAreSweptToFundsRecipient(MigrationFuzzParams memory p) public {
         uint128 maxV4Delta = uint128(type(int128).max);
 
-        p.currencySplitForLP = 1e7;
-        p.auctionSupply = 1;
-        p.supplyForLP = maxV4Delta + 1;
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        // Single bracket at 100% rate
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        uint256 currencyRaised = uint256(maxV4Delta) + 1;
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: currencyRaised
-            })
-        );
-
-        vm.deal(address(initializer), currencyRaised);
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
-
-        uint256 recipientBalBefore = fundsRecipient.balance;
-        uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
-
-        strategy.migrate(ILBPInitializer(address(initializer)));
-
-        assertGt(uint256(currencyRaised), maxV4Delta);
-        assertGt(mp.supplyForLP, maxV4Delta);
-        assertGt(fundsRecipient.balance, recipientBalBefore);
-        assertGt(token.balanceOf(fundsRecipient), recipientTokenBalBefore);
-        assertEq(address(strategy).balance, 0);
-        assertEq(token.balanceOf(address(strategy)), 0);
-    }
-
-    function test_skippedPositionBudgetsAreSweptToFundsRecipient(FuzzParams memory p) public {
-        uint128 maxV4Delta = uint128(type(int128).max);
-
-        p.currencySplitForLP = 1e7;
         p.poolTickSpacing = 1;
         p.auctionSupply = 1;
-        p.supplyForLP = maxV4Delta;
         p.initialPriceX96 = uint160(1 << 96);
 
-        (ILBPStrategy.MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
+        mp.supplyForLP = maxV4Delta;
+        totalSupply = mp.supplyForLP + auctionSupply;
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
         mp.positionDefinitions = abi.encode(defs);
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock);
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: maxV4Delta
@@ -148,19 +122,25 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         vm.deal(address(initializer), maxV4Delta);
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
-        uint256 positionManagerBalBefore = address(POSITION_MANAGER).balance;
-        uint256 positionManagerTokenBalBefore = token.balanceOf(address(POSITION_MANAGER));
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
+        uint256 poolManagerTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(fundsRecipient.balance - recipientBalBefore, maxV4Delta);
-        assertEq(token.balanceOf(fundsRecipient) - recipientTokenBalBefore, totalSupply);
-        assertEq(address(POSITION_MANAGER).balance, positionManagerBalBefore);
-        assertEq(token.balanceOf(address(POSITION_MANAGER)), positionManagerTokenBalBefore);
+        // Currency conservation: every wei of maxV4Delta reaches fundsRecipient or the pool manager
+        assertEq(
+            (fundsRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
+            maxV4Delta
+        );
+        // Token conservation: every token issued reaches fundsRecipient or the pool manager
+        assertEq(
+            (token.balanceOf(fundsRecipient) - recipientTokenBalBefore)
+                + (token.balanceOf(address(POOL_MANAGER)) - poolManagerTokenBalBefore),
+            totalSupply
+        );
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
     }

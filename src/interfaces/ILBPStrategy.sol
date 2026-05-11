@@ -3,24 +3,14 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDistributionContract} from "./IDistributionContract.sol";
+import {IDistributionStrategy} from "./IDistributionStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
+import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
-interface ILBPStrategy {
-    struct MigratorParameters {
-        uint64 migrationBlock; // block number when the migration can begin
-        uint24 poolLPFee; // the LP fee that the v4 pool will use
-        int24 poolTickSpacing; // the tick spacing that the v4 pool will use
-        uint128 supplyForLP; // amount of the token that will be used to create the LP position
-        address fundsRecipient; // the address that will receive the funds from the auction
-        address lpPositionRecipient; // the address that will receive the created LP position
-        uint24 currencySplitForLP; // the percentage of the currency that will be used for LP, expressed in mps (1e7 = 100%)
-        address lpHook; // the hook that will be used to initialize the pool
-        bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
-    }
-
+interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters
@@ -37,6 +27,10 @@ interface ILBPStrategy {
 
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
+
+    /// @notice Emitted when the protocol fee controller is set
+    /// @param protocolFeeController The protocol fee controller
+    event ProtocolFeeControllerSet(address protocolFeeController);
 
     /// @notice Emitted when the protocol fee is transferred during migration
     /// @param recipient The address that received the protocol fee
@@ -57,12 +51,6 @@ interface ILBPStrategy {
     /// @param migrationBlock The migration block
     error InvalidEndBlock(uint256 endBlock, uint256 migrationBlock);
 
-    /// @notice Error thrown when the currency split for LP is smaller than the min split for LP or bigger than 100%
-    /// @param currencySplitForLP The invalid currency split for LP
-    /// @param minSplitForLP The min split for LP
-    /// @param maxSplitForLP The max split for LP
-    error InvalidCurrencySplitForLP(uint24 currencySplitForLP, uint24 minSplitForLP, uint24 maxSplitForLP);
-
     /// @notice Error thrown when the tick spacing is greater than the max tick spacing or less than the min tick spacing
     /// @param tickSpacing The invalid tick spacing
     error InvalidTickSpacing(int24 tickSpacing, int24 minTickSpacing, int24 maxTickSpacing);
@@ -79,17 +67,26 @@ interface ILBPStrategy {
     /// @param expectedRecipient The expected recipient
     error InvalidRecipient(address expectedRecipient);
 
-    /// @notice Error thrown when the total supply is greater than the max total supply
-    /// @param totalSupply The invalid total supply
-    /// @param maxTotalSupply The max total supply
-    error InvalidTotalSupply(uint256 totalSupply, uint256 maxTotalSupply);
-
     /// @notice Error thrown when the CCA's custody tokens do not match the expected supplyForLP
     /// @param custodyTokens The CCA's reported custody tokens
     /// @param expectedCustodyTokens The expected custody tokens (supplyForLP)
     error InvalidCustodySupply(uint256 custodyTokens, uint256 expectedCustodyTokens);
 
+    /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
+    /// @param supplyForLP The invalid supply
+    /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
+    error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
+
+    /// @notice Returns the stored migration parameters for an initializer
+    /// @param initializer The initializer to look up
+    /// @return The stored MigratorParameters
+    function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory);
+
+    /// @notice Sets the protocol fee controller
+    /// @param protocolFeeController The protocol fee controller
+    function setProtocolFeeController(address protocolFeeController) external;
 }

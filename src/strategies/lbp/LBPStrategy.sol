@@ -12,6 +12,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
@@ -21,14 +22,17 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
-import {LBPStrategyConfiguration} from "./LBPStrategyConfiguration.sol";
+import {Ownable} from "solady/auth/Ownable.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IProtocolFeeController} from "../../interfaces/IProtocolFeeController.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, IDistributionStrategy {
+contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
+    using MigratorParams for MigratorParameters;
+
     /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
     /// @notice The v4 position manager
@@ -36,14 +40,16 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The mapping of initializers to their stored migration parameters, used to drive migration
-    mapping(ILBPInitializer initializer => MigratorParameters) public initializers;
+    /// @notice The protocol fee controller
+    address public protocolFeeController;
+
+    /// @notice The mapping of initializers to their stored migration parameters
+    mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        uint24 _minSplitForLp,
         address _protocolFeeController,
         address _owner
     ) {
@@ -51,7 +57,6 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         _initializeOwner(_owner);
-        _setMinSplitForLp(_minSplitForLp);
         _setProtocolFeeController(_protocolFeeController);
     }
 
@@ -67,12 +72,12 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         external
         returns (IDistributionContract)
     {
-        // Decode the migration and auction parameters
+        // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
-        // Validate the migrator parameters
-        _validateMigratorParams(migrationParams);
+        // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
+        migrationParams.validate();
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -86,27 +91,27 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
 
         // Check if the initializer was already registered to ensure parameters are not overwritten.
         // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
-        if (initializers[initializer].migrationBlock != 0) {
+        if (_initializers[initializer].migrationBlock != 0) {
             revert InitializerAlreadyCreated(initializer);
         }
 
         // Validate the initializer parameters are set as expected
-        _validateInitializer(initializer, migrationParams);
+        _validateInitializerParams(initializer, migrationParams);
 
-        // Store the parameters to drive migration later
-        initializers[initializer] = migrationParams;
+        // Store the parameters
+        _initializers[initializer] = migrationParams;
 
         emit InitializerCreated(initializer, migrationParams);
 
         return IDistributionContract(address(initializer));
     }
 
-    /// @notice Migrates the raised funds and tokens to a v4 pool and sweep the raised funds, unsold and custody tokens to the fundsRecipient
+    /// @inheritdoc ILBPStrategy
     /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
     /// immutably set during initializeDistribution. Anyone can trigger migration
     function migrate(ILBPInitializer initializer) external {
-        // Load the migration parameters that were stored when the initializer was registered
-        MigratorParameters memory migrationParams = initializers[initializer];
+        // Load the stored migration parameters for the initializer
+        MigratorParameters memory migrationParams = _initializers[initializer];
 
         // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
         if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
@@ -125,11 +130,9 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
 
-        // Deduct protocol fee from currency raised before the LP split
-        uint256 currencyAmountForLp = FixedPointMathLib.fullMulDiv(
-            _deductProtocolFee(currency, lbpParams.currencyRaised),
-            migrationParams.currencySplitForLP,
-            LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
+        // Deduct the protocol fee from the currency raised, then apply the bracket schedule to derive the LP amount.
+        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(
+            _deductProtocolFee(currency, lbpParams.currencyRaised), migrationParams.lpAllocationSchedule
         );
 
         // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
@@ -170,6 +173,23 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         }
 
         emit Migrated(initializer, key, sqrtPriceX96);
+    }
+
+    /// @inheritdoc ILBPStrategy
+    function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
+        return _initializers[initializer];
+    }
+
+    /// @inheritdoc ILBPStrategy
+    function setProtocolFeeController(address _protocolFeeController) external onlyOwner {
+        _setProtocolFeeController(_protocolFeeController);
+        emit ProtocolFeeControllerSet(_protocolFeeController);
+    }
+
+    /// @notice Sets the protocol fee controller
+    /// @param _protocolFeeController The protocol fee controller
+    function _setProtocolFeeController(address _protocolFeeController) internal {
+        protocolFeeController = _protocolFeeController;
     }
 
     /// @notice Receive native currency
@@ -234,8 +254,8 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         address lpHook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
-            currency0: _currency0(currency, token),
-            currency1: _currency1(currency, token),
+            currency0: currency < token ? currency : token,
+            currency1: currency < token ? token : currency,
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(lpHook)
@@ -280,47 +300,13 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         }
     }
 
-    /// @notice Validates the migrator parameters and reverts if any are invalid. Continues if all are valid
-    /// @param _migratorParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateMigratorParams(MigratorParameters memory _migratorParams) private view {
-        // currency split for LP cannot be smaller than the min split for LP or bigger than 100%
-        if (
-            _migratorParams.currencySplitForLP < minSplitForLp
-                || _migratorParams.currencySplitForLP > LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
-        ) {
-            revert InvalidCurrencySplitForLP(
-                _migratorParams.currencySplitForLP, minSplitForLp, LBPStrategyConfiguration.MAX_SPLIT_FOR_LP
-            );
-        }
-        // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
-        if (
-            _migratorParams.poolTickSpacing > TickMath.MAX_TICK_SPACING
-                || _migratorParams.poolTickSpacing < TickMath.MIN_TICK_SPACING
-        ) {
-            revert InvalidTickSpacing(
-                _migratorParams.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
-            );
-        }
-        // fee validation (cannot be greater than the v4 max fee)
-        if (_migratorParams.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
-            revert InvalidFee(_migratorParams.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
-        }
-        // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
-        if (
-            _migratorParams.lpPositionRecipient == address(0)
-                || _migratorParams.lpPositionRecipient == ActionConstants.MSG_SENDER
-                || _migratorParams.lpPositionRecipient == ActionConstants.ADDRESS_THIS
-        ) {
-            revert InvalidPositionRecipient(_migratorParams.lpPositionRecipient);
-        }
-        // Position plan validation (non-empty, weights sum to MPS)
-        PositionPlanner.validate(abi.decode(_migratorParams.positionDefinitions, (PositionDefinition[])));
-    }
-
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
     /// @param initializer The initializer contract
     /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
-    function _validateInitializer(ILBPInitializer initializer, MigratorParameters memory migrationParams) private view {
+    function _validateInitializerParams(ILBPInitializer initializer, MigratorParameters memory migrationParams)
+        private
+        view
+    {
         // Ensure the funds recipient is indeed this contract
         if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
             revert InvalidRecipient(address(this));
@@ -335,6 +321,44 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         }
     }
 
+    /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve
+    /// @dev Decodes the abi-encoded schedule and iterates it. Each non-last bracket allocates
+    /// min(remaining, bracketSize) at its rate, where bracketSize = next.lowerThreshold − this.lowerThreshold.
+    /// The last bracket's rate applies to all remaining currency (extends to infinity).
+    /// @param currencyAmount The total currency raised
+    /// @param schedule The abi-encoded LiquidityAllocationBracket[] schedule
+    /// @return lpAmount The currency amount allocated to the LP
+    function _calculateCurrencyAmountForLp(uint256 currencyAmount, bytes memory schedule)
+        private
+        pure
+        returns (uint256 lpAmount)
+    {
+        LiquidityAllocationBracket[] memory brackets = abi.decode(schedule, (LiquidityAllocationBracket[]));
+        uint256 remaining = currencyAmount;
+        uint256 count = brackets.length;
+
+        for (uint256 i = 0; i < count; i++) {
+            uint256 lowerThreshold = brackets[i].lowerThreshold;
+            uint24 rate = brackets[i].rate;
+
+            if (i == count - 1) {
+                // Last bracket: its rate applies to all remaining currency
+                lpAmount += FullMath.mulDiv(remaining, rate, MigratorParams.MAX_BRACKET_RATE);
+                break;
+            }
+
+            uint256 nextLower = brackets[i + 1].lowerThreshold;
+            uint256 bracketSize = nextLower - lowerThreshold;
+            uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
+            lpAmount += FullMath.mulDiv(bracketAmount, rate, MigratorParams.MAX_BRACKET_RATE);
+            unchecked {
+                remaining -= bracketAmount;
+            }
+
+            if (remaining == 0) break;
+        }
+    }
+
     /// @notice Derives the initial sqrt price for the v4 pool from the auction's final price
     /// @dev Adjusts the raw X96 price for currency ordering before converting to a sqrtPriceX96.
     /// @param currency The raised currency
@@ -346,7 +370,7 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         pure
         returns (uint160 sqrtPriceX96)
     {
-        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, _currencyIsCurrency0(currency, token));
+        uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currency < token);
         sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
     }
 
@@ -364,19 +388,5 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
         }
 
         return currencyRaised - feeAmount;
-    }
-
-    function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {
-        assembly ("memory-safe") {
-            currencyIsCurrency0 := lt(currency, token)
-        }
-    }
-
-    function _currency0(Currency currency, Currency token) private pure returns (Currency) {
-        return (_currencyIsCurrency0(currency, token) ? currency : token);
-    }
-
-    function _currency1(Currency currency, Currency token) private pure returns (Currency) {
-        return (_currencyIsCurrency0(currency, token) ? token : currency);
     }
 }

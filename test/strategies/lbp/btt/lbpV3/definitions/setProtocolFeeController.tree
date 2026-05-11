@@ -2,8 +2,5 @@ SetProtocolFeeControllerTest
 ├── when caller is not owner
 │   └── it reverts
 └── when caller is owner
-    ├── when address is zero
-    │   └── it reverts with {InvalidProtocolFeeController}
-    └── when address is not zero
-        ├── it sets the protocolFeeController
-        └── it emits {ProtocolFeeControllerSet}
+    ├── it sets the protocolFeeController
+    └── it emits {ProtocolFeeControllerSet}
