@@ -353,17 +353,17 @@ contract LBPStrategy is BlockNumberish, LBPStrategyConfiguration, ILBPStrategy, 
     /// @notice Deducts the protocol fee from the currency raised and transfers it to the fee recipient
     /// @param currency The currency to deduct the fee from
     /// @param currencyRaised The total currency raised from the auction
-    /// @return currencyAfterFee The currency remaining after the protocol fee is deducted
-    function _deductProtocolFee(Currency currency, uint256 currencyRaised) private returns (uint256 currencyAfterFee) {
+    /// @return The currency remaining after the protocol fee is deducted
+    function _deductProtocolFee(Currency currency, uint256 currencyRaised) private returns (uint256) {
         (uint256 feeAmount, address feeRecipient) = IProtocolFeeController(protocolFeeController)
             .getProtocolFeeAmount(Currency.unwrap(currency), currencyRaised);
 
         if (feeAmount > 0) {
             currency.transfer(feeRecipient, feeAmount);
-            emit ProtocolFeePaid(feeRecipient, feeAmount);
+            emit ProtocolFeeTransferred(feeRecipient, feeAmount);
         }
 
-        currencyAfterFee = currencyRaised - feeAmount;
+        return currencyRaised - feeAmount;
     }
 
     function _currencyIsCurrency0(Currency currency, Currency token) private pure returns (bool currencyIsCurrency0) {

@@ -13,6 +13,9 @@ contract ProtocolFeeControllerTest is Test {
 
     function setUp() public {
         controller = new ProtocolFeeController(address(this));
+        // Establish a global recipient so per-currency tier installs are allowed.
+        // Pips=0 keeps the global fee off; per-currency tests configure rates as needed.
+        controller.setGlobalProtocolFeeSettings(0, recipient);
     }
 
     function test_setGlobalProtocolFeeSettings_revertsWhenNotOwner(address _caller, uint24 _pips) public {
