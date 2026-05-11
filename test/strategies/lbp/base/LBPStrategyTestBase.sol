@@ -10,17 +10,19 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
-/// Forks mainnet to use real v4 PoolManager and PositionManager.
+/// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
 /// Uses mock CCA (MockInitializerFactory + MockLBPInitializer) for auction simulation.
 abstract contract LBPStrategyTestBase is Test {
-    // Mainnet v4 deployments
+    // Canonical v4 deployment addresses
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
@@ -60,9 +62,14 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     function setUp() public virtual {
-        vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"));
-
         owner = address(this);
+
+        deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(owner), address(POOL_MANAGER));
+        deployCodeTo(
+            "lib/v4-periphery/src/PositionManager.sol:PositionManager",
+            abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
+            address(POSITION_MANAGER)
+        );
 
         factory = new MockInitializerFactory(address(0));
 
