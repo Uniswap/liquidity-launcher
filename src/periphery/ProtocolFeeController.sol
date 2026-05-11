@@ -67,7 +67,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
 
     /// @inheritdoc IProtocolFeeController
     function getProtocolFeeAmount(address currency, uint256 amount)
-        public
+        external
         view
         returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
     {
@@ -85,9 +85,12 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         view
         returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
     {
-        if (amount > type(uint256).max / PIPS_DENOMINATOR) amount = type(uint256).max / PIPS_DENOMINATOR;
-
         protocolFeeRecipient = globalProtocolFee.globalProtocolFeeRecipient;
+        // When the global recipient is unset, the fee is off for every currency,
+        // even if a per-currency schedule was installed earlier.
+        if (protocolFeeRecipient == address(0)) return (0, address(0));
+
+        if (amount > type(uint256).max / PIPS_DENOMINATOR) amount = type(uint256).max / PIPS_DENOMINATOR;
 
         Fee[] storage fees = _currencyFees[currency];
         uint256 len = fees.length;

@@ -28,6 +28,7 @@ abstract contract LBPStrategyTestBase is Test {
 
     LBPStrategy strategy;
     MockInitializerFactory factory;
+    MockProtocolFeeController feeController;
 
     address owner;
     address fundsRecipient = makeAddr("fundsRecipient");
@@ -63,7 +64,7 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        MockProtocolFeeController feeController = new MockProtocolFeeController();
+        feeController = new MockProtocolFeeController();
 
         strategy = new LBPStrategy(
             POSITION_MANAGER,

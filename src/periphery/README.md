@@ -16,17 +16,12 @@ Peripheral contracts used alongside LBP strategies.
 
 A single contract, owned by governance, that tells an integrator exactly **how much** protocol fee to take on a given currency amount and **who** to send it to. Fee rates use **pips** (1 pip = 0.0001%, denominator 1,000,000), matching v4's `ProtocolFeeLibrary`.
 
-### The two questions an integrator asks
+### The question an integrator asks
 
 ```solidity
-// Primary API — source of truth for fee deduction
+// Source of truth for fee deduction
 (uint256 feeAmount, address recipient) = controller.getProtocolFeeAmount(currency, amount);
-
-// Display-only API — truncated effective rate for UIs
-(uint24 pips, address recipient) = controller.getProtocolFeePips(currency, amount);
 ```
-
-`getProtocolFeeAmount` is what you use on-chain. `getProtocolFeePips` is what you show in a UI — it's `feeAmount * 1_000_000 / amount` truncated to a `uint24`, so it can be off by up to 1 pip from the exact fee.
 
 ### How the fee is determined
 
@@ -45,15 +40,17 @@ The protocol fee is **off by default** — a freshly deployed controller returns
 controller.setGlobalProtocolFeeSettings(50_000, treasury); // 5% on all currencies
 ```
 
-To turn the global fee back off:
+To turn the protocol fee fully off — across the global flat fee **and** every per-currency override — clear the global recipient:
 
 ```solidity
 controller.setGlobalProtocolFeeSettings(0, address(0));
 ```
 
+While the global recipient is `address(0)`, `getProtocolFeeAmount` returns `(0, address(0))` for every currency regardless of any per-currency schedule still in storage.
+
 ### Per-currency override (optional)
 
-For currencies that warrant a non-flat schedule, governance can install any number of progressive tiers. Progressive means each tier's pips rate only applies to the portion of the amount *within that tier's range* — the same pattern as income tax brackets. No cliff effects, no gaming around thresholds.
+For currencies that warrant a non-flat schedule, governance can install up to `MAX_FEES` (3) progressive tiers. Progressive means each tier's pips rate only applies to the portion of the amount *within that tier's range* — the same pattern as income tax brackets. No cliff effects, no gaming around thresholds.
 
 A tier is `{ threshold, protocolFeePips }` where `threshold` is the **upper bound** of the bracket (in currency base units) and `protocolFeePips` is the fee rate in pips. The **last tier's threshold is ignored** — its rate applies to all remaining currency above the previous threshold. This matches the `Breakpoint` pattern used in the LBPStrategy's currency split curve.
 
@@ -85,18 +82,21 @@ Fees on an 80 ETH raise:
 (10 ETH × 2%) + (40 ETH × 1%) + (30 ETH × 0.5%) = 0.75 ETH  (0.9375% effective)
 ```
 
-To cap at 100 ETH (no fees beyond), add a 0-pips tail tier:
+To cap fees beyond a certain amount, spend the final tier slot on a 0-pips tail. Reducing the schedule to two real tiers + cap, so it still fits within `MAX_FEES`:
 
 ```solidity
-tiers[2] = IProtocolFeeController.Fee({ threshold: 100e18, protocolFeePips: 5_000  });
-tiers[3] = IProtocolFeeController.Fee({ threshold: 0,      protocolFeePips: 0      }); // cap
+IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
+tiers[0] = IProtocolFeeController.Fee({ threshold: 10e18,  protocolFeePips: 20_000 });
+tiers[1] = IProtocolFeeController.Fee({ threshold: 100e18, protocolFeePips: 10_000 });
+tiers[2] = IProtocolFeeController.Fee({ threshold: 0,      protocolFeePips: 0      }); // cap, threshold ignored
+controller.setProtocolFeePerCurrency(eth, tiers);
 ```
 
 ### Constraints at a glance
 
 | Parameter | Limit | Reason |
 | --- | --- | --- |
-| Tiers per currency | unlimited | Stored as a dynamic `Fee[]` array. |
+| Tiers per currency | 3 (`MAX_FEES`) | Reverts with `InvalidFeeLength` above this. |
 | `threshold` | `uint128` | Upper bound of the bracket in currency base units. Ignored for the last tier. |
 | `protocolFeePips` | 0–1,000,000 | 100% max (`PIPS_DENOMINATOR`). |
 | Non-last thresholds | strictly ascending, non-zero | Non-overlapping brackets. |
@@ -108,16 +108,21 @@ Call `setProtocolFeePerCurrency(currency, new Fee[](0))` to revert a currency ba
 
 ### Deployment expectation
 
-`ProtocolFeeController` is `Owned` by `msg.sender` at deployment and **does not** take constructor args. The protocol fee is off by default. The expected post-deploy sequence is:
+`ProtocolFeeController` uses solady's `Ownable` and takes the initial owner as a constructor arg:
+
+```solidity
+new ProtocolFeeController(governance);
+```
+
+The protocol fee is off by default. The expected post-deploy sequence is:
 
 1. Optionally call `setGlobalProtocolFeeSettings(pips, recipient)` to turn on the global fee.
-2. Transfer ownership to the governance multisig/timelock.
+2. If the deployer was set as the initial owner, transfer ownership to the governance multisig/timelock.
 
 The fee can be enabled or updated at any time after deployment.
 
 ### Notes for integrators
 
-- **Use `getProtocolFeeAmount`, not `getProtocolFeePips`, for on-chain accounting.** The pips value is truncated.
 - **Always forward fees to the returned `recipient`.** The recipient is the *global* recipient; per-currency configs do not override it.
 - **`amount > type(uint256).max / 1_000_000` is silently clamped inside the controller** to prevent overflow in internal multiplications. This threshold is ~`1.16 × 10^71`, far beyond any realistic raise, but something to be aware of if you're feeding in adversarial inputs.
 - **Events.** `GlobalProtocolFeeSettingsUpdated` and `ProtocolFeePerCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getCurrencyFees(currency)` returns the full tier array for a given currency.

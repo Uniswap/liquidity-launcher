@@ -3,9 +3,18 @@ pragma solidity ^0.8.26;
 
 import {IProtocolFeeController} from "src/interfaces/IProtocolFeeController.sol";
 
-/// @notice Minimal mock that returns zero fees by default (fee off)
+/// @notice Minimal mock that returns zero fees by default (fee off).
+/// Tests can override the fee returned by `getProtocolFeeAmount` via `setMockFee`.
 contract MockProtocolFeeController is IProtocolFeeController {
     GlobalFee public globalProtocolFee;
+
+    uint256 internal _mockFeeAmount;
+    address internal _mockFeeRecipient;
+
+    function setMockFee(uint256 feeAmount, address feeRecipient) external {
+        _mockFeeAmount = feeAmount;
+        _mockFeeRecipient = feeRecipient;
+    }
 
     function setGlobalProtocolFeeSettings(uint24 globalProtocolFeePips, address recipient) external {
         globalProtocolFee =
@@ -15,8 +24,8 @@ contract MockProtocolFeeController is IProtocolFeeController {
 
     function setProtocolFeePerCurrency(address, Fee[] calldata) external {}
 
-    function getProtocolFeeAmount(address, uint256) external pure returns (uint256, address) {
-        return (0, address(0));
+    function getProtocolFeeAmount(address, uint256) external view returns (uint256, address) {
+        return (_mockFeeAmount, _mockFeeRecipient);
     }
 
     function getCurrencyFees(address) external pure returns (Fee[] memory) {
