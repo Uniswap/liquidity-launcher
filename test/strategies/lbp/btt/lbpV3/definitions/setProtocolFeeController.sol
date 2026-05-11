@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
-import {ILBPStrategyConfiguration} from "src/interfaces/ILBPStrategyConfiguration.sol";
+import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 
 /// @title SetProtocolFeeControllerTest
@@ -12,11 +12,8 @@ import {Ownable} from "solady/auth/Ownable.sol";
 /// ├── when caller is not owner
 /// │   └── it reverts
 /// └── when caller is owner
-///     ├── when protocolFeeController is address(0)
-///     │   └── it reverts with InvalidProtocolFeeController
-///     └── when protocolFeeController is not address(0)
-///         ├── it sets the protocolFeeController
-///         └── it emits ProtocolFeeControllerSet
+///     ├── it sets the protocolFeeController
+///     └── it emits ProtocolFeeControllerSet
 contract SetProtocolFeeControllerTest is LBPStrategyTestBase {
     function test_SetProtocolFeeController_WhenCallerIsNotOwner(address _caller) public {
         vm.assume(_caller != address(this));
@@ -26,28 +23,9 @@ contract SetProtocolFeeControllerTest is LBPStrategyTestBase {
         strategy.setProtocolFeeController(makeAddr("controller"));
     }
 
-    modifier whenCallerIsOwner_setFeeController() {
-        _;
-    }
-
-    function test_SetProtocolFeeController_WhenAddressIsZero() public whenCallerIsOwner_setFeeController {
-        vm.expectRevert(ILBPStrategyConfiguration.InvalidProtocolFeeController.selector);
-        strategy.setProtocolFeeController(address(0));
-    }
-
-    modifier whenAddressIsNotZero_setFeeController() {
-        _;
-    }
-
-    function test_SetProtocolFeeController_WhenValid(address _controller)
-        public
-        whenCallerIsOwner_setFeeController
-        whenAddressIsNotZero_setFeeController
-    {
-        vm.assume(_controller != address(0));
-
+    function test_SetProtocolFeeController_WhenCallerIsOwner(address _controller) public {
         vm.expectEmit();
-        emit ILBPStrategyConfiguration.ProtocolFeeControllerSet(_controller);
+        emit ILBPStrategy.ProtocolFeeControllerSet(_controller);
         strategy.setProtocolFeeController(_controller);
 
         assertEq(strategy.protocolFeeController(), _controller);
