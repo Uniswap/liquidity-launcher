@@ -74,7 +74,7 @@ contract ProtocolFeeControllerTest is Test {
         vm.assume(_caller != address(this));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: 20_000});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: 20_000});
 
         vm.prank(_caller);
         vm.expectRevert(Ownable.Unauthorized.selector);
@@ -83,10 +83,10 @@ contract ProtocolFeeControllerTest is Test {
 
     function test_setProtocolFeePerCurrency_revertsWhenLengthExceedsMax(address _currency) public {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](4);
-        fees[0] = IProtocolFeeController.Fee({threshold: 10e18, protocolFeePips: 50_000});
-        fees[1] = IProtocolFeeController.Fee({threshold: 20e18, protocolFeePips: 40_000});
-        fees[2] = IProtocolFeeController.Fee({threshold: 30e18, protocolFeePips: 30_000});
-        fees[3] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: 20_000});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: 50_000});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: 10e18, protocolFeePips: 40_000});
+        fees[2] = IProtocolFeeController.Fee({lowerThreshold: 20e18, protocolFeePips: 30_000});
+        fees[3] = IProtocolFeeController.Fee({lowerThreshold: 30e18, protocolFeePips: 20_000});
 
         vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidFeeLength.selector, 4));
         controller.setProtocolFeePerCurrency(_currency, fees);
@@ -98,7 +98,7 @@ contract ProtocolFeeControllerTest is Test {
         _pips = uint24(bound(_pips, controller.PIPS_DENOMINATOR() + 1, type(uint24).max));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
 
         vm.expectRevert(
             abi.encodeWithSelector(IProtocolFeeController.InvalidFeePips.selector, _pips, controller.PIPS_DENOMINATOR())
@@ -106,17 +106,19 @@ contract ProtocolFeeControllerTest is Test {
         controller.setProtocolFeePerCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenNonLastThresholdIsZero(
+    function test_setProtocolFeePerCurrency_revertsWhenFirstLowerThresholdIsNonZero(
+        uint128 _firstThreshold,
         uint24 _pips1,
         uint24 _pips2,
         address _currency
     ) public {
+        _firstThreshold = uint128(bound(_firstThreshold, 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips1});
-        fees[1] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips2});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: _firstThreshold, protocolFeePips: _pips1});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: type(uint128).max, protocolFeePips: _pips2});
 
         vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(_currency, fees);
@@ -131,9 +133,9 @@ contract ProtocolFeeControllerTest is Test {
         _threshold2 = uint128(bound(_threshold2, 1, _threshold1)); // <= threshold1
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](3);
-        fees[0] = IProtocolFeeController.Fee({threshold: _threshold1, protocolFeePips: 20_000});
-        fees[1] = IProtocolFeeController.Fee({threshold: _threshold2, protocolFeePips: 10_000});
-        fees[2] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: 5_000});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: 20_000});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: _threshold1, protocolFeePips: 10_000});
+        fees[2] = IProtocolFeeController.Fee({lowerThreshold: _threshold2, protocolFeePips: 5_000});
 
         vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         controller.setProtocolFeePerCurrency(_currency, fees);
@@ -143,7 +145,7 @@ contract ProtocolFeeControllerTest is Test {
         _pips = uint24(bound(_pips, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
 
         vm.expectEmit(true, true, true, true);
         emit IProtocolFeeController.ProtocolFeePerCurrencyUpdated(_currency, fees);
@@ -151,6 +153,7 @@ contract ProtocolFeeControllerTest is Test {
 
         IProtocolFeeController.Fee[] memory stored = controller.getCurrencyFees(_currency);
         assertEq(stored.length, 1);
+        assertEq(stored[0].lowerThreshold, 0);
         assertEq(stored[0].protocolFeePips, _pips);
     }
 
@@ -165,15 +168,16 @@ contract ProtocolFeeControllerTest is Test {
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
-        fees[0] = IProtocolFeeController.Fee({threshold: _threshold, protocolFeePips: _pips1});
-        fees[1] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips2});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips1});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: _threshold, protocolFeePips: _pips2});
 
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         IProtocolFeeController.Fee[] memory stored = controller.getCurrencyFees(_currency);
         assertEq(stored.length, 2);
-        assertEq(stored[0].threshold, _threshold);
+        assertEq(stored[0].lowerThreshold, 0);
         assertEq(stored[0].protocolFeePips, _pips1);
+        assertEq(stored[1].lowerThreshold, _threshold);
         assertEq(stored[1].protocolFeePips, _pips2);
     }
 
@@ -192,9 +196,9 @@ contract ProtocolFeeControllerTest is Test {
         _pips3 = uint24(bound(_pips3, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](3);
-        fees[0] = IProtocolFeeController.Fee({threshold: _threshold1, protocolFeePips: _pips1});
-        fees[1] = IProtocolFeeController.Fee({threshold: _threshold2, protocolFeePips: _pips2});
-        fees[2] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips3});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips1});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: _threshold1, protocolFeePips: _pips2});
+        fees[2] = IProtocolFeeController.Fee({lowerThreshold: _threshold2, protocolFeePips: _pips3});
 
         controller.setProtocolFeePerCurrency(_currency, fees);
 
@@ -208,7 +212,7 @@ contract ProtocolFeeControllerTest is Test {
         ProtocolFeeController fresh = new ProtocolFeeController(address(this));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
 
         vm.expectRevert(IProtocolFeeController.InvalidInput.selector);
         fresh.setProtocolFeePerCurrency(_currency, fees);
@@ -218,7 +222,7 @@ contract ProtocolFeeControllerTest is Test {
         _pips = uint24(bound(_pips, 1, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
         controller.setProtocolFeePerCurrency(_currency, fees);
         assertEq(controller.getCurrencyFees(_currency).length, 1);
 
@@ -240,11 +244,11 @@ contract ProtocolFeeControllerTest is Test {
         _pipsB = uint24(bound(_pipsB, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory feesA = new IProtocolFeeController.Fee[](1);
-        feesA[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pipsA});
+        feesA[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pipsA});
         controller.setProtocolFeePerCurrency(_currencyA, feesA);
 
         IProtocolFeeController.Fee[] memory feesB = new IProtocolFeeController.Fee[](1);
-        feesB[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pipsB});
+        feesB[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pipsB});
         controller.setProtocolFeePerCurrency(_currencyB, feesB);
 
         assertEq(controller.getCurrencyFees(_currencyA)[0].protocolFeePips, _pipsA);
@@ -285,7 +289,7 @@ contract ProtocolFeeControllerTest is Test {
         controller.setGlobalProtocolFeeSettings(_globalPips, recipient);
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _perCurrencyPips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _perCurrencyPips});
         controller.setProtocolFeePerCurrency(_currency, fees);
         controller.setProtocolFeePerCurrency(_currency, new IProtocolFeeController.Fee[](0));
 
@@ -298,7 +302,7 @@ contract ProtocolFeeControllerTest is Test {
         _pips = uint24(bound(_pips, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, _amount);
@@ -318,7 +322,7 @@ contract ProtocolFeeControllerTest is Test {
         controller.setGlobalProtocolFeeSettings(_globalPips, recipient);
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _perCurrencyPips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _perCurrencyPips});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, _amount);
@@ -326,86 +330,81 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     /// @dev Reference implementation: computes the expected fee for a two-tier config
-    function _refFeeTwoTier(uint256 amount, uint128 threshold, uint24 pips1, uint24 pips2)
-        internal
-        pure
-        returns (uint256)
-    {
-        uint256 tier1 = amount > threshold ? threshold : amount;
+    ///      split is the lowerThreshold of the second tier (also the upper edge of the first)
+    function _refFeeTwoTier(uint256 amount, uint128 split, uint24 pips1, uint24 pips2) internal pure returns (uint256) {
+        uint256 tier1 = amount > split ? split : amount;
         uint256 fee = tier1 * pips1 / 1_000_000;
-        if (amount > threshold) {
-            fee += (amount - threshold) * pips2 / 1_000_000;
+        if (amount > split) {
+            fee += (amount - split) * pips2 / 1_000_000;
         }
         return fee;
     }
 
     /// @dev Reference implementation: computes the expected fee for a three-tier config
-    function _refFeeThreeTier(
-        uint256 amount,
-        uint128 threshold1,
-        uint128 threshold2,
-        uint24 pips1,
-        uint24 pips2,
-        uint24 pips3
-    ) internal pure returns (uint256) {
+    ///      split1 is the lowerThreshold of the second tier, split2 of the third
+    function _refFeeThreeTier(uint256 amount, uint128 split1, uint128 split2, uint24 pips1, uint24 pips2, uint24 pips3)
+        internal
+        pure
+        returns (uint256)
+    {
         uint256 fee;
-        uint256 tier1 = amount > threshold1 ? threshold1 : amount;
+        uint256 tier1 = amount > split1 ? split1 : amount;
         fee += tier1 * pips1 / 1_000_000;
-        if (amount <= threshold1) return fee;
+        if (amount <= split1) return fee;
 
-        uint256 tier2 = (amount > threshold2 ? threshold2 : amount) - threshold1;
+        uint256 tier2 = (amount > split2 ? split2 : amount) - split1;
         fee += tier2 * pips2 / 1_000_000;
-        if (amount <= threshold2) return fee;
+        if (amount <= split2) return fee;
 
-        fee += (amount - threshold2) * pips3 / 1_000_000;
+        fee += (amount - split2) * pips3 / 1_000_000;
         return fee;
     }
 
     function test_getProtocolFeeAmount_twoTiers_matchesReference(
         uint256 _amount,
-        uint128 _threshold,
+        uint128 _split,
         uint24 _pips1,
         uint24 _pips2,
         address _currency
     ) public {
         _amount = bound(_amount, 1, type(uint128).max);
-        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
+        _split = uint128(bound(_split, 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
-        fees[0] = IProtocolFeeController.Fee({threshold: _threshold, protocolFeePips: _pips1});
-        fees[1] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips2});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips1});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: _split, protocolFeePips: _pips2});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, _amount);
-        assertEq(feeAmount, _refFeeTwoTier(_amount, _threshold, _pips1, _pips2));
+        assertEq(feeAmount, _refFeeTwoTier(_amount, _split, _pips1, _pips2));
     }
 
     function test_getProtocolFeeAmount_threeTiers_matchesReference(
         uint256 _amount,
-        uint128 _threshold1,
-        uint128 _threshold2,
+        uint128 _split1,
+        uint128 _split2,
         uint24 _pips1,
         uint24 _pips2,
         uint24 _pips3,
         address _currency
     ) public {
         _amount = bound(_amount, 1, type(uint128).max);
-        _threshold1 = uint128(bound(_threshold1, 1, type(uint128).max - 1));
-        _threshold2 = uint128(bound(_threshold2, _threshold1 + 1, type(uint128).max));
+        _split1 = uint128(bound(_split1, 1, type(uint128).max - 1));
+        _split2 = uint128(bound(_split2, _split1 + 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
         _pips3 = uint24(bound(_pips3, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](3);
-        fees[0] = IProtocolFeeController.Fee({threshold: _threshold1, protocolFeePips: _pips1});
-        fees[1] = IProtocolFeeController.Fee({threshold: _threshold2, protocolFeePips: _pips2});
-        fees[2] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips3});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips1});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: _split1, protocolFeePips: _pips2});
+        fees[2] = IProtocolFeeController.Fee({lowerThreshold: _split2, protocolFeePips: _pips3});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, _amount);
-        assertEq(feeAmount, _refFeeThreeTier(_amount, _threshold1, _threshold2, _pips1, _pips2, _pips3));
+        assertEq(feeAmount, _refFeeThreeTier(_amount, _split1, _split2, _pips1, _pips2, _pips3));
     }
 
     function test_getProtocolFeeAmount_neverExceedsAmount(uint256 _amount, uint24 _pips, address _currency) public {
@@ -413,7 +412,7 @@ contract ProtocolFeeControllerTest is Test {
         _pips = uint24(bound(_pips, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _pips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, _amount);
@@ -434,7 +433,7 @@ contract ProtocolFeeControllerTest is Test {
 
         // With per-currency config
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: 10_000});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: 10_000});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         (, address feeRecipient) = controller.getProtocolFeeAmount(_currency, _amount);
@@ -456,21 +455,21 @@ contract ProtocolFeeControllerTest is Test {
 
     function test_getProtocolFeeAmount_zeroPipsLastTier_capsTheFee(
         uint256 _amount,
-        uint128 _threshold,
+        uint128 _split,
         uint24 _pips,
         address _currency
     ) public {
-        _threshold = uint128(bound(_threshold, 1, type(uint64).max));
+        _split = uint128(bound(_split, 1, type(uint64).max));
         _pips = uint24(bound(_pips, 1, controller.PIPS_DENOMINATOR()));
-        _amount = bound(_amount, uint256(_threshold) + 1, type(uint128).max);
+        _amount = bound(_amount, uint256(_split) + 1, type(uint128).max);
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
-        fees[0] = IProtocolFeeController.Fee({threshold: _threshold, protocolFeePips: _pips});
-        fees[1] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: 0});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _pips});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: _split, protocolFeePips: 0});
 
         controller.setProtocolFeePerCurrency(_currency, fees);
 
-        uint256 feeAtThreshold = uint256(_threshold) * _pips / controller.PIPS_DENOMINATOR();
+        uint256 feeAtThreshold = uint256(_split) * _pips / controller.PIPS_DENOMINATOR();
 
         (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, feeAtThreshold);
@@ -485,7 +484,7 @@ contract ProtocolFeeControllerTest is Test {
         _perCurrencyPips = uint24(bound(_perCurrencyPips, 1, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({threshold: 0, protocolFeePips: _perCurrencyPips});
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: _perCurrencyPips});
         controller.setProtocolFeePerCurrency(_currency, fees);
 
         controller.setGlobalProtocolFeeSettings(0, address(0));

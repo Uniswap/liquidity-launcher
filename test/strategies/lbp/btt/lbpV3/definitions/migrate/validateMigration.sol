@@ -84,11 +84,15 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
     {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
 
-        uint256 balBefore = fundsRecipient.balance;
+        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 poolBefore = address(POOL_MANAGER).balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
-        assertGe(fundsRecipient.balance, balBefore);
-        assertEq(address(strategy).balance, 0); // Strategy should be empty
+
+        // Every wei raised reaches fundsRecipient or the pool manager — proves the sweep
+        assertEq((fundsRecipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
+        assertEq(address(strategy).balance, 0);
     }
 
     function test_SweepsLeftoverTokensToFundsRecipient(MigrationFuzzParams memory p)
@@ -96,10 +100,17 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
     {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        uint256 totalSupply = token.totalSupply();
 
-        uint256 balBefore = token.balanceOf(fundsRecipient);
+        uint256 fundsBefore = token.balanceOf(fundsRecipient);
+        uint256 poolBefore = token.balanceOf(address(POOL_MANAGER));
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // Every token issued reaches fundsRecipient or the pool manager
+        assertEq(
+            (token.balanceOf(fundsRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
+            totalSupply
+        );
         assertEq(token.balanceOf(address(strategy)), 0);
-        assertGe(token.balanceOf(fundsRecipient), balBefore);
     }
 }

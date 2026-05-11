@@ -18,6 +18,7 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
@@ -257,6 +258,35 @@ abstract contract LBPStrategyTestBase is Test {
             }
         }
         revert(); // Should never reach here
+    }
+
+    /// @notice Reference implementation of LBPStrategy._calculateCurrencyAmountForLp.
+    /// @dev Mirrors the contract's bracket iteration: each non-last bracket allocates
+    /// min(remaining, bracketSize) at its rate, last bracket's rate applies to all remaining.
+    /// Tests use this to assert the exact LP currency budget the strategy will plan against.
+    function _expectedLpCurrencyAmount(uint256 currencyAmount, LiquidityAllocationBracket[] memory _brackets)
+        internal
+        pure
+        returns (uint256 lpAmount)
+    {
+        uint256 remaining = currencyAmount;
+        uint256 count = _brackets.length;
+
+        for (uint256 i = 0; i < count; i++) {
+            uint24 rate = _brackets[i].rate;
+
+            if (i == count - 1) {
+                lpAmount += FullMath.mulDiv(remaining, rate, MigratorParams.MAX_BRACKET_RATE);
+                break;
+            }
+
+            uint256 bracketSize = uint256(_brackets[i + 1].lowerThreshold) - uint256(_brackets[i].lowerThreshold);
+            uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
+            lpAmount += FullMath.mulDiv(bracketAmount, rate, MigratorParams.MAX_BRACKET_RATE);
+            remaining -= bracketAmount;
+
+            if (remaining == 0) break;
+        }
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.

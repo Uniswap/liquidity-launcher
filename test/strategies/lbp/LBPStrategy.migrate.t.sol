@@ -17,8 +17,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        // Check indexed param (fundsRecipient) but not data — exact amount may differ due to pool initialization dust
-        vm.expectEmit(true, false, false, false);
+        // Check indexed param (fundsRecipient); amount varies by fuzz inputs so left unchecked.
+        vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.CurrencySwept(fundsRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
@@ -26,7 +26,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsTokensSwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
@@ -34,9 +34,10 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsMigrated(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        vm.expectEmit(false, false, false, false);
+        // Check indexed initializer (topic1); key and sqrtPriceX96 are derived from fuzz inputs.
+        vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.Migrated(
-            ILBPInitializer(address(0)),
+            ILBPInitializer(address(initializer)),
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
             0
         );

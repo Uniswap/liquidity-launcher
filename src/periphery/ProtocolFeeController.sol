@@ -42,17 +42,19 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         if (globalProtocolFee.globalProtocolFeeRecipient == address(0)) revert InvalidInput();
         if (fees.length > MAX_FEES) revert InvalidFeeLength(fees.length);
 
-        uint128 prevThreshold;
+        uint128 prevLowerThreshold;
         for (uint256 i; i < fees.length; ++i) {
             if (fees[i].protocolFeePips > PIPS_DENOMINATOR) {
                 revert InvalidFeePips(fees[i].protocolFeePips, PIPS_DENOMINATOR);
             }
 
-            // For non-last tiers, thresholds must be strictly ascending and non-zero
-            if (i < fees.length - 1) {
-                if (fees[i].threshold == 0 || fees[i].threshold <= prevThreshold) revert InvalidInput();
-                prevThreshold = fees[i].threshold;
+            // First tier's lowerThreshold must be 0; subsequent lowerThresholds must be strictly ascending
+            if (i == 0) {
+                if (fees[i].lowerThreshold != 0) revert InvalidInput();
+            } else {
+                if (fees[i].lowerThreshold <= prevLowerThreshold) revert InvalidInput();
             }
+            prevLowerThreshold = fees[i].lowerThreshold;
 
             _currencyFees[currency].push(fees[i]);
         }
@@ -101,7 +103,6 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         }
 
         uint256 remaining = amount;
-        uint256 prevThreshold;
 
         for (uint256 i; i < len; ++i) {
             if (i == len - 1) {
@@ -110,13 +111,13 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
                 break;
             }
 
-            uint256 bracketSize = uint256(fees[i].threshold) - prevThreshold;
+            // Non-last tier covers [fees[i].lowerThreshold, fees[i+1].lowerThreshold)
+            uint256 bracketSize = uint256(fees[i + 1].lowerThreshold) - uint256(fees[i].lowerThreshold);
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
             protocolFeeAmount += bracketAmount * fees[i].protocolFeePips / PIPS_DENOMINATOR;
             remaining -= bracketAmount;
 
             if (remaining == 0) break;
-            prevThreshold = fees[i].threshold;
         }
     }
 }

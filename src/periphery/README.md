@@ -52,7 +52,7 @@ While the global recipient is `address(0)`, `getProtocolFeeAmount` returns `(0, 
 
 For currencies that warrant a non-flat schedule, governance can install up to `MAX_FEES` (3) progressive tiers. Progressive means each tier's pips rate only applies to the portion of the amount *within that tier's range* — the same pattern as income tax brackets. No cliff effects, no gaming around thresholds.
 
-A tier is `{ threshold, protocolFeePips }` where `threshold` is the **upper bound** of the bracket (in currency base units) and `protocolFeePips` is the fee rate in pips. The **last tier's threshold is ignored** — its rate applies to all remaining currency above the previous threshold. This matches the `Breakpoint` pattern used in the LBPStrategy's currency split curve.
+A tier is `{ lowerThreshold, protocolFeePips }` where `lowerThreshold` is the **lower bound** of the bracket (in currency base units) and `protocolFeePips` is the fee rate in pips. The **first tier's lowerThreshold must be 0** and subsequent thresholds must be strictly ascending. The **last tier's rate** applies to all remaining currency above its lowerThreshold. This matches the bracket pattern used in `MigratorParams.LiquidityAllocationBracket`.
 
 To cap fees (stop charging beyond a certain amount), add a final tier with `protocolFeePips: 0`.
 
@@ -70,9 +70,9 @@ Configured via:
 
 ```solidity
 IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
-tiers[0] = IProtocolFeeController.Fee({ threshold: 10e18, protocolFeePips: 20_000 });
-tiers[1] = IProtocolFeeController.Fee({ threshold: 50e18, protocolFeePips: 10_000 });
-tiers[2] = IProtocolFeeController.Fee({ threshold: 0,     protocolFeePips: 5_000  }); // last tier, threshold ignored
+tiers[0] = IProtocolFeeController.Fee({ lowerThreshold: 0,     protocolFeePips: 20_000 });
+tiers[1] = IProtocolFeeController.Fee({ lowerThreshold: 10e18, protocolFeePips: 10_000 });
+tiers[2] = IProtocolFeeController.Fee({ lowerThreshold: 50e18, protocolFeePips: 5_000  }); // last tier extends to infinity
 controller.setProtocolFeePerCurrency(eth, tiers);
 ```
 
@@ -86,9 +86,9 @@ To cap fees beyond a certain amount, spend the final tier slot on a 0-pips tail.
 
 ```solidity
 IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
-tiers[0] = IProtocolFeeController.Fee({ threshold: 10e18,  protocolFeePips: 20_000 });
-tiers[1] = IProtocolFeeController.Fee({ threshold: 100e18, protocolFeePips: 10_000 });
-tiers[2] = IProtocolFeeController.Fee({ threshold: 0,      protocolFeePips: 0      }); // cap, threshold ignored
+tiers[0] = IProtocolFeeController.Fee({ lowerThreshold: 0,      protocolFeePips: 20_000 });
+tiers[1] = IProtocolFeeController.Fee({ lowerThreshold: 10e18,  protocolFeePips: 10_000 });
+tiers[2] = IProtocolFeeController.Fee({ lowerThreshold: 100e18, protocolFeePips: 0      }); // cap, no fee beyond 100 ETH
 controller.setProtocolFeePerCurrency(eth, tiers);
 ```
 
@@ -97,10 +97,11 @@ controller.setProtocolFeePerCurrency(eth, tiers);
 | Parameter | Limit | Reason |
 | --- | --- | --- |
 | Tiers per currency | 3 (`MAX_FEES`) | Reverts with `InvalidFeeLength` above this. |
-| `threshold` | `uint128` | Upper bound of the bracket in currency base units. Ignored for the last tier. |
+| `lowerThreshold` | `uint128` | Lower bound of the bracket in currency base units. |
 | `protocolFeePips` | 0–1,000,000 | 100% max (`PIPS_DENOMINATOR`). |
-| Non-last thresholds | strictly ascending, non-zero | Non-overlapping brackets. |
-| Last tier threshold | ignored | Its rate applies to all remaining amount. |
+| First tier `lowerThreshold` | must be 0 | Schedule must start at 0. |
+| Subsequent `lowerThreshold`s | strictly ascending | Non-overlapping brackets. |
+| Last tier | extends to infinity | Its rate applies to all amount above its `lowerThreshold`. |
 
 ### Clearing a per-currency override
 

@@ -24,6 +24,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// - it sends leftover currency and tokens to fundsRecipient
     function test_fuzz_initAndMigrate_happyPath(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
+        uint256 totalSupply = token.totalSupply();
 
         // it stores the MigratorParameters
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
@@ -31,6 +33,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
+        uint256 poolMgrBalBefore = address(POOL_MANAGER).balance;
+        uint256 poolMgrTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
 
         // it migrates successfully after migrationBlock
         strategy.migrate(ILBPInitializer(address(initializer)));
@@ -39,9 +43,15 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(strategy)), 0);
         assertEq(address(strategy).balance, 0);
 
-        // it sends leftover currency and tokens to fundsRecipient
-        assertTrue(
-            fundsRecipient.balance > recipientBalBefore || token.balanceOf(fundsRecipient) > recipientTokenBalBefore
+        // Conservation: every wei raised reaches fundsRecipient or the pool manager
+        assertEq(
+            (fundsRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolMgrBalBefore), raised
+        );
+        // Conservation: every token issued reaches fundsRecipient or the pool manager
+        assertEq(
+            (token.balanceOf(fundsRecipient) - recipientTokenBalBefore)
+                + (token.balanceOf(address(POOL_MANAGER)) - poolMgrTokenBalBefore),
+            totalSupply
         );
     }
 

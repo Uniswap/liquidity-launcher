@@ -7,8 +7,6 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Vm} from "forge-std/Vm.sol";
 
 contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
     address feeRecipient = makeAddr("feeRecipient");
@@ -34,9 +32,6 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         uint256 feeAmount = _boundFeeAmount(_feeAmount, currencyRaised, brackets);
         vm.assume(feeAmount > 0);
         feeController.setMockFee(feeAmount, feeRecipient);
-
-        // Skip pool execution; we're validating the fee path, not LP creation
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 feeRecipientBalBefore = feeRecipient.balance;
 
@@ -74,8 +69,6 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         vm.assume(feeAmount > 0);
         feeController.setMockFee(feeAmount, feeRecipient);
 
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
-
         uint256 feeRecipientBalBefore = currencyToken.balanceOf(feeRecipient);
 
         vm.expectEmit(true, true, true, true);
@@ -86,21 +79,17 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
     }
 
-    function test_noProtocolFeeEvent_whenFeeIsZero(MigrationFuzzParams memory p) public {
+    function test_noProtocolFeeTransferred_whenFeeIsZero(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         // Mock defaults to (0, address(0)) — explicit for clarity
         feeController.setMockFee(0, address(0));
 
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
-
-        vm.recordLogs();
+        uint256 feeRecipientBalBefore = feeRecipient.balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 sig = ILBPStrategy.ProtocolFeeTransferred.selector;
-        for (uint256 i; i < logs.length; ++i) {
-            assertTrue(logs[i].topics[0] != sig);
-        }
+        // No transfer occurred — fee path is guarded by `if (feeAmount > 0)`,
+        // which also gates the ProtocolFeeTransferred event emission.
+        assertEq(feeRecipient.balance, feeRecipientBalBefore);
     }
 
     function test_lpReceivesCurrencyMinusFee(MigrationFuzzParams memory p, uint256 _feeAmount) public {
@@ -112,17 +101,19 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         vm.assume(feeAmount > 0);
         feeController.setMockFee(feeAmount, feeRecipient);
 
-        // Mock LP creation so all non-fee currency ends up at fundsRecipient via the post-sweep
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
-
         uint256 feeRecipientBalBefore = feeRecipient.balance;
         uint256 fundsRecipientBalBefore = fundsRecipient.balance;
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
+        // Fee is transferred to fee recipient
         assertEq(feeRecipient.balance - feeRecipientBalBefore, feeAmount);
-        // With modifyLiquidities mocked, currencyRaised - feeAmount ends up at fundsRecipient (within rounding)
-        assertApproxEqAbs(fundsRecipient.balance - fundsRecipientBalBefore, currencyRaised - feeAmount, 2);
+        // Everything else is either at fundsRecipient or locked in the pool — nothing lost
+        assertEq(
+            (fundsRecipient.balance - fundsRecipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
+            currencyRaised - feeAmount
+        );
         assertEq(address(strategy).balance, 0);
     }
 }

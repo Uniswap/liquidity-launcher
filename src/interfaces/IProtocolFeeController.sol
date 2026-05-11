@@ -15,10 +15,11 @@ interface IProtocolFeeController {
     }
 
     /// @notice A fee tier in a per-currency progressive fee schedule.
-    ///         Tiers are sorted ascending by threshold. The last tier's threshold is
-    ///         ignored — its rate applies to all remaining currency above the previous threshold.
+    ///         Tiers are sorted ascending by lowerThreshold. The first tier's lowerThreshold MUST be 0.
+    ///         Each tier's rate applies to the portion of the amount in [lowerThreshold, nextLowerThreshold).
+    ///         The last tier's rate applies to all remaining amount above its lowerThreshold.
     struct Fee {
-        uint128 threshold; // upper bound of this bracket in cumulative currency amount (ignored for last tier)
+        uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
         uint24 protocolFeePips; // The fee rate in pips applied to the portion of the amount within this bracket
     }
 
@@ -52,12 +53,12 @@ interface IProtocolFeeController {
     function setGlobalProtocolFeeSettings(uint24 globalProtocolFeePips, address recipient) external;
 
     /// @notice Sets a per-currency progressive fee schedule
-    /// @dev For non-last tiers, thresholds must be strictly ascending and non-zero.
-    ///      The last tier's threshold is ignored — its rate applies to all remaining amount.
+    /// @dev The first tier's lowerThreshold must be 0; subsequent tiers must have strictly ascending lowerThresholds.
+    ///      The last tier's rate applies to all remaining amount above its lowerThreshold.
     ///      Each tier's protocolFeePips must not exceed PIPS_DENOMINATOR.
     ///      Pass an empty fees array to clear the per-currency override and fall back to the global fee.
     /// @param currency The currency address the custom fees apply to
-    /// @param fees The fee tiers, each with a threshold (upper bound) and fee rate in pips
+    /// @param fees The fee tiers, each with a lowerThreshold and fee rate in pips
     function setProtocolFeePerCurrency(address currency, Fee[] calldata fees) external;
 
     /// @notice Returns the exact protocol fee amount for a given currency and amount
