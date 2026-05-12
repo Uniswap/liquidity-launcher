@@ -62,12 +62,9 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     /// @inheritdoc IDistributionStrategy
     /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
     /// are validated before storage. Callers cannot overwrite existing initializer registrations.
-    function initializeDistribution(
-        address token,
-        uint256 totalSupply,
-        bytes calldata configData,
-        bytes32 /*salt*/
-    )
+    /// The initializer factory MUST include the supplied salt in deterministic address calculations; this strategy
+    /// derives that salt from the caller-provided salt and MigratorParameters to bind the initializer address to both.
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         returns (IDistributionContract)
     {
@@ -81,10 +78,11 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
         // LiquidityLauncher transfers the full totalSupply to the CCA, which validates balance >= auctionSupply + custodyTokens.
+        bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, totalSupply, initializerParams, bytes32(0))
+                    .initializeDistribution(token, totalSupply, initializerParams, initializerSalt)
             )
         );
 
