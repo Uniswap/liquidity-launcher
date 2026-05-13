@@ -145,7 +145,7 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
             sqrtPriceX96,
             migrationParams.poolLPFee,
             migrationParams.poolTickSpacing,
-            migrationParams.lpHook
+            migrationParams.hook
         );
 
         // currencyAmountForLp is already <= int128.max from _validateCurrencyAmountForLp;
@@ -235,13 +235,13 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @dev Uses the provided lpHook directly. Reverts if the committed pool key has already been initialized.
+    /// @dev Uses the provided hook directly. Reverts if the committed pool key has already been initialized.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
     /// @param poolLPFee The LP fee for the pool
     /// @param poolTickSpacing The tick spacing for the pool
-    /// @param lpHook The hook address for the pool
+    /// @param hook The hook address for the pool
     /// @return key The pool key for the initialized pool
     function _initializePool(
         Currency currency,
@@ -249,14 +249,14 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         uint160 initialSqrtPriceX96,
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        address lpHook
+        address hook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
             currency0: currency < token ? currency : token,
             currency1: currency < token ? token : currency,
             fee: poolLPFee,
             tickSpacing: poolTickSpacing,
-            hooks: IHooks(lpHook)
+            hooks: IHooks(hook)
         });
 
         // Initialize the pool with the returned initial price

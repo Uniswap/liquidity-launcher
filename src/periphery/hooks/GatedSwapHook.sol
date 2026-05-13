@@ -7,11 +7,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {SelfInitializerHook} from "./SelfInitializerHook.sol";
+import {InitializerHook} from "./InitializerHook.sol";
 
 /// @title GatedSwapHook
 /// @notice Hook that requires gatekeeper approval before swaps are allowed on the pool
-contract GatedSwapHook is SelfInitializerHook {
+contract GatedSwapHook is InitializerHook {
     /// @notice Emitted when swaps are approved by the gatekeeper
     event SwapsApproved();
 
@@ -30,7 +30,7 @@ contract GatedSwapHook is SelfInitializerHook {
     bool public isApproved;
 
     constructor(IPoolManager _poolManager, address _strategy, address _gatekeeper)
-        SelfInitializerHook(_poolManager, _strategy)
+        InitializerHook(_poolManager, _strategy)
     {
         gatekeeper = _gatekeeper;
     }

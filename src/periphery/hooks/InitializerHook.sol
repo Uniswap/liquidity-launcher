@@ -7,9 +7,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
-/// @title SelfInitializerHook
+/// @title InitializerHook
 /// @notice Base hook that restricts pool initialization to the LBPStrategy singleton
-abstract contract SelfInitializerHook is BaseHook {
+abstract contract InitializerHook is BaseHook {
     /// @notice Error thrown when a non-strategy address attempts to initialize the pool
     /// @param caller The address that attempted to initialize
     /// @param expected The authorized strategy address

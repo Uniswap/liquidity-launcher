@@ -154,7 +154,7 @@ abstract contract LBPStrategyTestBase is Test {
             supplyForLP: p.supplyForLP,
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
-            lpHook: address(0),
+            hook: address(0),
             positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
             lpAllocationSchedule: new bytes(0)
         });

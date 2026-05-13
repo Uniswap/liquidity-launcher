@@ -70,7 +70,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             supplyForLP: 100 ether,
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
-            lpHook: address(0),
+            hook: address(0),
             positionDefinitions: abi.encode(defs),
             lpAllocationSchedule: new bytes(0)
         });

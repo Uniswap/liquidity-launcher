@@ -8,7 +8,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
-import {SelfInitializerHook} from "src/periphery/hooks/SelfInitializerHook.sol";
+import {InitializerHook} from "src/periphery/hooks/InitializerHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 
 contract GatedSwapHookNoValidation is GatedSwapHook {
@@ -35,7 +35,7 @@ contract GatedSwapHookTest is HookTestBase {
         PoolKey memory key = _defaultPoolKey(address(hook));
 
         vm.prank(poolManager);
-        vm.expectRevert(abi.encodeWithSelector(SelfInitializerHook.InvalidInitializer.selector, notStrategy, strategy));
+        vm.expectRevert(abi.encodeWithSelector(InitializerHook.InvalidInitializer.selector, notStrategy, strategy));
         hook.beforeInitialize(notStrategy, key, 0);
     }
 
