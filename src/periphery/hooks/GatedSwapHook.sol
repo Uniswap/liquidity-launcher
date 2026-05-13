@@ -7,11 +7,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {SelfInitializerHook} from "./SelfInitializerHook.sol";
 
 /// @title GatedSwapHook
 /// @notice Hook that requires gatekeeper approval before swaps are allowed on the pool
-contract GatedSwapHook is BaseHook {
+contract GatedSwapHook is SelfInitializerHook {
     /// @notice Emitted when swaps are approved by the gatekeeper
     event SwapsApproved();
 
@@ -29,7 +29,9 @@ contract GatedSwapHook is BaseHook {
     /// @notice Whether swaps have been approved by the gatekeeper
     bool public isApproved;
 
-    constructor(IPoolManager _poolManager, address _gatekeeper) BaseHook(_poolManager) {
+    constructor(IPoolManager _poolManager, address _strategy, address _gatekeeper)
+        SelfInitializerHook(_poolManager, _strategy)
+    {
         gatekeeper = _gatekeeper;
     }
 
@@ -42,7 +44,7 @@ contract GatedSwapHook is BaseHook {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: false,
+            beforeInitialize: true,
             beforeAddLiquidity: false,
             beforeSwap: true,
             beforeSwapReturnDelta: false,

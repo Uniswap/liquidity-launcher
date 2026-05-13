@@ -17,7 +17,6 @@ struct MigratorParameters {
     address fundsRecipient; // the address that will receive the funds from the auction
     address lpPositionRecipient; // the address that will receive the created LP position
     address lpHook; // the hook that will be used to initialize the pool
-    bytes32 hookProxySalt; // salt used if the hook must be wrapped in a HookProxy
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
 }

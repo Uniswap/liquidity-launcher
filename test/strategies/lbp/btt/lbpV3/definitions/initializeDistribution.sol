@@ -507,7 +507,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedParams.fundsRecipient, mp.fundsRecipient);
         assertEq(storedParams.lpPositionRecipient, mp.lpPositionRecipient);
         assertEq(storedParams.lpHook, mp.lpHook);
-        assertEq(storedParams.hookProxySalt, mp.hookProxySalt);
         assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
         assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));
     }

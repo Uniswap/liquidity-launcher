@@ -11,7 +11,6 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
@@ -24,7 +23,6 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
-import {HookProxyLib} from "../../periphery/hooks/HookProxy.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
@@ -33,7 +31,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     using StateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
     using MigratorParams for MigratorParameters;
 
     /// @notice The v4 pool manager
@@ -81,9 +78,6 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
 
         // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
-
-        // Validate that the salt provided results in a valid hook proxy address
-        HookProxyLib.preflight(migrationParams.lpHook, migrationParams.hookProxySalt);
 
         // Deploy the initializer contract via factory.
         // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
@@ -151,8 +145,7 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
             sqrtPriceX96,
             migrationParams.poolLPFee,
             migrationParams.poolTickSpacing,
-            migrationParams.lpHook,
-            migrationParams.hookProxySalt
+            migrationParams.lpHook
         );
 
         // currencyAmountForLp is already <= int128.max from _validateCurrencyAmountForLp;
@@ -242,8 +235,7 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @dev Uses the provided lpHook directly if that pool key is uninitialized. If that key already exists, deploys a
-    ///      HookProxy with the provided salt and initializes a new pool key that wraps the original hook.
+    /// @dev Uses the provided lpHook directly. Reverts if the committed pool key has already been initialized.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
@@ -257,8 +249,7 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         uint160 initialSqrtPriceX96,
         uint24 poolLPFee,
         int24 poolTickSpacing,
-        address lpHook,
-        bytes32 hookProxySalt
+        address lpHook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
             currency0: currency < token ? currency : token,
@@ -267,12 +258,6 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
             tickSpacing: poolTickSpacing,
             hooks: IHooks(lpHook)
         });
-
-        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
-        // If the pool already exists, wrap the lpHook in a hook proxy and deploy with a new key
-        if (existingSqrtPriceX96 != 0) {
-            key.hooks = IHooks(HookProxyLib.deploy(lpHook, hookProxySalt));
-        }
 
         // Initialize the pool with the returned initial price
         // Will revert if:
