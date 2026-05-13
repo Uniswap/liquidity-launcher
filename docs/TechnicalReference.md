@@ -96,6 +96,9 @@ For the LBP strategy, the distribution configuration includes:
 
 - **Allocation Split**: Division between auction and liquidity reserves
 - **Pool Parameters**: Fee tier and tick spacing for the Uniswap V4 pool
+- **Hook**: Optional Uniswap v4 hook address. Any hook used in the `hook` field MUST inherit `InitializerHook`
+  so `beforeInitialize` restricts pool initialization to the LBP strategy. The strategy checks ERC165 support for
+  `IInitializerHook` during `initializeDistribution`.
 - **Auction Parameters**: Duration, pricing steps, and reserve price
 - **LP Recipient**: Address that will receive the liquidity position NFT
 
@@ -119,6 +122,12 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 - Transfer the LP NFT to the designated recipient
 
 **Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
+
+### LBP Hook Requirement
+
+The `MigratorParameters.hook` field commits the exact Uniswap v4 hook used by the post-auction pool. Any nonzero hook configured in this field MUST inherit `InitializerHook`. `InitializerHook` enables the `BEFORE_INITIALIZE` permission, supports `IInitializerHook` via ERC165, and rejects pool initialization unless the PoolManager-reported sender is the singleton `LBPStrategy`. `LBPStrategy.initializeDistribution` checks this ERC165 support before storing the hook.
+
+This requirement protects the committed pool from permissionless initialization at an arbitrary price. Hooks that do not inherit `InitializerHook` MUST NOT be used in `MigratorParameters.hook`. `GatedSwapHook` already inherits `InitializerHook` and satisfies this requirement.
 
 ## Key Interfaces
 

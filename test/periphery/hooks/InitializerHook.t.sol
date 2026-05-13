@@ -7,7 +7,9 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {InitializerHook} from "src/periphery/hooks/InitializerHook.sol";
+import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 contract InitializerHookNoValidation is InitializerHook {
     constructor(IPoolManager _pm, address _strategy) InitializerHook(_pm, _strategy) {}
@@ -41,5 +43,17 @@ contract InitializerHookTest is HookTestBase {
         vm.prank(poolManager);
         bytes4 result = hook.beforeInitialize(strategy, key, 0);
         assertEq(result, IHooks.beforeInitialize.selector);
+    }
+
+    function test_supportsInterface_supportsInitializerHookAndERC165() public view {
+        assertTrue(IERC165(address(hook)).supportsInterface(type(IInitializerHook).interfaceId));
+        assertTrue(IERC165(address(hook)).supportsInterface(type(IERC165).interfaceId));
+    }
+
+    function test_fuzz_supportsInterface_rejectsUnknownInterfaces(bytes4 interfaceId) public view {
+        vm.assume(interfaceId != type(IInitializerHook).interfaceId);
+        vm.assume(interfaceId != type(IERC165).interfaceId);
+
+        assertFalse(IERC165(address(hook)).supportsInterface(interfaceId));
     }
 }

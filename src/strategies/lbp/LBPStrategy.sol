@@ -23,6 +23,8 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
+import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
@@ -75,6 +77,14 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
+
+        // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
+        if (
+            migrationParams.hook != address(0)
+                && !ERC165Checker.supportsInterface(migrationParams.hook, type(IInitializerHook).interfaceId)
+        ) {
+            revert InvalidHook(migrationParams.hook);
+        }
 
         // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
@@ -235,13 +245,15 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @dev Uses the provided hook directly. Reverts if the committed pool key has already been initialized.
+    /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for
+    ///      IInitializerHook ERC165 support during initializeDistribution. Reverts if the committed pool key has already
+    ///      been initialized.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
     /// @param poolLPFee The LP fee for the pool
     /// @param poolTickSpacing The tick spacing for the pool
-    /// @param hook The hook address for the pool
+    /// @param hook The hook address for the pool. Any nonzero hook MUST inherit InitializerHook.
     /// @return key The pool key for the initialized pool
     function _initializePool(
         Currency currency,

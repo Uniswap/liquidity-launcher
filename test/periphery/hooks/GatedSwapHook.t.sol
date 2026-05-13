@@ -9,7 +9,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
 import {InitializerHook} from "src/periphery/hooks/InitializerHook.sol";
+import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 contract GatedSwapHookNoValidation is GatedSwapHook {
     constructor(IPoolManager _pm, address _strategy, address _gatekeeper) GatedSwapHook(_pm, _strategy, _gatekeeper) {}
@@ -45,6 +47,11 @@ contract GatedSwapHookTest is HookTestBase {
         vm.prank(poolManager);
         bytes4 result = hook.beforeInitialize(strategy, key, 0);
         assertEq(result, IHooks.beforeInitialize.selector);
+    }
+
+    function test_supportsInterface_supportsInitializerHookAndERC165() public view {
+        assertTrue(IERC165(address(hook)).supportsInterface(type(IInitializerHook).interfaceId));
+        assertTrue(IERC165(address(hook)).supportsInterface(type(IERC165).interfaceId));
     }
 
     function test_fuzz_beforeSwap_revertsIfNotApproved(

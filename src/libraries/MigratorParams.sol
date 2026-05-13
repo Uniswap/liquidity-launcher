@@ -16,7 +16,7 @@ struct MigratorParameters {
     uint128 supplyForLP; // amount of the token used for LP creation
     address fundsRecipient; // the address that will receive the funds from the auction
     address lpPositionRecipient; // the address that will receive the created LP position
-    address hook; // the hook that will be used to initialize the pool
+    address hook; // the hook that will be used to initialize the pool. Any nonzero hook MUST inherit InitializerHook.
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
 }

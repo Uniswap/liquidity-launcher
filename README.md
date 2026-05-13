@@ -54,6 +54,10 @@ Most tests run locally. The periphery position-recipient tests fork mainnet and 
 
 - `QUICKNODE_RPC_URL`: An Ethereum mainnet RPC endpoint for fork testing
 
+## LBP Hooks
+
+LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.hook`. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. `InitializerHook` gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool. `GatedSwapHook` already inherits `InitializerHook`.
+
 ## Docs
 - [Technical Reference](./docs/TechnicalReference.md)
 - [Changelog](./CHANGELOG.md)

@@ -6,10 +6,14 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title InitializerHook
 /// @notice Base hook that restricts pool initialization to the LBPStrategy singleton
-abstract contract InitializerHook is BaseHook {
+/// @dev Any hook configured in MigratorParameters.hook MUST inherit this contract. LBPStrategy enforces this contract's
+///      IInitializerHook ERC165 support before storing the hook.
+abstract contract InitializerHook is BaseHook, IInitializerHook {
     /// @notice Error thrown when a non-strategy address attempts to initialize the pool
     /// @param caller The address that attempted to initialize
     /// @param expected The authorized strategy address
@@ -46,5 +50,10 @@ abstract contract InitializerHook is BaseHook {
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
         if (sender != strategy) revert InvalidInitializer(sender, strategy);
         return IHooks.beforeInitialize.selector;
+    }
+
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
+        return interfaceId == type(IInitializerHook).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }

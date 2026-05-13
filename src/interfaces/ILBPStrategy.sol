@@ -13,7 +13,7 @@ import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/Migra
 interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
-    /// @param migrationParams The migration parameters
+    /// @param migrationParams The migration parameters. Any nonzero migrationParams.hook MUST inherit InitializerHook.
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
@@ -74,6 +74,10 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
+
+    /// @notice Error thrown when a configured hook does not support IInitializerHook
+    /// @param hook The invalid hook address
+    error InvalidHook(address hook);
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
