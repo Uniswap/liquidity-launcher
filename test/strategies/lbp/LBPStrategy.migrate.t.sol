@@ -51,27 +51,12 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate});
 
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-
         // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > int128.max (triggers the cap).
         // _calculateCurrencyAmountForLp does currencyRaised * rate, so cap hugeRaise to avoid that overflow.
         uint256 minRaise = uint256(uint128(type(int128).max)) * MigratorParams.MAX_BRACKET_RATE / rate + 1;
         uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: hugeRaise
-            })
-        );
-
-        // Fund the initializer with the huge raise + tokens
-        vm.deal(address(initializer), hugeRaise);
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
+        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigrationWithSchedule(p, bp, hugeRaise);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
@@ -82,7 +67,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         uint256 toRecipient = fundsRecipient.balance - recipientBalBefore;
         uint256 toPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
 
-        // Conservation: every wei of hugeRaise reaches fundsRecipient or the pool manager
+        // No protocol fee is configured, so all raised currency is either deposited into the pool or swept
         assertEq(toRecipient + toPool, hugeRaise);
         // The pool can never consume more than the int128.max cap (excess is swept to fundsRecipient)
         assertLe(toPool, uint128(type(int128).max));
@@ -131,12 +116,12 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Currency conservation: every wei of maxV4Delta reaches fundsRecipient or the pool manager
+        // No protocol fee is configured, so all raised currency is either deposited into the pool or swept
         assertEq(
             (fundsRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
             maxV4Delta
         );
-        // Token conservation: every token issued reaches fundsRecipient or the pool manager
+        // All issued tokens are either deposited into the pool or swept
         assertEq(
             (token.balanceOf(fundsRecipient) - recipientTokenBalBefore)
                 + (token.balanceOf(address(POOL_MANAGER)) - poolManagerTokenBalBefore),

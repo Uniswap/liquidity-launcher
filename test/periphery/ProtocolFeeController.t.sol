@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {ProtocolFeeController} from "../../src/periphery/ProtocolFeeController.sol";
 import {IProtocolFeeController} from "../../src/interfaces/IProtocolFeeController.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 
 contract ProtocolFeeControllerTest is Test {
@@ -81,14 +82,14 @@ contract ProtocolFeeControllerTest is Test {
         controller.setProtocolFeePerCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenLengthExceedsMax(address _currency) public {
-        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](4);
-        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: 50_000});
-        fees[1] = IProtocolFeeController.Fee({lowerThreshold: 10e18, protocolFeePips: 40_000});
-        fees[2] = IProtocolFeeController.Fee({lowerThreshold: 20e18, protocolFeePips: 30_000});
-        fees[3] = IProtocolFeeController.Fee({lowerThreshold: 30e18, protocolFeePips: 20_000});
+    function test_setProtocolFeePerCurrency_revertsWhenLengthExceedsMaxProtocolFeeTiers(address _currency) public {
+        uint256 length = controller.MAX_PROTOCOL_FEE_TIERS() + 1;
+        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](length);
+        for (uint256 i; i < length; ++i) {
+            fees[i] = IProtocolFeeController.Fee({lowerThreshold: uint128(i), protocolFeePips: 20_000});
+        }
 
-        vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidFeeLength.selector, 4));
+        vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidFeeLength.selector, length));
         controller.setProtocolFeePerCurrency(_currency, fees);
     }
 
@@ -440,17 +441,13 @@ contract ProtocolFeeControllerTest is Test {
         assertEq(feeRecipient, _recipient);
     }
 
-    function test_getProtocolFeeAmount_capsAmountToPreventOverflow(uint24 _pips, address _currency) public {
+    function test_getProtocolFeeAmount_handlesLargeAmountsWithoutCapping(uint24 _pips, address _currency) public {
         _pips = uint24(bound(_pips, 1, controller.PIPS_DENOMINATOR()));
         controller.setGlobalProtocolFeeSettings(_pips, recipient);
-        uint256 maxSafe = type(uint256).max / controller.PIPS_DENOMINATOR();
 
-        (uint256 feeAtMax,) = controller.getProtocolFeeAmount(_currency, maxSafe);
-        (uint256 feeAboveMax,) = controller.getProtocolFeeAmount(_currency, maxSafe + 1);
-        (uint256 feeAtUintMax,) = controller.getProtocolFeeAmount(_currency, type(uint256).max);
+        (uint256 feeAmount,) = controller.getProtocolFeeAmount(_currency, type(uint256).max);
 
-        assertEq(feeAboveMax, feeAtMax);
-        assertEq(feeAtUintMax, feeAtMax);
+        assertEq(feeAmount, FullMath.mulDiv(type(uint256).max, _pips, controller.PIPS_DENOMINATOR()));
     }
 
     function test_getProtocolFeeAmount_zeroPipsLastTier_capsTheFee(

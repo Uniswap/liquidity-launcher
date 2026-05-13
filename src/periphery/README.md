@@ -50,7 +50,7 @@ While the global recipient is `address(0)`, `getProtocolFeeAmount` returns `(0, 
 
 ### Per-currency override (optional)
 
-For currencies that warrant a non-flat schedule, governance can install up to `MAX_FEES` (3) progressive tiers. Progressive means each tier's pips rate only applies to the portion of the amount *within that tier's range* — the same pattern as income tax brackets. No cliff effects, no gaming around thresholds.
+For currencies that warrant a non-flat schedule, governance can install up to `MAX_PROTOCOL_FEE_TIERS` (3) progressive tiers. Progressive means each tier's pips rate only applies to the portion of the amount *within that tier's range* — the same pattern as income tax brackets. No cliff effects, no gaming around thresholds.
 
 A tier is `{ lowerThreshold, protocolFeePips }` where `lowerThreshold` is the **lower bound** of the bracket (in currency base units) and `protocolFeePips` is the fee rate in pips. The **first tier's lowerThreshold must be 0** and subsequent thresholds must be strictly ascending. The **last tier's rate** applies to all remaining currency above its lowerThreshold. This matches the bracket pattern used in `MigratorParams.LiquidityAllocationBracket`.
 
@@ -82,7 +82,7 @@ Fees on an 80 ETH raise:
 (10 ETH × 2%) + (40 ETH × 1%) + (30 ETH × 0.5%) = 0.75 ETH  (0.9375% effective)
 ```
 
-To cap fees beyond a certain amount, spend the final tier slot on a 0-pips tail. Reducing the schedule to two real tiers + cap, so it still fits within `MAX_FEES`:
+To cap fees beyond a certain amount, spend the final tier slot on a 0-pips tail. Reducing the schedule to two real tiers + cap, so it still fits within `MAX_PROTOCOL_FEE_TIERS`:
 
 ```solidity
 IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
@@ -96,7 +96,7 @@ controller.setProtocolFeePerCurrency(eth, tiers);
 
 | Parameter | Limit | Reason |
 | --- | --- | --- |
-| Tiers per currency | 3 (`MAX_FEES`) | Reverts with `InvalidFeeLength` above this. |
+| Tiers per currency | 3 (`MAX_PROTOCOL_FEE_TIERS`) | Reverts with `InvalidFeeLength` above this. |
 | `lowerThreshold` | `uint128` | Lower bound of the bracket in currency base units. |
 | `protocolFeePips` | 0–1,000,000 | 100% max (`PIPS_DENOMINATOR`). |
 | First tier `lowerThreshold` | must be 0 | Schedule must start at 0. |

@@ -2,10 +2,9 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MockERC20} from "test/mocks/MockERC20.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParams, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 
 /// @notice Tests that verify the bracket schedule controls the LP currency budget.
 /// Uses the reference helper _expectedLpCurrencyAmount in the base to assert the contract
@@ -17,21 +16,8 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
 
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
         p.currencyRaised = bound(p.currencyRaised, 1, uint256(uint128(type(int128).max)));
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
-        vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, p.currencyRaised);
 
         uint256 fundsBefore = fundsRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
@@ -62,7 +48,7 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
 
         // Pool consumption is capped by the bracket-determined LP budget
         assertLe(poolDelta, expectedLpBudget);
-        // Conservation: fee=0 by default, so every wei reaches the pool or fundsRecipient
+        // No protocol fee is configured, so all raised currency is either deposited into the pool or swept.
         assertEq(poolDelta + fundsDelta, currencyRaised);
         assertEq(address(strategy).balance, 0);
     }
@@ -73,21 +59,8 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
-        vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, p.currencyRaised);
 
         uint256 fundsBefore = fundsRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
@@ -99,8 +72,62 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
 
         // Pool consumes at most the full raised amount (100% bracket budget)
         assertLe(poolDelta, p.currencyRaised);
-        // Conservation
         assertEq(poolDelta + fundsDelta, p.currencyRaised);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_twoBracketSchedule_poolCannotConsumeMoreThanTieredBudget(MigrationFuzzParams memory p) public {
+        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint256 threshold1 = bound(uint256(p.bpParams.threshold0), 1, type(uint128).max);
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
+
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](2);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: threshold1, rate: rate1});
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+        uint256 expectedLpBudget = _expectedLpCurrencyAmount(currencyRaised, bp);
+
+        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 poolBefore = address(POOL_MANAGER).balance;
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
+        uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
+
+        assertLe(currencyToPool, expectedLpBudget);
+        assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_threeBracketSchedule_poolCannotConsumeMoreThanTieredBudget(MigrationFuzzParams memory p) public {
+        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate2 = uint24(bound(p.bpParams.rate2, 0, MigratorParams.MAX_BRACKET_RATE));
+        uint256 threshold1 = bound(uint256(p.bpParams.threshold0), 1, type(uint128).max - 1);
+        uint256 threshold2 = bound(uint256(p.bpParams.threshold1), threshold1 + 1, type(uint128).max);
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
+
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](3);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: threshold1, rate: rate1});
+        bp[2] = LiquidityAllocationBracket({lowerThreshold: threshold2, rate: rate2});
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+        uint256 expectedLpBudget = _expectedLpCurrencyAmount(currencyRaised, bp);
+
+        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 poolBefore = address(POOL_MANAGER).balance;
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
+        uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
+
+        assertLe(currencyToPool, expectedLpBudget);
+        assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
         assertEq(address(strategy).balance, 0);
     }
 }

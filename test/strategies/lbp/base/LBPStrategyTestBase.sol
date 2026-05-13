@@ -93,21 +93,30 @@ abstract contract LBPStrategyTestBase is Test {
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        return _setupForMigrationWithSchedule(p, brackets, p.currencyRaised);
+    }
+
+    /// @notice Like _setupForMigration, but lets the caller pass an explicit bracket schedule and
+    /// currencyRaised. Use when the test needs to control the bracket shape (e.g., specific rate/threshold)
+    /// or the raise amount (e.g., int128.max edge cases) rather than fuzz-derived values.
+    function _setupForMigrationWithSchedule(
+        MigrationFuzzParams memory p,
+        LiquidityAllocationBracket[] memory brackets,
+        uint256 currencyRaised
+    ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         (initializer, token) = _initializeWith(mp, totalSupply, endBlock, brackets);
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: currencyRaised
             })
         );
-        if (p.currencyRaised > 0) {
-            vm.deal(address(initializer), p.currencyRaised);
-        }
+        vm.deal(address(initializer), currencyRaised);
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
     }

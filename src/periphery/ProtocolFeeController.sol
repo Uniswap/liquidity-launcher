@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IProtocolFeeController} from "../interfaces/IProtocolFeeController.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 
 /// @title ProtocolFeeController
@@ -10,8 +11,8 @@ import {Ownable} from "solady/auth/Ownable.sol";
 contract ProtocolFeeController is Ownable, IProtocolFeeController {
     /// @notice The pips denominator (1,000,000 = 100%)
     uint24 public constant PIPS_DENOMINATOR = 1_000_000;
-    /// @notice The maximum number of fee tiers per currency
-    uint256 public constant MAX_FEES = 3;
+    /// @notice The maximum number of protocol fee tiers per currency
+    uint256 public constant MAX_PROTOCOL_FEE_TIERS = 3;
 
     GlobalFee public globalProtocolFee;
     mapping(address currency => Fee[]) internal _currencyFees;
@@ -40,7 +41,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         }
 
         if (globalProtocolFee.globalProtocolFeeRecipient == address(0)) revert InvalidInput();
-        if (fees.length > MAX_FEES) revert InvalidFeeLength(fees.length);
+        if (fees.length > MAX_PROTOCOL_FEE_TIERS) revert InvalidFeeLength(fees.length);
 
         uint128 prevLowerThreshold;
         for (uint256 i; i < fees.length; ++i) {
@@ -92,13 +93,11 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         // even if a per-currency schedule was installed earlier.
         if (protocolFeeRecipient == address(0)) return (0, address(0));
 
-        if (amount > type(uint256).max / PIPS_DENOMINATOR) amount = type(uint256).max / PIPS_DENOMINATOR;
-
         Fee[] storage fees = _currencyFees[currency];
         uint256 len = fees.length;
 
         if (len == 0) {
-            protocolFeeAmount = amount * globalProtocolFee.globalProtocolFeePips / PIPS_DENOMINATOR;
+            protocolFeeAmount = FullMath.mulDiv(amount, globalProtocolFee.globalProtocolFeePips, PIPS_DENOMINATOR);
             return (protocolFeeAmount, protocolFeeRecipient);
         }
 
@@ -107,14 +106,14 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         for (uint256 i; i < len; ++i) {
             if (i == len - 1) {
                 // Last tier: its rate applies to all remaining amount
-                protocolFeeAmount += remaining * fees[i].protocolFeePips / PIPS_DENOMINATOR;
+                protocolFeeAmount += FullMath.mulDiv(remaining, fees[i].protocolFeePips, PIPS_DENOMINATOR);
                 break;
             }
 
             // Non-last tier covers [fees[i].lowerThreshold, fees[i+1].lowerThreshold)
             uint256 bracketSize = uint256(fees[i + 1].lowerThreshold) - uint256(fees[i].lowerThreshold);
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
-            protocolFeeAmount += bracketAmount * fees[i].protocolFeePips / PIPS_DENOMINATOR;
+            protocolFeeAmount += FullMath.mulDiv(bracketAmount, fees[i].protocolFeePips, PIPS_DENOMINATOR);
             remaining -= bracketAmount;
 
             if (remaining == 0) break;
