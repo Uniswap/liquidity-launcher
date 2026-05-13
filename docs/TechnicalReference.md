@@ -126,7 +126,7 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 
 **IDistributionContract** implemented by contracts that receive and distribute tokens. The `onTokensReceived()` callback ensures contracts are notified when they receive tokens.
 
-**IDistributionStrategy** implemented by factory contracts that deploy distribution contracts. The `initializeDistribution()` function creates new distribution instances.
+**IDistributionStrategy** implemented by factory contracts that deploy distribution contracts. The `initializeDistribution()` function creates new distribution instances. If a strategy or downstream factory uses deterministic deployment, it MUST include the provided `salt` in both deployment and address prediction calculations.
 
 **ITokenFactory** defines the interface for token creation factories, standardizing how different token types are deployed.
 
