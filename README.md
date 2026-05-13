@@ -58,6 +58,8 @@ Most tests run locally. The periphery position-recipient tests fork mainnet and 
 
 LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.hook`. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. `InitializerHook` gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool. `GatedSwapHook` already inherits `InitializerHook`.
 
+If `hook` is `address(0)`, migration first attempts to initialize the hookless v4 pool. If that hookless pool was already initialized, `LBPStrategy` falls back to using its own address as the hook and initializes the strategy-hooked pool instead. `LBPStrategy` is deployed at a valid `BEFORE_INITIALIZE` hook address and self-gates `beforeInitialize`, so this fallback does not require a separate `InitializerHook` deployment.
+
 ## Docs
 - [Technical Reference](./docs/TechnicalReference.md)
 - [Changelog](./CHANGELOG.md)

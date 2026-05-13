@@ -4,11 +4,18 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {MigratorParameters} from "src/libraries/MigratorParams.sol";
+import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
 /// @title ValidateMigrationTest
 /// @notice BTT tests for LBPStrategy.migrate validation
@@ -30,6 +37,9 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 ///         ├── it emits TokensSwept
 ///         └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
+
     function test_WhenInitializerIsUnregistered(uint64 _currentBlock, uint128 _tokensSold) public {
         // it reverts with {MigrationNotAllowed}
         _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
@@ -136,5 +146,62 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
         assertEq(token.balanceOf(address(strategy)), 0);
         assertGe(token.balanceOf(fundsRecipient), balBefore);
+    }
+
+    function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook(MigrationFuzzParams memory p)
+        public
+        whenBlockIsGTEMigrationBlock
+        whenCurrencyRaisedIsGTZero
+    {
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
+
+        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({
+                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+            })
+        );
+        vm.deal(address(initializer), p.currencyRaised);
+        token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
+        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+
+        PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
+        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
+
+        (uint160 rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
+        (uint160 strategySqrtPrice,,,) = POOL_MANAGER.getSlot0(strategyKey.toId());
+        assertEq(rawSqrtPrice, 0);
+        assertEq(strategySqrtPrice, 0);
+
+        POOL_MANAGER.initialize(rawKey, TickMath.MIN_SQRT_PRICE + 1);
+        (rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
+        assertGt(rawSqrtPrice, 0);
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        (uint160 rawSqrtPriceAfter,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
+        (strategySqrtPrice,,,) = POOL_MANAGER.getSlot0(strategyKey.toId());
+        assertEq(rawSqrtPriceAfter, rawSqrtPrice);
+        assertGt(strategySqrtPrice, 0);
+        assertEq(address(strategyKey.hooks), address(strategy));
+    }
+
+    function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
+        internal
+        pure
+        returns (PoolKey memory)
+    {
+        Currency c0 = Currency.wrap(address(0));
+        Currency c1 = Currency.wrap(token);
+        if (uint160(address(0)) > uint160(token)) {
+            (c0, c1) = (c1, c0);
+        }
+        return PoolKey({currency0: c0, currency1: c1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hook)});
     }
 }

@@ -16,7 +16,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 
 interface IERC721Balance {
     function balanceOf(address owner) external view returns (uint256);
@@ -208,8 +207,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertGt(rawSqrtPrice, 0);
     }
 
-    /// @notice When the committed pool already exists, migration reverts instead of switching to another hook key
-    function test_fuzz_noHook_revertsIfRawPoolExists(MigrationFuzzParams memory p) public {
+    /// @notice When the hookless pool already exists, migration initializes the strategy-hooked pool instead
+    function test_fuzz_noHook_usesStrategyHookIfRawPoolExists(MigrationFuzzParams memory p) public {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
@@ -228,17 +227,24 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        // Pre-initialize the hookless pool so strategy must fail against the committed key.
         PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
+        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
 
         (uint160 rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
+        (uint160 strategySqrtPrice,,,) = POOL_MANAGER.getSlot0(strategyKey.toId());
         assertEq(rawSqrtPrice, 0);
+        assertEq(strategySqrtPrice, 0);
 
         POOL_MANAGER.initialize(rawKey, TickMath.MIN_SQRT_PRICE + 1);
         (rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
         assertGt(rawSqrtPrice, 0);
 
-        vm.expectRevert(Pool.PoolAlreadyInitialized.selector);
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        (uint160 rawSqrtPriceAfter,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
+        (strategySqrtPrice,,,) = POOL_MANAGER.getSlot0(strategyKey.toId());
+        assertEq(rawSqrtPriceAfter, rawSqrtPrice);
+        assertGt(strategySqrtPrice, 0);
+        assertEq(address(strategyKey.hooks), address(strategy));
     }
 }

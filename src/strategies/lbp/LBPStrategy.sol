@@ -5,6 +5,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -27,12 +28,14 @@ import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SelfInitializerMixin} from "./SelfInitializer.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
+contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrategy {
     using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
     using MigratorParams for MigratorParameters;
 
     /// @notice The v4 pool manager
@@ -246,14 +249,15 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
 
     /// @notice Initializes the pool with the calculated price
     /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for
-    ///      IInitializerHook ERC165 support during initializeDistribution. Reverts if the committed pool key has already
-    ///      been initialized.
+    ///      IInitializerHook ERC165 support during initializeDistribution. If hook is address(0), initializes the
+    ///      hookless pool unless it already exists, then falls back to this strategy as the hook.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
     /// @param poolLPFee The LP fee for the pool
     /// @param poolTickSpacing The tick spacing for the pool
-    /// @param hook The hook address for the pool. Any nonzero hook MUST inherit InitializerHook.
+    /// @param hook The hook address for the pool. Any nonzero hook MUST inherit InitializerHook. address(0) targets
+    ///        the hookless pool unless it already exists.
     /// @return key The pool key for the initialized pool
     function _initializePool(
         Currency currency,
@@ -270,6 +274,15 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
             tickSpacing: poolTickSpacing,
             hooks: IHooks(hook)
         });
+
+        if (hook == address(0)) {
+            // See if the hookless pool is already initialized.
+            (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
+            if (existingSqrtPriceX96 != 0) {
+                // If the hookless pool exists, initialize a strategy-hooked pool instead.
+                key.hooks = IHooks(address(this));
+            }
+        }
 
         // Initialize the pool with the returned initial price
         // Will revert if:
