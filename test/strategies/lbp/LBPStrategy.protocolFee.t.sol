@@ -6,114 +6,259 @@ import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {ProtocolFeeController} from "src/periphery/ProtocolFeeController.sol";
+import {IProtocolFeeController} from "src/interfaces/IProtocolFeeController.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
     address feeRecipient = makeAddr("feeRecipient");
 
-    /// @dev Bound the fee to leave at least the minimum currency needed for non-zero LP after deduction.
-    function _boundFeeAmount(uint256 _feeAmount, uint256 currencyRaised, LiquidityAllocationBracket[] memory brackets)
-        internal
-        pure
-        returns (uint256)
-    {
-        uint256 minLpCurrency = _minCurrencyForNonZeroLp(brackets);
-        // Guaranteed by _boundCurrencyRaised: currencyRaised >= minLpCurrency
-        uint256 maxFee = currencyRaised - minLpCurrency;
-        if (maxFee == 0) return 0;
-        return bound(_feeAmount, 1, maxFee);
+    function setUp() public override {
+        super.setUp();
+        // Activate the controller: set the global recipient so per-currency tier installs are allowed
+        feeController.setGlobalProtocolFeeSettings(0, feeRecipient);
     }
 
-    function test_protocolFeeTransferredAndEmitted_native(MigrationFuzzParams memory p, uint256 _feeAmount) public {
-        LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
-        (MockLBPInitializer initializer,) = _setupForMigration(p);
+    function test_realController_oneTier_appliesFlatFeeToCurrencyRaised(MigrationFuzzParams memory p, uint24 _pips)
+        public
+    {
+        uint24 pips = uint24(bound(_pips, 0, feeController.PIPS_DENOMINATOR()));
 
-        uint256 currencyRaised = initializer.lbpInitializationParams().currencyRaised;
-        uint256 feeAmount = _boundFeeAmount(_feeAmount, currencyRaised, brackets);
-        vm.assume(feeAmount > 0);
-        feeController.setMockFee(feeAmount, feeRecipient);
+        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips});
+        _installFeeTiers(fees, address(0));
 
-        uint256 feeRecipientBalBefore = feeRecipient.balance;
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
-        vm.expectEmit(true, true, true, true);
-        emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, feeAmount);
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
+        uint256 expectedFee = FullMath.mulDiv(currencyRaised, pips, feeController.PIPS_DENOMINATOR());
+        vm.assume(currencyRaised - expectedFee > 0);
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+
+        uint256 feeBalBefore = feeRecipient.balance;
+        uint256 fundsBalBefore = fundsRecipient.balance;
+        uint256 poolBalBefore = address(POOL_MANAGER).balance;
+        if (expectedFee > 0) {
+            vm.expectEmit(true, true, true, true);
+            emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, expectedFee);
+        }
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(feeRecipient.balance - feeRecipientBalBefore, feeAmount);
+        uint256 feeDelta = feeRecipient.balance - feeBalBefore;
+        uint256 fundsDelta = fundsRecipient.balance - fundsBalBefore;
+        uint256 poolDelta = address(POOL_MANAGER).balance - poolBalBefore;
+
+        assertEq(feeDelta, expectedFee);
+        assertEq(feeDelta + fundsDelta + poolDelta, currencyRaised);
         assertEq(address(strategy).balance, 0);
     }
 
-    function test_protocolFeeTransferred_erc20Currency(MigrationFuzzParams memory p, uint256 _feeAmount) public {
-        // Set up an ERC20 currency before initialization
+    function test_realController_twoTier_appliesTieredFeeToCurrencyRaised(
+        MigrationFuzzParams memory p,
+        uint24 _pips1,
+        uint24 _pips2,
+        uint128 _split
+    ) public {
+        uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
+        uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
+        uint128 split = uint128(bound(_split, 1, type(uint128).max));
+
+        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
+        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
+        fees[1] = IProtocolFeeController.Fee({lowerThreshold: split, protocolFeePips: pips2});
+        _installFeeTiers(fees, address(0));
+
+        // 100% LP bracket — every wei not taken as fee flows into the LP planner
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
+        uint256 expectedFee = _refFeeTwoTier(currencyRaised, split, pips1, pips2);
+        // Skip the 100%-fee case: post-fee = 0 starves the LP planner and v4 reverts on zero-delta ops
+        vm.assume(currencyRaised - expectedFee > 0);
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+
+        uint256 feeBalBefore = feeRecipient.balance;
+        uint256 fundsBalBefore = fundsRecipient.balance;
+        uint256 poolBalBefore = address(POOL_MANAGER).balance;
+        // Strategy gates the emit on feeAmount > 0; only assert it when we expect a non-zero fee
+        if (expectedFee > 0) {
+            vm.expectEmit(true, true, true, true);
+            emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, expectedFee);
+        }
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 feeDelta = feeRecipient.balance - feeBalBefore;
+        uint256 fundsDelta = fundsRecipient.balance - fundsBalBefore;
+        uint256 poolDelta = address(POOL_MANAGER).balance - poolBalBefore;
+
+        assertEq(feeDelta, expectedFee);
+        assertEq(feeDelta + fundsDelta + poolDelta, currencyRaised);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_realController_threeTier_appliesTieredFeeToCurrencyRaised(
+        MigrationFuzzParams memory p,
+        uint24 _pips1,
+        uint24 _pips2,
+        uint24 _pips3,
+        uint128 _split1,
+        uint128 _split2
+    ) public {
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
+        uint256 expectedFee;
+        {
+            uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
+            uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
+            uint24 pips3 = uint24(bound(_pips3, 0, feeController.PIPS_DENOMINATOR()));
+            uint128 split1 = uint128(bound(_split1, 1, type(uint128).max - 1));
+            uint128 split2 = uint128(bound(_split2, uint256(split1) + 1, type(uint128).max));
+
+            IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](3);
+            fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
+            fees[1] = IProtocolFeeController.Fee({lowerThreshold: split1, protocolFeePips: pips2});
+            fees[2] = IProtocolFeeController.Fee({lowerThreshold: split2, protocolFeePips: pips3});
+            _installFeeTiers(fees, address(0));
+
+            expectedFee = _refFeeThreeTier(currencyRaised, split1, split2, pips1, pips2, pips3);
+        }
+        // Skip the 100%-fee case: post-fee = 0 starves the LP planner and v4 reverts on zero-delta ops
+        vm.assume(currencyRaised - expectedFee > 0);
+
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+
+        uint256 feeBalBefore = feeRecipient.balance;
+        uint256 fundsBalBefore = fundsRecipient.balance;
+        uint256 poolBalBefore = address(POOL_MANAGER).balance;
+        // Strategy gates the emit on feeAmount > 0; only assert it when we expect a non-zero fee
+        if (expectedFee > 0) {
+            vm.expectEmit(true, true, true, true);
+            emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, expectedFee);
+        }
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 feeDelta = feeRecipient.balance - feeBalBefore;
+        uint256 fundsDelta = fundsRecipient.balance - fundsBalBefore;
+        uint256 poolDelta = address(POOL_MANAGER).balance - poolBalBefore;
+
+        assertEq(feeDelta, expectedFee);
+        assertEq(feeDelta + fundsDelta + poolDelta, currencyRaised);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_realController_appliesTieredFeeToErc20Currency(
+        MigrationFuzzParams memory p,
+        uint24 _pips1,
+        uint24 _pips2,
+        uint128 _split
+    ) public {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
 
-        LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint128).max);
+        uint256 expectedFee;
+        {
+            uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
+            uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
+            uint128 split = uint128(bound(_split, 1, type(uint128).max));
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, brackets);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
-        currencyToken.transfer(address(initializer), p.currencyRaised);
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
+            IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
+            fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
+            fees[1] = IProtocolFeeController.Fee({lowerThreshold: split, protocolFeePips: pips2});
+            _installFeeTiers(fees, address(currencyToken));
 
-        uint256 feeAmount = _boundFeeAmount(_feeAmount, p.currencyRaised, brackets);
-        vm.assume(feeAmount > 0);
-        feeController.setMockFee(feeAmount, feeRecipient);
+            expectedFee = _refFeeTwoTier(currencyRaised, split, pips1, pips2);
+        }
+        vm.assume(currencyRaised - expectedFee > 0);
 
-        uint256 feeRecipientBalBefore = currencyToken.balanceOf(feeRecipient);
+        // _setupForMigrationWithSchedule uses vm.deal (ETH-only), so use an ERC20-specific helper
+        MockLBPInitializer initializer = _setupErc20Migration(p, currencyToken, currencyRaised);
 
-        vm.expectEmit(true, true, true, true);
-        emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, feeAmount);
+        uint256 feeBalBefore = currencyToken.balanceOf(feeRecipient);
+        uint256 fundsBalBefore = currencyToken.balanceOf(fundsRecipient);
+        uint256 poolBalBefore = currencyToken.balanceOf(address(POOL_MANAGER));
+
+        if (expectedFee > 0) {
+            vm.expectEmit(true, true, true, true);
+            emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, expectedFee);
+        }
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(currencyToken.balanceOf(feeRecipient) - feeRecipientBalBefore, feeAmount);
+        uint256 feeDelta = currencyToken.balanceOf(feeRecipient) - feeBalBefore;
+        uint256 fundsDelta = currencyToken.balanceOf(fundsRecipient) - fundsBalBefore;
+        uint256 poolDelta = currencyToken.balanceOf(address(POOL_MANAGER)) - poolBalBefore;
+
+        assertEq(feeDelta, expectedFee);
+        assertEq(feeDelta + fundsDelta + poolDelta, currencyRaised);
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
     }
 
-    function test_noProtocolFeeTransferred_whenFeeIsZero(MigrationFuzzParams memory p) public {
-        (MockLBPInitializer initializer,) = _setupForMigration(p);
-        // Mock defaults to (0, address(0)) — explicit for clarity
-        feeController.setMockFee(0, address(0));
+    /// @dev ERC20 equivalent of _setupForMigrationWithSchedule with a 100% LP bracket. Uses
+    /// currencyToken.transfer instead of vm.deal so the initializer is funded with ERC20.
+    function _setupErc20Migration(MigrationFuzzParams memory p, MockERC20 currencyToken, uint256 currencyRaised)
+        internal
+        returns (MockLBPInitializer initializer)
+    {
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        uint256 feeRecipientBalBefore = feeRecipient.balance;
-        strategy.migrate(ILBPInitializer(address(initializer)));
-
-        // No transfer occurred — fee path is guarded by `if (feeAmount > 0)`,
-        // which also gates the ProtocolFeeTransferred event emission.
-        assertEq(feeRecipient.balance, feeRecipientBalBefore);
+        MockERC20 token;
+        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, bp);
+        initializer.setLbpInitializationParams(
+            LBPInitializationParams({
+                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: currencyRaised
+            })
+        );
+        currencyToken.transfer(address(initializer), currencyRaised);
+        token.transfer(address(initializer), totalSupply);
+        vm.roll(mp.migrationBlock);
     }
 
-    function test_lpReceivesCurrencyMinusFee(MigrationFuzzParams memory p, uint256 _feeAmount) public {
-        LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
-        (MockLBPInitializer initializer,) = _setupForMigration(p);
-        uint256 currencyRaised = initializer.lbpInitializationParams().currencyRaised;
+    /// @dev Installs a per-currency tier schedule on the controller. Tier-math fuzz coverage lives in
+    /// the controller's own test file; these tests verify the strategy's integration with a real
+    /// (non-mock) controller producing a tier-derived fee.
+    function _installFeeTiers(IProtocolFeeController.Fee[] memory fees, address currency) internal {
+        feeController.setProtocolFeePerCurrency(currency, fees);
+    }
 
-        uint256 feeAmount = _boundFeeAmount(_feeAmount, currencyRaised, brackets);
-        vm.assume(feeAmount > 0);
-        feeController.setMockFee(feeAmount, feeRecipient);
+    /// @dev Reference implementation for two-tier fee math (mirrors the controller's own test helper).
+    /// Uses FullMath to match the controller's 512-bit-intermediate multiply for uint256 amounts.
+    function _refFeeTwoTier(uint256 amount, uint128 split, uint24 pips1, uint24 pips2) internal view returns (uint256) {
+        uint24 denom = feeController.PIPS_DENOMINATOR();
+        uint256 tier1 = amount > split ? split : amount;
+        uint256 fee = FullMath.mulDiv(tier1, pips1, denom);
+        if (amount > split) {
+            fee += FullMath.mulDiv(amount - split, pips2, denom);
+        }
+        return fee;
+    }
 
-        uint256 feeRecipientBalBefore = feeRecipient.balance;
-        uint256 fundsRecipientBalBefore = fundsRecipient.balance;
-        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
+    /// @dev Reference implementation for three-tier fee math (mirrors the controller's own test helper).
+    function _refFeeThreeTier(uint256 amount, uint128 split1, uint128 split2, uint24 pips1, uint24 pips2, uint24 pips3)
+        internal
+        view
+        returns (uint256 fee)
+    {
+        uint24 denom = feeController.PIPS_DENOMINATOR();
+        uint256 tier1 = amount > split1 ? split1 : amount;
+        fee += FullMath.mulDiv(tier1, pips1, denom);
+        if (amount <= split1) return fee;
 
-        strategy.migrate(ILBPInitializer(address(initializer)));
+        uint256 tier2 = (amount > split2 ? split2 : amount) - split1;
+        fee += FullMath.mulDiv(tier2, pips2, denom);
+        if (amount <= split2) return fee;
 
-        // Fee is transferred to fee recipient
-        assertEq(feeRecipient.balance - feeRecipientBalBefore, feeAmount);
-        // Everything else is either at fundsRecipient or locked in the pool — nothing lost
-        assertEq(
-            (fundsRecipient.balance - fundsRecipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
-            currencyRaised - feeAmount
-        );
-        assertEq(address(strategy).balance, 0);
+        fee += FullMath.mulDiv(amount - split2, pips3, denom);
     }
 }

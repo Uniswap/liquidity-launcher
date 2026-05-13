@@ -9,7 +9,7 @@ import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {MockProtocolFeeController} from "test/mocks/MockProtocolFeeController.sol";
+import {ProtocolFeeController} from "src/periphery/ProtocolFeeController.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -30,7 +30,7 @@ abstract contract LBPStrategyTestBase is Test {
 
     LBPStrategy strategy;
     MockInitializerFactory factory;
-    MockProtocolFeeController feeController;
+    ProtocolFeeController feeController;
 
     address owner;
     address fundsRecipient = makeAddr("fundsRecipient");
@@ -76,7 +76,9 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        feeController = new MockProtocolFeeController();
+        // Default state has no global recipient set → kill switch active → getProtocolFeeAmount returns (0, 0).
+        // Tests that exercise the fee path configure it in their own setUp.
+        feeController = new ProtocolFeeController(owner);
 
         strategy = new LBPStrategy(
             POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), address(feeController), owner

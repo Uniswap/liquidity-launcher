@@ -22,8 +22,12 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
+    /// @dev Setting recipient to address(0) is the global kill switch — it disables ALL fees
+    ///      (global and per-currency) without erasing installed schedules. Restoring a non-zero
+    ///      recipient reinstates them.
     function setGlobalProtocolFeeSettings(uint24 globalProtocolFeePips, address recipient) external onlyOwner {
         if (globalProtocolFeePips > PIPS_DENOMINATOR) revert InvalidFeePips(globalProtocolFeePips, PIPS_DENOMINATOR);
+        // A non-zero fee rate needs somewhere to send it
         if (globalProtocolFeePips > 0 && recipient == address(0)) revert InvalidInput();
 
         globalProtocolFee =
@@ -32,6 +36,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
+    /// @dev Passing an empty Fee[] deletes the per-currency schedule, reverting this currency to the global pips
     function setProtocolFeePerCurrency(address currency, Fee[] calldata fees) external onlyOwner {
         delete _currencyFees[currency];
 
@@ -40,6 +45,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
             return;
         }
 
+        // Per-currency tiers require a global recipient — it's the payee for the tier-derived fee.
         if (globalProtocolFee.globalProtocolFeeRecipient == address(0)) revert InvalidInput();
         if (fees.length > MAX_PROTOCOL_FEE_TIERS) revert InvalidFeeLength(fees.length);
 
