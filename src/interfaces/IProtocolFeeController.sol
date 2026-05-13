@@ -8,25 +8,22 @@ pragma solidity ^0.8.0;
 ///      Exposes a global flat fee used by default for all currencies, and an optional per-currency
 ///      override schedule with progressive tiers and an amount cap.
 interface IProtocolFeeController {
-    /// @notice The global fee settings applied to all currencies without a per-currency override
-    struct GlobalFee {
-        uint24 globalProtocolFeePips; // The global protocol fee in pips
-        address globalProtocolFeeRecipient; // The address that receives protocol fees for all currencies
-    }
-
     /// @notice A fee tier in a per-currency progressive fee schedule.
     ///         Tiers are sorted ascending by lowerThreshold. The first tier's lowerThreshold MUST be 0.
     ///         Each tier's rate applies to the portion of the amount in [lowerThreshold, nextLowerThreshold).
     ///         The last tier's rate applies to all remaining amount above its lowerThreshold.
     struct Fee {
-        uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
+        uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
         uint24 protocolFeePips; // The fee rate in pips applied to the portion of the amount within this bracket
     }
 
-    /// @notice Emitted when the global protocol fee settings are updated
+    /// @notice Emitted when the protocol fee recipient is updated
+    /// @param recipient The new recipient of all protocol fees (global and per-currency)
+    event ProtocolFeeRecipientUpdated(address indexed recipient);
+
+    /// @notice Emitted when the global protocol fee rate is updated
     /// @param globalProtocolFeePips The new global protocol fee in pips
-    /// @param recipient The new recipient of the global protocol fee
-    event GlobalProtocolFeeSettingsUpdated(uint24 indexed globalProtocolFeePips, address indexed recipient);
+    event GlobalProtocolFeePipsUpdated(uint24 indexed globalProtocolFeePips);
 
     /// @notice Emitted when a per-currency protocol fee schedule is set or cleared
     /// @param currency The currency the schedule applies to
@@ -42,15 +39,30 @@ interface IProtocolFeeController {
     /// @param length The provided length
     error InvalidFeeLength(uint256 length);
 
-    /// @notice Generic error thrown for invalid inputs
-    error InvalidInput();
+    /// @notice Thrown when installing a per-currency fee schedule before a global recipient is set
+    error RecipientNotSet();
 
-    /// @notice Sets the global protocol fee settings for all currencies without custom fees
-    /// @dev When pips is 0, recipient may be address(0) to disable the global fee.
-    ///      When pips is > 0, recipient must be non-zero.
+    /// @notice Thrown when the first tier's lowerThreshold is not zero
+    /// @param lowerThreshold The provided first-tier lowerThreshold
+    error FirstThresholdMustBeZero(uint256 lowerThreshold);
+
+    /// @notice Thrown when a tier's lowerThreshold is not strictly greater than the previous tier's
+    /// @param lowerThreshold The provided lowerThreshold
+    /// @param prevLowerThreshold The previous tier's lowerThreshold
+    error ThresholdsNotAscending(uint256 lowerThreshold, uint256 prevLowerThreshold);
+
+    /// @notice Sets the recipient of all protocol fees (global and per-currency).
+    /// @dev Recipient must be able to receive native ETH and ERC20 transfers. A recipient that
+    ///      rejects transfers (including address(0)) will cause LBP migrations to revert until
+    ///      governance sets a working recipient.
+    /// @param recipient The address that receives protocol fees for all currencies
+    function setProtocolFeeRecipient(address recipient) external;
+
+    /// @notice Sets the global protocol fee rate, used as the fallback for currencies without a
+    ///         per-currency tier schedule.
+    /// @dev Per-currency schedules override this rate, but still pay to protocolFeeRecipient.
     /// @param globalProtocolFeePips The global protocol fee in pips
-    /// @param recipient The recipient of the global protocol fee
-    function setGlobalProtocolFeeSettings(uint24 globalProtocolFeePips, address recipient) external;
+    function setGlobalProtocolFeePips(uint24 globalProtocolFeePips) external;
 
     /// @notice Sets a per-currency progressive fee schedule
     /// @dev The first tier's lowerThreshold must be 0; subsequent tiers must have strictly ascending lowerThresholds.
@@ -63,18 +75,18 @@ interface IProtocolFeeController {
 
     /// @notice Returns the exact protocol fee amount for a given currency and amount
     /// @dev This is the source of truth for fee deduction. Individual rate parameters are bounded
-    ///      by PIPS_DENOMINATOR (1,000,000 pips = 100%).
+    ///      by PIPS_DENOMINATOR (1,000,000 pips = 100%). Read protocolFeeRecipient() separately
+    ///      to find out where to send the fee.
     /// @param currency The currency address, address(0) for native
     /// @param amount The amount denoted in currency
     /// @return protocolFeeAmount The exact fee amount to deduct
-    /// @return protocolFeeRecipient The address that should receive the fee
-    function getProtocolFeeAmount(address currency, uint256 amount)
-        external
-        view
-        returns (uint256 protocolFeeAmount, address protocolFeeRecipient);
+    function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount);
 
     /// @notice Returns the fee tiers for a given currency
     /// @param currency The currency address
     /// @return fees The fee tiers
     function getCurrencyFees(address currency) external view returns (Fee[] memory fees);
+
+    /// @notice The address that receives all protocol fees (global and per-currency)
+    function protocolFeeRecipient() external view returns (address);
 }

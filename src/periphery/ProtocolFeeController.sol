@@ -14,7 +14,14 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     /// @notice The maximum number of protocol fee tiers per currency
     uint256 public constant MAX_PROTOCOL_FEE_TIERS = 3;
 
-    GlobalFee public globalProtocolFee;
+    /// @notice Recipient of ALL protocol fees (both the global fallback and per-currency tier-derived).
+    ///         Must be able to receive the currency transfers; a recipient that rejects transfers will cause LBP migrations to revert.
+    address public protocolFeeRecipient;
+
+    /// @notice Global protocol fee rate in pips, applied as the fallback for currencies without a per-currency tier schedule.
+    ///         Per-currency schedules override this rate but still pay to protocolFeeRecipient.
+    uint24 public globalProtocolFeePips;
+
     mapping(address currency => Fee[]) internal _currencyFees;
 
     constructor(address _owner) {
@@ -22,17 +29,18 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
-    /// @dev Setting recipient to address(0) is the global kill switch — it disables ALL fees
-    ///      (global and per-currency) without erasing installed schedules. Restoring a non-zero
-    ///      recipient reinstates them.
-    function setGlobalProtocolFeeSettings(uint24 globalProtocolFeePips, address recipient) external onlyOwner {
-        if (globalProtocolFeePips > PIPS_DENOMINATOR) revert InvalidFeePips(globalProtocolFeePips, PIPS_DENOMINATOR);
-        // A non-zero fee rate needs somewhere to send it
-        if (globalProtocolFeePips > 0 && recipient == address(0)) revert InvalidInput();
+    /// @dev Recipient must be able to receive the currency transfers; a recipient that rejects the
+    ///      transfers will cause LBP migrations to revert until its pointed elsewhere.
+    function setProtocolFeeRecipient(address _recipient) external onlyOwner {
+        protocolFeeRecipient = _recipient;
+        emit ProtocolFeeRecipientUpdated(_recipient);
+    }
 
-        globalProtocolFee =
-            GlobalFee({globalProtocolFeePips: globalProtocolFeePips, globalProtocolFeeRecipient: recipient});
-        emit GlobalProtocolFeeSettingsUpdated(globalProtocolFeePips, recipient);
+    /// @inheritdoc IProtocolFeeController
+    function setGlobalProtocolFeePips(uint24 _globalProtocolFeePips) external onlyOwner {
+        if (_globalProtocolFeePips > PIPS_DENOMINATOR) revert InvalidFeePips(_globalProtocolFeePips, PIPS_DENOMINATOR);
+        globalProtocolFeePips = _globalProtocolFeePips;
+        emit GlobalProtocolFeePipsUpdated(_globalProtocolFeePips);
     }
 
     /// @inheritdoc IProtocolFeeController
@@ -45,11 +53,11 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
             return;
         }
 
-        // Per-currency tiers require a global recipient — it's the payee for the tier-derived fee.
-        if (globalProtocolFee.globalProtocolFeeRecipient == address(0)) revert InvalidInput();
+        // Per-currency tiers require a recipient — it's the payee for the tier-derived fee.
+        if (protocolFeeRecipient == address(0)) revert RecipientNotSet();
         if (fees.length > MAX_PROTOCOL_FEE_TIERS) revert InvalidFeeLength(fees.length);
 
-        uint128 prevLowerThreshold;
+        uint256 prevLowerThreshold;
         for (uint256 i; i < fees.length; ++i) {
             if (fees[i].protocolFeePips > PIPS_DENOMINATOR) {
                 revert InvalidFeePips(fees[i].protocolFeePips, PIPS_DENOMINATOR);
@@ -57,9 +65,11 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
 
             // First tier's lowerThreshold must be 0; subsequent lowerThresholds must be strictly ascending
             if (i == 0) {
-                if (fees[i].lowerThreshold != 0) revert InvalidInput();
+                if (fees[i].lowerThreshold != 0) revert FirstThresholdMustBeZero(fees[i].lowerThreshold);
             } else {
-                if (fees[i].lowerThreshold <= prevLowerThreshold) revert InvalidInput();
+                if (fees[i].lowerThreshold <= prevLowerThreshold) {
+                    revert ThresholdsNotAscending(fees[i].lowerThreshold, prevLowerThreshold);
+                }
             }
             prevLowerThreshold = fees[i].lowerThreshold;
 
@@ -75,36 +85,24 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
-    function getProtocolFeeAmount(address currency, uint256 amount)
-        external
-        view
-        returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
-    {
-        if (amount == 0) return (0, globalProtocolFee.globalProtocolFeeRecipient);
-        (protocolFeeAmount, protocolFeeRecipient) = _calculateProtocolFeeAmount(currency, amount);
+    function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount) {
+        protocolFeeAmount = _calculateProtocolFeeAmount(currency, amount);
     }
 
     /// @notice Calculates the protocol fee amount for a given currency and amount
     /// @param currency The currency address
     /// @param amount The amount denoted in currency
     /// @return protocolFeeAmount The protocol fee amount
-    /// @return protocolFeeRecipient The address that should receive the fee
     function _calculateProtocolFeeAmount(address currency, uint256 amount)
         private
         view
-        returns (uint256 protocolFeeAmount, address protocolFeeRecipient)
+        returns (uint256 protocolFeeAmount)
     {
-        protocolFeeRecipient = globalProtocolFee.globalProtocolFeeRecipient;
-        // When the global recipient is unset, the fee is off for every currency,
-        // even if a per-currency schedule was installed earlier.
-        if (protocolFeeRecipient == address(0)) return (0, address(0));
-
         Fee[] storage fees = _currencyFees[currency];
         uint256 len = fees.length;
 
         if (len == 0) {
-            protocolFeeAmount = FullMath.mulDiv(amount, globalProtocolFee.globalProtocolFeePips, PIPS_DENOMINATOR);
-            return (protocolFeeAmount, protocolFeeRecipient);
+            return FullMath.mulDiv(amount, globalProtocolFeePips, PIPS_DENOMINATOR);
         }
 
         uint256 remaining = amount;
@@ -117,7 +115,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
             }
 
             // Non-last tier covers [fees[i].lowerThreshold, fees[i+1].lowerThreshold)
-            uint256 bracketSize = uint256(fees[i + 1].lowerThreshold) - uint256(fees[i].lowerThreshold);
+            uint256 bracketSize = fees[i + 1].lowerThreshold - fees[i].lowerThreshold;
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
             protocolFeeAmount += FullMath.mulDiv(bracketAmount, fees[i].protocolFeePips, PIPS_DENOMINATOR);
             remaining -= bracketAmount;

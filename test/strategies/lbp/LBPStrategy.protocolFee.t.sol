@@ -16,8 +16,44 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
 
     function setUp() public override {
         super.setUp();
-        // Activate the controller: set the global recipient so per-currency tier installs are allowed
-        feeController.setGlobalProtocolFeeSettings(0, feeRecipient);
+        // Activate the controller: set the recipient so per-currency tier installs are allowed
+        feeController.setProtocolFeeRecipient(feeRecipient);
+    }
+
+    /// @notice Strategy falls back to the global pips when no per-currency tier schedule is installed.
+    function test_realController_globalFeeFallback_appliesGlobalPips(MigrationFuzzParams memory p, uint24 _pips)
+        public
+    {
+        uint24 pips = uint24(bound(_pips, 1, feeController.PIPS_DENOMINATOR()));
+        // Recipient already set in setUp; just set the global pips
+        feeController.setGlobalProtocolFeePips(pips);
+        // No per-currency schedule installed — strategy should hit the global-pips path
+
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+
+        uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
+        uint256 expectedFee = FullMath.mulDiv(currencyRaised, pips, feeController.PIPS_DENOMINATOR());
+        vm.assume(currencyRaised - expectedFee > 0);
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+
+        uint256 feeBalBefore = feeRecipient.balance;
+        uint256 fundsBalBefore = fundsRecipient.balance;
+        uint256 poolBalBefore = address(POOL_MANAGER).balance;
+        if (expectedFee > 0) {
+            vm.expectEmit(true, true, true, true);
+            emit ILBPStrategy.ProtocolFeeTransferred(feeRecipient, expectedFee);
+        }
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 feeDelta = feeRecipient.balance - feeBalBefore;
+        uint256 fundsDelta = fundsRecipient.balance - fundsBalBefore;
+        uint256 poolDelta = address(POOL_MANAGER).balance - poolBalBefore;
+
+        assertEq(feeDelta, expectedFee);
+        assertEq(feeDelta + fundsDelta + poolDelta, currencyRaised);
+        assertEq(address(strategy).balance, 0);
     }
 
     function test_realController_oneTier_appliesFlatFeeToCurrencyRaised(MigrationFuzzParams memory p, uint24 _pips)
@@ -60,11 +96,11 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory p,
         uint24 _pips1,
         uint24 _pips2,
-        uint128 _split
+        uint256 _split
     ) public {
         uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
         uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
-        uint128 split = uint128(bound(_split, 1, type(uint128).max));
+        uint256 split = bound(_split, 1, type(uint256).max);
 
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
         fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
@@ -106,8 +142,8 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         uint24 _pips1,
         uint24 _pips2,
         uint24 _pips3,
-        uint128 _split1,
-        uint128 _split2
+        uint256 _split1,
+        uint256 _split2
     ) public {
         uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
         uint256 expectedFee;
@@ -115,8 +151,8 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
             uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
             uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
             uint24 pips3 = uint24(bound(_pips3, 0, feeController.PIPS_DENOMINATOR()));
-            uint128 split1 = uint128(bound(_split1, 1, type(uint128).max - 1));
-            uint128 split2 = uint128(bound(_split2, uint256(split1) + 1, type(uint128).max));
+            uint256 split1 = bound(_split1, 1, type(uint256).max - 1);
+            uint256 split2 = bound(_split2, split1 + 1, type(uint256).max);
 
             IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](3);
             fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
@@ -157,7 +193,7 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory p,
         uint24 _pips1,
         uint24 _pips2,
-        uint128 _split
+        uint256 _split
     ) public {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
@@ -167,7 +203,7 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         {
             uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
             uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
-            uint128 split = uint128(bound(_split, 1, type(uint128).max));
+            uint256 split = bound(_split, 1, type(uint256).max);
 
             IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
             fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
@@ -234,7 +270,7 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
 
     /// @dev Reference implementation for two-tier fee math (mirrors the controller's own test helper).
     /// Uses FullMath to match the controller's 512-bit-intermediate multiply for uint256 amounts.
-    function _refFeeTwoTier(uint256 amount, uint128 split, uint24 pips1, uint24 pips2) internal view returns (uint256) {
+    function _refFeeTwoTier(uint256 amount, uint256 split, uint24 pips1, uint24 pips2) internal view returns (uint256) {
         uint24 denom = feeController.PIPS_DENOMINATOR();
         uint256 tier1 = amount > split ? split : amount;
         uint256 fee = FullMath.mulDiv(tier1, pips1, denom);
@@ -245,7 +281,7 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
     }
 
     /// @dev Reference implementation for three-tier fee math (mirrors the controller's own test helper).
-    function _refFeeThreeTier(uint256 amount, uint128 split1, uint128 split2, uint24 pips1, uint24 pips2, uint24 pips3)
+    function _refFeeThreeTier(uint256 amount, uint256 split1, uint256 split2, uint24 pips1, uint24 pips2, uint24 pips3)
         internal
         view
         returns (uint256 fee)
