@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
@@ -53,6 +54,29 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         strategy.initializeDistribution(
             address(token), totalSupply, _encodeConfigData(mp, bp, initializerParams), bytes32(0)
         );
+    }
+
+    function test_forwardsSaltDerivedFromCallerSaltAndMigratorParams(MigrationFuzzParams memory p, bytes32 salt)
+        public
+    {
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
+        (MigratorParameters memory decodedMigrationParams,) = abi.decode(configData, (MigratorParameters, bytes));
+        bytes32 expectedInitializerSalt = keccak256(abi.encode(salt, decodedMigrationParams));
+
+        vm.expectCall(
+            address(factory),
+            abi.encodeCall(
+                IDistributionStrategy.initializeDistribution,
+                (address(token), totalSupply, initializerParams, expectedInitializerSalt)
+            )
+        );
+
+        strategy.initializeDistribution(address(token), totalSupply, configData, salt);
     }
 
     function test_revertsIfInitializerAlreadyCreated(MigrationFuzzParams memory p) public {

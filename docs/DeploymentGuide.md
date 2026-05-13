@@ -55,6 +55,8 @@ function distributeToken(
 
 The `payerIsUser` parameter is a boolean that indicates whether the payer is the user. If the token was created in the same call via `createToken`, set it to `false`. Otherwise, set it to `true` and ensure that the caller has approved the `LiquidityLauncher` contract to spend the token via Permit2.
 
+The `salt` parameter is forwarded to the selected strategy after being domain-separated by the caller. Strategies and downstream factories that perform deterministic deployments MUST include the provided salt in their address calculation and any matching address prediction helpers.
+
 Depending on the complexity of the distribution strategy, you may need to pass additional parameters to the strategy. These are passed in the `configData` parameter.
 
 Strategies may create any number of additional contracts, but may only return one address to the `LiquidityLauncher` contract. This is the address which will receive the `amount` of tokens specified in the `Distribution` struct.

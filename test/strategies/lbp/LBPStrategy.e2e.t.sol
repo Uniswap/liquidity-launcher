@@ -92,6 +92,16 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(lpPositionRecipient), 0);
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_initAndMigrate_mintsLpPositionForStandardPlan_gas() public {
+        MigrationFuzzParams memory p = _standardMigrationParams();
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        vm.snapshotGasLastCall("LBP migrate: standard parameters with native currency");
+    }
+
     /// @notice Two independent distributions store separate migration parameters
     function test_fuzz_twoDistributionsStoreSeparateParams(MigrationFuzzParams memory p1, MigrationFuzzParams memory p2)
         public
@@ -246,5 +256,23 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(rawSqrtPriceAfter, rawSqrtPrice);
         assertGt(strategySqrtPrice, 0);
         assertEq(address(strategyKey.hooks), address(strategy));
+    }
+
+    function _standardMigrationParams() internal view returns (MigrationFuzzParams memory p) {
+        // Fixed values keep LBP gas benchmarks deterministic and representative of the standard launch path.
+        p.endBlock = uint64(block.number);
+        p.migrationBlock = uint64(block.number + 1);
+        p.poolLPFee = 3000;
+        p.poolTickSpacing = 60;
+        p.supplyForLP = 100 ether;
+        p.auctionSupply = 10 ether;
+        p.bpParams.count = 1;
+        p.bpParams.rate0 = 5e6;
+        p.currencyRaised = 100 ether;
+        p.initialPriceX96 = uint160(1 << 96);
+        p.tokensSold = 1 ether;
+        p.offsetLower = -600;
+        p.offsetUpper = 600;
+        p.fullRangeWeight = 5e6;
     }
 }
