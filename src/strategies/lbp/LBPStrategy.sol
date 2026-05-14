@@ -62,12 +62,9 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     /// @inheritdoc IDistributionStrategy
     /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
     /// are validated before storage. Callers cannot overwrite existing initializer registrations.
-    function initializeDistribution(
-        address token,
-        uint256 totalSupply,
-        bytes calldata configData,
-        bytes32 /*salt*/
-    )
+    /// The initializer factory MUST include the supplied salt in deterministic address calculations; this strategy
+    /// derives that salt from the caller-provided salt and MigratorParameters to bind the initializer address to both.
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         returns (IDistributionContract)
     {
@@ -82,10 +79,11 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         // Only the auction supply (totalSupply - supplyForLP) is passed as the amount — custody tokens (supplyForLP)
         // remain in this strategy and are tracked per-initializer at migration time.
         uint256 auctionSupply = totalSupply - migrationParams.supplyForLP;
+        bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, auctionSupply, initializerParams, bytes32(0))
+                    .initializeDistribution(token, auctionSupply, initializerParams, initializerSalt)
             )
         );
 

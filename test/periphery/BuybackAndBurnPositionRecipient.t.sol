@@ -197,4 +197,32 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
             "Dead address token balance did not increase by more than the minimum burn amount"
         );
     }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_collectFees_transfersCurrencyFeesToCaller_gas() public {
+        uint256 minTokenBurnAmount = 1e6;
+        uint256 minCurrencyAmount = 0;
+
+        positionRecipient = new BuybackAndBurnPositionRecipient(
+            USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, minTokenBurnAmount
+        );
+        vm.prank(searcher);
+        IERC20(USDC).approve(address(positionRecipient), type(uint256).max);
+        _dealUSDCFromPoolManager(address(searcher), minTokenBurnAmount);
+
+        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+
+        uint256 deadAddressTokenBalanceBefore = Currency.wrap(USDC).balanceOf(address(0xdead));
+        uint256 searcherCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(searcher);
+
+        vm.prank(searcher);
+        positionRecipient.collectFees(FORK_TOKEN_ID, minCurrencyAmount);
+        vm.snapshotGasLastCall("buybackAndBurn collectFees");
+
+        assertGt(Currency.wrap(NATIVE).balanceOf(searcher), searcherCurrencyBalanceBefore);
+        assertEq(Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0);
+        assertEq(Currency.wrap(NATIVE).balanceOf(address(positionRecipient)), 0);
+        assertGt(Currency.wrap(USDC).balanceOf(address(0xdead)), deadAddressTokenBalanceBefore + minTokenBurnAmount);
+    }
 }

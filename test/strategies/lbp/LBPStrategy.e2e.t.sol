@@ -8,8 +8,6 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 interface IERC721Balance {
     function balanceOf(address owner) external view returns (uint256);
@@ -46,35 +44,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
-        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
-        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
-
-        PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-        defs[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
-
-        MigratorParameters memory mp = MigratorParameters({
-            migrationBlock: uint64(block.number + 1),
-            poolLPFee: 3000,
-            poolTickSpacing: 60,
-            supplyForLP: 100 ether,
-            fundsRecipient: fundsRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            lpHook: address(0),
-            positionDefinitions: abi.encode(defs),
-            lpAllocationSchedule: new bytes(0)
-        });
-        uint128 totalSupply = mp.supplyForLP + 10 ether;
-
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, uint64(block.number), bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether})
-        );
-
-        vm.deal(address(initializer), 100 ether);
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), totalSupply - mp.supplyForLP);
-        vm.roll(mp.migrationBlock);
+        MigrationFuzzParams memory p = _standardMigrationParams();
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
 
@@ -82,6 +53,16 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
         assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(lpPositionRecipient), 0);
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_initAndMigrate_mintsLpPositionForStandardPlan_gas() public {
+        MigrationFuzzParams memory p = _standardMigrationParams();
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        vm.snapshotGasLastCall("LBP migrate: standard parameters with native currency");
     }
 
     /// @notice Two independent distributions store separate migration parameters
@@ -154,5 +135,23 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             currencyToken.balanceOf(fundsRecipient) > recipientCurrencyBefore
                 || token.balanceOf(fundsRecipient) > recipientTokenBefore
         );
+    }
+
+    function _standardMigrationParams() internal view returns (MigrationFuzzParams memory p) {
+        // Fixed values keep LBP gas benchmarks deterministic and representative of the standard launch path.
+        p.endBlock = uint64(block.number);
+        p.migrationBlock = uint64(block.number + 1);
+        p.poolLPFee = 3000;
+        p.poolTickSpacing = 60;
+        p.supplyForLP = 100 ether;
+        p.auctionSupply = 10 ether;
+        p.bpParams.count = 1;
+        p.bpParams.rate0 = 5e6;
+        p.currencyRaised = 100 ether;
+        p.initialPriceX96 = uint160(1 << 96);
+        p.tokensSold = 1 ether;
+        p.offsetLower = -600;
+        p.offsetUpper = 600;
+        p.fullRangeWeight = 5e6;
     }
 }
