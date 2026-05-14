@@ -10,20 +10,17 @@ import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title InitializerHook
-/// @notice Base hook that restricts pool initialization to the LBPStrategy singleton
-/// @dev Any hook configured in MigratorParameters.hook MUST inherit this contract. LBPStrategy enforces this contract's
-///      IInitializerHook ERC165 support before storing the hook.
+/// @notice Base hook that restricts pool initialization to a preset address
+/// @dev Any caller specified hook MUST inherit this contract to be used in LBPStrategy
 abstract contract InitializerHook is BaseHook, IInitializerHook {
-    /// @notice Error thrown when a non-strategy address attempts to initialize the pool
-    /// @param caller The address that attempted to initialize
-    /// @param expected The authorized strategy address
+    /// @notice Error thrown when the caller is not authorized to initialize the pool
     error InvalidInitializer(address caller, address expected);
 
-    /// @notice The LBPStrategy contract authorized to initialize the pool
-    address public immutable strategy;
+    /// @notice The address authorized to initialize the pool
+    address public immutable authorized;
 
-    constructor(IPoolManager _poolManager, address _strategy) BaseHook(_poolManager) {
-        strategy = _strategy;
+    constructor(IPoolManager _poolManager, address _authorized) BaseHook(_poolManager) {
+        authorized = _authorized;
     }
 
     /// @inheritdoc BaseHook
@@ -48,7 +45,7 @@ abstract contract InitializerHook is BaseHook, IInitializerHook {
 
     /// @inheritdoc BaseHook
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
-        if (sender != strategy) revert InvalidInitializer(sender, strategy);
+        if (sender != authorized) revert InvalidInitializer(sender, authorized);
         return IHooks.beforeInitialize.selector;
     }
 
