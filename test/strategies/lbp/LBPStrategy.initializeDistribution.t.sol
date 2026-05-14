@@ -49,16 +49,17 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory initializerParams = abi.encode(endBlock);
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
         (MigratorParameters memory decodedMigrationParams,) = abi.decode(configData, (MigratorParameters, bytes));
         bytes32 expectedInitializerSalt = keccak256(abi.encode(salt, decodedMigrationParams));
+        uint256 auctionSupply = totalSupply - mp.supplyForLP;
 
         vm.expectCall(
             address(factory),
             abi.encodeCall(
                 IDistributionStrategy.initializeDistribution,
-                (address(token), totalSupply, initializerParams, expectedInitializerSalt)
+                (address(token), auctionSupply, initializerParams, expectedInitializerSalt)
             )
         );
 
