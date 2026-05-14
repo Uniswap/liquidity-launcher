@@ -67,9 +67,10 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
             })
         );
 
-        // Fund the initializer with the huge raise + tokens
+        // Fund the initializer with the huge raise + auction tokens; strategy holds supplyForLP as custody.
         vm.deal(address(initializer), hugeRaise);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         // Keep this test focused on the int128 cap and sweep behavior; position execution is covered elsewhere.
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
@@ -80,10 +81,12 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertApproxEqAbs(received, hugeRaise, 2);
 
-        // Strategy should be empty
-        assertEq(address(strategy).balance, 0);
+        // Conservation: total ETH is hugeRaise. With mocked modifyLiquidities, any value: currencyTransferAmount
+        // passed to PM remains in the strategy (the mock doesn't consume the value), so we account for it here
+        // instead of asserting strategy is empty. The singleton's delta sweep only sends this initializer's
+        // own leftover (currencyFromInitializer - currencyTransferAmount) to fundsRecipient.
+        assertEq(received + address(strategy).balance, hugeRaise);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 
@@ -116,7 +119,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         );
 
         vm.deal(address(initializer), maxV4Delta);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 

@@ -79,12 +79,13 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         migrationParams.validate();
 
         // Deploy the initializer contract via factory.
-        // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
-        // LiquidityLauncher transfers the full totalSupply to the CCA, which validates balance >= auctionSupply + custodyTokens.
+        // Only the auction supply (totalSupply - supplyForLP) is passed as the amount — custody tokens (supplyForLP)
+        // remain in this strategy and are tracked per-initializer at migration time.
+        uint256 auctionSupply = totalSupply - migrationParams.supplyForLP;
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, totalSupply, initializerParams, bytes32(0))
+                    .initializeDistribution(token, auctionSupply, initializerParams, bytes32(0))
             )
         );
 
@@ -117,26 +118,38 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
         }
 
-        // Get the LBP initialization parameters. Trust the initializer to return the correct parameters.
-        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
-
-        // Sweep the currency and tokens into the LBP strategy
-        initializer.sweepCurrency();
-        initializer.sweepUnsoldTokens();
-
-        // Apply the bracket schedule to derive how much currency goes to the LP, then validate.
-        // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
-        uint128 currencyAmountForLp = _validateCurrencyAmountForLp(
-            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule)
-        );
-
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
         // This requires trusting the initializer to return correct and immutable addresses.
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
 
-        // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
-        uint160 sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
+        // Amounts belonging to THIS initializer, derived from balance deltas across the sweep.
+        // The strategy is a singleton and may already hold custody tokens belonging to other
+        // concurrent initializers, so we cannot use balanceOfSelf to size the final sweep.
+        //   - currency: whatever just arrived from sweepCurrency (delta)
+        //   - tokens:   sweep delta (unsold from auction) + supplyForLP (custody already held in strategy)
+        uint256 currencyFromInitializer;
+        uint256 tokenFromInitializer;
+        {
+            uint256 currencyBefore = currency.balanceOfSelf();
+            uint256 tokenBefore = token.balanceOfSelf();
+            initializer.sweepCurrency();
+            initializer.sweepUnsoldTokens();
+            currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
+            tokenFromInitializer = (token.balanceOfSelf() - tokenBefore) + migrationParams.supplyForLP;
+        }
+
+        uint160 sqrtPriceX96;
+        uint128 currencyAmountForLp;
+        {
+            LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+            // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
+            currencyAmountForLp = _validateCurrencyAmountForLp(
+                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule)
+            );
+            // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
+            sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
+        }
 
         PoolKey memory key = _initializePool(
             currency,
@@ -149,20 +162,20 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
 
         // currencyAmountForLp is already <= int128.max from _validateCurrencyAmountForLp;
         // supplyForLP is enforced <= int128.max in _validateMigratorParams.
-        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
-            key, currency, sqrtPriceX96, currencyAmountForLp, migrationParams.supplyForLP, migrationParams
-        );
+        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) =
+            _createPositionPlan(key, currency, sqrtPriceX96, currencyAmountForLp, migrationParams);
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
-        // Transfer all leftover currency and tokens to the funds recipient (non LP currency and tokens, unsold & custody tokens and dust)
-        uint256 remainingCurrency = currency.balanceOfSelf();
+        // Sweep this initializer's leftover (non-LP currency and tokens, unsold & custody dust) to the funds recipient.
+        // Other initializers' funds remain untouched in the strategy.
+        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
         if (remainingCurrency > 0) {
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
-        uint256 remainingToken = token.balanceOfSelf();
+        uint256 remainingToken = tokenFromInitializer - tokenTransferAmount;
         if (remainingToken > 0) {
             token.transfer(migrationParams.fundsRecipient, remainingToken);
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
@@ -197,8 +210,7 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
     /// @param currency The raised currency
     /// @param sqrtPriceX96 The initialized pool price
     /// @param currencyAmountForLp The currency budget for LP positions
-    /// @param tokenAmountForLp The token budget for LP positions
-    /// @param mp The stored migration parameters
+    /// @param mp The stored migration parameters (mp.supplyForLP is used as the token budget for LP positions)
     /// @return plan The encoded PositionManager plan
     /// @return currencyTransferAmount The currency amount consumed by the plan
     /// @return tokenTransferAmount The token amount consumed by the plan
@@ -207,15 +219,14 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         Currency currency,
         uint160 sqrtPriceX96,
         uint128 currencyAmountForLp,
-        uint128 tokenAmountForLp,
         MigratorParameters memory mp
     ) internal virtual returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
         bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
 
         Position[] memory positions;
         {
-            uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : tokenAmountForLp;
-            uint128 amount1In = currencyIsCurrency0 ? tokenAmountForLp : currencyAmountForLp;
+            uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : mp.supplyForLP;
+            uint128 amount1In = currencyIsCurrency0 ? mp.supplyForLP : currencyAmountForLp;
             uint128 remaining0;
             uint128 remaining1;
             (positions, remaining0, remaining1) = PositionPlanner.resolve(
@@ -303,17 +314,13 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         private
         view
     {
-        // Ensure the funds recipient is indeed this contract
+        // Ensure the funds recipient is this contract
         if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
             revert InvalidRecipient(address(this));
         }
         // Ensure the migration block is actually after the end block to ensure a successful migration
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
-        }
-        // Ensure the CCA's custody tokens match the supplyForLP
-        if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
-            revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
         }
     }
 

@@ -107,7 +107,9 @@ abstract contract LBPStrategyTestBase is Test {
         if (p.currencyRaised > 0) {
             vm.deal(address(initializer), p.currencyRaised);
         }
-        token.transfer(address(initializer), totalSupply);
+        // Mirror the singleton split: strategy holds custody (supplyForLP), initializer holds auctionSupply (unsold).
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
     }
 
@@ -121,7 +123,7 @@ abstract contract LBPStrategyTestBase is Test {
         LiquidityAllocationBracket[] memory brackets
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory initializerParams = abi.encode(endBlock);
         bytes memory configData = _encodeConfigData(mp, brackets, initializerParams);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();

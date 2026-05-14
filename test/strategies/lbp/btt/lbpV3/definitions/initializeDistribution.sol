@@ -43,8 +43,6 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 ///     │   └── it reverts with InvalidRecipient
 ///     ├── when initializer.endBlock >= migrationBlock
 ///     │   └── it reverts with InvalidEndBlock
-///     ├── when initializer.custodyTokens mismatch
-///     │   └── it reverts with InvalidCustodySupply
 ///     └── when initializer is valid
 ///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
@@ -184,7 +182,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
-        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory initializerParams = abi.encode(endBlock);
         // Should not revert — rate is exactly MAX_BRACKET_RATE
         strategy.initializeDistribution(
             address(token), totalSupply, _encodeConfigData(mp, bp, initializerParams), bytes32(0)
@@ -409,8 +407,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
+        uint128 expectedAuctionSupply = totalSupply - mp.supplyForLP;
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), 0, mp.supplyForLP, address(strategy), _wrongRecipient, 0, endBlock
+            address(1), address(0), expectedAuctionSupply, address(strategy), _wrongRecipient, 0, endBlock
         );
 
         vm.mockCall(
@@ -436,8 +435,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         // endBlock >= migrationBlock
         uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
 
+        uint128 expectedAuctionSupply = totalSupply - mp.supplyForLP;
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), 0, mp.supplyForLP, address(strategy), address(strategy), 0, endBlock
+            address(1), address(0), expectedAuctionSupply, address(strategy), address(strategy), 0, endBlock
         );
 
         vm.mockCall(
@@ -450,35 +450,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, endBlock, mp.migrationBlock));
-        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
-    }
-
-    function test_WhenInitializerCustodyTokensMismatch(uint128 _wrongCustody, MigrationFuzzParams memory p)
-        public
-        whenMigratorParamsAreValid
-    {
-        // it reverts with {InvalidCustodySupply}
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
-
-        uint128 expectedCustody = mp.supplyForLP;
-        vm.assume(_wrongCustody != expectedCustody);
-
-        MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), 0, _wrongCustody, address(strategy), address(strategy), 0, endBlock
-        );
-
-        vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
-            abi.encode(address(badInit))
-        );
-
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
-
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.InvalidCustodySupply.selector, _wrongCustody, expectedCustody)
-        );
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 

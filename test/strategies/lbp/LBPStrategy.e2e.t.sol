@@ -72,7 +72,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         );
 
         vm.deal(address(initializer), 100 ether);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), totalSupply - mp.supplyForLP);
         vm.roll(mp.migrationBlock);
 
         uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
@@ -132,9 +133,10 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             })
         );
 
-        // Fund the initializer with ERC20 currency (not native ETH)
+        // Fund the initializer with ERC20 currency (not native ETH); strategy holds supplyForLP custody.
         deal(address(currencyToken), address(initializer), p.currencyRaised);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
