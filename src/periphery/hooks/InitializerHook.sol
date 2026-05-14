@@ -6,16 +6,22 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-/// @title SelfInitializerHook
-/// @notice Hook contract that only allows itself to initialize the pool
-abstract contract SelfInitializerHook is BaseHook {
-    /// @notice Error thrown when the caller of `initializePool` is not address(this)
-    /// @param caller The invalid address attempting to initialize the pool
-    /// @param expected address(this)
+/// @title InitializerHook
+/// @notice Base hook that restricts pool initialization to a preset address
+/// @dev Any caller specified hook MUST inherit this contract to be used in LBPStrategy
+abstract contract InitializerHook is BaseHook, IInitializerHook {
+    /// @notice Error thrown when the caller is not authorized to initialize the pool
     error InvalidInitializer(address caller, address expected);
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    /// @notice The address authorized to initialize the pool
+    address public immutable authorized;
+
+    constructor(IPoolManager _poolManager, address _authorized) BaseHook(_poolManager) {
+        authorized = _authorized;
+    }
 
     /// @inheritdoc BaseHook
     function getHookPermissions() public pure virtual override returns (Hooks.Permissions memory) {
@@ -39,9 +45,12 @@ abstract contract SelfInitializerHook is BaseHook {
 
     /// @inheritdoc BaseHook
     function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
-        // This check is only hit when another address tries to initialize the pool, since hooks cannot call themselves.
-        // Therefore this will always revert, ensuring only this contract can initialize pools
-        if (sender != address(this)) revert InvalidInitializer(sender, address(this));
+        if (sender != authorized) revert InvalidInitializer(sender, authorized);
         return IHooks.beforeInitialize.selector;
+    }
+
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
+        return interfaceId == type(IInitializerHook).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }

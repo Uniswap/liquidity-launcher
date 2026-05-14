@@ -16,7 +16,9 @@ import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
@@ -73,13 +75,19 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        strategy = new LBPStrategy(
-            POSITION_MANAGER,
-            POOL_MANAGER,
-            IDistributionStrategy(address(factory)),
-            makeAddr("protocolFeeController"),
-            owner
+        address protocolFeeController = makeAddr("protocolFeeController");
+        bytes memory constructorArgs = abi.encode(
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), protocolFeeController, owner
         );
+        (address strategyAddress, bytes32 salt) =
+            HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
+
+        strategy = new LBPStrategy{salt: salt}(
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), protocolFeeController, owner
+        );
+
+        assertEq(address(strategy), strategyAddress);
+        assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);
 
         factory.setStrategyAddress(address(strategy));
     }
@@ -154,7 +162,7 @@ abstract contract LBPStrategyTestBase is Test {
             supplyForLP: p.supplyForLP,
             fundsRecipient: fundsRecipient,
             lpPositionRecipient: lpPositionRecipient,
-            lpHook: address(0),
+            hook: address(0),
             positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
             lpAllocationSchedule: new bytes(0)
         });
