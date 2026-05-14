@@ -6,8 +6,20 @@ import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
+import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
+import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+
+contract GatedSwapHookNoValidation is GatedSwapHook {
+    constructor(IPoolManager _pm, address _strategy, address _gatekeeper) GatedSwapHook(_pm, _strategy, _gatekeeper) {}
+
+    function validateHookAddress(BaseHook) internal pure override {}
+}
 
 /// @notice Integration and specific-value tests for initializeDistribution
 /// Branch-level revert + fuzz tests are in btt/lbpV3/definitions/initializeDistribution.sol
@@ -25,7 +37,9 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         assertEq(storedParams.supplyForLP, mp.supplyForLP);
         assertEq(storedParams.fundsRecipient, mp.fundsRecipient);
         assertEq(storedParams.lpPositionRecipient, mp.lpPositionRecipient);
-        assertEq(storedParams.lpHook, mp.lpHook);
+        assertEq(storedParams.hook, mp.hook);
+        assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
+        assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));
     }
 
     function test_emitsInitializerCreated(MigrationFuzzParams memory p) public {
@@ -82,5 +96,38 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InitializerAlreadyCreated.selector, init1));
         strategy.initializeDistribution(address(token2), totalSupply, configData, bytes32(0));
+    }
+
+    function test_initializeDistribution_revertsIfHookDoesNotSupportInitializerHook(MigrationFuzzParams memory p)
+        public
+    {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        mp.hook = makeAddr("hookWithoutInitializerHookSupport");
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidHook.selector, mp.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_initializeDistribution_acceptsHookThatSupportsInitializerHook(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+
+        address hookAddr = address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG));
+        GatedSwapHookNoValidation impl = new GatedSwapHookNoValidation(
+            IPoolManager(address(POOL_MANAGER)), address(strategy), makeAddr("gatekeeper")
+        );
+        vm.etch(hookAddr, address(impl).code);
+        mp.hook = hookAddr;
+
+        assertTrue(IInitializerHook(hookAddr).supportsInterface(type(IInitializerHook).interfaceId));
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, bp);
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.hook, hookAddr);
     }
 }
