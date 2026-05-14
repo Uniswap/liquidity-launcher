@@ -81,7 +81,8 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
         if (
             migrationParams.hook != address(0)
-                && !ERC165Checker.supportsInterface(migrationParams.hook, type(IInitializerHook).interfaceId)
+                && (!ERC165Checker.supportsInterface(migrationParams.hook, type(IInitializerHook).interfaceId)
+                    || IInitializerHook(migrationParams.hook).authorized() != address(this))
         ) {
             revert InvalidHook(migrationParams.hook);
         }
