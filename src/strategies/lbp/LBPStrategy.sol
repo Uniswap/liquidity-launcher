@@ -28,7 +28,7 @@ import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {SelfInitializerMixin} from "./SelfInitializer.sol";
+import {SelfInitializerMixin} from "./SelfInitializerMixin.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool

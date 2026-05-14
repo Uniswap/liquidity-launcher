@@ -63,8 +63,8 @@ library MigratorParams {
                 p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING
             );
         }
-        // fee validation (cannot be greater than the v4 max fee)
-        if (p.poolLPFee > LPFeeLibrary.MAX_LP_FEE) {
+        // fee validation (static fees cannot be greater than the v4 max fee)
+        if (p.poolLPFee > LPFeeLibrary.MAX_LP_FEE && p.poolLPFee != LPFeeLibrary.DYNAMIC_FEE_FLAG) {
             revert ILBPStrategy.InvalidFee(p.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
         }
         // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)

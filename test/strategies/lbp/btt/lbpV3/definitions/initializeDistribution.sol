@@ -30,6 +30,8 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 /// │   └── it reverts with InvalidTickSpacing
 /// ├── when fee > MAX_LP_FEE
 /// │   └── it reverts with InvalidFee
+/// ├── when fee is the dynamic fee flag
+/// │   └── it stores the migration parameters
 /// ├── when positionRecipient is reserved
 /// │   └── it reverts with InvalidPositionRecipient
 /// ├── when supplyForLP > int128.max
@@ -226,6 +228,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     {
         // it reverts with {InvalidFee}
         _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
+        if (_fee == LPFeeLibrary.DYNAMIC_FEE_FLAG) _fee++;
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.poolLPFee = _fee;
@@ -235,6 +238,21 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidFee.selector, _fee, LPFeeLibrary.MAX_LP_FEE));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenFeeIsDynamicFeeFlag(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+    {
+        // it stores the migration parameters
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolLPFee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
+
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.poolLPFee, LPFeeLibrary.DYNAMIC_FEE_FLAG);
     }
 
     modifier whenFeeIsValid() {
