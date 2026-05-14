@@ -44,6 +44,7 @@ contract GatedSwapHook is InitializerHook {
         emit SwapsApproved();
     }
 
+    /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
