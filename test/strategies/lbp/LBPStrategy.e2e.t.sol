@@ -197,8 +197,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         uint24 pips1;
         uint24 pips2;
         uint24 pips3;
-        uint256 split1;
-        uint256 split2;
+        int128 threshold1;
+        int128 threshold2;
     }
 
     /// @notice Full init → migrate flow with a fuzzed protocol fee schedule enabled.
@@ -247,13 +247,13 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](tierCount);
         fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: uint24(bound(f.pips1, 0, maxPips))});
         if (tierCount >= 2) {
-            uint256 split1 = bound(f.split1, 1, type(uint256).max - 1);
+            int128 threshold1 = int128(bound(f.threshold1, 1, type(int128).max - 1));
             fees[1] = IProtocolFeeController.Fee({
-                lowerThreshold: split1, protocolFeePips: uint24(bound(f.pips2, 0, maxPips))
+                lowerThreshold: threshold1, protocolFeePips: uint24(bound(f.pips2, 0, maxPips))
             });
             if (tierCount == 3) {
                 fees[2] = IProtocolFeeController.Fee({
-                    lowerThreshold: bound(f.split2, split1 + 1, type(uint256).max),
+                    lowerThreshold: int128(bound(f.threshold2, threshold1 + 1, type(int128).max)),
                     protocolFeePips: uint24(bound(f.pips3, 0, maxPips))
                 });
             }

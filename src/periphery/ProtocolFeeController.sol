@@ -53,11 +53,11 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
             return;
         }
 
-        // Per-currency tiers require a recipient — it's the payee for the tier-derived fee.
+        // Per-currency tiers require a recipient
         if (protocolFeeRecipient == address(0)) revert RecipientNotSet();
         if (fees.length > MAX_PROTOCOL_FEE_TIERS) revert InvalidFeeLength(fees.length);
 
-        uint256 prevLowerThreshold;
+        int128 prevLowerThreshold;
         for (uint256 i; i < fees.length; ++i) {
             if (fees[i].protocolFeePips > PIPS_DENOMINATOR) {
                 revert InvalidFeePips(fees[i].protocolFeePips, PIPS_DENOMINATOR);
@@ -86,18 +86,6 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
 
     /// @inheritdoc IProtocolFeeController
     function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount) {
-        protocolFeeAmount = _calculateProtocolFeeAmount(currency, amount);
-    }
-
-    /// @notice Calculates the protocol fee amount for a given currency and amount
-    /// @param currency The currency address
-    /// @param amount The amount denoted in currency
-    /// @return protocolFeeAmount The protocol fee amount
-    function _calculateProtocolFeeAmount(address currency, uint256 amount)
-        private
-        view
-        returns (uint256 protocolFeeAmount)
-    {
         Fee[] storage fees = _currencyFees[currency];
         uint256 len = fees.length;
 
@@ -114,8 +102,10 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
                 break;
             }
 
-            // Non-last tier covers [fees[i].lowerThreshold, fees[i+1].lowerThreshold)
-            uint256 bracketSize = fees[i + 1].lowerThreshold - fees[i].lowerThreshold;
+            // Non-last tier covers [fees[i].lowerThreshold, fees[i+1].lowerThreshold).
+            // Subtraction is safe: setProtocolFeePerCurrency requires strictly ascending thresholds
+            // starting from 0, so next > prev >= 0 and the difference fits in uint128.
+            uint256 bracketSize = uint256(uint128(fees[i + 1].lowerThreshold - fees[i].lowerThreshold));
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
             protocolFeeAmount += FullMath.mulDiv(bracketAmount, fees[i].protocolFeePips, PIPS_DENOMINATOR);
             remaining -= bracketAmount;

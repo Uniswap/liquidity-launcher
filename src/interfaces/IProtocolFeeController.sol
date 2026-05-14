@@ -13,7 +13,7 @@ interface IProtocolFeeController {
     ///         Each tier's rate applies to the portion of the amount in [lowerThreshold, nextLowerThreshold).
     ///         The last tier's rate applies to all remaining amount above its lowerThreshold.
     struct Fee {
-        uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
+        int128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
         uint24 protocolFeePips; // The fee rate in pips applied to the portion of the amount within this bracket
     }
 
@@ -39,17 +39,17 @@ interface IProtocolFeeController {
     /// @param length The provided length
     error InvalidFeeLength(uint256 length);
 
-    /// @notice Thrown when installing a per-currency fee schedule before a global recipient is set
+    /// @notice Thrown when installing a per-currency fee schedule before a recipient is set
     error RecipientNotSet();
 
     /// @notice Thrown when the first tier's lowerThreshold is not zero
     /// @param lowerThreshold The provided first-tier lowerThreshold
-    error FirstThresholdMustBeZero(uint256 lowerThreshold);
+    error FirstThresholdMustBeZero(int128 lowerThreshold);
 
     /// @notice Thrown when a tier's lowerThreshold is not strictly greater than the previous tier's
     /// @param lowerThreshold The provided lowerThreshold
     /// @param prevLowerThreshold The previous tier's lowerThreshold
-    error ThresholdsNotAscending(uint256 lowerThreshold, uint256 prevLowerThreshold);
+    error ThresholdsNotAscending(int128 lowerThreshold, int128 prevLowerThreshold);
 
     /// @notice Sets the recipient of all protocol fees (global and per-currency).
     /// @dev Recipient must be able to receive native ETH and ERC20 transfers. A recipient that
@@ -73,15 +73,6 @@ interface IProtocolFeeController {
     /// @param fees The fee tiers, each with a lowerThreshold and fee rate in pips
     function setProtocolFeePerCurrency(address currency, Fee[] calldata fees) external;
 
-    /// @notice Returns the exact protocol fee amount for a given currency and amount
-    /// @dev This is the source of truth for fee deduction. Individual rate parameters are bounded
-    ///      by PIPS_DENOMINATOR (1,000,000 pips = 100%). Read protocolFeeRecipient() separately
-    ///      to find out where to send the fee.
-    /// @param currency The currency address, address(0) for native
-    /// @param amount The amount denoted in currency
-    /// @return protocolFeeAmount The exact fee amount to deduct
-    function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount);
-
     /// @notice Returns the fee tiers for a given currency
     /// @param currency The currency address
     /// @return fees The fee tiers
@@ -89,4 +80,12 @@ interface IProtocolFeeController {
 
     /// @notice The address that receives all protocol fees (global and per-currency)
     function protocolFeeRecipient() external view returns (address);
+
+    /// @notice Returns the protocol fee amount for a given currency and amount
+    /// @dev If the currency has a per-currency tier schedule installed, the fee is computed
+    ///      progressively across tiers. Otherwise the global pips rate is applied.
+    /// @param currency The currency address
+    /// @param amount The amount denoted in currency
+    /// @return protocolFeeAmount The protocol fee amount
+    function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount);
 }

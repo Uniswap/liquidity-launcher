@@ -78,8 +78,6 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        // Default state has no global recipient set → kill switch active → getProtocolFeeAmount returns (0, 0).
-        // Tests that exercise the fee path configure it in their own setUp.
         feeController = new ProtocolFeeController(owner);
 
         bytes memory constructorArgs = abi.encode(
