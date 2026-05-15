@@ -7,19 +7,35 @@ import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 
+contract MockInitializerHook {
+    address public immutable authorized;
+
+    constructor(address _authorized) {
+        authorized = _authorized;
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IInitializerHook).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+}
+
 /// @title InitializeDistributionTest
 /// @notice BTT tests for LBPStrategy.initializeDistribution
 ///
 /// initializeDistribution
+/// ├── when hook authorized address is not strategy
+/// │   └── it reverts with InvalidHook
 /// ├── when bracket count is invalid (empty or too many)
 /// │   └── it reverts with InvalidBracketCount
 /// ├── when bracket rate is invalid (>1e7)
@@ -30,6 +46,8 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 /// │   └── it reverts with InvalidTickSpacing
 /// ├── when fee > MAX_LP_FEE
 /// │   └── it reverts with InvalidFee
+/// ├── when fee is the dynamic fee flag
+/// │   └── it stores the migration parameters
 /// ├── when positionRecipient is reserved
 /// │   └── it reverts with InvalidPositionRecipient
 /// ├── when supplyForLP > int128.max
@@ -47,6 +65,20 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 ///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
+    function test_WhenHookAuthorizedAddressIsNotStrategy(address _authorized, MigrationFuzzParams memory p) public {
+        vm.assume(_authorized != address(strategy));
+
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.hook = address(new MockInitializerHook(_authorized));
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidHook.selector, mp.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
     function test_WhenScheduleEmpty(MigrationFuzzParams memory p) public {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
@@ -226,6 +258,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     {
         // it reverts with {InvalidFee}
         _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
+        if (_fee == LPFeeLibrary.DYNAMIC_FEE_FLAG) _fee++;
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         mp.poolLPFee = _fee;
@@ -235,6 +268,21 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidFee.selector, _fee, LPFeeLibrary.MAX_LP_FEE));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenFeeIsDynamicFeeFlag(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+    {
+        // it stores the migration parameters
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolLPFee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
+
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.poolLPFee, LPFeeLibrary.DYNAMIC_FEE_FLAG);
     }
 
     modifier whenFeeIsValid() {
@@ -477,5 +525,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedParams.poolLPFee, mp.poolLPFee);
         assertEq(storedParams.poolTickSpacing, mp.poolTickSpacing);
         assertEq(storedParams.supplyForLP, mp.supplyForLP);
+        assertEq(storedParams.fundsRecipient, mp.fundsRecipient);
+        assertEq(storedParams.lpPositionRecipient, mp.lpPositionRecipient);
+        assertEq(storedParams.hook, mp.hook);
+        assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
+        assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));
     }
 }

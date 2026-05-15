@@ -23,9 +23,11 @@ interface ILBPInitializer is IDistributionContract, IERC165 {
     function lbpInitializationParams() external view returns (LBPInitializationParams memory);
 
     /// @notice Sweeps the raised currency from the initializer
+    /// @dev The initializer must ensure this can only be called by the currency recipient directly
     function sweepCurrency() external;
 
     /// @notice Sweeps the unsold tokens from the initializer
+    /// @dev The initializer must ensure this can only be called by the tokens recipient directly
     function sweepUnsoldTokens() external;
 
     /// @notice Returns the token used by the initializer
