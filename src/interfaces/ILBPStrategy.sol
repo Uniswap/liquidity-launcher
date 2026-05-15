@@ -69,9 +69,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
     error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
 
-    /// @notice Error thrown when no currency was raised
-    error NoCurrencyRaised();
-
     /// @notice Error thrown when the currency swept from the initializer does not match the
     /// currencyRaised reported by the initializer's LBP parameters
     /// @param swept The amount of currency actually swept from the initializer

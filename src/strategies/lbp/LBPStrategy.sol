@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Ownable} from "solady/auth/Ownable.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -144,7 +145,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         }
 
         uint160 sqrtPriceX96;
-        uint128 currencyAmountForLp;
+        uint256 currencyAmountForLp;
         {
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
@@ -152,10 +153,10 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             if (currencyFromInitializer != lbpParams.currencyRaised) {
                 revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
             }
-            // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
-            currencyAmountForLp = _validateCurrencyAmountForLp(
-                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule)
-            );
+            // Apply the bracket schedule to derive the LP currency budget.
+            // Any excess (above the int128 cap or beyond bracket allocation) is swept to fundsRecipient.
+            currencyAmountForLp =
+                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
             // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
             sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
         }
@@ -169,10 +170,15 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             migrationParams.hook
         );
 
-        // currencyAmountForLp is already <= int128.max from _validateCurrencyAmountForLp;
-        // supplyForLP is enforced <= int128.max in _validateMigratorParams.
-        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) =
-            _createPositionPlan(key, currency, sqrtPriceX96, currencyAmountForLp, migrationParams);
+        // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
+        // supplyForLP is already enforced <= int128.max in MigratorParams.validate.
+        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
+            key,
+            currency,
+            sqrtPriceX96,
+            uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
+            migrationParams
+        );
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
@@ -342,23 +348,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Ensure the migration block is actually after the end block to ensure a successful migration
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
-        }
-    }
-
-    /// @notice Validates migration currency amount for the LP
-    /// @param currencyAmountForLp The currency amount raised for the LP
-    function _validateCurrencyAmountForLp(uint256 currencyAmountForLp) private pure returns (uint128) {
-        // Cannot create a v4 pool with no currency raised
-        if (currencyAmountForLp == 0) {
-            revert NoCurrencyRaised();
-        }
-
-        // v4's PoolManager._accountDelta uses int128 for currency deltas; amounts above int128.max
-        // revert with SafeCastOverflow. Cap here so the excess is swept to fundsRecipient instead.
-        if (currencyAmountForLp > uint128(type(int128).max)) {
-            return uint128(type(int128).max);
-        } else {
-            return uint128(currencyAmountForLp);
         }
     }
 

@@ -102,7 +102,7 @@ abstract contract LBPStrategyTestBase is Test {
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
@@ -256,43 +256,11 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(mp, initializerParams);
     }
 
-    /// @notice Bounds currencyRaised into a range that produces non-zero LP and migrates cleanly.
-    /// Lower bound: minimum currencyRaised that yields >= 1 LP (some brackets may round to 0).
-    /// Upper bound: int128.max — v4's PoolManager._accountDelta uses int128 for currency deltas
-    /// The cap-and-sweep path for currencyRaised > int128.max is covered by test_currencyAmountCappedAtInt128Max.
-    function _boundCurrencyRaised(uint256 _currencyRaised, LiquidityAllocationBracket[] memory _brackets)
-        internal
-        pure
-        returns (uint256)
-    {
-        uint256 minCurrency = _minCurrencyForNonZeroLp(_brackets);
-        return bound(_currencyRaised, minCurrency, uint256(uint128(type(int128).max)));
-    }
-
-    /// @notice Finds the minimum currencyRaised such that the schedule's total LP is >= 1.
-    /// For each bracket, computes how much currency must flow INTO it to produce >= 1 LP, and how
-    /// much currency the bracket can actually hold. Returns at the first bracket where the latter
-    /// covers the former.
-    function _minCurrencyForNonZeroLp(LiquidityAllocationBracket[] memory _brackets) internal pure returns (uint256) {
-        uint256 len = _brackets.length;
-        uint256 maxRate = MigratorParams.MAX_BRACKET_RATE;
-
-        for (uint256 i = 0; i < len; i++) {
-            uint24 rate = _brackets[i].rate;
-            if (rate == 0) continue;
-
-            uint256 lowerThreshold = _brackets[i].lowerThreshold;
-            // Min currency inside this bracket so floor(amount * rate / maxRate) >= 1.
-            uint256 minAmountInBracket = maxRate / rate + 1;
-            // Last bracket has unbounded capacity; middle brackets are capped by the next threshold.
-            uint256 capacity =
-                i == len - 1 ? type(uint256).max : uint256(_brackets[i + 1].lowerThreshold) - lowerThreshold;
-
-            if (capacity >= minAmountInBracket) {
-                return lowerThreshold + minAmountInBracket;
-            }
-        }
-        revert(); // Should never reach here
+    /// @notice Bounds currencyRaised into [1, int128.max]. Lower bound of 1 ensures sweep events fire
+    /// in tests that assert on them; upper bound matches v4's int128 delta limit (cap-and-sweep path
+    /// for values > int128.max is covered by test_currencyAmountCappedAtInt128Max).
+    function _boundCurrencyRaised(uint256 _currencyRaised) internal pure returns (uint256) {
+        return bound(_currencyRaised, 1, uint256(uint128(type(int128).max)));
     }
 
     /// @notice Bounds initialPriceX96 to avoid overflow in TokenPricing.convertToPriceX192.

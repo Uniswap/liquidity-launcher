@@ -6,9 +6,7 @@ ValidateMigrationTest
 └── when block.number is GTE migrationBlock
     ├── when currencySwept != currencyRaised
     │   └── it reverts with {CurrencyRaisedMismatch}
-    ├── when currencyRaised is 0
-    │   └── it reverts with {NoCurrencyRaised}
-    └── when currencyRaised is GT 0
+    └── when currencySwept == currencyRaised
         ├── it calls sweepCurrency on initializer
         ├── it calls sweepUnsoldTokens on initializer
         ├── it sweeps leftover currency to fundsRecipient

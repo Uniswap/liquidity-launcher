@@ -28,9 +28,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// └── when block.number >= migrationBlock
 ///     ├── when currencySwept != currencyRaised
 ///     │   └── it reverts with CurrencyRaisedMismatch
-///     ├── when currencyRaised is 0 (after split)
-///     │   └── it reverts with NoCurrencyRaised
-///     └── when currencyRaised > 0
+///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
 ///         ├── it calls sweepUnsoldTokens on initializer
 ///         ├── it sweeps leftover currency to fundsRecipient
@@ -79,26 +77,6 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
 
     modifier whenBlockIsGTEMigrationBlock() {
         _;
-    }
-
-    function test_WhenCurrencyRaisedIsZero(MigrationFuzzParams memory p) public whenBlockIsGTEMigrationBlock {
-        // it reverts with {NoCurrencyRaised}
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.tokensSold = uint128(bound(p.tokensSold, 0, auctionSupply));
-
-        LBPInitializationParams memory lbpParams =
-            LBPInitializationParams({initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: 0});
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams), address(0), lbpParams);
-
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
-
-        vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);
-        strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
     function test_WhenCurrencySweptMismatchesCurrencyRaised(MigrationFuzzParams memory p, uint256 actualAmount)
@@ -175,7 +153,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
