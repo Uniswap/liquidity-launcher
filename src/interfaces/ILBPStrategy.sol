@@ -70,6 +70,12 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Error thrown when no currency was raised
     error NoCurrencyRaised();
 
+    /// @notice Error thrown when the currency swept from the initializer does not match the
+    /// currencyRaised reported by the initializer's LBP parameters
+    /// @param swept The amount of currency actually swept from the initializer
+    /// @param claimed The currencyRaised value reported by the initializer
+    error CurrencyRaisedMismatch(uint256 swept, uint256 claimed);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;

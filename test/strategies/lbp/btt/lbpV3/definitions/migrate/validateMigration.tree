@@ -4,6 +4,8 @@ ValidateMigrationTest
 ├── when block.number is LT migrationBlock
 │   └── it reverts with {MigrationNotAllowed}
 └── when block.number is GTE migrationBlock
+    ├── when currencySwept != currencyRaised
+    │   └── it reverts with {CurrencyRaisedMismatch}
     ├── when currencyRaised is 0
     │   └── it reverts with {NoCurrencyRaised}
     └── when currencyRaised is GT 0

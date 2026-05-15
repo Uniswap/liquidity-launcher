@@ -19,6 +19,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotAllowed
 /// └── when block.number >= migrationBlock
+///     ├── when currencySwept != currencyRaised
+///     │   └── it reverts with CurrencyRaisedMismatch
 ///     ├── when currencyRaised is 0 (after split)
 ///     │   └── it reverts with NoCurrencyRaised
 ///     └── when currencyRaised > 0
@@ -87,6 +89,26 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
 
         vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);
+        strategy.migrate(ILBPInitializer(address(initializer)));
+    }
+
+    function test_WhenCurrencySweptMismatchesCurrencyRaised(MigrationFuzzParams memory p, uint256 actualAmount)
+        public
+        whenBlockIsGTEMigrationBlock
+    {
+        // it reverts with {CurrencyRaisedMismatch}
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        // After _setupForMigration, p.currencyRaised is bounded and both the initializer's
+        // ETH balance and reported currencyRaised equal it. Force a mismatch by overriding
+        // the initializer's balance.
+        uint256 claimed = p.currencyRaised;
+        actualAmount = bound(actualAmount, 0, uint256(uint128(type(int128).max)));
+        vm.assume(actualAmount != claimed);
+
+        vm.deal(address(initializer), actualAmount);
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.CurrencyRaisedMismatch.selector, actualAmount, claimed));
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 

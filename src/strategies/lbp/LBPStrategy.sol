@@ -76,8 +76,8 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         migrationParams.validate();
 
         // Deploy the initializer contract via factory.
-        // Only the auction supply (totalSupply - supplyForLP) is passed as the amount — custody tokens (supplyForLP)
-        // remain in this strategy and are tracked per-initializer at migration time.
+        // Only the auction supply (totalSupply - supplyForLP) is passed as the amount
+        // The supplyForLP amount remains held by this strategy and is tracked for each initializer at migration time.
         uint256 auctionSupply = totalSupply - migrationParams.supplyForLP;
         bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
         ILBPInitializer initializer = ILBPInitializer(
@@ -116,31 +116,27 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
             revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
         }
 
-        // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
-        // This requires trusting the initializer to return correct and immutable addresses.
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
 
-        // Amounts belonging to THIS initializer, derived from balance deltas across the sweep.
-        // The strategy is a singleton and may already hold custody tokens belonging to other
-        // concurrent initializers, so we cannot use balanceOfSelf to size the final sweep.
-        //   - currency: whatever just arrived from sweepCurrency (delta)
-        //   - tokens:   sweep delta (unsold from auction) + supplyForLP (custody already held in strategy)
-        uint256 currencyFromInitializer;
-        uint256 tokenFromInitializer;
+        uint256 currencyBefore = currency.balanceOfSelf();
+        uint256 unsoldFromInitializer;
         {
-            uint256 currencyBefore = currency.balanceOfSelf();
             uint256 tokenBefore = token.balanceOfSelf();
             initializer.sweepCurrency();
             initializer.sweepUnsoldTokens();
-            currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
-            tokenFromInitializer = (token.balanceOfSelf() - tokenBefore) + migrationParams.supplyForLP;
+            unsoldFromInitializer = token.balanceOfSelf() - tokenBefore;
         }
 
         uint160 sqrtPriceX96;
         uint128 currencyAmountForLp;
         {
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+            // amount actually swept must match the currencyRaised the initializer reports.
+            uint256 currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
+            if (currencyFromInitializer != lbpParams.currencyRaised) {
+                revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
+            }
             // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
             currencyAmountForLp = _validateCurrencyAmountForLp(
                 _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule)
@@ -167,13 +163,12 @@ contract LBPStrategy is BlockNumberish, Ownable, ILBPStrategy {
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
         // Sweep this initializer's leftover (non-LP currency and tokens, unsold & custody dust) to the funds recipient.
-        // Other initializers' funds remain untouched in the strategy.
-        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
+        uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
-        uint256 remainingToken = tokenFromInitializer - tokenTransferAmount;
+        uint256 remainingToken = migrationParams.supplyForLP + unsoldFromInitializer - tokenTransferAmount;
         if (remainingToken > 0) {
             token.transfer(migrationParams.fundsRecipient, remainingToken);
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
