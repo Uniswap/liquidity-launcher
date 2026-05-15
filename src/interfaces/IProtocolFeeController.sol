@@ -12,8 +12,8 @@ interface IProtocolFeeController {
     ///         Tiers are sorted ascending by lowerThreshold. The first tier's lowerThreshold MUST be 0.
     ///         Each tier's rate applies to the portion of the amount in [lowerThreshold, nextLowerThreshold).
     ///         The last tier's rate applies to all remaining amount above its lowerThreshold.
-    struct Fee {
-        int128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
+    struct FeeBracket {
+        uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
         uint24 protocolFeePips; // The fee rate in pips applied to the portion of the amount within this bracket
     }
 
@@ -28,7 +28,7 @@ interface IProtocolFeeController {
     /// @notice Emitted when a per-currency protocol fee schedule is set or cleared
     /// @param currency The currency the schedule applies to
     /// @param fees The tier schedule
-    event ProtocolFeePerCurrencyUpdated(address indexed currency, Fee[] fees);
+    event ProtocolFeePerCurrencyUpdated(address indexed currency, FeeBracket[] fees);
 
     /// @notice Thrown when the provided pips exceed the supported maximum (PIPS_DENOMINATOR)
     /// @param pips The provided pips
@@ -44,12 +44,12 @@ interface IProtocolFeeController {
 
     /// @notice Thrown when the first tier's lowerThreshold is not zero
     /// @param lowerThreshold The provided first-tier lowerThreshold
-    error FirstThresholdMustBeZero(int128 lowerThreshold);
+    error FirstThresholdMustBeZero(uint256 lowerThreshold);
 
     /// @notice Thrown when a tier's lowerThreshold is not strictly greater than the previous tier's
     /// @param lowerThreshold The provided lowerThreshold
     /// @param prevLowerThreshold The previous tier's lowerThreshold
-    error ThresholdsNotAscending(int128 lowerThreshold, int128 prevLowerThreshold);
+    error ThresholdsNotAscending(uint256 lowerThreshold, uint256 prevLowerThreshold);
 
     /// @notice Sets the recipient of all protocol fees (global and per-currency).
     /// @dev Recipient must be able to receive native ETH and ERC20 transfers. A recipient that
@@ -71,12 +71,12 @@ interface IProtocolFeeController {
     ///      Pass an empty fees array to clear the per-currency override and fall back to the global fee.
     /// @param currency The currency address the custom fees apply to
     /// @param fees The fee tiers, each with a lowerThreshold and fee rate in pips
-    function setProtocolFeePerCurrency(address currency, Fee[] calldata fees) external;
+    function setProtocolFeePerCurrency(address currency, FeeBracket[] calldata fees) external;
 
     /// @notice Returns the fee tiers for a given currency
     /// @param currency The currency address
     /// @return fees The fee tiers
-    function getCurrencyFees(address currency) external view returns (Fee[] memory fees);
+    function getCurrencyFees(address currency) external view returns (FeeBracket[] memory fees);
 
     /// @notice The address that receives all protocol fees (global and per-currency)
     function protocolFeeRecipient() external view returns (address);

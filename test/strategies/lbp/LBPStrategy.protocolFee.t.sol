@@ -61,8 +61,8 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
     {
         uint24 pips = uint24(bound(_pips, 0, feeController.PIPS_DENOMINATOR()));
 
-        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](1);
-        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips});
+        IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
+        fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: pips});
         _installFeeTiers(fees, address(0));
 
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
@@ -96,15 +96,15 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory p,
         uint24 _pips1,
         uint24 _pips2,
-        int128 _threshold
+        uint256 _threshold
     ) public {
         uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
         uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
-        int128 threshold = int128(bound(_threshold, 1, type(int128).max));
+        uint256 threshold = bound(_threshold, 1, type(uint256).max);
 
-        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
-        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
-        fees[1] = IProtocolFeeController.Fee({lowerThreshold: threshold, protocolFeePips: pips2});
+        IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](2);
+        fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: pips1});
+        fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: threshold, protocolFeePips: pips2});
         _installFeeTiers(fees, address(0));
 
         // 100% LP bracket — every wei not taken as fee flows into the LP planner
@@ -142,8 +142,8 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         uint24 _pips1,
         uint24 _pips2,
         uint24 _pips3,
-        int128 _threshold1,
-        int128 _threshold2
+        uint256 _threshold1,
+        uint256 _threshold2
     ) public {
         uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
         uint256 expectedFee;
@@ -151,13 +151,13 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
             uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
             uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
             uint24 pips3 = uint24(bound(_pips3, 0, feeController.PIPS_DENOMINATOR()));
-            int128 threshold1 = int128(bound(_threshold1, 1, type(int128).max - 1));
-            int128 threshold2 = int128(bound(_threshold2, threshold1 + 1, type(int128).max));
+            uint256 threshold1 = bound(_threshold1, 1, type(uint256).max - 1);
+            uint256 threshold2 = bound(_threshold2, threshold1 + 1, type(uint256).max);
 
-            IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](3);
-            fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
-            fees[1] = IProtocolFeeController.Fee({lowerThreshold: threshold1, protocolFeePips: pips2});
-            fees[2] = IProtocolFeeController.Fee({lowerThreshold: threshold2, protocolFeePips: pips3});
+            IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](3);
+            fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: pips1});
+            fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: threshold1, protocolFeePips: pips2});
+            fees[2] = IProtocolFeeController.FeeBracket({lowerThreshold: threshold2, protocolFeePips: pips3});
             _installFeeTiers(fees, address(0));
 
             expectedFee = _refFeeThreeTier(currencyRaised, threshold1, threshold2, pips1, pips2, pips3);
@@ -193,7 +193,7 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory p,
         uint24 _pips1,
         uint24 _pips2,
-        int128 _threshold
+        uint256 _threshold
     ) public {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
         factory.setCurrencyOverride(address(currencyToken));
@@ -203,11 +203,11 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
         {
             uint24 pips1 = uint24(bound(_pips1, 0, feeController.PIPS_DENOMINATOR()));
             uint24 pips2 = uint24(bound(_pips2, 0, feeController.PIPS_DENOMINATOR()));
-            int128 threshold = int128(bound(_threshold, 1, type(int128).max));
+            uint256 threshold = bound(_threshold, 1, type(uint256).max);
 
-            IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](2);
-            fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: pips1});
-            fees[1] = IProtocolFeeController.Fee({lowerThreshold: threshold, protocolFeePips: pips2});
+            IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](2);
+            fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: pips1});
+            fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: threshold, protocolFeePips: pips2});
             _installFeeTiers(fees, address(currencyToken));
 
             expectedFee = _refFeeTwoTier(currencyRaised, threshold, pips1, pips2);
@@ -264,49 +264,44 @@ contract LBPStrategy_ProtocolFee_Test is LBPStrategyTestBase {
     /// @dev Installs a per-currency tier schedule on the controller. Tier-math fuzz coverage lives in
     /// the controller's own test file; these tests verify the strategy's integration with a real
     /// (non-mock) controller producing a tier-derived fee.
-    function _installFeeTiers(IProtocolFeeController.Fee[] memory fees, address currency) internal {
+    function _installFeeTiers(IProtocolFeeController.FeeBracket[] memory fees, address currency) internal {
         feeController.setProtocolFeePerCurrency(currency, fees);
     }
 
     /// @dev Reference implementation for two-tier fee math (mirrors the controller's own test helper).
     /// Uses FullMath to match the controller's 512-bit-intermediate multiply for uint256 amounts.
-    /// `threshold` is int128 to match Fee.lowerThreshold; cast is safe — controller rejects negatives.
-    function _refFeeTwoTier(uint256 amount, int128 threshold, uint24 pips1, uint24 pips2)
+    function _refFeeTwoTier(uint256 amount, uint256 threshold, uint24 pips1, uint24 pips2)
         internal
         view
         returns (uint256)
     {
         uint24 denom = feeController.PIPS_DENOMINATOR();
-        uint256 thresholdU = uint256(uint128(threshold));
-        uint256 tier1 = amount > thresholdU ? thresholdU : amount;
+        uint256 tier1 = amount > threshold ? threshold : amount;
         uint256 fee = FullMath.mulDiv(tier1, pips1, denom);
-        if (amount > thresholdU) {
-            fee += FullMath.mulDiv(amount - thresholdU, pips2, denom);
+        if (amount > threshold) {
+            fee += FullMath.mulDiv(amount - threshold, pips2, denom);
         }
         return fee;
     }
 
     /// @dev Reference implementation for three-tier fee math (mirrors the controller's own test helper).
-    /// Thresholds are int128 to match Fee.lowerThreshold; cast is safe (see _refFeeTwoTier).
     function _refFeeThreeTier(
         uint256 amount,
-        int128 threshold1,
-        int128 threshold2,
+        uint256 threshold1,
+        uint256 threshold2,
         uint24 pips1,
         uint24 pips2,
         uint24 pips3
     ) internal view returns (uint256 fee) {
         uint24 denom = feeController.PIPS_DENOMINATOR();
-        uint256 threshold1U = uint256(uint128(threshold1));
-        uint256 threshold2U = uint256(uint128(threshold2));
-        uint256 tier1 = amount > threshold1U ? threshold1U : amount;
+        uint256 tier1 = amount > threshold1 ? threshold1 : amount;
         fee += FullMath.mulDiv(tier1, pips1, denom);
-        if (amount <= threshold1U) return fee;
+        if (amount <= threshold1) return fee;
 
-        uint256 tier2 = (amount > threshold2U ? threshold2U : amount) - threshold1U;
+        uint256 tier2 = (amount > threshold2 ? threshold2 : amount) - threshold1;
         fee += FullMath.mulDiv(tier2, pips2, denom);
-        if (amount <= threshold2U) return fee;
+        if (amount <= threshold2) return fee;
 
-        fee += FullMath.mulDiv(amount - threshold2U, pips3, denom);
+        fee += FullMath.mulDiv(amount - threshold2, pips3, denom);
     }
 }

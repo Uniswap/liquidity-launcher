@@ -197,8 +197,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         uint24 pips1;
         uint24 pips2;
         uint24 pips3;
-        int128 threshold1;
-        int128 threshold2;
+        uint256 threshold1;
+        uint256 threshold2;
     }
 
     /// @notice Full init → migrate flow with a fuzzed protocol fee schedule enabled.
@@ -239,21 +239,22 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     function _buildFuzzedFeeSchedule(FeeFuzzInputs memory f)
         private
         view
-        returns (IProtocolFeeController.Fee[] memory)
+        returns (IProtocolFeeController.FeeBracket[] memory)
     {
         uint8 tierCount = uint8(bound(f.tierCount, 1, 3));
         uint24 maxPips = feeController.PIPS_DENOMINATOR() / 10;
 
-        IProtocolFeeController.Fee[] memory fees = new IProtocolFeeController.Fee[](tierCount);
-        fees[0] = IProtocolFeeController.Fee({lowerThreshold: 0, protocolFeePips: uint24(bound(f.pips1, 0, maxPips))});
+        IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](tierCount);
+        fees[0] =
+            IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: uint24(bound(f.pips1, 0, maxPips))});
         if (tierCount >= 2) {
-            int128 threshold1 = int128(bound(f.threshold1, 1, type(int128).max - 1));
-            fees[1] = IProtocolFeeController.Fee({
+            uint256 threshold1 = bound(f.threshold1, 1, type(uint256).max - 1);
+            fees[1] = IProtocolFeeController.FeeBracket({
                 lowerThreshold: threshold1, protocolFeePips: uint24(bound(f.pips2, 0, maxPips))
             });
             if (tierCount == 3) {
-                fees[2] = IProtocolFeeController.Fee({
-                    lowerThreshold: int128(bound(f.threshold2, threshold1 + 1, type(int128).max)),
+                fees[2] = IProtocolFeeController.FeeBracket({
+                    lowerThreshold: bound(f.threshold2, threshold1 + 1, type(uint256).max),
                     protocolFeePips: uint24(bound(f.pips3, 0, maxPips))
                 });
             }

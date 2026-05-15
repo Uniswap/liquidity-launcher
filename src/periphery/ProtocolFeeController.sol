@@ -22,7 +22,10 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     ///         Per-currency schedules override this rate but still pay to protocolFeeRecipient.
     uint24 public globalProtocolFeePips;
 
-    mapping(address currency => Fee[]) internal _currencyFees;
+    /// @notice Per-currency progressive fee schedule. Tiers in `FeeBracket[]` are stored in the order
+    ///         supplied to `setProtocolFeePerCurrency`. An empty array means no per-currency override is set
+    ///         and `globalProtocolFeePips` is used for this currency instead.
+    mapping(address currency => FeeBracket[]) internal _currencyFees;
 
     constructor(address _owner) {
         _initializeOwner(_owner);
@@ -44,8 +47,8 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
-    /// @dev Passing an empty Fee[] deletes the per-currency schedule, reverting this currency to the global pips
-    function setProtocolFeePerCurrency(address currency, Fee[] calldata fees) external onlyOwner {
+    /// @dev Passing an empty FeeBracket[] deletes the per-currency schedule, reverting this currency to the global pips
+    function setProtocolFeePerCurrency(address currency, FeeBracket[] calldata fees) external onlyOwner {
         delete _currencyFees[currency];
 
         if (fees.length == 0) {
@@ -57,7 +60,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         if (protocolFeeRecipient == address(0)) revert RecipientNotSet();
         if (fees.length > MAX_PROTOCOL_FEE_TIERS) revert InvalidFeeLength(fees.length);
 
-        int128 prevLowerThreshold;
+        uint256 prevLowerThreshold;
         for (uint256 i; i < fees.length; ++i) {
             if (fees[i].protocolFeePips > PIPS_DENOMINATOR) {
                 revert InvalidFeePips(fees[i].protocolFeePips, PIPS_DENOMINATOR);
@@ -80,13 +83,13 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
-    function getCurrencyFees(address currency) external view returns (Fee[] memory) {
+    function getCurrencyFees(address currency) external view returns (FeeBracket[] memory) {
         return _currencyFees[currency];
     }
 
     /// @inheritdoc IProtocolFeeController
     function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount) {
-        Fee[] storage fees = _currencyFees[currency];
+        FeeBracket[] storage fees = _currencyFees[currency];
         uint256 len = fees.length;
 
         if (len == 0) {
@@ -103,9 +106,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
             }
 
             // Non-last tier covers [fees[i].lowerThreshold, fees[i+1].lowerThreshold).
-            // Subtraction is safe: setProtocolFeePerCurrency requires strictly ascending thresholds
-            // starting from 0, so next > prev >= 0 and the difference fits in uint128.
-            uint256 bracketSize = uint256(uint128(fees[i + 1].lowerThreshold - fees[i].lowerThreshold));
+            uint256 bracketSize = fees[i + 1].lowerThreshold - fees[i].lowerThreshold;
             uint256 bracketAmount = remaining > bracketSize ? bracketSize : remaining;
             protocolFeeAmount += FullMath.mulDiv(bracketAmount, fees[i].protocolFeePips, PIPS_DENOMINATOR);
             remaining -= bracketAmount;
