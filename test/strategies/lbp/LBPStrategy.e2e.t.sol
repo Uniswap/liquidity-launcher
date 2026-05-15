@@ -74,14 +74,17 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             lpAllocationSchedule: new bytes(0)
         });
         uint128 totalSupply = mp.supplyForLP + 10 ether;
+        uint128 auctionSupply = totalSupply - mp.supplyForLP;
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, uint64(block.number), bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether})
-        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
+        });
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, uint64(block.number), bp, address(0), lbpParams);
 
         vm.deal(address(initializer), 100 ether);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
 
         uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
@@ -195,14 +198,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
         vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
@@ -225,14 +228,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
         vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(initializer), totalSupply);
+        token.transfer(address(strategy), mp.supplyForLP);
+        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
