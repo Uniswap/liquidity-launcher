@@ -4,16 +4,12 @@ pragma solidity ^0.8.26;
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
+import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 
-/// @notice Mock factory that deploys MockLBPInitializers.
-/// Reads endBlock from the configData bytes, mirroring how the real CCA factory
-/// reads AuctionParameters from configData. The initializer's totalSupply is set
-/// from the `amount` argument (auctionSupply), matching CCA factory behavior.
 contract MockInitializerFactory is IDistributionStrategy {
     MockLBPInitializer public deployedInitializer;
 
     address public strategyAddress;
-    address public currencyOverride;
 
     /// @notice If set, initializeDistribution returns this address instead of deploying a new one
     MockLBPInitializer public overrideInitializer;
@@ -26,10 +22,6 @@ contract MockInitializerFactory is IDistributionStrategy {
         overrideInitializer = _initializer;
     }
 
-    function setCurrencyOverride(address _currency) external {
-        currencyOverride = _currency;
-    }
-
     function setStrategyAddress(address _strategyAddress) external {
         strategyAddress = _strategyAddress;
     }
@@ -38,14 +30,20 @@ contract MockInitializerFactory is IDistributionStrategy {
         external
         returns (IDistributionContract)
     {
-        uint64 endBlock = abi.decode(configData, (uint64));
+        AuctionParameters memory params = abi.decode(configData, (AuctionParameters));
 
         MockLBPInitializer initializer;
         if (address(overrideInitializer) != address(0)) {
             initializer = overrideInitializer;
         } else {
             initializer = new MockLBPInitializer(
-                token, currencyOverride, uint128(amount), strategyAddress, strategyAddress, 0, endBlock
+                token,
+                params.currency,
+                uint128(amount),
+                params.tokensRecipient,
+                params.fundsRecipient,
+                params.startBlock,
+                params.endBlock
             );
         }
 

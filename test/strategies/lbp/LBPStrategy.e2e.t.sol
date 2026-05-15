@@ -97,7 +97,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     function test_fuzz_erc20Currency_initAndMigrate(MigrationFuzzParams memory p) public {
         // Deploy an ERC20 to use as currency
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
-        factory.setCurrencyOverride(address(currencyToken));
 
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
@@ -106,8 +105,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        // Initialize distribution
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
+        // Initialize distribution with ERC20 currency
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, bp, address(currencyToken));
         initializer.setLbpInitializationParams(
             LBPInitializationParams({
                 initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised

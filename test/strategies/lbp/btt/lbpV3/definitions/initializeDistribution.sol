@@ -182,7 +182,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
-        bytes memory initializerParams = abi.encode(endBlock);
+        bytes memory initializerParams = _encodeInitializerParams(endBlock, address(0));
         // Should not revert — rate is exactly MAX_BRACKET_RATE
         strategy.initializeDistribution(
             address(token), totalSupply, _encodeConfigData(mp, bp, initializerParams), bytes32(0)
