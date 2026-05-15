@@ -149,7 +149,7 @@ abstract contract LBPStrategyTestBase is Test {
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData =
-            _encodeConfigData(mp, brackets, _encodeInitializerParams(endBlock, currency, lbpParams));
+            _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, currency, lbpParams));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
@@ -238,7 +238,7 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Builds the initializerParams bytes the mock factory consumes
-    function _encodeInitializerParams(uint64 endBlock, address currency, LBPInitializationParams memory lbpParams)
+    function _encodeMockInitializerParams(uint64 endBlock, address currency, LBPInitializationParams memory lbpParams)
         internal
         pure
         returns (bytes memory)

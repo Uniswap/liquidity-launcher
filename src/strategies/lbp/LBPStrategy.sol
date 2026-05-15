@@ -136,12 +136,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         Currency token = Currency.wrap(initializer.token());
 
         uint256 currencyBefore = currency.balanceOfSelf();
-        uint256 unsoldFromInitializer;
+        uint256 unsoldTokensFromInitializer;
         {
             uint256 tokenBefore = token.balanceOfSelf();
             initializer.sweepCurrency();
             initializer.sweepUnsoldTokens();
-            unsoldFromInitializer = token.balanceOfSelf() - tokenBefore;
+            unsoldTokensFromInitializer = token.balanceOfSelf() - tokenBefore;
         }
 
         uint160 sqrtPriceX96;
@@ -189,7 +189,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
-        uint256 remainingToken = migrationParams.supplyForLP + unsoldFromInitializer - tokenTransferAmount;
+        uint256 remainingToken = migrationParams.supplyForLP + unsoldTokensFromInitializer - tokenTransferAmount;
         if (remainingToken > 0) {
             token.transfer(migrationParams.fundsRecipient, remainingToken);
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);

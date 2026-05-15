@@ -47,7 +47,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = _encodeInitializerParams(
+        bytes memory initializerParams = _encodeMockInitializerParams(
             endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
         );
 
@@ -65,7 +65,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = _encodeInitializerParams(
+        bytes memory initializerParams = _encodeMockInitializerParams(
             endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
         );
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
@@ -96,7 +96,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
 
         // Second initialization with the same initializer should revert
         MockERC20 token2 = new MockERC20("Test Token 2", "TT2", totalSupply, address(this));
-        bytes memory initializerParams = _encodeInitializerParams(
+        bytes memory initializerParams = _encodeMockInitializerParams(
             endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
         );
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
