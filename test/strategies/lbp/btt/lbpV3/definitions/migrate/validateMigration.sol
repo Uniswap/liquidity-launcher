@@ -79,12 +79,11 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             _boundMigratorParams(p);
         p.tokensSold = uint128(bound(p.tokensSold, 0, auctionSupply));
 
+        LBPInitializationParams memory lbpParams =
+            LBPInitializationParams({initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: 0});
         (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
+            _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams), address(0), lbpParams);
 
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: 0})
-        );
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
 

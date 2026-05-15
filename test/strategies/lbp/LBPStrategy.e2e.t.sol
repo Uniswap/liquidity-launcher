@@ -106,13 +106,11 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         // Initialize distribution with ERC20 currency
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
         (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(currencyToken));
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
+            _initializeWith(mp, totalSupply, endBlock, bp, address(currencyToken), lbpParams);
 
         // Fund the initializer with ERC20 currency (not native ETH); strategy holds supplyForLP custody.
         deal(address(currencyToken), address(initializer), p.currencyRaised);

@@ -60,12 +60,11 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         uint256 minRaise = uint256(uint128(type(int128).max)) * MigratorParams.MAX_BRACKET_RATE / rate + 1;
         uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: hugeRaise
-            })
-        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: hugeRaise
+        });
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
 
         // Fund the initializer with the huge raise + auction tokens; strategy holds supplyForLP as custody.
         vm.deal(address(initializer), hugeRaise);
@@ -111,12 +110,11 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
         mp.positionDefinitions = abi.encode(defs);
 
-        (MockLBPInitializer initializer, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: maxV4Delta
-            })
-        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: maxV4Delta
+        });
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
 
         vm.deal(address(initializer), maxV4Delta);
         token.transfer(address(strategy), mp.supplyForLP);

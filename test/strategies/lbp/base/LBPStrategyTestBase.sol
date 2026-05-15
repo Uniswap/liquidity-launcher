@@ -17,7 +17,6 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
@@ -99,12 +98,10 @@ abstract contract LBPStrategyTestBase is Test {
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, brackets);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-            })
-        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
+        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, brackets, address(0), lbpParams);
         if (p.currencyRaised > 0) {
             vm.deal(address(initializer), p.currencyRaised);
         }
@@ -115,28 +112,36 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters and bracket schedule.
-    /// Use when you need valid migrator params but want to control currencyRaised/price/tokensSold yourself
-    /// (e.g., setting currencyRaised = 0 to test a revert, or wiring up an ERC20 currency).
+    /// Use for tests that don't need to migrate (e.g., initializeDistribution-only tests) — lbpParams
+    /// default to zero. For migration tests, use the 6-arg overload to bake the auction outputs in at deploy.
     function _initializeWith(
         MigratorParameters memory mp,
         uint128 totalSupply,
         uint64 endBlock,
         LiquidityAllocationBracket[] memory brackets
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
-        return _initializeWith(mp, totalSupply, endBlock, brackets, address(0));
+        return _initializeWith(
+            mp,
+            totalSupply,
+            endBlock,
+            brackets,
+            address(0),
+            LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
     }
 
-    /// @notice Overload that lets a test specify the auction currency (default address(0) = native ETH).
-    /// Pass an ERC20 address to exercise ERC20-currency code paths without a separate factory override.
+    /// @notice Overload that takes auction currency
     function _initializeWith(
         MigratorParameters memory mp,
         uint128 totalSupply,
         uint64 endBlock,
         LiquidityAllocationBracket[] memory brackets,
-        address currency
+        address currency,
+        LBPInitializationParams memory lbpParams
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory configData = _encodeConfigData(mp, brackets, _encodeInitializerParams(endBlock, currency));
+        bytes memory configData =
+            _encodeConfigData(mp, brackets, _encodeInitializerParams(endBlock, currency, lbpParams));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
@@ -224,24 +229,13 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(defs);
     }
 
-    /// @notice Builds the AuctionParameters-shaped initializerParams bytes the mock factory consumes.
-    /// Mirrors the real ContinuousClearingAuctionFactory's configData shape so tests document the
-    /// real surface area while still being deterministic. Pass address(0) for currency to use native ETH.
-    function _encodeInitializerParams(uint64 endBlock, address currency) internal view returns (bytes memory) {
-        AuctionParameters memory auctionParams = AuctionParameters({
-            currency: currency,
-            tokensRecipient: address(strategy),
-            fundsRecipient: address(strategy),
-            startBlock: 0,
-            endBlock: endBlock,
-            claimBlock: 0,
-            tickSpacing: 0,
-            validationHook: address(0),
-            floorPrice: 0,
-            requiredCurrencyRaised: 0,
-            auctionStepsData: ""
-        });
-        return abi.encode(auctionParams);
+    /// @notice Builds the initializerParams bytes the mock factory consumes
+    function _encodeInitializerParams(uint64 endBlock, address currency, LBPInitializationParams memory lbpParams)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return abi.encode(endBlock, currency, lbpParams);
     }
 
     /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData

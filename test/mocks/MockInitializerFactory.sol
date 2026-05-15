@@ -4,8 +4,9 @@ pragma solidity ^0.8.26;
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
-import {AuctionParameters} from "@uniswap/continuous-clearing-auction/src/interfaces/IContinuousClearingAuction.sol";
+import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
+/// @notice Mock factory that deploys MockLBPInitializers
 contract MockInitializerFactory is IDistributionStrategy {
     MockLBPInitializer public deployedInitializer;
 
@@ -30,21 +31,16 @@ contract MockInitializerFactory is IDistributionStrategy {
         external
         returns (IDistributionContract)
     {
-        AuctionParameters memory params = abi.decode(configData, (AuctionParameters));
+        (uint64 endBlock, address currency, LBPInitializationParams memory lbpParams) =
+            abi.decode(configData, (uint64, address, LBPInitializationParams));
 
         MockLBPInitializer initializer;
         if (address(overrideInitializer) != address(0)) {
             initializer = overrideInitializer;
         } else {
-            initializer = new MockLBPInitializer(
-                token,
-                params.currency,
-                uint128(amount),
-                params.tokensRecipient,
-                params.fundsRecipient,
-                params.startBlock,
-                params.endBlock
-            );
+            initializer =
+                new MockLBPInitializer(token, currency, uint128(amount), strategyAddress, strategyAddress, 0, endBlock);
+            initializer.setLbpInitializationParams(lbpParams);
         }
 
         deployedInitializer = initializer;

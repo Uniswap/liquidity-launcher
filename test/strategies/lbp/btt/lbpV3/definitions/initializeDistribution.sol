@@ -6,7 +6,7 @@ import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
-import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -182,7 +182,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
 
-        bytes memory initializerParams = _encodeInitializerParams(endBlock, address(0));
+        bytes memory initializerParams = _encodeInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
         // Should not revert — rate is exactly MAX_BRACKET_RATE
         strategy.initializeDistribution(
             address(token), totalSupply, _encodeConfigData(mp, bp, initializerParams), bytes32(0)
