@@ -16,10 +16,10 @@ contract DeployAllScript is Script {
         lbpStrategyDeployer = new DeployLBPStrategyScript();
     }
 
-    function run(IDistributionStrategy initializerFactory, address protocolFeeController, address owner) public {
+    function run(IDistributionStrategy initializerFactory, address owner) public {
         console.log("Deploying all contracts on chain", block.chainid);
 
         liquidityLauncherDeployer.run();
-        lbpStrategyDeployer.run(initializerFactory, protocolFeeController, owner);
+        lbpStrategyDeployer.run(initializerFactory, owner);
     }
 }

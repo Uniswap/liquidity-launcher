@@ -9,7 +9,6 @@ import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {ProtocolFeeController} from "src/periphery/ProtocolFeeController.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -32,7 +31,6 @@ abstract contract LBPStrategyTestBase is Test {
 
     LBPStrategy strategy;
     MockInitializerFactory factory;
-    ProtocolFeeController feeController;
 
     address owner;
     address fundsRecipient = makeAddr("fundsRecipient");
@@ -78,17 +76,13 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        feeController = new ProtocolFeeController(owner);
-
-        bytes memory constructorArgs = abi.encode(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), address(feeController), owner
-        );
+        bytes memory constructorArgs =
+            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner);
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
-        strategy = new LBPStrategy{salt: salt}(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), address(feeController), owner
-        );
+        strategy =
+            new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner);
 
         assertEq(address(strategy), strategyAddress);
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);

@@ -8,7 +8,6 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IProtocolFeeController} from "src/interfaces/IProtocolFeeController.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -26,8 +25,6 @@ interface IERC721Balance {
 contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
-
-    address feeRecipient = makeAddr("feeRecipient");
 
     struct Erc20MigrationBalances {
         uint256 currencyFundsRecipient;
@@ -190,76 +187,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // Strategy ends empty
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
         assertEq(token.balanceOf(address(strategy)), 0);
-    }
-
-    struct FeeFuzzInputs {
-        uint8 tierCount;
-        uint24 pips1;
-        uint24 pips2;
-        uint24 pips3;
-        uint256 threshold1;
-        uint256 threshold2;
-    }
-
-    /// @notice Full init → migrate flow with a fuzzed protocol fee schedule enabled.
-    /// Proves the whole pipeline (init + fee deduction + bracket calc + LP positioning + sweep)
-    /// works end-to-end with fees on, across 1/2/3-tier configurations with varying pips and thresholds.
-    /// Tier-fee math correctness is exhaustively tested in protocolFee.t.sol; here we only check
-    /// that no currency leaks across the integrated path.
-    function test_fuzz_initAndMigrate_withProtocolFee(MigrationFuzzParams memory p, FeeFuzzInputs memory f) public {
-        feeController.setProtocolFeeRecipient(feeRecipient);
-        feeController.setProtocolFeePerCurrency(address(0), _buildFuzzedFeeSchedule(f));
-
-        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
-        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
-        uint256 totalSupply = token.totalSupply();
-
-        uint256 feeBalBefore = feeRecipient.balance;
-        uint256 fundsBalBefore = fundsRecipient.balance;
-        uint256 poolBalBefore = address(POOL_MANAGER).balance;
-
-        strategy.migrate(ILBPInitializer(address(initializer)));
-
-        uint256 feeDelta = feeRecipient.balance - feeBalBefore;
-        uint256 fundsDelta = fundsRecipient.balance - fundsBalBefore;
-        uint256 poolDelta = address(POOL_MANAGER).balance - poolBalBefore;
-
-        // Every wei of raised currency lands at exactly one of (feeRecipient, fundsRecipient, pool)
-        assertEq(feeDelta + fundsDelta + poolDelta, raised);
-        // Tokens are not subject to the protocol fee — they split between funds and pool
-        assertEq(token.balanceOf(fundsRecipient) + token.balanceOf(address(POOL_MANAGER)), totalSupply);
-        // Strategy ends empty
-        assertEq(address(strategy).balance, 0);
-        assertEq(token.balanceOf(address(strategy)), 0);
-    }
-
-    /// @dev Builds a 1/2/3-tier fee schedule from fuzz inputs. Each tier's pips are capped at 10% so
-    /// the worst-case combined fee (~30%) leaves enough post-fee currency to fund the LP across the
-    /// fuzzed bracket configurations from _setupForMigration. Higher pips are exercised in protocolFee.t.sol.
-    function _buildFuzzedFeeSchedule(FeeFuzzInputs memory f)
-        private
-        view
-        returns (IProtocolFeeController.FeeBracket[] memory)
-    {
-        uint8 tierCount = uint8(bound(f.tierCount, 1, 3));
-        uint24 maxPips = feeController.PIPS_DENOMINATOR() / 10;
-
-        IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](tierCount);
-        fees[0] =
-            IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: uint24(bound(f.pips1, 0, maxPips))});
-        if (tierCount >= 2) {
-            uint256 threshold1 = bound(f.threshold1, 1, type(uint256).max - 1);
-            fees[1] = IProtocolFeeController.FeeBracket({
-                lowerThreshold: threshold1, protocolFeePips: uint24(bound(f.pips2, 0, maxPips))
-            });
-            if (tierCount == 3) {
-                fees[2] = IProtocolFeeController.FeeBracket({
-                    lowerThreshold: bound(f.threshold2, threshold1 + 1, type(uint256).max),
-                    protocolFeePips: uint24(bound(f.pips3, 0, maxPips))
-                });
-            }
-        }
-        return fees;
     }
 
     function _assertErc20MigrationBalances(

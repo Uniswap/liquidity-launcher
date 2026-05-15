@@ -1,6 +1,0 @@
-SetProtocolFeeControllerTest
-├── when caller is not owner
-│   └── it reverts
-└── when caller is owner
-    ├── it sets the protocolFeeController
-    └── it emits {ProtocolFeeControllerSet}

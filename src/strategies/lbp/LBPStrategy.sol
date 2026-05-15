@@ -28,10 +28,7 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
-import {Ownable} from "solady/auth/Ownable.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {IProtocolFeeController} from "../../interfaces/IProtocolFeeController.sol";
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 
 /// @title LBPStrategy
@@ -49,9 +46,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The protocol fee controller
-    address public protocolFeeController;
-
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
@@ -59,14 +53,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        address _protocolFeeController,
         address _owner
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         _initializeOwner(_owner);
-        _setProtocolFeeController(_protocolFeeController);
     }
 
     /// @inheritdoc IDistributionStrategy
@@ -146,10 +138,9 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
 
-        // Deduct the protocol fee from the currency raised, then apply the bracket schedule to derive the LP amount.
-        uint256 currencyAmountForLp = _calculateCurrencyAmountForLp(
-            _deductProtocolFee(currency, lbpParams.currencyRaised), migrationParams.lpAllocationSchedule
-        );
+        // Apply the bracket schedule to derive the LP amount.
+        uint256 currencyAmountForLp =
+            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
 
         // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
         uint160 sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
@@ -194,18 +185,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @inheritdoc ILBPStrategy
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
         return _initializers[initializer];
-    }
-
-    /// @inheritdoc ILBPStrategy
-    function setProtocolFeeController(address _protocolFeeController) external onlyOwner {
-        _setProtocolFeeController(_protocolFeeController);
-        emit ProtocolFeeControllerSet(_protocolFeeController);
-    }
-
-    /// @notice Sets the protocol fee controller
-    /// @param _protocolFeeController The protocol fee controller
-    function _setProtocolFeeController(address _protocolFeeController) internal {
-        protocolFeeController = _protocolFeeController;
     }
 
     /// @notice Receive native currency
@@ -401,22 +380,5 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     {
         uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currency < token);
         sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
-    }
-
-    /// @notice Deducts the protocol fee from the currency raised and transfers it to the fee recipient
-    /// @param currency The currency to deduct the fee from
-    /// @param currencyRaised The total currency raised from the auction
-    /// @return The currency remaining after the protocol fee is deducted
-    function _deductProtocolFee(Currency currency, uint256 currencyRaised) private returns (uint256) {
-        IProtocolFeeController controller = IProtocolFeeController(protocolFeeController);
-        uint256 feeAmount = controller.getProtocolFeeAmount(Currency.unwrap(currency), currencyRaised);
-
-        if (feeAmount > 0) {
-            address feeRecipient = controller.protocolFeeRecipient();
-            currency.transfer(feeRecipient, feeAmount);
-            emit ProtocolFeeTransferred(feeRecipient, feeAmount);
-        }
-
-        return currencyRaised - feeAmount;
     }
 }
