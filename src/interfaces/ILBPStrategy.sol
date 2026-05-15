@@ -60,9 +60,13 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param positionRecipient The invalid position recipient
     error InvalidPositionRecipient(address positionRecipient);
 
-    /// @notice Error thrown when the funds recipient is not set to the strategy
-    /// @param expectedRecipient The expected recipient
-    error InvalidRecipient(address expectedRecipient);
+    /// @notice Error thrown when the initializer's fundsRecipient is not the strategy
+    /// @param strategy The strategy address (must be the initializer's fundsRecipient)
+    error InvalidFundsRecipient(address strategy);
+
+    /// @notice Error thrown when the initializer's tokensRecipient is the strategy
+    /// @param strategy The strategy address (must not be the initializer's tokensRecipient)
+    error InvalidTokensRecipient(address strategy);
 
     /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
     /// @param supplyForLP The invalid supply

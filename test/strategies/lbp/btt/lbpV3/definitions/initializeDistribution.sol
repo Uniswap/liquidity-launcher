@@ -58,7 +58,9 @@ contract MockInitializerHook {
 /// │   └── it reverts with TooManyPositions
 /// └── when migrator params are valid
 ///     ├── when initializer.fundsRecipient != strategy
-///     │   └── it reverts with InvalidRecipient
+///     │   └── it reverts with InvalidFundsRecipient
+///     ├── when initializer.tokensRecipient == strategy
+///     │   └── it reverts with InvalidTokensRecipient
 ///     ├── when initializer.endBlock >= migrationBlock
 ///     │   └── it reverts with InvalidEndBlock
 ///     └── when initializer is valid
@@ -452,14 +454,15 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         public
         whenMigratorParamsAreValid
     {
-        // it reverts with {InvalidRecipient}
+        // it reverts with {InvalidFundsRecipient}
         vm.assume(_wrongRecipient != address(strategy));
 
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         uint128 expectedAuctionSupply = totalSupply - mp.supplyForLP;
+        // tokensRecipient must NOT be the strategy under the new model; use _wrongRecipient for both.
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), expectedAuctionSupply, address(strategy), _wrongRecipient, 0, endBlock
+            address(1), address(0), expectedAuctionSupply, _wrongRecipient, _wrongRecipient, 0, endBlock
         );
 
         vm.mockCall(
@@ -471,7 +474,33 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidRecipient.selector, address(strategy)));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidFundsRecipient.selector, address(strategy)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenInitializerTokensRecipientIsStrategy(MigrationFuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidTokensRecipient}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        uint128 expectedAuctionSupply = totalSupply - mp.supplyForLP;
+        // fundsRecipient must be the strategy (passes that check), tokensRecipient is the strategy (fails)
+        MockLBPInitializer badInit = new MockLBPInitializer(
+            address(1), address(0), expectedAuctionSupply, address(strategy), address(strategy), 0, endBlock
+        );
+
+        vm.mockCall(
+            address(factory),
+            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
+            abi.encode(address(badInit))
+        );
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidTokensRecipient.selector, address(strategy)));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
@@ -486,8 +515,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
 
         uint128 expectedAuctionSupply = totalSupply - mp.supplyForLP;
+        // tokensRecipient must NOT be the strategy under the new model
         MockLBPInitializer badInit = new MockLBPInitializer(
-            address(1), address(0), expectedAuctionSupply, address(strategy), address(strategy), 0, endBlock
+            address(1), address(0), expectedAuctionSupply, tokensRecipient, address(strategy), 0, endBlock
         );
 
         vm.mockCall(

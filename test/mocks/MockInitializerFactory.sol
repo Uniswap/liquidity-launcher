@@ -11,6 +11,7 @@ contract MockInitializerFactory is IDistributionStrategy {
     MockLBPInitializer public deployedInitializer;
 
     address public strategyAddress;
+    address public tokensRecipient;
 
     /// @notice If set, initializeDistribution returns this address instead of deploying a new one
     MockLBPInitializer public overrideInitializer;
@@ -27,6 +28,10 @@ contract MockInitializerFactory is IDistributionStrategy {
         strategyAddress = _strategyAddress;
     }
 
+    function setTokensRecipient(address _tokensRecipient) external {
+        tokensRecipient = _tokensRecipient;
+    }
+
     function initializeDistribution(address token, uint256 amount, bytes calldata configData, bytes32)
         external
         returns (IDistributionContract)
@@ -39,7 +44,7 @@ contract MockInitializerFactory is IDistributionStrategy {
             initializer = overrideInitializer;
         } else {
             initializer =
-                new MockLBPInitializer(token, currency, uint128(amount), strategyAddress, strategyAddress, 0, endBlock);
+                new MockLBPInitializer(token, currency, uint128(amount), tokensRecipient, strategyAddress, 0, endBlock);
             initializer.setLbpInitializationParams(lbpParams);
         }
 

@@ -33,6 +33,7 @@ abstract contract LBPStrategyTestBase is Test {
 
     address owner;
     address fundsRecipient = makeAddr("fundsRecipient");
+    address tokensRecipient = makeAddr("tokensRecipient");
     address lpPositionRecipient = makeAddr("lpPositionRecipient");
 
     /// @notice Raw fuzz inputs for LP allocation bracket generation — pass this as a fuzz parameter
@@ -90,6 +91,7 @@ abstract contract LBPStrategyTestBase is Test {
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);
 
         factory.setStrategyAddress(address(strategy));
+        factory.setTokensRecipient(tokensRecipient);
     }
 
     /// @notice One-liner for a happy-path migration setup: bounds all fuzz params, deploys and funds

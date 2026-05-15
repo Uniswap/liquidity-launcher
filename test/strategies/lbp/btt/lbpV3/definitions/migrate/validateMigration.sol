@@ -30,7 +30,6 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 ///     │   └── it reverts with CurrencyRaisedMismatch
 ///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
-///         ├── it calls sweepUnsoldTokens on initializer
 ///         ├── it sweeps leftover currency to fundsRecipient
 ///         ├── it sweeps leftover tokens to fundsRecipient
 ///         ├── it emits CurrencySwept
@@ -111,12 +110,15 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         assertGt(Currency.wrap(initializer.currency()).balanceOfSelf(), 0);
-        assertGt(token.balanceOf(address(initializer)), 0);
+        uint256 tokensInInitializerBefore = token.balanceOf(address(initializer));
+        assertGt(tokensInInitializerBefore, 0);
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
+        // sweepCurrency drains the initializer's currency
         assertEq(address(initializer).balance, 0);
-        assertEq(token.balanceOf(address(initializer)), 0);
+        // Unsold auction tokens stay in the initializer — they are claimed separately by the tokensRecipient
+        assertEq(token.balanceOf(address(initializer)), tokensInInitializerBefore);
     }
 
     function test_SweepsLeftoverCurrencyToFundsRecipient(MigrationFuzzParams memory p)

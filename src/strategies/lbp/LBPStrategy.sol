@@ -136,13 +136,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         Currency token = Currency.wrap(initializer.token());
 
         uint256 currencyBefore = currency.balanceOfSelf();
-        uint256 unsoldTokensFromInitializer;
-        {
-            uint256 tokenBefore = token.balanceOfSelf();
-            initializer.sweepCurrency();
-            initializer.sweepUnsoldTokens();
-            unsoldTokensFromInitializer = token.balanceOfSelf() - tokenBefore;
-        }
+        initializer.sweepCurrency();
 
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
@@ -183,13 +177,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
-        // Sweep this initializer's leftover (non-LP currency and tokens, unsold & custody dust) to the funds recipient.
+        // Sweep this initializer's leftover (non-LP currency and unused supplyForLP) to the funds recipient.
+        // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
         uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
             currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
         }
-        uint256 remainingToken = migrationParams.supplyForLP + unsoldTokensFromInitializer - tokenTransferAmount;
+        uint256 remainingToken = migrationParams.supplyForLP - tokenTransferAmount;
         if (remainingToken > 0) {
             token.transfer(migrationParams.fundsRecipient, remainingToken);
             emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
@@ -341,9 +336,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         private
         view
     {
-        // Ensure the funds recipient is this contract
-        if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
-            revert InvalidRecipient(address(this));
+        // The strategy must be the fundsRecipient (it sweeps currency during migration), but must NOT be the
+        // tokensRecipient — unsold auction tokens are claimed directly by the configured tokensRecipient via
+        // the initializer's sweepUnsoldTokens.
+        if (initializer.fundsRecipient() != address(this)) {
+            revert InvalidFundsRecipient(address(this));
+        }
+        if (initializer.tokensRecipient() == address(this)) {
+            revert InvalidTokensRecipient(address(this));
         }
         // Ensure the migration block is actually after the end block to ensure a successful migration
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
