@@ -12,7 +12,7 @@ interface IProtocolFeeController {
     ///         Tiers are sorted ascending by lowerThreshold. The first tier's lowerThreshold MUST be 0.
     ///         Each tier's rate applies to the portion of the amount in [lowerThreshold, nextLowerThreshold).
     ///         The last tier's rate applies to all remaining amount above its lowerThreshold.
-    struct FeeBracket {
+    struct ProtocolFeeBracket {
         uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0). cumulative amounts above type(uint128).max are taxed at the last bracket's rate.
         uint24 protocolFeePips; // The fee rate in pips applied to the portion of the amount within this bracket
     }
@@ -28,7 +28,7 @@ interface IProtocolFeeController {
     /// @notice Emitted when a per-currency protocol fee schedule is set or cleared
     /// @param currency The currency the schedule applies to
     /// @param fees The tier schedule
-    event ProtocolFeeBracketsForCurrencyUpdated(address indexed currency, FeeBracket[] fees);
+    event ProtocolFeeBracketsForCurrencyUpdated(address indexed currency, ProtocolFeeBracket[] fees);
 
     /// @notice Thrown when the provided pips exceed the supported maximum (PIPS_DENOMINATOR)
     /// @param pips The provided pips
@@ -71,12 +71,15 @@ interface IProtocolFeeController {
     ///      Pass an empty fees array to clear the per-currency override and fall back to the global fee.
     /// @param currency The currency address the custom fees apply to
     /// @param fees The fee tiers, each with a lowerThreshold and fee rate in pips
-    function setProtocolFeeBracketsForCurrency(address currency, FeeBracket[] calldata fees) external;
+    function setProtocolFeeBracketsForCurrency(address currency, ProtocolFeeBracket[] calldata fees) external;
 
     /// @notice Returns the fee tiers for a given currency
     /// @param currency The currency address
     /// @return fees The fee tiers
-    function getProtocolFeeBracketsForCurrency(address currency) external view returns (FeeBracket[] memory fees);
+    function getProtocolFeeBracketsForCurrency(address currency)
+        external
+        view
+        returns (ProtocolFeeBracket[] memory fees);
 
     /// @notice The address that receives all protocol fees (global and per-currency)
     function protocolFeeRecipient() external view returns (address);

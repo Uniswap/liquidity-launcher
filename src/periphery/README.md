@@ -69,10 +69,10 @@ Tier 3: [50 ETH, ∞)   → 0.5%  (5,000 pips)
 Configured via:
 
 ```solidity
-IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
-tiers[0] = IProtocolFeeController.Fee({ lowerThreshold: 0,     protocolFeePips: 20_000 });
-tiers[1] = IProtocolFeeController.Fee({ lowerThreshold: 10e18, protocolFeePips: 10_000 });
-tiers[2] = IProtocolFeeController.Fee({ lowerThreshold: 50e18, protocolFeePips: 5_000  }); // last tier extends to infinity
+IProtocolFeeController.ProtocolFeeBracket[] memory tiers = new IProtocolFeeController.ProtocolFeeBracket[](3);
+tiers[0] = IProtocolFeeController.ProtocolFeeBracket({ lowerThreshold: 0,     protocolFeePips: 20_000 });
+tiers[1] = IProtocolFeeController.ProtocolFeeBracket({ lowerThreshold: 10e18, protocolFeePips: 10_000 });
+tiers[2] = IProtocolFeeController.ProtocolFeeBracket({ lowerThreshold: 50e18, protocolFeePips: 5_000  }); // last tier extends to infinity
 controller.setProtocolFeeBracketsForCurrency(eth, tiers);
 ```
 
@@ -85,10 +85,10 @@ Fees on an 80 ETH raise:
 To cap fees beyond a certain amount, spend the final tier slot on a 0-pips tail. Reducing the schedule to two real tiers + cap, so it still fits within `MAX_PROTOCOL_FEE_TIERS`:
 
 ```solidity
-IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
-tiers[0] = IProtocolFeeController.Fee({ lowerThreshold: 0,      protocolFeePips: 20_000 });
-tiers[1] = IProtocolFeeController.Fee({ lowerThreshold: 10e18,  protocolFeePips: 10_000 });
-tiers[2] = IProtocolFeeController.Fee({ lowerThreshold: 100e18, protocolFeePips: 0      }); // cap, no fee beyond 100 ETH
+IProtocolFeeController.ProtocolFeeBracket[] memory tiers = new IProtocolFeeController.ProtocolFeeBracket[](3);
+tiers[0] = IProtocolFeeController.ProtocolFeeBracket({ lowerThreshold: 0,      protocolFeePips: 20_000 });
+tiers[1] = IProtocolFeeController.ProtocolFeeBracket({ lowerThreshold: 10e18,  protocolFeePips: 10_000 });
+tiers[2] = IProtocolFeeController.ProtocolFeeBracket({ lowerThreshold: 100e18, protocolFeePips: 0      }); // cap, no fee beyond 100 ETH
 controller.setProtocolFeeBracketsForCurrency(eth, tiers);
 ```
 
@@ -105,7 +105,7 @@ controller.setProtocolFeeBracketsForCurrency(eth, tiers);
 
 ### Clearing a per-currency override
 
-Call `setProtocolFeeBracketsForCurrency(currency, new Fee[](0))` to revert a currency back to the global fee.
+Call `setProtocolFeeBracketsForCurrency(currency, new ProtocolFeeBracket[](0))` to revert a currency back to the global fee.
 
 ### Deployment expectation
 
