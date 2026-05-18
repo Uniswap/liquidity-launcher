@@ -79,7 +79,7 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
     function test_twoBracketSchedule_poolCannotConsumeMoreThanTieredBudget(MigrationFuzzParams memory p) public {
         uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
         uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
-        uint256 threshold1 = bound(uint256(p.bpParams.threshold0), 1, type(uint128).max);
+        uint128 threshold1 = uint128(bound(uint256(p.bpParams.threshold0), 1, type(uint128).max));
         uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
 
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](2);
@@ -106,8 +106,8 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
         uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
         uint24 rate2 = uint24(bound(p.bpParams.rate2, 0, MigratorParams.MAX_BRACKET_RATE));
-        uint256 threshold1 = bound(uint256(p.bpParams.threshold0), 1, type(uint128).max - 1);
-        uint256 threshold2 = bound(uint256(p.bpParams.threshold1), threshold1 + 1, type(uint128).max);
+        uint128 threshold1 = uint128(bound(uint256(p.bpParams.threshold0), 1, type(uint128).max - 1));
+        uint128 threshold2 = uint128(bound(uint256(p.bpParams.threshold1), threshold1 + 1, type(uint128).max));
         uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
 
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](3);
@@ -127,6 +127,46 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
 
         assertLe(currencyToPool, expectedLpBudget);
+        assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_currencyAboveUint128Max_flowsIntoLastBracket(MigrationFuzzParams memory p, uint256 _tail) public {
+        // because lowerThreshold is uint128, any cumulative currency above type(uint128).max is necessarily allocated at the last
+        // bracket's rate.
+
+        // Setup: bracket 0 has 0% rate (its uint128.max chunk contributes nothing to the LP budget,
+        // so the entire chunk MUST be swept). Bracket 1 has 100% rate, so the tail (currency above
+        // uint128.max) is the LP budget — exactly `tail`.
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](2);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
+        bp[1] = LiquidityAllocationBracket({
+            lowerThreshold: type(uint128).max, rate: uint24(MigratorParams.MAX_BRACKET_RATE)
+        });
+
+        // Fuzz the tail (amount above uint128.max). Cap at uint256.max - uint128.max so
+        // currencyRaised doesn't overflow uint256.
+        uint256 tail = bound(_tail, 1, type(uint256).max - uint256(type(uint128).max));
+        uint256 currencyRaised = uint256(type(uint128).max) + tail;
+
+        // LP budget is exactly `tail` — bracket 0 contributes 0, bracket 1 takes the tail at 100%.
+        assertEq(_expectedLpCurrencyAmount(currencyRaised, bp), tail);
+
+        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
+
+        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 poolBefore = address(POOL_MANAGER).balance;
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
+        uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
+
+        // The entire bracket-0 chunk (uint128.max) is guaranteed swept since rate0 == 0.
+        assertGe(currencyToFundsRecipient, uint256(type(uint128).max));
+        // Pool consumption capped by the LP budget AND v4's int128 delta limit.
+        uint256 cap = tail < uint128(type(int128).max) ? tail : uint128(type(int128).max);
+        assertLe(currencyToPool, cap);
         assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
         assertEq(address(strategy).balance, 0);
     }
