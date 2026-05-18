@@ -28,6 +28,7 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 
 /// @title LBPStrategy
@@ -45,9 +46,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The protocol fee controller
-    address public protocolFeeController;
-
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
@@ -55,14 +53,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        address _protocolFeeController,
         address _owner
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         _initializeOwner(_owner);
-        _setProtocolFeeController(_protocolFeeController);
     }
 
     /// @inheritdoc IDistributionStrategy
@@ -137,16 +133,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         initializer.sweepCurrency();
         initializer.sweepUnsoldTokens();
 
-        // Apply the bracket schedule to derive how much currency goes to the LP, then validate.
-        // Currency raised above int128.max will not be used to create the v4 pool and instead swept to the funds recipient.
-        uint128 currencyAmountForLp = _validateCurrencyAmountForLp(
-            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule)
-        );
-
         // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
         // This requires trusting the initializer to return correct and immutable addresses.
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
+
+        // Apply the bracket schedule to derive the LP amount.
+        uint256 currencyAmountForLp =
+            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
 
         // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
         uint160 sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
@@ -160,10 +154,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             migrationParams.hook
         );
 
-        // currencyAmountForLp is already <= int128.max from _validateCurrencyAmountForLp;
-        // supplyForLP is enforced <= int128.max in _validateMigratorParams.
+        // v4 PoolManager accounts liquidity and token deltas as int128, so cap budgets before planning.
         (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
-            key, currency, sqrtPriceX96, currencyAmountForLp, migrationParams.supplyForLP, migrationParams
+            key,
+            currency,
+            sqrtPriceX96,
+            uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
+            uint128(FixedPointMathLib.min(migrationParams.supplyForLP, uint128(type(int128).max))),
+            migrationParams
         );
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
@@ -187,18 +185,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @inheritdoc ILBPStrategy
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
         return _initializers[initializer];
-    }
-
-    /// @inheritdoc ILBPStrategy
-    function setProtocolFeeController(address _protocolFeeController) external onlyOwner {
-        _setProtocolFeeController(_protocolFeeController);
-        emit ProtocolFeeControllerSet(_protocolFeeController);
-    }
-
-    /// @notice Sets the protocol fee controller
-    /// @param _protocolFeeController The protocol fee controller
-    function _setProtocolFeeController(address _protocolFeeController) internal {
-        protocolFeeController = _protocolFeeController;
     }
 
     /// @notice Receive native currency
@@ -340,23 +326,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Ensure the CCA's custody tokens match the supplyForLP
         if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
             revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
-        }
-    }
-
-    /// @notice Validates migration currency amount for the LP
-    /// @param currencyAmountForLp The currency amount raised for the LP
-    function _validateCurrencyAmountForLp(uint256 currencyAmountForLp) private pure returns (uint128) {
-        // Cannot create a v4 pool with no currency raised
-        if (currencyAmountForLp == 0) {
-            revert NoCurrencyRaised();
-        }
-
-        // v4's PoolManager._accountDelta uses int128 for currency deltas; amounts above int128.max
-        // revert with SafeCastOverflow. Cap here so the excess is swept to fundsRecipient instead.
-        if (currencyAmountForLp > uint128(type(int128).max)) {
-            return uint128(type(int128).max);
-        } else {
-            return uint128(currencyAmountForLp);
         }
     }
 

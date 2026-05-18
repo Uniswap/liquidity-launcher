@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
@@ -26,16 +25,13 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotAllowed
 /// └── when block.number >= migrationBlock
-///     ├── when currencyRaised is 0 (after split)
-///     │   └── it reverts with NoCurrencyRaised
-///     └── when currencyRaised > 0
-///         ├── it calls sweepCurrency on initializer
-///         ├── it calls sweepUnsoldTokens on initializer
-///         ├── it sweeps leftover currency to fundsRecipient
-///         ├── it sweeps leftover tokens to fundsRecipient
-///         ├── it emits CurrencySwept
-///         ├── it emits TokensSwept
-///         └── it emits Migrated
+///     ├── it calls sweepCurrency on initializer
+///     ├── it calls sweepUnsoldTokens on initializer
+///     ├── it sweeps leftover currency to fundsRecipient
+///     ├── it sweeps leftover tokens to fundsRecipient
+///     ├── it emits CurrencySwept
+///     ├── it emits TokensSwept
+///     └── it emits Migrated
 contract ValidateMigrationTest is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
@@ -81,36 +77,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenCurrencyRaisedIsZero(MigrationFuzzParams memory p) public whenBlockIsGTEMigrationBlock {
-        // it reverts with {NoCurrencyRaised}
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.tokensSold = uint128(bound(p.tokensSold, 0, auctionSupply));
-
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
-
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: 0})
-        );
-        token.transfer(address(initializer), totalSupply);
-        vm.roll(mp.migrationBlock);
-
-        vm.expectRevert(ILBPStrategy.NoCurrencyRaised.selector);
-        strategy.migrate(ILBPInitializer(address(initializer)));
-    }
-
-    modifier whenCurrencyRaisedIsGTZero() {
-        _;
-    }
-
-    function test_CallsSweepOnInitializer(MigrationFuzzParams memory p)
-        public
-        whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
-    {
+    function test_CallsSweepOnInitializer(MigrationFuzzParams memory p) public whenBlockIsGTEMigrationBlock {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         assertGt(Currency.wrap(initializer.currency()).balanceOfSelf(), 0);
@@ -125,33 +92,41 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     function test_SweepsLeftoverCurrencyToFundsRecipient(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
     {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
 
-        uint256 balBefore = fundsRecipient.balance;
+        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 poolBefore = address(POOL_MANAGER).balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
-        assertGe(fundsRecipient.balance, balBefore);
-        assertEq(address(strategy).balance, 0); // Strategy should be empty
+
+        // Every wei raised reaches fundsRecipient or the pool manager — proves the sweep
+        assertEq((fundsRecipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
+        assertEq(address(strategy).balance, 0);
     }
 
     function test_SweepsLeftoverTokensToFundsRecipient(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
     {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        uint256 totalSupply = token.totalSupply();
 
-        uint256 balBefore = token.balanceOf(fundsRecipient);
+        uint256 fundsBefore = token.balanceOf(fundsRecipient);
+        uint256 poolBefore = token.balanceOf(address(POOL_MANAGER));
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // Every token issued reaches fundsRecipient or the pool manager
+        assertEq(
+            (token.balanceOf(fundsRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
+            totalSupply
+        );
         assertEq(token.balanceOf(address(strategy)), 0);
-        assertGe(token.balanceOf(fundsRecipient), balBefore);
     }
 
     function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
     {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =

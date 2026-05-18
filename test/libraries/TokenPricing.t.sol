@@ -16,15 +16,6 @@ contract TokenPricingHelper is Test {
     function convertToSqrtPriceX96(uint256 priceX192) public pure returns (uint160 sqrtPriceX96) {
         return TokenPricing.convertToSqrtPriceX96(priceX192);
     }
-
-    function calculateAmounts(
-        uint256 priceX192,
-        uint128 currencyAmount,
-        bool currencyIsCurrency0,
-        uint128 reserveTokenAmount
-    ) public pure returns (uint128 tokenAmount, uint128 correspondingCurrencyAmount) {
-        return TokenPricing.calculateAmounts(priceX192, currencyAmount, currencyIsCurrency0, reserveTokenAmount);
-    }
 }
 
 contract TokenPricingTest is Test {

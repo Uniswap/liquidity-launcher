@@ -30,10 +30,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when the protocol fee controller is set
-    /// @param protocolFeeController The protocol fee controller
-    event ProtocolFeeControllerSet(address protocolFeeController);
-
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);
@@ -74,9 +70,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
     error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
 
-    /// @notice Error thrown when no currency was raised
-    error NoCurrencyRaised();
-
     /// @notice Error thrown when a configured hook does not support IInitializerHook
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
@@ -89,8 +82,4 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param initializer The initializer to look up
     /// @return The stored MigratorParameters
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory);
-
-    /// @notice Sets the protocol fee controller
-    /// @param protocolFeeController The protocol fee controller
-    function setProtocolFeeController(address protocolFeeController) external;
 }

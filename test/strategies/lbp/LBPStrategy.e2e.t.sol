@@ -8,8 +8,8 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -26,6 +26,13 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
+    struct Erc20MigrationBalances {
+        uint256 currencyFundsRecipient;
+        uint256 currencyPool;
+        uint256 tokenFundsRecipient;
+        uint256 tokenPool;
+    }
+
     /// @notice Full init → migrate flow with native ETH currency:
     /// - it stores the MigratorParameters
     /// - it migrates successfully after migrationBlock
@@ -33,6 +40,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// - it sends leftover currency and tokens to fundsRecipient
     function test_fuzz_initAndMigrate_happyPath(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
+        uint256 totalSupply = token.totalSupply();
 
         // it stores the MigratorParameters
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
@@ -40,6 +49,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
+        uint256 poolMgrBalBefore = address(POOL_MANAGER).balance;
+        uint256 poolMgrTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
 
         // it migrates successfully after migrationBlock
         strategy.migrate(ILBPInitializer(address(initializer)));
@@ -48,10 +59,13 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(strategy)), 0);
         assertEq(address(strategy).balance, 0);
 
-        // it sends leftover currency and tokens to fundsRecipient
-        assertTrue(
-            fundsRecipient.balance > recipientBalBefore || token.balanceOf(fundsRecipient) > recipientTokenBalBefore
-        );
+        uint256 currencyToFundsRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 currencyToPool = address(POOL_MANAGER).balance - poolMgrBalBefore;
+        uint256 tokensToFundsRecipient = token.balanceOf(fundsRecipient) - recipientTokenBalBefore;
+        uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - poolMgrTokenBalBefore;
+
+        assertEq(currencyToFundsRecipient + currencyToPool, raised);
+        assertEq(tokensToFundsRecipient + tokensToPool, totalSupply);
     }
 
     function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
@@ -118,16 +132,20 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(stored2.migrationBlock, mp2.migrationBlock);
     }
 
-    function test_fuzz_currencySplitAppliedCorrectly(MigrationFuzzParams memory p) public {
+    function test_fuzz_allRaisedCurrencyIsSentToFundsRecipientOrPool(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
 
         uint256 recipientBalBefore = fundsRecipient.balance;
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
+
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Currency goes to either LP positions or fundsRecipient. Total received <= raised (allow small rounding).
-        uint256 received = fundsRecipient.balance - recipientBalBefore;
-        assertLe(received, lbpParams.currencyRaised + 2);
+        uint256 currencyToFundsRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 currencyToPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
+
+        assertEq(currencyToFundsRecipient + currencyToPool, lbpParams.currencyRaised);
+        assertEq(address(strategy).balance, 0);
     }
 
     /// @notice E2E test with ERC20 currency (not native ETH)
@@ -155,22 +173,37 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         deal(address(currencyToken), address(initializer), p.currencyRaised);
         token.transfer(address(initializer), totalSupply);
         vm.roll(mp.migrationBlock);
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        uint256 recipientCurrencyBefore = currencyToken.balanceOf(fundsRecipient);
-        uint256 recipientTokenBefore = token.balanceOf(fundsRecipient);
+        Erc20MigrationBalances memory balancesBefore = Erc20MigrationBalances({
+            currencyFundsRecipient: currencyToken.balanceOf(fundsRecipient),
+            currencyPool: currencyToken.balanceOf(address(POOL_MANAGER)),
+            tokenFundsRecipient: token.balanceOf(fundsRecipient),
+            tokenPool: token.balanceOf(address(POOL_MANAGER))
+        });
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Strategy should be empty
+        _assertErc20MigrationBalances(currencyToken, token, balancesBefore, p.currencyRaised, totalSupply);
+        // Strategy ends empty
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
         assertEq(token.balanceOf(address(strategy)), 0);
+    }
 
-        // fundsRecipient should have received something
-        assertTrue(
-            currencyToken.balanceOf(fundsRecipient) > recipientCurrencyBefore
-                || token.balanceOf(fundsRecipient) > recipientTokenBefore
-        );
+    function _assertErc20MigrationBalances(
+        MockERC20 currencyToken,
+        MockERC20 token,
+        Erc20MigrationBalances memory beforeBalances,
+        uint256 currencyRaised,
+        uint256 totalSupply
+    ) private view {
+        uint256 currencyToFundsRecipient =
+            currencyToken.balanceOf(fundsRecipient) - beforeBalances.currencyFundsRecipient;
+        uint256 currencyToPool = currencyToken.balanceOf(address(POOL_MANAGER)) - beforeBalances.currencyPool;
+        uint256 tokensToFundsRecipient = token.balanceOf(fundsRecipient) - beforeBalances.tokenFundsRecipient;
+        uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - beforeBalances.tokenPool;
+
+        assertEq(currencyToFundsRecipient + currencyToPool, currencyRaised);
+        assertEq(tokensToFundsRecipient + tokensToPool, totalSupply);
     }
 
     /// @notice Helper to build a sorted pool key for a native-currency token pair
