@@ -73,7 +73,7 @@ IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
 tiers[0] = IProtocolFeeController.Fee({ lowerThreshold: 0,     protocolFeePips: 20_000 });
 tiers[1] = IProtocolFeeController.Fee({ lowerThreshold: 10e18, protocolFeePips: 10_000 });
 tiers[2] = IProtocolFeeController.Fee({ lowerThreshold: 50e18, protocolFeePips: 5_000  }); // last tier extends to infinity
-controller.setProtocolFeePerCurrency(eth, tiers);
+controller.setProtocolFeeBracketsForCurrency(eth, tiers);
 ```
 
 Fees on an 80 ETH raise:
@@ -89,7 +89,7 @@ IProtocolFeeController.Fee[] memory tiers = new IProtocolFeeController.Fee[](3);
 tiers[0] = IProtocolFeeController.Fee({ lowerThreshold: 0,      protocolFeePips: 20_000 });
 tiers[1] = IProtocolFeeController.Fee({ lowerThreshold: 10e18,  protocolFeePips: 10_000 });
 tiers[2] = IProtocolFeeController.Fee({ lowerThreshold: 100e18, protocolFeePips: 0      }); // cap, no fee beyond 100 ETH
-controller.setProtocolFeePerCurrency(eth, tiers);
+controller.setProtocolFeeBracketsForCurrency(eth, tiers);
 ```
 
 ### Constraints at a glance
@@ -105,7 +105,7 @@ controller.setProtocolFeePerCurrency(eth, tiers);
 
 ### Clearing a per-currency override
 
-Call `setProtocolFeePerCurrency(currency, new Fee[](0))` to revert a currency back to the global fee.
+Call `setProtocolFeeBracketsForCurrency(currency, new Fee[](0))` to revert a currency back to the global fee.
 
 ### Deployment expectation
 
@@ -126,4 +126,4 @@ The fee can be enabled or updated at any time after deployment.
 
 - **Always forward fees to the returned `recipient`.** The recipient is the *global* recipient; per-currency configs do not override it.
 - **`amount > type(uint256).max / 1_000_000` is silently clamped inside the controller** to prevent overflow in internal multiplications. This threshold is ~`1.16 × 10^71`, far beyond any realistic raise, but something to be aware of if you're feeding in adversarial inputs.
-- **Events.** `GlobalProtocolFeeSettingsUpdated` and `ProtocolFeePerCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getCurrencyFees(currency)` returns the full tier array for a given currency.
+- **Events.** `GlobalProtocolFeeSettingsUpdated` and `ProtocolFeeBracketsForCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getProtocolFeeBracketsForCurrency(currency)` returns the full tier array for a given currency.

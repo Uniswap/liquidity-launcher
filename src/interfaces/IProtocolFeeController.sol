@@ -28,7 +28,7 @@ interface IProtocolFeeController {
     /// @notice Emitted when a per-currency protocol fee schedule is set or cleared
     /// @param currency The currency the schedule applies to
     /// @param fees The tier schedule
-    event ProtocolFeePerCurrencyUpdated(address indexed currency, FeeBracket[] fees);
+    event ProtocolFeeBracketsForCurrencyUpdated(address indexed currency, FeeBracket[] fees);
 
     /// @notice Thrown when the provided pips exceed the supported maximum (PIPS_DENOMINATOR)
     /// @param pips The provided pips
@@ -71,12 +71,12 @@ interface IProtocolFeeController {
     ///      Pass an empty fees array to clear the per-currency override and fall back to the global fee.
     /// @param currency The currency address the custom fees apply to
     /// @param fees The fee tiers, each with a lowerThreshold and fee rate in pips
-    function setProtocolFeePerCurrency(address currency, FeeBracket[] calldata fees) external;
+    function setProtocolFeeBracketsForCurrency(address currency, FeeBracket[] calldata fees) external;
 
     /// @notice Returns the fee tiers for a given currency
     /// @param currency The currency address
     /// @return fees The fee tiers
-    function getCurrencyFees(address currency) external view returns (FeeBracket[] memory fees);
+    function getProtocolFeeBracketsForCurrency(address currency) external view returns (FeeBracket[] memory fees);
 
     /// @notice The address that receives all protocol fees (global and per-currency)
     function protocolFeeRecipient() external view returns (address);

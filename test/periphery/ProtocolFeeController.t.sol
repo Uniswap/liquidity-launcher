@@ -66,13 +66,13 @@ contract ProtocolFeeControllerTest is Test {
         assertEq(controller.globalProtocolFeePips(), _pips);
     }
 
-    function test_freshDeployment_chargesZeroFeeAndHasNoRecipient(address _currency, uint256 _amount) public {
+    function test_whenDeployedFeeAndRecipientAreZero(address _currency, uint256 _amount) public {
         ProtocolFeeController fresh = new ProtocolFeeController(address(this));
         assertEq(fresh.getProtocolFeeAmount(_currency, _amount), 0);
         assertEq(fresh.protocolFeeRecipient(), address(0));
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenNotOwner(address _caller, address _currency) public {
+    function test_setProtocolFeeBracketsForCurrency_revertsWhenNotOwner(address _caller, address _currency) public {
         vm.assume(_caller != address(this));
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
@@ -80,10 +80,12 @@ contract ProtocolFeeControllerTest is Test {
 
         vm.prank(_caller);
         vm.expectRevert(Ownable.Unauthorized.selector);
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenLengthExceedsMaxProtocolFeeTiers(address _currency) public {
+    function test_setProtocolFeeBracketsForCurrency_revertsWhenLengthExceedsMaxProtocolFeeTiers(address _currency)
+        public
+    {
         uint256 length = controller.MAX_PROTOCOL_FEE_TIERS() + 1;
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](length);
         for (uint256 i; i < length; ++i) {
@@ -91,12 +93,13 @@ contract ProtocolFeeControllerTest is Test {
         }
 
         vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidFeeLength.selector, length));
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenFeePipsExceedsDenominator(uint24 _pips, address _currency)
-        public
-    {
+    function test_setProtocolFeeBracketsForCurrency_revertsWhenFeePipsExceedsDenominator(
+        uint24 _pips,
+        address _currency
+    ) public {
         _pips = uint24(bound(_pips, controller.PIPS_DENOMINATOR() + 1, type(uint24).max));
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
@@ -105,10 +108,10 @@ contract ProtocolFeeControllerTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IProtocolFeeController.InvalidFeePips.selector, _pips, controller.PIPS_DENOMINATOR())
         );
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenFirstLowerThresholdIsNonZero(
+    function test_setProtocolFeeBracketsForCurrency_revertsWhenFirstLowerThresholdIsNonZero(
         uint256 _firstThreshold,
         uint24 _pips1,
         uint24 _pips2,
@@ -125,10 +128,10 @@ contract ProtocolFeeControllerTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IProtocolFeeController.FirstThresholdMustBeZero.selector, _firstThreshold)
         );
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenThresholdsNotAscending(
+    function test_setProtocolFeeBracketsForCurrency_revertsWhenThresholdsNotAscending(
         uint256 _threshold1,
         uint256 _threshold2,
         address _currency
@@ -144,26 +147,26 @@ contract ProtocolFeeControllerTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IProtocolFeeController.ThresholdsNotAscending.selector, _threshold2, _threshold1)
         );
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_setsOneTierAndEmits(uint24 _pips, address _currency) public {
+    function test_setProtocolFeeBracketsForCurrency_setsOneTierAndEmits(uint24 _pips, address _currency) public {
         _pips = uint24(bound(_pips, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
 
         vm.expectEmit(true, true, true, true);
-        emit IProtocolFeeController.ProtocolFeePerCurrencyUpdated(_currency, fees);
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        emit IProtocolFeeController.ProtocolFeeBracketsForCurrencyUpdated(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
-        IProtocolFeeController.FeeBracket[] memory stored = controller.getCurrencyFees(_currency);
+        IProtocolFeeController.FeeBracket[] memory stored = controller.getProtocolFeeBracketsForCurrency(_currency);
         assertEq(stored.length, 1);
         assertEq(stored[0].lowerThreshold, 0);
         assertEq(stored[0].protocolFeePips, _pips);
     }
 
-    function test_setProtocolFeePerCurrency_setsValidTwoTiers(
+    function test_setProtocolFeeBracketsForCurrency_setsValidTwoTiers(
         uint256 _threshold,
         uint24 _pips1,
         uint24 _pips2,
@@ -177,9 +180,9 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips1});
         fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold, protocolFeePips: _pips2});
 
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
-        IProtocolFeeController.FeeBracket[] memory stored = controller.getCurrencyFees(_currency);
+        IProtocolFeeController.FeeBracket[] memory stored = controller.getProtocolFeeBracketsForCurrency(_currency);
         assertEq(stored.length, 2);
         assertEq(stored[0].lowerThreshold, 0);
         assertEq(stored[0].protocolFeePips, _pips1);
@@ -187,7 +190,7 @@ contract ProtocolFeeControllerTest is Test {
         assertEq(stored[1].protocolFeePips, _pips2);
     }
 
-    function test_setProtocolFeePerCurrency_setsValidThreeTiers(
+    function test_setProtocolFeeBracketsForCurrency_setsValidThreeTiers(
         uint256 _threshold1,
         uint256 _threshold2,
         uint24 _pips1,
@@ -206,13 +209,15 @@ contract ProtocolFeeControllerTest is Test {
         fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold1, protocolFeePips: _pips2});
         fees[2] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold2, protocolFeePips: _pips3});
 
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
-        IProtocolFeeController.FeeBracket[] memory stored = controller.getCurrencyFees(_currency);
+        IProtocolFeeController.FeeBracket[] memory stored = controller.getProtocolFeeBracketsForCurrency(_currency);
         assertEq(stored.length, 3);
     }
 
-    function test_setProtocolFeePerCurrency_revertsWhenGlobalRecipientUnset(uint24 _pips, address _currency) public {
+    function test_setProtocolFeeBracketsForCurrency_revertsWhenGlobalRecipientUnset(uint24 _pips, address _currency)
+        public
+    {
         _pips = uint24(bound(_pips, 0, controller.PIPS_DENOMINATOR()));
 
         ProtocolFeeController fresh = new ProtocolFeeController(address(this));
@@ -221,25 +226,25 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
 
         vm.expectRevert(IProtocolFeeController.RecipientNotSet.selector);
-        fresh.setProtocolFeePerCurrency(_currency, fees);
+        fresh.setProtocolFeeBracketsForCurrency(_currency, fees);
     }
 
-    function test_setProtocolFeePerCurrency_deletesWhenEmptyFees(uint24 _pips, address _currency) public {
+    function test_setProtocolFeeBracketsForCurrency_deletesWhenEmptyFees(uint24 _pips, address _currency) public {
         _pips = uint24(bound(_pips, 1, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
-        controller.setProtocolFeePerCurrency(_currency, fees);
-        assertEq(controller.getCurrencyFees(_currency).length, 1);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
+        assertEq(controller.getProtocolFeeBracketsForCurrency(_currency).length, 1);
 
         IProtocolFeeController.FeeBracket[] memory empty = new IProtocolFeeController.FeeBracket[](0);
         vm.expectEmit(true, true, true, true);
-        emit IProtocolFeeController.ProtocolFeePerCurrencyUpdated(_currency, empty);
-        controller.setProtocolFeePerCurrency(_currency, empty);
-        assertEq(controller.getCurrencyFees(_currency).length, 0);
+        emit IProtocolFeeController.ProtocolFeeBracketsForCurrencyUpdated(_currency, empty);
+        controller.setProtocolFeeBracketsForCurrency(_currency, empty);
+        assertEq(controller.getProtocolFeeBracketsForCurrency(_currency).length, 0);
     }
 
-    function test_setProtocolFeePerCurrency_currencyConfigsAreIsolated(
+    function test_setProtocolFeeBracketsForCurrency_currencyConfigsAreIsolated(
         uint24 _pipsA,
         uint24 _pipsB,
         address _currencyA,
@@ -251,14 +256,14 @@ contract ProtocolFeeControllerTest is Test {
 
         IProtocolFeeController.FeeBracket[] memory feesA = new IProtocolFeeController.FeeBracket[](1);
         feesA[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pipsA});
-        controller.setProtocolFeePerCurrency(_currencyA, feesA);
+        controller.setProtocolFeeBracketsForCurrency(_currencyA, feesA);
 
         IProtocolFeeController.FeeBracket[] memory feesB = new IProtocolFeeController.FeeBracket[](1);
         feesB[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pipsB});
-        controller.setProtocolFeePerCurrency(_currencyB, feesB);
+        controller.setProtocolFeeBracketsForCurrency(_currencyB, feesB);
 
-        assertEq(controller.getCurrencyFees(_currencyA)[0].protocolFeePips, _pipsA);
-        assertEq(controller.getCurrencyFees(_currencyB)[0].protocolFeePips, _pipsB);
+        assertEq(controller.getProtocolFeeBracketsForCurrency(_currencyA)[0].protocolFeePips, _pipsA);
+        assertEq(controller.getProtocolFeeBracketsForCurrency(_currencyB)[0].protocolFeePips, _pipsB);
     }
 
     function test_getProtocolFeeAmount_zeroAmountReturnsZero(uint24 _pips, address _currency) public {
@@ -296,8 +301,8 @@ contract ProtocolFeeControllerTest is Test {
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _perCurrencyPips});
-        controller.setProtocolFeePerCurrency(_currency, fees);
-        controller.setProtocolFeePerCurrency(_currency, new IProtocolFeeController.FeeBracket[](0));
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, new IProtocolFeeController.FeeBracket[](0));
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, _amount * _globalPips / controller.PIPS_DENOMINATOR());
@@ -309,7 +314,7 @@ contract ProtocolFeeControllerTest is Test {
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, _amount * _pips / controller.PIPS_DENOMINATOR());
@@ -329,7 +334,7 @@ contract ProtocolFeeControllerTest is Test {
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _perCurrencyPips});
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, _amount * _perCurrencyPips / controller.PIPS_DENOMINATOR());
@@ -388,7 +393,7 @@ contract ProtocolFeeControllerTest is Test {
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](2);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips1});
         fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold, protocolFeePips: _pips2});
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, _refFeeTwoTier(_amount, _threshold, _pips1, _pips2));
@@ -414,7 +419,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips1});
         fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold1, protocolFeePips: _pips2});
         fees[2] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold2, protocolFeePips: _pips3});
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, _refFeeThreeTier(_amount, _threshold1, _threshold2, _pips1, _pips2, _pips3));
@@ -426,7 +431,7 @@ contract ProtocolFeeControllerTest is Test {
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertLe(feeAmount, _amount);
@@ -448,7 +453,7 @@ contract ProtocolFeeControllerTest is Test {
         // With per-currency config
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](1);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: 10_000});
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         controller.getProtocolFeeAmount(_currency, _amount); // exercise the path
         assertEq(controller.protocolFeeRecipient(), _recipient);
@@ -478,7 +483,7 @@ contract ProtocolFeeControllerTest is Test {
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
         fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: _threshold, protocolFeePips: 0});
 
-        controller.setProtocolFeePerCurrency(_currency, fees);
+        controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
         uint256 feeAtThreshold = _threshold * _pips / controller.PIPS_DENOMINATOR();
 
