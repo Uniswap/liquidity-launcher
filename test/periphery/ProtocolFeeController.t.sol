@@ -89,7 +89,7 @@ contract ProtocolFeeControllerTest is Test {
         uint256 length = controller.MAX_PROTOCOL_FEE_TIERS() + 1;
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](length);
         for (uint256 i; i < length; ++i) {
-            fees[i] = IProtocolFeeController.FeeBracket({lowerThreshold: i, protocolFeePips: 20_000});
+            fees[i] = IProtocolFeeController.FeeBracket({lowerThreshold: uint128(i), protocolFeePips: 20_000});
         }
 
         vm.expectRevert(abi.encodeWithSelector(IProtocolFeeController.InvalidFeeLength.selector, length));
@@ -112,18 +112,18 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     function test_setProtocolFeeBracketsForCurrency_revertsWhenFirstLowerThresholdIsNonZero(
-        uint256 _firstThreshold,
+        uint128 _firstThreshold,
         uint24 _pips1,
         uint24 _pips2,
         address _currency
     ) public {
-        _firstThreshold = bound(_firstThreshold, 1, type(uint256).max - 1);
+        _firstThreshold = uint128(bound(_firstThreshold, 1, type(uint128).max - 1));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](2);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: _firstThreshold, protocolFeePips: _pips1});
-        fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: type(uint256).max, protocolFeePips: _pips2});
+        fees[1] = IProtocolFeeController.FeeBracket({lowerThreshold: type(uint128).max, protocolFeePips: _pips2});
 
         vm.expectRevert(
             abi.encodeWithSelector(IProtocolFeeController.FirstThresholdMustBeZero.selector, _firstThreshold)
@@ -132,12 +132,12 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     function test_setProtocolFeeBracketsForCurrency_revertsWhenThresholdsNotAscending(
-        uint256 _threshold1,
-        uint256 _threshold2,
+        uint128 _threshold1,
+        uint128 _threshold2,
         address _currency
     ) public {
-        _threshold1 = bound(_threshold1, 1, type(uint256).max);
-        _threshold2 = bound(_threshold2, 0, _threshold1); // <= threshold1
+        _threshold1 = uint128(bound(_threshold1, 1, type(uint128).max));
+        _threshold2 = uint128(bound(_threshold2, 0, _threshold1)); // <= threshold1
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](3);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: 20_000});
@@ -167,12 +167,12 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     function test_setProtocolFeeBracketsForCurrency_setsValidTwoTiers(
-        uint256 _threshold,
+        uint128 _threshold,
         uint24 _pips1,
         uint24 _pips2,
         address _currency
     ) public {
-        _threshold = bound(_threshold, 1, type(uint256).max);
+        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
 
@@ -191,15 +191,15 @@ contract ProtocolFeeControllerTest is Test {
     }
 
     function test_setProtocolFeeBracketsForCurrency_setsValidThreeTiers(
-        uint256 _threshold1,
-        uint256 _threshold2,
+        uint128 _threshold1,
+        uint128 _threshold2,
         uint24 _pips1,
         uint24 _pips2,
         uint24 _pips3,
         address _currency
     ) public {
-        _threshold1 = bound(_threshold1, 1, type(uint256).max - 1);
-        _threshold2 = bound(_threshold2, _threshold1 + 1, type(uint256).max);
+        _threshold1 = uint128(bound(_threshold1, 1, type(uint128).max - 1));
+        _threshold2 = uint128(bound(_threshold2, uint256(_threshold1) + 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
         _pips3 = uint24(bound(_pips3, 0, controller.PIPS_DENOMINATOR()));
@@ -380,13 +380,13 @@ contract ProtocolFeeControllerTest is Test {
 
     function test_getProtocolFeeAmount_twoTiers_matchesReference(
         uint256 _amount,
-        uint256 _threshold,
+        uint128 _threshold,
         uint24 _pips1,
         uint24 _pips2,
         address _currency
     ) public {
         _amount = bound(_amount, 1, type(uint256).max);
-        _threshold = bound(_threshold, 1, type(uint256).max);
+        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
 
@@ -401,16 +401,16 @@ contract ProtocolFeeControllerTest is Test {
 
     function test_getProtocolFeeAmount_threeTiers_matchesReference(
         uint256 _amount,
-        uint256 _threshold1,
-        uint256 _threshold2,
+        uint128 _threshold1,
+        uint128 _threshold2,
         uint24 _pips1,
         uint24 _pips2,
         uint24 _pips3,
         address _currency
     ) public {
         _amount = bound(_amount, 1, type(uint256).max);
-        _threshold1 = bound(_threshold1, 1, type(uint256).max - 1);
-        _threshold2 = bound(_threshold2, _threshold1 + 1, type(uint256).max);
+        _threshold1 = uint128(bound(_threshold1, 1, type(uint128).max - 1));
+        _threshold2 = uint128(bound(_threshold2, uint256(_threshold1) + 1, type(uint128).max));
         _pips1 = uint24(bound(_pips1, 0, controller.PIPS_DENOMINATOR()));
         _pips2 = uint24(bound(_pips2, 0, controller.PIPS_DENOMINATOR()));
         _pips3 = uint24(bound(_pips3, 0, controller.PIPS_DENOMINATOR()));
@@ -470,14 +470,13 @@ contract ProtocolFeeControllerTest is Test {
 
     function test_getProtocolFeeAmount_zeroPipsLastTier_capsTheFee(
         uint256 _amount,
-        uint256 _threshold,
+        uint128 _threshold,
         uint24 _pips,
         address _currency
     ) public {
-        // Keep threshold * pips within uint256 so feeAtThreshold doesn't overflow the local mul
-        _threshold = bound(_threshold, 1, type(uint256).max / controller.PIPS_DENOMINATOR());
+        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
         _pips = uint24(bound(_pips, 1, controller.PIPS_DENOMINATOR()));
-        _amount = bound(_amount, _threshold + 1, type(uint256).max);
+        _amount = bound(_amount, uint256(_threshold) + 1, type(uint256).max);
 
         IProtocolFeeController.FeeBracket[] memory fees = new IProtocolFeeController.FeeBracket[](2);
         fees[0] = IProtocolFeeController.FeeBracket({lowerThreshold: 0, protocolFeePips: _pips});
@@ -485,7 +484,7 @@ contract ProtocolFeeControllerTest is Test {
 
         controller.setProtocolFeeBracketsForCurrency(_currency, fees);
 
-        uint256 feeAtThreshold = _threshold * _pips / controller.PIPS_DENOMINATOR();
+        uint256 feeAtThreshold = uint256(_threshold) * _pips / controller.PIPS_DENOMINATOR();
 
         uint256 feeAmount = controller.getProtocolFeeAmount(_currency, _amount);
         assertEq(feeAmount, feeAtThreshold);

@@ -60,7 +60,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
         if (protocolFeeRecipient == address(0)) revert RecipientNotSet();
         if (fees.length > MAX_PROTOCOL_FEE_TIERS) revert InvalidFeeLength(fees.length);
 
-        uint256 prevLowerThreshold;
+        uint128 prevLowerThreshold;
         for (uint256 i; i < fees.length; ++i) {
             if (fees[i].protocolFeePips > PIPS_DENOMINATOR) {
                 revert InvalidFeePips(fees[i].protocolFeePips, PIPS_DENOMINATOR);

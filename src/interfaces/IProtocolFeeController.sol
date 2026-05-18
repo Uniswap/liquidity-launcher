@@ -13,7 +13,7 @@ interface IProtocolFeeController {
     ///         Each tier's rate applies to the portion of the amount in [lowerThreshold, nextLowerThreshold).
     ///         The last tier's rate applies to all remaining amount above its lowerThreshold.
     struct FeeBracket {
-        uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0)
+        uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first tier must be 0). cumulative amounts above type(uint128).max are taxed at the last bracket's rate.
         uint24 protocolFeePips; // The fee rate in pips applied to the portion of the amount within this bracket
     }
 
@@ -44,12 +44,12 @@ interface IProtocolFeeController {
 
     /// @notice Thrown when the first tier's lowerThreshold is not zero
     /// @param lowerThreshold The provided first-tier lowerThreshold
-    error FirstThresholdMustBeZero(uint256 lowerThreshold);
+    error FirstThresholdMustBeZero(uint128 lowerThreshold);
 
     /// @notice Thrown when a tier's lowerThreshold is not strictly greater than the previous tier's
     /// @param lowerThreshold The provided lowerThreshold
     /// @param prevLowerThreshold The previous tier's lowerThreshold
-    error ThresholdsNotAscending(uint256 lowerThreshold, uint256 prevLowerThreshold);
+    error ThresholdsNotAscending(uint128 lowerThreshold, uint128 prevLowerThreshold);
 
     /// @notice Sets the recipient of all protocol fees (global and per-currency).
     /// @dev Recipient must be able to receive native ETH and ERC20 transfers. A recipient that
