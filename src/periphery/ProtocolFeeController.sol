@@ -22,10 +22,10 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     ///         Per-currency schedules override this rate but still pay to protocolFeeRecipient.
     uint24 public globalProtocolFeePips;
 
-    /// @notice Per-currency progressive fee schedule. Tiers in `FeeBracket[]` are stored in the order
+    /// @notice Per-currency progressive fee schedule. Tiers in `ProtocolFeeBracket[]` are stored in the order
     ///         supplied to `setProtocolFeeBracketsForCurrency`. An empty array means no per-currency override is set
     ///         and `globalProtocolFeePips` is used for this currency instead.
-    mapping(address currency => FeeBracket[]) internal _protocolFeeBrackets;
+    mapping(address currency => ProtocolFeeBracket[]) internal _protocolFeeBrackets;
 
     constructor(address _owner) {
         _initializeOwner(_owner);
@@ -47,8 +47,11 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
-    /// @dev Passing an empty FeeBracket[] deletes the per-currency schedule, reverting this currency to the global pips
-    function setProtocolFeeBracketsForCurrency(address currency, FeeBracket[] calldata fees) external onlyOwner {
+    /// @dev Passing an empty ProtocolFeeBracket[] deletes the per-currency schedule, reverting this currency to the global pips
+    function setProtocolFeeBracketsForCurrency(address currency, ProtocolFeeBracket[] calldata fees)
+        external
+        onlyOwner
+    {
         delete _protocolFeeBrackets[currency];
 
         if (fees.length == 0) {
@@ -83,13 +86,13 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
     }
 
     /// @inheritdoc IProtocolFeeController
-    function getProtocolFeeBracketsForCurrency(address currency) external view returns (FeeBracket[] memory) {
+    function getProtocolFeeBracketsForCurrency(address currency) external view returns (ProtocolFeeBracket[] memory) {
         return _protocolFeeBrackets[currency];
     }
 
     /// @inheritdoc IProtocolFeeController
     function getProtocolFeeAmount(address currency, uint256 amount) external view returns (uint256 protocolFeeAmount) {
-        FeeBracket[] storage fees = _protocolFeeBrackets[currency];
+        ProtocolFeeBracket[] storage fees = _protocolFeeBrackets[currency];
         uint256 len = fees.length;
 
         if (len == 0) {
