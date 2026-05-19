@@ -165,8 +165,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) =
             _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
         vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), auctionSupply);
+        auctionSupply;
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 

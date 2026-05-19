@@ -4,6 +4,8 @@ pragma solidity 0.8.26;
 import {Ownable} from "solady/auth/Ownable.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -38,6 +40,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using MigratorParams for MigratorParameters;
+    using SafeERC20 for IERC20;
 
     /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
@@ -51,6 +54,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
+
+    /// @notice Sum of supplyForLP across all registered-but-not-yet-migrated initializers, per token
+    /// @dev Invariant: `IERC20(token).balanceOf(this) >= committedReserves[token]` at every rest point.
+    ///      Incremented when an initializer is registered in {initializeDistribution} and decremented in
+    ///      {migrate} when the LP slice is consumed.
+    mapping(address token => uint256) public committedReserves;
 
     constructor(
         IPositionManager _positionManager,
@@ -67,19 +76,18 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     }
 
     /// @inheritdoc IDistributionStrategy
-    /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
-    /// are validated before storage. Callers cannot overwrite existing initializer registrations.
-    /// The initializer factory MUST include the supplied salt in deterministic address calculations; this strategy
-    /// derives that salt from the caller-provided salt and MigratorParameters to bind the initializer address to both.
+    /// @dev Validates the params, deploys the initializer (CCA) via the factory, registers the migration
+    ///      parameters, and pulls `totalSupply` tokens from the caller — `auctionSupply` directly into the
+    ///      CCA and `supplyForLP` into this strategy. The caller (typically the launcher) must have
+    ///      approved this strategy for at least `totalSupply` of `token` before calling. Returns the CCA
+    ///      as the distribution contract.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         returns (IDistributionContract)
     {
-        // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
-        // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
         if (
             migrationParams.hook != address(0)
                 && (!ERC165Checker.supportsInterface(migrationParams.hook, type(IInitializerHook).interfaceId)
@@ -87,36 +95,30 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         ) {
             revert InvalidHook(migrationParams.hook);
         }
-
-        // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
 
-        // Deploy the initializer contract via factory.
-        // Only the auction supply (totalSupply - supplyForLP) is passed as the amount
-        // The supplyForLP amount remains held by this strategy and is tracked for each initializer at migration time.
+        // Deploy the initializer (CCA) sized for auctionSupply (= totalSupply - supplyForLP).
         uint256 auctionSupply = totalSupply - migrationParams.supplyForLP;
-        bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
         ILBPInitializer initializer = ILBPInitializer(
             address(
-                IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, auctionSupply, initializerParams, initializerSalt)
+                IDistributionStrategy(initializerFactory).initializeDistribution(
+                    token, auctionSupply, initializerParams, keccak256(abi.encode(salt, migrationParams))
+                )
             )
         );
 
-        // Check if the initializer was already registered to ensure parameters are not overwritten.
-        // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
-        if (_initializers[initializer].migrationBlock != 0) {
-            revert InitializerAlreadyCreated(initializer);
-        }
-
-        // Validate the initializer parameters are set as expected
+        if (_initializers[initializer].migrationBlock != 0) revert InitializerAlreadyCreated(initializer);
         _validateInitializerParams(initializer, migrationParams);
 
-        // Store the parameters
         _initializers[initializer] = migrationParams;
 
-        emit InitializerCreated(initializer, migrationParams);
+        // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
+        IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.supplyForLP);
+        committedReserves[token] += migrationParams.supplyForLP;
+        initializer.onTokensReceived();
 
+        emit InitializerCreated(initializer, migrationParams);
         return IDistributionContract(address(initializer));
     }
 
@@ -134,6 +136,9 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
 
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
+
+        // Release this initializer's supplyForLP from the per-token aggregate reservation upfront.
+        committedReserves[Currency.unwrap(token)] -= migrationParams.supplyForLP;
 
         uint256 currencyBefore = currency.balanceOfSelf();
         initializer.sweepCurrency();

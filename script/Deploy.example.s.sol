@@ -28,12 +28,10 @@ contract DeployExample is Script {
         Distribution memory distribution =
             Distribution({strategy: lbpStrategy, amount: totalSupply, configData: configData});
 
-        // Requires the caller of the script to have approved the liquidity launcher
-        bool payerIsUser = true;
-
+        // The launcher must already hold `totalSupply` of `token` before this call.
         // Begin the distribution — LBPStrategy deploys a CCA initializer and returns its address
         IDistributionContract distributionContract =
-            ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, payerIsUser, salt);
+            ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, salt);
 
         // Sanity check: verify the deployed initializer references the correct token
         vm.assertEq(ILBPInitializer(address(distributionContract)).token(), token, "Token mismatch");

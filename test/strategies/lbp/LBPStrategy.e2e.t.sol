@@ -74,7 +74,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             lpAllocationSchedule: new bytes(0)
         });
         uint128 totalSupply = mp.supplyForLP + 10 ether;
-        uint128 auctionSupply = totalSupply - mp.supplyForLP;
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
@@ -83,8 +82,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             _initializeWith(mp, totalSupply, uint64(block.number), bp, address(0), lbpParams);
 
         vm.deal(address(initializer), 100 ether);
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
 
         uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
@@ -154,8 +151,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         // Fund the initializer with ERC20 currency (not native ETH); strategy holds supplyForLP custody.
         deal(address(currencyToken), address(initializer), p.currencyRaised);
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
@@ -204,8 +199,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) =
             _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
         vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
@@ -234,8 +227,6 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) =
             _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
         vm.deal(address(initializer), p.currencyRaised);
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), auctionSupply);
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 

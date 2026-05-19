@@ -3,8 +3,6 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
-import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
@@ -16,14 +14,12 @@ import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
 
-contract LiquidityLauncherTest is Test, DeployPermit2 {
+contract LiquidityLauncherTest is Test {
     LiquidityLauncher public liquidityLauncher;
-    IAllowanceTransfer permit2;
     UERC20Factory public uerc20Factory;
 
     function setUp() public {
-        permit2 = IAllowanceTransfer(deployPermit2());
-        liquidityLauncher = new LiquidityLauncher(permit2);
+        liquidityLauncher = new LiquidityLauncher();
         uerc20Factory = new UERC20Factory();
     }
 
@@ -31,16 +27,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         internal
         returns (address tokenAddress)
     {
-        // Create the mock token
         MockERC20 token = new MockERC20(name, symbol, initialSupply, recipient);
         tokenAddress = address(token);
-
-        // Set up liquidityLauncher approval only when test contract is the creator
-        if (recipient == address(this)) {
-            // Set up permit2 approval
-            token.approve(address(permit2), type(uint256).max);
-            permit2.approve(tokenAddress, address(liquidityLauncher), type(uint160).max, 0);
-        }
     }
 
     function test_createToken_succeeds() public {
@@ -113,9 +101,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
 
         // Distribute the token
-        // payer is the liquidity launcher
         IDistributionContract distributionContract =
-            liquidityLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
+            liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
 
         // Verify the distribution was successful
         assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), initialSupply);
@@ -137,7 +124,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
         // Distribute the token
         IDistributionContract distributionContract =
-            liquidityLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
+            liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
 
         // verify the distribution contract is the same as the strategy
         assertEq(address(distributionContract), address(distributionStrategyAndContract));
@@ -147,37 +134,6 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
         // verify the liquidity launcher has no balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
-    }
-
-    function test_payerIsUser_succeeds() public {
-        uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(this), initialSupply, "Test Token", "TEST");
-
-        // Create a distribution strategy and contract
-        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
-
-        // Create a distribution
-        Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
-
-        // approve the liquidity launcher to spend the token
-        IERC20(tokenAddress).approve(address(liquidityLauncher), initialSupply);
-
-        // Distribute the token
-        IDistributionContract distributionContract =
-            liquidityLauncher.distributeToken(tokenAddress, distribution, true, bytes32(0));
-
-        // verify the distribution contract is the same as the strategy
-        assertEq(address(distributionContract), address(distributionStrategyAndContract));
-
-        // Verify the distribution was successful
-        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), initialSupply);
-
-        // verify the liquidity launcher has no balance of the token
-        assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
-
-        // verify the user does not have any balance of the token
-        assertEq(IERC20(tokenAddress).balanceOf(address(this)), 0);
     }
 
     function test_getGraffiti_succeeds() public view {
@@ -216,7 +172,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
 
         // Distribute the token
-        liquidityLauncher.distributeToken(tokenAddress, distribution, false, bytes32(0));
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
         vm.snapshotGasLastCall("distributeToken");
     }
 }

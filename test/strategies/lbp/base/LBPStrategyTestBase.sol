@@ -115,9 +115,9 @@ abstract contract LBPStrategyTestBase is Test {
         if (p.currencyRaised > 0) {
             vm.deal(address(initializer), p.currencyRaised);
         }
-        // Mirror the singleton split: strategy holds custody (supplyForLP), initializer holds auctionSupply (unsold).
-        token.transfer(address(strategy), mp.supplyForLP);
-        token.transfer(address(initializer), auctionSupply);
+        // `_initializeWith` already pulled both slices: supplyForLP into the strategy and auctionSupply
+        // into the initializer. Nothing else to fund. The `auctionSupply` local is unused here.
+        auctionSupply;
         vm.roll(mp.migrationBlock);
     }
 
@@ -152,6 +152,9 @@ abstract contract LBPStrategyTestBase is Test {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData =
             _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, currency, lbpParams));
+        // Mirror the production launcher flow: approve the strategy, then call initializeDistribution.
+        // The strategy pulls auctionSupply into the CCA and supplyForLP into itself.
+        token.approve(address(strategy), totalSupply);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }

@@ -219,6 +219,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bytes memory initializerParams = _encodeMockInitializerParams(
             endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
         );
+        token.approve(address(strategy), totalSupply);
         // Should not revert — rate is exactly MAX_BRACKET_RATE
         strategy.initializeDistribution(
             address(token), totalSupply, _encodeConfigData(mp, bp, initializerParams), bytes32(0)

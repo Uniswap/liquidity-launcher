@@ -43,13 +43,15 @@ interface ILiquidityLauncher {
         bytes calldata tokenData
     ) external returns (address tokenAddress);
 
-    /// @notice Transfer tokens already created to this contract and distribute them via one or more strategies
+    /// @notice Distribute tokens already held by this contract via one or more strategies
+    /// @dev The launcher must already hold `distribution.amount` of `tokenAddress`. The launcher
+    ///      approves the strategy for that amount; the strategy is expected to pull the full amount
+    ///      via `safeTransferFrom` inside its `initializeDistribution` call.
     /// @param tokenAddress The address of the token to distribute
     /// @param distribution Distribution instructions
-    /// @param payerIsUser Whether the payer is the user
     /// @param salt The salt to pass into the distribution strategy contract if needed
     /// @return distributionContract The address of the distribution contract
-    function distributeToken(address tokenAddress, Distribution memory distribution, bool payerIsUser, bytes32 salt)
+    function distributeToken(address tokenAddress, Distribution memory distribution, bytes32 salt)
         external
         returns (IDistributionContract distributionContract);
 

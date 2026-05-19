@@ -50,6 +50,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         bytes memory initializerParams = _encodeMockInitializerParams(
             endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
         );
+        token.approve(address(strategy), totalSupply);
 
         vm.expectEmit(false, false, false, false);
         emit ILBPStrategy.InitializerCreated(ILBPInitializer(address(0)), mp);
@@ -72,6 +73,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         (MigratorParameters memory decodedMigrationParams,) = abi.decode(configData, (MigratorParameters, bytes));
         bytes32 expectedInitializerSalt = keccak256(abi.encode(salt, decodedMigrationParams));
         uint256 auctionSupply = totalSupply - mp.supplyForLP;
+        token.approve(address(strategy), totalSupply);
 
         vm.expectCall(
             address(factory),
