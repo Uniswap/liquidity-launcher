@@ -28,7 +28,7 @@ struct MigratorParameters {
 /// rate applies from its lowerThreshold up to the next bracket's lowerThreshold (or infinity for the
 /// last bracket).
 struct LiquidityAllocationBracket {
-    uint256 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first bracket must be 0)
+    uint128 lowerThreshold; // lower bound of this bracket in cumulative currency amount (first bracket must be 0). cumulative amounts above type(uint128).max are allocated at the last bracket's rate.
     uint24 rate; // % of currency allocated to LP within this bracket, in mps (1e7 = 100%)
 }
 
@@ -51,7 +51,7 @@ library MigratorParams {
 
     /// @notice Error thrown when a bracket lowerThreshold is not strictly ascending vs the previous bracket
     /// @param lowerThreshold The invalid bracket lowerThreshold
-    error InvalidBracketThreshold(uint256 lowerThreshold);
+    error InvalidBracketThreshold(uint128 lowerThreshold);
 
     /// @notice Validates the full migrator parameters struct: scalar fields, supplyForLP cap,
     /// position plan definitions, and the embedded LP allocation schedule. Reverts on any invalidity.
@@ -95,9 +95,9 @@ library MigratorParams {
         uint256 count = brackets.length;
         if (count == 0 || count > MAX_BRACKETS) revert InvalidBracketCount(count);
 
-        uint256 prevLower;
+        uint128 prevLower;
         for (uint256 i = 0; i < count; i++) {
-            uint256 lowerThreshold = brackets[i].lowerThreshold;
+            uint128 lowerThreshold = brackets[i].lowerThreshold;
             uint24 rate = brackets[i].rate;
             if (rate > MAX_BRACKET_RATE) revert InvalidBracketRate(rate);
             if (i == 0 && lowerThreshold != 0) revert InvalidBracketThreshold(lowerThreshold);
