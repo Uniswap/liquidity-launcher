@@ -323,10 +323,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
         }
-        // Ensure the CCA's custody tokens match the supplyForLP
-        if (initializer.custodyTokensAmount() != migrationParams.supplyForLP) {
-            revert InvalidCustodySupply(initializer.custodyTokensAmount(), migrationParams.supplyForLP);
-        }
     }
 
     /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve

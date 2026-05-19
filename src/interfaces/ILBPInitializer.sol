@@ -36,8 +36,6 @@ interface ILBPInitializer is IDistributionContract, IERC165 {
     function currency() external view returns (address);
     /// @notice Returns the total supply of the token used by the initializer
     function totalSupply() external view returns (uint128);
-    /// @notice Returns the token amount in custody of the initializer
-    function custodyTokensAmount() external view returns (uint128);
     /// @notice Returns the address which will receive the unsold tokens
     function tokensRecipient() external view returns (address);
     /// @notice Returns the address which will receive the raised currency
