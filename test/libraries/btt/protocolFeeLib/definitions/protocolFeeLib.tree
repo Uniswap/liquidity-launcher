@@ -1,0 +1,13 @@
+ProtocolFeeLibTest
+├── getProtocolFeeAmount
+│   ├── when protocol fee controller is unset
+│   │   └── it returns zero
+│   └── when protocol fee controller is set
+│       └── it returns the controller fee amount
+└── transferProtocolFee
+    ├── when currency is native
+    │   ├── it transfers native currency to the protocol fee recipient
+    │   └── it emits {ProtocolFeeTransferred}
+    └── when currency is ERC20
+        ├── it transfers tokens to the protocol fee recipient
+        └── it emits {ProtocolFeeTransferred}
