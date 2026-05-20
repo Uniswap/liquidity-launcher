@@ -37,8 +37,9 @@ library ProtocolFeeLib {
         address currency,
         uint256 protocolFeeAmount
     ) internal {
-        Currency wrappedCurrency = Currency.wrap(currency);
-        CurrencyLibrary.transfer(wrappedCurrency, protocolFeeController.protocolFeeRecipient(), protocolFeeAmount);
+        CurrencyLibrary.transfer(
+            Currency.wrap(currency), protocolFeeController.protocolFeeRecipient(), protocolFeeAmount
+        );
         emit ProtocolFeeTransferred(currency, protocolFeeAmount);
     }
 }
