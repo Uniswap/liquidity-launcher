@@ -8,7 +8,7 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 contract ProtocolFeeLibHarness {
-    function getProtocolFeeAmount(IProtocolFeeController controller, Currency currency, uint256 amount)
+    function getProtocolFeeAmount(IProtocolFeeController controller, address currency, uint256 amount)
         external
         view
         returns (uint256)
@@ -16,7 +16,7 @@ contract ProtocolFeeLibHarness {
         return ProtocolFeeLib.getProtocolFeeAmount(controller, currency, amount);
     }
 
-    function transferProtocolFee(IProtocolFeeController controller, Currency currency, uint256 protocolFeeAmount)
+    function transferProtocolFee(IProtocolFeeController controller, address currency, uint256 protocolFeeAmount)
         external
     {
         ProtocolFeeLib.transferProtocolFee(controller, currency, protocolFeeAmount);
@@ -92,8 +92,7 @@ contract ProtocolFeeLibTest is Test {
         view
     {
         // it returns zero
-        uint256 feeAmount =
-            harness.getProtocolFeeAmount(IProtocolFeeController(address(0)), Currency.wrap(_currency), _amount);
+        uint256 feeAmount = harness.getProtocolFeeAmount(IProtocolFeeController(address(0)), _currency, _amount);
 
         assertEq(feeAmount, 0);
     }
@@ -106,7 +105,7 @@ contract ProtocolFeeLibTest is Test {
         // it returns the controller fee amount
         controller.setExpectedFee(_currency, _amount, _feeAmount);
 
-        uint256 feeAmount = harness.getProtocolFeeAmount(controller, Currency.wrap(_currency), _amount);
+        uint256 feeAmount = harness.getProtocolFeeAmount(controller, _currency, _amount);
 
         assertEq(feeAmount, _feeAmount);
     }
@@ -123,7 +122,7 @@ contract ProtocolFeeLibTest is Test {
 
         vm.expectEmit(true, true, true, true, address(harness));
         emit ProtocolFeeTransferred(currency, _protocolFeeAmount);
-        harness.transferProtocolFee(controller, currency, _protocolFeeAmount);
+        harness.transferProtocolFee(controller, Currency.unwrap(currency), _protocolFeeAmount);
 
         assertEq(recipient.balance - recipientBalanceBefore, _protocolFeeAmount);
         assertEq(address(harness).balance, 0);
@@ -142,7 +141,7 @@ contract ProtocolFeeLibTest is Test {
 
         vm.expectEmit(true, true, true, true, address(harness));
         emit ProtocolFeeTransferred(currency, _protocolFeeAmount);
-        harness.transferProtocolFee(controller, currency, _protocolFeeAmount);
+        harness.transferProtocolFee(controller, Currency.unwrap(currency), _protocolFeeAmount);
 
         assertEq(token.balanceOf(recipient) - recipientBalanceBefore, _protocolFeeAmount);
         assertEq(token.balanceOf(address(harness)), 0);
