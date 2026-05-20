@@ -8,8 +8,8 @@ ValidateMigrationTest
     │   └── it reverts with {CurrencyRaisedMismatch}
     └── when currencySwept == currencyRaised
         ├── it calls sweepCurrency on initializer
-        ├── it sweeps leftover currency to fundsRecipient
-        ├── it sweeps leftover tokens to fundsRecipient
+        ├── it sweeps leftover currency to leftoverRecipient
+        ├── it sweeps leftover tokens to leftoverRecipient
         ├── it emits {CurrencySwept}
         ├── it emits {TokensSwept}
         └── it emits {Migrated}

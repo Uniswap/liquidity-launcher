@@ -33,7 +33,7 @@ abstract contract LBPStrategyTestBase is Test {
     MockInitializerFactory factory;
 
     address owner;
-    address fundsRecipient = makeAddr("fundsRecipient");
+    address leftoverRecipient = makeAddr("leftoverRecipient");
     address tokensRecipient = makeAddr("tokensRecipient");
     address lpPositionRecipient = makeAddr("lpPositionRecipient");
 
@@ -193,7 +193,7 @@ abstract contract LBPStrategyTestBase is Test {
             poolLPFee: p.poolLPFee,
             poolTickSpacing: p.poolTickSpacing,
             supplyForLP: p.supplyForLP,
-            fundsRecipient: fundsRecipient,
+            leftoverRecipient: leftoverRecipient,
             lpPositionRecipient: lpPositionRecipient,
             hook: address(0),
             positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),

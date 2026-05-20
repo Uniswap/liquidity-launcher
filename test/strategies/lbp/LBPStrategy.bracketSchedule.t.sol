@@ -12,22 +12,22 @@ import {MigratorParams, LiquidityAllocationBracket} from "src/libraries/Migrator
 contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
     function test_zeroRateBracket_consumesNoCurrency(MigrationFuzzParams memory p) public {
         // Single bracket at 0% rate — bracket calc yields 0 LP currency, so the pool should
-        // receive nothing and all raised currency should reach fundsRecipient.
+        // receive nothing and all raised currency should reach leftoverRecipient.
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
 
         p.currencyRaised = bound(p.currencyRaised, 1, uint256(uint128(type(int128).max)));
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, p.currencyRaised);
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // Pool receives no currency — bracket calc was 0
         assertEq(address(POOL_MANAGER).balance, poolBefore);
-        // All raised currency reaches fundsRecipient
-        assertEq(fundsRecipient.balance - fundsBefore, p.currencyRaised);
+        // All raised currency reaches leftoverRecipient
+        assertEq(leftoverRecipient.balance - fundsBefore, p.currencyRaised);
         assertEq(address(strategy).balance, 0);
     }
 
@@ -40,11 +40,11 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
 
         uint256 expectedLpBudget = _expectedLpCurrencyAmount(currencyRaised, brackets);
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
         uint256 poolDelta = address(POOL_MANAGER).balance - poolBefore;
-        uint256 fundsDelta = fundsRecipient.balance - fundsBefore;
+        uint256 fundsDelta = leftoverRecipient.balance - fundsBefore;
 
         // Pool consumption is capped by the bracket-determined LP budget
         assertLe(poolDelta, expectedLpBudget);
@@ -62,13 +62,13 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, p.currencyRaised);
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         uint256 poolDelta = address(POOL_MANAGER).balance - poolBefore;
-        uint256 fundsDelta = fundsRecipient.balance - fundsBefore;
+        uint256 fundsDelta = leftoverRecipient.balance - fundsBefore;
 
         // Pool consumes at most the full raised amount (100% bracket budget)
         assertLe(poolDelta, p.currencyRaised);
@@ -89,13 +89,13 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
         uint256 expectedLpBudget = _expectedLpCurrencyAmount(currencyRaised, bp);
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
-        uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
+        uint256 currencyToFundsRecipient = leftoverRecipient.balance - fundsBefore;
 
         assertLe(currencyToPool, expectedLpBudget);
         assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
@@ -118,13 +118,13 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
         uint256 expectedLpBudget = _expectedLpCurrencyAmount(currencyRaised, bp);
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
-        uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
+        uint256 currencyToFundsRecipient = leftoverRecipient.balance - fundsBefore;
 
         assertLe(currencyToPool, expectedLpBudget);
         assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
@@ -154,13 +154,13 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
 
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
-        uint256 currencyToFundsRecipient = fundsRecipient.balance - fundsBefore;
+        uint256 currencyToFundsRecipient = leftoverRecipient.balance - fundsBefore;
 
         // The entire bracket-0 chunk (uint128.max) is guaranteed swept since rate0 == 0.
         assertGe(currencyToFundsRecipient, uint256(type(uint128).max));

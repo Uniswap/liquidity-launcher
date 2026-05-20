@@ -24,9 +24,9 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        // Check indexed param (fundsRecipient); amount varies by fuzz inputs so left unchecked.
+        // Check indexed param (leftoverRecipient); amount varies by fuzz inputs so left unchecked.
         vm.expectEmit(true, false, false, false, address(strategy));
-        emit ILBPStrategy.CurrencySwept(fundsRecipient, 0);
+        emit ILBPStrategy.CurrencySwept(leftoverRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
@@ -64,7 +64,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         vm.expectEmit(true, false, false, false, address(strategy));
-        emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
+        emit ILBPStrategy.TokensSwept(leftoverRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
@@ -95,18 +95,18 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigrationWithSchedule(p, bp, hugeRaise);
 
-        uint256 recipientBalBefore = fundsRecipient.balance;
+        uint256 recipientBalBefore = leftoverRecipient.balance;
         uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
 
         // Migrate — should not revert; currency amount gets capped at int128.max for the planner
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        uint256 toRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 toRecipient = leftoverRecipient.balance - recipientBalBefore;
         uint256 toPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
 
         // No protocol fee is configured, so all raised currency is either deposited into the pool or swept
         assertEq(toRecipient + toPool, hugeRaise);
-        // The pool can never consume more than the int128.max cap (excess is swept to fundsRecipient)
+        // The pool can never consume more than the int128.max cap (excess is swept to leftoverRecipient)
         assertLe(toPool, uint128(type(int128).max));
 
         // Strategy should be empty
@@ -144,8 +144,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         vm.deal(address(initializer), maxV4Delta);
         vm.roll(mp.migrationBlock);
 
-        uint256 recipientBalBefore = fundsRecipient.balance;
-        uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
+        uint256 recipientBalBefore = leftoverRecipient.balance;
+        uint256 recipientTokenBalBefore = token.balanceOf(leftoverRecipient);
         uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
         uint256 poolManagerTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
 
@@ -153,12 +153,12 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         // No protocol fee is configured, so all raised currency is either deposited into the pool or swept
         assertEq(
-            (fundsRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
+            (leftoverRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
             maxV4Delta
         );
         // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the CCA.
         assertEq(
-            (token.balanceOf(fundsRecipient) - recipientTokenBalBefore)
+            (token.balanceOf(leftoverRecipient) - recipientTokenBalBefore)
                 + (token.balanceOf(address(POOL_MANAGER)) - poolManagerTokenBalBefore),
             mp.supplyForLP
         );

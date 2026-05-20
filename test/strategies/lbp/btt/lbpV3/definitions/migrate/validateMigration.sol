@@ -29,8 +29,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 ///     │   └── it reverts with CurrencyRaisedMismatch
 ///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
-///         ├── it sweeps leftover currency to fundsRecipient
-///         ├── it sweeps leftover tokens to fundsRecipient
+///         ├── it sweeps leftover currency to leftoverRecipient
+///         ├── it sweeps leftover tokens to leftoverRecipient
 ///         ├── it emits CurrencySwept
 ///         ├── it emits TokensSwept
 ///         └── it emits Migrated
@@ -119,12 +119,12 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         uint256 raised = initializer.lbpInitializationParams().currencyRaised;
 
-        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 fundsBefore = leftoverRecipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Every wei raised reaches fundsRecipient or the pool manager — proves the sweep
-        assertEq((fundsRecipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
+        // Every wei raised reaches leftoverRecipient or the pool manager — proves the sweep
+        assertEq((leftoverRecipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
         assertEq(address(strategy).balance, 0);
     }
 
@@ -136,15 +136,15 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint256 supplyForLP = strategy.initializers(ILBPInitializer(address(initializer))).supplyForLP;
         uint256 unsoldInCca = token.balanceOf(address(initializer));
 
-        uint256 fundsBefore = token.balanceOf(fundsRecipient);
+        uint256 fundsBefore = token.balanceOf(leftoverRecipient);
         uint256 poolBefore = token.balanceOf(address(POOL_MANAGER));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // The LP slice (supplyForLP) is the only token slice the strategy handles; it lands in
-        // fundsRecipient or the pool manager. Unsold auction tokens stay in the CCA for the
+        // leftoverRecipient or the pool manager. Unsold auction tokens stay in the CCA for the
         // tokensRecipient to claim separately.
         assertEq(
-            (token.balanceOf(fundsRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
+            (token.balanceOf(leftoverRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
             supplyForLP
         );
         assertEq(token.balanceOf(address(strategy)), 0);

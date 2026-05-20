@@ -37,7 +37,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// - it stores the MigratorParameters
     /// - it migrates successfully after migrationBlock
     /// - it leaves no funds in the strategy
-    /// - it sends leftover currency and tokens to fundsRecipient
+    /// - it sends leftover currency and tokens to leftoverRecipient
     function test_fuzz_initAndMigrate_happyPath(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
         uint256 raised = initializer.lbpInitializationParams().currencyRaised;
@@ -46,8 +46,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertGt(storedParams.migrationBlock, 0);
 
-        uint256 recipientBalBefore = fundsRecipient.balance;
-        uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
+        uint256 recipientBalBefore = leftoverRecipient.balance;
+        uint256 recipientTokenBalBefore = token.balanceOf(leftoverRecipient);
         uint256 poolMgrBalBefore = address(POOL_MANAGER).balance;
         uint256 poolMgrTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
         uint256 unsoldInCca = token.balanceOf(address(initializer));
@@ -59,9 +59,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(strategy)), 0);
         assertEq(address(strategy).balance, 0);
 
-        uint256 currencyToFundsRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 currencyToFundsRecipient = leftoverRecipient.balance - recipientBalBefore;
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolMgrBalBefore;
-        uint256 tokensToFundsRecipient = token.balanceOf(fundsRecipient) - recipientTokenBalBefore;
+        uint256 tokensToFundsRecipient = token.balanceOf(leftoverRecipient) - recipientTokenBalBefore;
         uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - poolMgrTokenBalBefore;
 
         assertEq(currencyToFundsRecipient + currencyToPool, raised);
@@ -84,7 +84,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             poolLPFee: 3000,
             poolTickSpacing: 60,
             supplyForLP: 100 ether,
-            fundsRecipient: fundsRecipient,
+            leftoverRecipient: leftoverRecipient,
             lpPositionRecipient: lpPositionRecipient,
             hook: address(0),
             positionDefinitions: abi.encode(defs),
@@ -139,12 +139,12 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
 
-        uint256 recipientBalBefore = fundsRecipient.balance;
+        uint256 recipientBalBefore = leftoverRecipient.balance;
         uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        uint256 currencyToFundsRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 currencyToFundsRecipient = leftoverRecipient.balance - recipientBalBefore;
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
 
         assertEq(currencyToFundsRecipient + currencyToPool, lbpParams.currencyRaised);
@@ -175,9 +175,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
 
         Erc20MigrationBalances memory balancesBefore = Erc20MigrationBalances({
-            currencyFundsRecipient: currencyToken.balanceOf(fundsRecipient),
+            currencyFundsRecipient: currencyToken.balanceOf(leftoverRecipient),
             currencyPool: currencyToken.balanceOf(address(POOL_MANAGER)),
-            tokenFundsRecipient: token.balanceOf(fundsRecipient),
+            tokenFundsRecipient: token.balanceOf(leftoverRecipient),
             tokenPool: token.balanceOf(address(POOL_MANAGER))
         });
 
@@ -199,9 +199,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         uint256 supplyForLP
     ) private view {
         uint256 currencyToFundsRecipient =
-            currencyToken.balanceOf(fundsRecipient) - beforeBalances.currencyFundsRecipient;
+            currencyToken.balanceOf(leftoverRecipient) - beforeBalances.currencyFundsRecipient;
         uint256 currencyToPool = currencyToken.balanceOf(address(POOL_MANAGER)) - beforeBalances.currencyPool;
-        uint256 tokensToFundsRecipient = token.balanceOf(fundsRecipient) - beforeBalances.tokenFundsRecipient;
+        uint256 tokensToFundsRecipient = token.balanceOf(leftoverRecipient) - beforeBalances.tokenFundsRecipient;
         uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - beforeBalances.tokenPool;
 
         assertEq(currencyToFundsRecipient + currencyToPool, currencyRaised);

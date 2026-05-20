@@ -14,7 +14,7 @@ struct MigratorParameters {
     uint24 poolLPFee; // the LP fee that the v4 pool will use
     int24 poolTickSpacing; // the tick spacing that the v4 pool will use
     uint128 supplyForLP; // amount of the token used for LP creation
-    address fundsRecipient; // the address that will receive the funds from the auction
+    address leftoverRecipient; // the address that will receive unused currency and unused LP supply after migration
     address lpPositionRecipient; // the address that will receive the created LP position
     address hook; // Nonzero hooks MUST inherit InitializerHook. address(0) uses the hookless pool unless it already exists at migration time.
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan

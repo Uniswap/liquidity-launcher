@@ -53,9 +53,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     /// @notice Sum of supplyForLP across all registered-but-not-yet-migrated initializers, per token
-    /// @dev Invariant: `IERC20(token).balanceOf(this) >= committedReserves[token]` at every rest point.
-    ///      Incremented when an initializer is registered in {initializeDistribution} and decremented in
-    ///      {migrate} when the LP slice is consumed.
     mapping(address token => uint256) public committedReserves;
 
     constructor(
@@ -80,9 +77,11 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         external
         returns (IDistributionContract)
     {
+        // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
+        // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
         if (
             migrationParams.hook != address(0)
                 && (!ERC165Checker.supportsInterface(migrationParams.hook, type(IInitializerHook).interfaceId)
@@ -90,22 +89,25 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         ) {
             revert InvalidHook(migrationParams.hook);
         }
+
+        // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
 
-        // Deploy the initializer (CCA) sized for auctionSupply (= totalSupply - supplyForLP).
+        bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
+        // Deploy the initializer contract via factory with only auction supply (totalSupply - supplyForLP) passed as the amount
         uint256 auctionSupply = totalSupply - migrationParams.supplyForLP;
         ILBPInitializer initializer = ILBPInitializer(
             address(
                 IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(
-                        token, auctionSupply, initializerParams, keccak256(abi.encode(salt, migrationParams))
-                    )
+                    .initializeDistribution(token, auctionSupply, initializerParams, initializerSalt)
             )
         );
 
         if (_initializers[initializer].migrationBlock != 0) revert InitializerAlreadyCreated(initializer);
+        // Validate the initializer parameters are set as expected
         _validateInitializerParams(initializer, migrationParams);
 
+        // Store the parameters
         _initializers[initializer] = migrationParams;
 
         // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
@@ -149,7 +151,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
                 revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
             }
             // Apply the bracket schedule to derive the LP currency budget.
-            // Any excess (above the int128 cap or beyond bracket allocation) is swept to fundsRecipient.
+            // Any excess (above the int128 cap or beyond bracket allocation) is swept to leftoverRecipient.
             currencyAmountForLp =
                 _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
             // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
@@ -178,17 +180,17 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
-        // Sweep this initializer's leftover (non-LP currency and unused supplyForLP) to the funds recipient.
+        // Sweep this initializer's leftover (non-LP currency and unused supplyForLP) to the leftover recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
         uint256 remainingCurrency = currency.balanceOfSelf();
         if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
+            currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
+            emit CurrencySwept(migrationParams.leftoverRecipient, remainingCurrency);
         }
         uint256 remainingToken = migrationParams.supplyForLP - tokenTransferAmount;
         if (remainingToken > 0) {
-            token.transfer(migrationParams.fundsRecipient, remainingToken);
-            emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
+            token.transfer(migrationParams.leftoverRecipient, remainingToken);
+            emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
         }
 
         emit Migrated(initializer, key, sqrtPriceX96);
