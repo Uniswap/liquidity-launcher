@@ -30,6 +30,13 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
+    /// @notice Emitted when an initializer's parked supplyForLP is swept by its leftoverRecipient after the
+    /// emergency-sweep delay expires (recovery path when migrate never fired).
+    /// @param initializer The initializer whose reserves were swept
+    /// @param leftoverRecipient The recipient that received the swept tokens
+    /// @param amount The amount of supplyForLP transferred out of the strategy
+    event EmergencySwept(ILBPInitializer indexed initializer, address indexed leftoverRecipient, uint256 amount);
+
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);
@@ -57,12 +64,15 @@ interface ILBPStrategy is IDistributionStrategy {
     error InvalidPositionRecipient(address positionRecipient);
 
     /// @notice Error thrown when the initializer's fundsRecipient is not the strategy
-    /// @param strategy The strategy address (must be the initializer's fundsRecipient)
-    error InvalidFundsRecipient(address strategy);
+    /// @param actual The fundsRecipient configured on the initializer
+    /// @param expected The required fundsRecipient (the strategy address)
+    error InvalidFundsRecipient(address actual, address expected);
 
     /// @notice Error thrown when the initializer's tokensRecipient is the strategy
-    /// @param strategy The strategy address (must not be the initializer's tokensRecipient)
-    error InvalidTokensRecipient(address strategy);
+    /// (the strategy must never be the tokensRecipient — unsold auction tokens are claimed by the
+    /// configured tokensRecipient directly from the initializer)
+    /// @param actual The tokensRecipient configured on the initializer (always equal to the strategy when this fires)
+    error InvalidTokensRecipient(address actual);
 
     /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
     /// @param supplyForLP The invalid supply
@@ -79,9 +89,32 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
+    /// @notice Error thrown when an initializer has no remaining reserves (never registered, or already
+    /// consumed by migrate or emergencySweep).
+    /// @param initializer The initializer being acted on
+    error AlreadyConsumed(ILBPInitializer initializer);
+
+    /// @notice Error thrown when emergencySweep is called before its unlock block
+    /// @param unlockBlock The earliest block at which emergencySweep is allowed
+    /// @param currentBlock The current block
+    error EmergencySweepNotAllowed(uint256 unlockBlock, uint256 currentBlock);
+
+    /// @notice Error thrown when emergencySweep is called by an address other than the initializer's
+    /// leftoverRecipient.
+    /// @param caller The caller of emergencySweep
+    /// @param leftoverRecipient The configured leftoverRecipient for the initializer
+    error UnauthorizedEmergencySweep(address caller, address leftoverRecipient);
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
+
+    /// @notice Recovery path for an initializer whose `migrate` was never called. After the configured
+    /// emergency-sweep delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep the
+    /// parked `supplyForLP` directly out of the strategy. Consuming the reserves zeroes the per-initializer
+    /// `reserves` slot, which also blocks any subsequent `migrate` call for the same initializer.
+    /// @param initializer The initializer whose reserves to sweep
+    function emergencySweep(ILBPInitializer initializer) external;
 
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up

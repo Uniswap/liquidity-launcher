@@ -29,6 +29,9 @@ abstract contract LBPStrategyTestBase is Test {
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
+    // ~1 day on a 12s chain. Passed to the strategy constructor in setUp so tests share a single value.
+    uint256 constant EMERGENCY_SWEEP_DELAY = 7_200;
+
     LBPStrategy strategy;
     MockInitializerFactory factory;
 
@@ -77,13 +80,15 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        bytes memory constructorArgs =
-            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner);
+        bytes memory constructorArgs = abi.encode(
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner, EMERGENCY_SWEEP_DELAY
+        );
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
-        strategy =
-            new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner);
+        strategy = new LBPStrategy{salt: salt}(
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner, EMERGENCY_SWEEP_DELAY
+        );
 
         assertEq(address(strategy), strategyAddress);
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);

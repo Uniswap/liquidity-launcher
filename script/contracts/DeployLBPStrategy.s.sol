@@ -12,11 +12,12 @@ import {Parameters, DeployParameters} from "./Parameters.sol";
 /// @title DeployLBPStrategyScript
 /// @notice Deploys the LBPStrategy singleton
 contract DeployLBPStrategyScript is Script, Parameters {
-    function run(IDistributionStrategy initializerFactory, address owner) public {
+    function run(IDistributionStrategy initializerFactory, address owner, uint256 emergencySweepDelay) public {
         DeployParameters memory params = getParameters(block.chainid);
 
         vm.broadcast();
-        LBPStrategy lbpStrategy = new LBPStrategy(params.positionManager, params.poolManager, initializerFactory, owner);
+        LBPStrategy lbpStrategy =
+            new LBPStrategy(params.positionManager, params.poolManager, initializerFactory, owner, emergencySweepDelay);
 
         console.log("LBPStrategy deployed to:", address(lbpStrategy));
     }

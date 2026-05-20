@@ -475,7 +475,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidFundsRecipient.selector, address(strategy)));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InvalidFundsRecipient.selector, _wrongRecipient, address(strategy))
+        );
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
