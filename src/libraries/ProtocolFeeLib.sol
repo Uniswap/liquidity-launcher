@@ -18,6 +18,7 @@ library ProtocolFeeLib {
     /// @param protocolFeeController The protocol fee controller
     /// @param currency The currency denomination of the protocol fee
     /// @param amount The amount of the currency to apply the fee on
+    /// @return the protocol fee amount
     function getProtocolFeeAmount(IProtocolFeeController protocolFeeController, Currency currency, uint256 amount)
         internal
         view
