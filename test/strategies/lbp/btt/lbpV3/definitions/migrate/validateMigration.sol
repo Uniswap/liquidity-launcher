@@ -20,10 +20,12 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// @notice BTT tests for LBPStrategy.migrate validation
 ///
 /// migrate
-/// ├── when initializer is unregistered (reserves == 0)
+/// ├── when initializer is unregistered (migrationBlock == 0)
+/// │   └── it reverts with Unregistered(initializer)
+/// ├── when initializer was already consumed (reserves == 0, migrationBlock != 0)
 /// │   └── it reverts with AlreadyConsumed(initializer)
 /// ├── when block.number < migrationBlock
-/// │   └── it reverts with MigrationNotAllowed
+/// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
 ///     ├── when currencySwept != currencyRaised
 ///     │   └── it reverts with CurrencyRaisedMismatch
@@ -39,7 +41,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     using PoolIdLibrary for PoolKey;
 
     function test_WhenInitializerIsUnregistered(uint64 _currentBlock, uint128 _tokensSold) public {
-        // it reverts with {AlreadyConsumed}
+        // it reverts with {Unregistered}
         _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
         vm.roll(_currentBlock);
 
@@ -51,16 +53,32 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             )
         );
 
-        // Unregistered initializers have no reserves entry, which is the single source of truth
-        // both migrate and emergencySweep consult before doing anything.
-        assertEq(strategy.reserves(unregistered), 0);
+        // Unregistered initializers have no params stored — migrationBlock == 0 distinguishes them
+        // from initializers that were registered and then consumed.
+        assertEq(strategy.initializers(unregistered).migrationBlock, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, unregistered));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.Unregistered.selector, unregistered));
         strategy.migrate(unregistered);
     }
 
+    function test_WhenInitializerWasAlreadyConsumed(MigrationFuzzParams memory p) public {
+        // it reverts with {AlreadyConsumed}
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // After the first migrate, reserves are zeroed but migrationBlock remains nonzero —
+        // so the second call hits the AlreadyConsumed branch, not Unregistered.
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertGt(strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock, 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+    }
+
     function test_WhenBlockIsLTMigrationBlock(uint64 _currentBlock, MigrationFuzzParams memory p) public {
-        // it reverts with {MigrationNotAllowed}
+        // it reverts with {MigrationNotYetAllowed}
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
 
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
@@ -69,7 +87,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.roll(_currentBlock);
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.MigrationNotAllowed.selector, mp.migrationBlock, _currentBlock)
+            abi.encodeWithSelector(ILBPStrategy.MigrationNotYetAllowed.selector, mp.migrationBlock, _currentBlock)
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }

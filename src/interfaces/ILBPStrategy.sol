@@ -44,7 +44,7 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
     /// @param currentBlock The current block number
-    error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
+    error MigrationNotYetAllowed(uint256 migrationBlock, uint256 currentBlock);
 
     /// @notice Error thrown when the end block is at or after the migration block
     /// @param endBlock The invalid end block
@@ -89,8 +89,12 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
-    /// @notice Error thrown when an initializer has no remaining reserves (never registered, or already
-    /// consumed by migrate or emergencySweep).
+    /// @notice Error thrown when an initializer was never registered with the strategy
+    /// @param initializer The initializer being acted on
+    error Unregistered(ILBPInitializer initializer);
+
+    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
+    /// or `emergencySweep`.
     /// @param initializer The initializer being acted on
     error AlreadyConsumed(ILBPInitializer initializer);
 

@@ -133,16 +133,16 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
     /// immutably set during initializeDistribution. Anyone can trigger migration
     function migrate(ILBPInitializer initializer) external {
-        // Reserves must be nonzero — covers both "never registered" and "already consumed by
-        // migrate or emergencySweep" with a single check.
-        if (reserves[initializer] == 0) revert AlreadyConsumed(initializer);
-
         // Load the stored migration parameters for the initializer
         MigratorParameters memory migrationParams = _initializers[initializer];
 
-        // Ensure the migration block is after the current block.
+        // migrationBlock == 0 means the initializer was never registered with this strategy.
+        if (migrationParams.migrationBlock == 0) revert Unregistered(initializer);
+        // reserves == 0 (with a nonzero migrationBlock) means it was already consumed by a prior
+        // migrate or emergencySweep.
+        if (reserves[initializer] == 0) revert AlreadyConsumed(initializer);
         if (_getBlockNumberish() < migrationParams.migrationBlock) {
-            revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
+            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
         }
 
         Currency currency = Currency.wrap(initializer.currency());
@@ -212,12 +212,11 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @dev Recovery path for an initializer whose migrate failed. After `emergencySweepDelay` blocks past `migrationBlock`, the
     ///      initializer's leftoverRecipient can pull the held `supplyForLP` back out of the strategy.
     function emergencySweep(ILBPInitializer initializer) external {
-        // A zero reserves value means this initializer can't be consumed — either it was never
-        // registered, or its reserves were already taken by a prior `migrate` or `emergencySweep`.
+        MigratorParameters memory mp = _initializers[initializer];
+
+        if (mp.migrationBlock == 0) revert Unregistered(initializer);
         uint256 amount = reserves[initializer];
         if (amount == 0) revert AlreadyConsumed(initializer);
-
-        MigratorParameters memory mp = _initializers[initializer];
         if (msg.sender != mp.leftoverRecipient) {
             revert UnauthorizedEmergencySweep(msg.sender, mp.leftoverRecipient);
         }

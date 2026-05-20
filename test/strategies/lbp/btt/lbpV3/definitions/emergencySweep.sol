@@ -11,16 +11,16 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 /// @notice BTT tests for LBPStrategy.emergencySweep
 ///
 /// emergencySweep
-/// ├── when initializer is unregistered (reserves == 0)
+/// ├── when initializer is unregistered (migrationBlock == 0)
+/// │   └── it reverts with Unregistered
+/// ├── when initializer was already migrated
+/// │   └── it reverts with AlreadyConsumed
+/// ├── when initializer was already emergency-swept
 /// │   └── it reverts with AlreadyConsumed
 /// ├── when caller != leftoverRecipient
 /// │   └── it reverts with UnauthorizedEmergencySweep
 /// ├── when block.number < migrationBlock + emergencySweepDelay
 /// │   └── it reverts with EmergencySweepNotAllowed
-/// ├── when initializer was already migrated
-/// │   └── it reverts with AlreadyConsumed
-/// ├── when initializer was already emergency-swept
-/// │   └── it reverts with AlreadyConsumed
 /// └── when called by leftoverRecipient at or past the unlock block on a live initializer
 ///     ├── it transfers supplyForLP from strategy to leftoverRecipient
 ///     ├── it zeroes reserves (blocks future migrate and emergencySweep)
@@ -31,9 +31,10 @@ contract EmergencySweepTest is LBPStrategyTestBase {
             address(new MockLBPInitializer(address(1), address(0), 0, address(strategy), address(strategy), 0, 0))
         );
 
-        assertEq(strategy.reserves(unregistered), 0);
+        // migrationBlock == 0 distinguishes unregistered from consumed.
+        assertEq(strategy.initializers(unregistered).migrationBlock, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, unregistered));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.Unregistered.selector, unregistered));
         strategy.emergencySweep(unregistered);
     }
 
