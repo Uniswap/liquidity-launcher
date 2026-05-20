@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {ProtocolFeeLib} from "src/libraries/ProtocolFeeLib.sol";
 import {IProtocolFeeController} from "src/interfaces/IProtocolFeeController.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 contract ProtocolFeeLibHarness {
     function getProtocolFeeAmount(IProtocolFeeController controller, address currency, uint256 amount)
@@ -74,7 +73,7 @@ contract MockProtocolFeeController is IProtocolFeeController {
 ///     ├── it transfers tokens to the protocol fee recipient
 ///     └── it emits ProtocolFeeTransferred
 contract ProtocolFeeLibTest is Test {
-    event ProtocolFeeTransferred(Currency indexed currency, uint256 protocolFeeAmount);
+    event ProtocolFeeTransferred(address indexed currency, uint256 protocolFeeAmount);
 
     ProtocolFeeLibHarness public harness;
     MockProtocolFeeController public controller;
@@ -115,14 +114,14 @@ contract ProtocolFeeLibTest is Test {
     {
         // it transfers native currency to the protocol fee recipient
         _protocolFeeAmount = bound(_protocolFeeAmount, 0, type(uint128).max);
-        Currency currency = Currency.wrap(address(0));
+        address currency = address(0);
         vm.deal(address(harness), _protocolFeeAmount);
 
         uint256 recipientBalanceBefore = recipient.balance;
 
         vm.expectEmit(true, true, true, true, address(harness));
         emit ProtocolFeeTransferred(currency, _protocolFeeAmount);
-        harness.transferProtocolFee(controller, Currency.unwrap(currency), _protocolFeeAmount);
+        harness.transferProtocolFee(controller, currency, _protocolFeeAmount);
 
         assertEq(recipient.balance - recipientBalanceBefore, _protocolFeeAmount);
         assertEq(address(harness).balance, 0);
@@ -135,13 +134,13 @@ contract ProtocolFeeLibTest is Test {
         _protocolFeeAmount = bound(_protocolFeeAmount, 0, type(uint128).max);
 
         MockERC20 token = new MockERC20("Test Token", "TT", _protocolFeeAmount, address(harness));
-        Currency currency = Currency.wrap(address(token));
+        address currency = address(token);
 
         uint256 recipientBalanceBefore = token.balanceOf(recipient);
 
         vm.expectEmit(true, true, true, true, address(harness));
         emit ProtocolFeeTransferred(currency, _protocolFeeAmount);
-        harness.transferProtocolFee(controller, Currency.unwrap(currency), _protocolFeeAmount);
+        harness.transferProtocolFee(controller, currency, _protocolFeeAmount);
 
         assertEq(token.balanceOf(recipient) - recipientBalanceBefore, _protocolFeeAmount);
         assertEq(token.balanceOf(address(harness)), 0);

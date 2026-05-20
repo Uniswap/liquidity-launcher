@@ -9,9 +9,9 @@ import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 /// @notice Library for contracts implementing protocol fees via ProtocolFeeController
 library ProtocolFeeLib {
     /// @notice Emitted when the protocol fee is transferred
-    /// @param currency The currency of the protocol fee
+    /// @param currency The address of the currency of the protocol fee
     /// @param protocolFeeAmount The amount of the protocol fee
-    event ProtocolFeeTransferred(Currency indexed currency, uint256 protocolFeeAmount);
+    event ProtocolFeeTransferred(address indexed currency, uint256 protocolFeeAmount);
 
     /// @notice Returns the protocol fee amount for a given currency and amount
     /// @dev Returns zero if the fee controller is not set
@@ -39,6 +39,6 @@ library ProtocolFeeLib {
     ) internal {
         Currency wrappedCurrency = Currency.wrap(currency);
         CurrencyLibrary.transfer(wrappedCurrency, protocolFeeController.protocolFeeRecipient(), protocolFeeAmount);
-        emit ProtocolFeeTransferred(wrappedCurrency, protocolFeeAmount);
+        emit ProtocolFeeTransferred(currency, protocolFeeAmount);
     }
 }
