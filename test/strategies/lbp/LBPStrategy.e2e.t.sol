@@ -95,7 +95,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
         });
-        (MockLBPInitializer initializer, MockERC20 token) =
+        (MockLBPInitializer initializer,) =
             _initializeWith(mp, totalSupply, uint64(block.number), bp, address(0), lbpParams);
 
         vm.deal(address(initializer), 100 ether);
