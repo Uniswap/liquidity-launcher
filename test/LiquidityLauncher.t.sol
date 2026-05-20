@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
@@ -14,12 +16,14 @@ import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
 
-contract LiquidityLauncherTest is Test {
+contract LiquidityLauncherTest is Test, DeployPermit2 {
     LiquidityLauncher public liquidityLauncher;
+    IAllowanceTransfer permit2;
     UERC20Factory public uerc20Factory;
 
     function setUp() public {
-        liquidityLauncher = new LiquidityLauncher();
+        permit2 = IAllowanceTransfer(deployPermit2());
+        liquidityLauncher = new LiquidityLauncher(permit2);
         uerc20Factory = new UERC20Factory();
     }
 
@@ -134,6 +138,20 @@ contract LiquidityLauncherTest is Test {
 
         // verify the liquidity launcher has no balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
+    }
+
+    function test_depositToken_pullsFromCaller() public {
+        uint128 initialSupply = 1e18;
+        MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, address(this));
+        token.approve(address(permit2), type(uint256).max);
+        permit2.approve(
+            address(token), address(liquidityLauncher), uint160(initialSupply), uint48(block.timestamp + 1 days)
+        );
+
+        liquidityLauncher.depositToken(address(token), uint160(initialSupply));
+
+        assertEq(IERC20(address(token)).balanceOf(address(liquidityLauncher)), initialSupply);
+        assertEq(IERC20(address(token)).balanceOf(address(this)), 0);
     }
 
     function test_getGraffiti_succeeds() public view {

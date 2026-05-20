@@ -24,11 +24,13 @@
 
 ### LiquidityLauncher
 
-The main entry point contract that orchestrates token creation and distribution. It provides two primary functions:
+The main entry point contract that orchestrates token creation and distribution. It provides three primary functions:
 
 `createToken` deploys a new token through a specified factory contract. The launcher supports different token standards including basic ERC20 tokens (UERC20) and Superchain tokens (USUPERC20) that can be deployed deterministically. Tokens are created with metadata support including description, website, and image URIs.
 
-`distributeToken` transfers tokens to a distribution strategy which handles the actual distribution logic. The system uses Permit2 for efficient token transfers, allowing users to approve once and execute multiple transactions without additional approvals.
+`depositToken` pulls an existing ERC20 balance from `msg.sender` into the launcher via Permit2. Used for the "distribute a token I already hold" flow; the caller must have a Permit2 allowance for the launcher (set in a prior tx or via `permit(...)` earlier in the same multicall).
+
+`distributeToken` hands off tokens already held by the launcher to a distribution strategy. The launcher approves the strategy and the strategy pulls via `safeTransferFrom` inside its own `initializeDistribution` (a pull-flow design). Token acquisition (`createToken` or `depositToken`) and `distributeToken` MUST be batched in the same `multicall`; tokens left in the launcher between transactions can be distributed by any caller.
 
 ### Token Factories
 
@@ -89,8 +91,12 @@ The typical flow for launching a token involves several coordinated steps:
 
 #### 1. Token Creation and Distribution
 
-- Use multicall to atomically call `LiquidityLauncher.createToken()` and `LiquidityLauncher.distributeToken()`
-- Set `payerIsUser = false` since tokens are already in the launcher after creation
+Use `LiquidityLauncher.multicall` to atomically batch token acquisition with `distributeToken`. Two supported flows:
+
+- **Fresh mint:** `createToken(recipient=address(launcher), ...)` + `distributeToken(...)` — the factory mints directly into the launcher.
+- **Existing token:** `permit(...)` (optional, if no active Permit2 allowance) + `depositToken(token, amount)` + `distributeToken(...)` — pulls the caller's tokens into the launcher via Permit2.
+
+Either way, the strategy then pulls the tokens out of the launcher via `safeTransferFrom` inside its own `initializeDistribution`.
 
 For the LBP strategy, the distribution configuration includes:
 
@@ -136,9 +142,9 @@ This requirement protects the committed pool from permissionless initialization 
 
 **ILiquidityLauncher** defines the main launcher interface for creating and distributing tokens.
 
-**IDistributionContract** implemented by contracts that receive and distribute tokens. The `onTokensReceived()` callback ensures contracts are notified when they receive tokens.
+**IDistributionContract** implemented by contracts that receive and distribute tokens (e.g. the LBP CCA initializer). Exposes an `onTokensReceived()` hook that the parent strategy calls after pulling tokens into the contract — used by initializers to capture post-funding setup atomically with the pull.
 
-**IDistributionStrategy** implemented by factory contracts that deploy distribution contracts. The `initializeDistribution()` function creates new distribution instances. If a strategy or downstream factory uses deterministic deployment, it MUST include the provided `salt` in both deployment and address prediction calculations.
+**IDistributionStrategy** implemented by strategies that the launcher hands off to. The `initializeDistribution()` function is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom` — the launcher pre-approves the strategy for the full amount before invoking it. If a strategy or downstream factory uses deterministic deployment, it MUST include the provided `salt` in both deployment and address prediction calculations.
 
 **ITokenFactory** defines the interface for token creation factories, standardizing how different token types are deployed.
 
@@ -146,4 +152,9 @@ This requirement protects the committed pool from permissionless initialization 
 
 ⚠️ **Rebasing Tokens and Fee-on-Transfer Tokens are NOT compatible with LiquidityLauncher.** The system is designed for standard ERC20 tokens and will not function correctly with tokens that have dynamic balances or transfer fees.
 
-⚠️ **Always use multicall for atomic token creation and distribution.** When creating and distributing tokens, batch both operations in a single transaction with `payerIsUser = false` to prevent tokens from sitting unprotected in the LiquidityLauncher contract where anyone could call `distribute()`.
+⚠️ **Always batch token acquisition and distribution inside a single `multicall`.** The launcher uses a pull-based hand-off: tokens must already be in the launcher when `distributeToken` is called. If tokens sit in the launcher between transactions — for example, because you `createToken(recipient=launcher)` or `depositToken` in one tx and `distributeToken` in another — **any caller can call `distributeToken` on them with an arbitrary strategy and arbitrary parameters and steal them.** The supported flows are:
+
+- **Fresh mint:** `createToken(recipient=address(launcher), ...) + distributeToken(...)` in one `multicall`.
+- **Existing token:** `permit(...) (optional) + depositToken(...) + distributeToken(...)` in one `multicall`.
+
+Anything else is unsafe.
