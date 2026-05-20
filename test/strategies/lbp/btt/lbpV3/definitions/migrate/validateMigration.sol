@@ -45,9 +45,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
 
         ILBPInitializer unregistered = ILBPInitializer(
             address(
-                new MockLBPInitializer(
-                    address(1), address(0), _tokensSold, 0, address(strategy), address(strategy), 0, 0
-                )
+                new MockLBPInitializer(address(1), address(0), _tokensSold, address(strategy), address(strategy), 0, 0)
             )
         );
 
