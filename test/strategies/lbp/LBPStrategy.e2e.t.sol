@@ -135,6 +135,60 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(stored2.migrationBlock, mp2.migrationBlock);
     }
 
+    /// @notice A second initializer migrating for the same token cannot consume the first initializer's
+    /// parked `supplyForLP`. Registers A under fuzzed parameters, then registers a fully-fuzzed B for the
+    /// SAME token, migrates B, and asserts A's slice is still parked in the strategy untouched.
+    function test_fuzz_secondInitializerMigrateCannotTouchFirstInitializersLpSupply(
+        MigrationFuzzParams memory pA,
+        MigrationFuzzParams memory pB
+    ) public {
+        // 1. Register A with fuzzed params — strategy ends up holding supplyForLP_A of `token`.
+        (MockLBPInitializer initA, MockERC20 token) = _setupForMigration(pA);
+
+        // Need headroom in block.number for B's endBlock/migrationBlock to fit in uint64.
+        // _boundMigratorParams uses [block.number, uint64.max-1] for endBlock, so block.number must be < uint64.max-1.
+        vm.assume(block.number < type(uint64).max - 1);
+
+        uint128 supplyForLP_A = strategy.initializers(ILBPInitializer(address(initA))).supplyForLP;
+        assertEq(token.balanceOf(address(strategy)), supplyForLP_A);
+
+        // 2. Build B's params via the same bounding helpers. block.number is now mp_A.migrationBlock,
+        //    so B's endBlock and migrationBlock will naturally end up > A's migrationBlock.
+        LiquidityAllocationBracket[] memory bp_B = _boundBrackets(pB.bpParams);
+        (MigratorParameters memory mp_B, uint128 totalSupply_B, uint64 endBlock_B, uint128 auctionSupply_B) =
+            _boundMigratorParams(pB);
+        pB.currencyRaised = _boundCurrencyRaised(pB.currencyRaised, bp_B);
+        pB.initialPriceX96 = _boundInitialPriceX96(pB.initialPriceX96);
+        pB.tokensSold = uint128(bound(pB.tokensSold, 1, auctionSupply_B));
+
+        LBPInitializationParams memory lbpParams_B = LBPInitializationParams({
+            initialPriceX96: pB.initialPriceX96, tokensSold: pB.tokensSold, currencyRaised: pB.currencyRaised
+        });
+
+        // 3. Fund the test contract with B's totalSupply of `token` and approve the strategy.
+        deal(address(token), address(this), totalSupply_B);
+        token.approve(address(strategy), totalSupply_B);
+
+        // 4. Register B. Use a non-default salt so the mock factory deploys a fresh CCA distinct from A's.
+        // _encodeConfigData populates mp_B.lpAllocationSchedule with the bp_B brackets before encoding.
+        bytes memory configData_B =
+            _encodeConfigData(mp_B, bp_B, _encodeMockInitializerParams(endBlock_B, address(0), lbpParams_B));
+        strategy.initializeDistribution(address(token), totalSupply_B, configData_B, bytes32(uint256(1)));
+        MockLBPInitializer initB = factory.deployedInitializer();
+
+        // 5. Strategy now holds both slices.
+        assertEq(token.balanceOf(address(strategy)), uint256(supplyForLP_A) + uint256(mp_B.supplyForLP));
+
+        // 6. Fund B's CCA with the currencyRaised it claims, roll past B's migrationBlock, and migrate B.
+        vm.deal(address(initB), pB.currencyRaised);
+        vm.roll(mp_B.migrationBlock);
+        strategy.migrate(ILBPInitializer(address(initB)));
+
+        // 7. A's supplyForLP is still parked in the strategy — untouched by B's migrate.
+        assertEq(token.balanceOf(address(strategy)), supplyForLP_A);
+        assertEq(strategy.initializers(ILBPInitializer(address(initA))).supplyForLP, supplyForLP_A);
+    }
+
     function test_fuzz_allRaisedCurrencyIsSentToFundsRecipientOrPool(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();

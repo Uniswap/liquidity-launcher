@@ -52,9 +52,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
-    /// @notice Sum of supplyForLP across all registered-but-not-yet-migrated initializers, per token
-    mapping(address token => uint256) public committedReserves;
-
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
@@ -113,7 +110,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
         IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.supplyForLP);
-        committedReserves[token] += migrationParams.supplyForLP;
         initializer.onTokensReceived();
 
         emit InitializerCreated(initializer, migrationParams);
@@ -134,9 +130,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
 
         Currency currency = Currency.wrap(initializer.currency());
         Currency token = Currency.wrap(initializer.token());
-
-        // Release this initializer's supplyForLP from the per-token aggregate reservation upfront.
-        committedReserves[Currency.unwrap(token)] -= migrationParams.supplyForLP;
 
         uint256 currencyBefore = currency.balanceOfSelf();
         initializer.sweepCurrency();
