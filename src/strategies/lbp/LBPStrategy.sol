@@ -49,18 +49,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
     /// @notice Number of blocks past `migrationBlock` after which an initializer's `leftoverRecipient` may
-    /// recover the parked `supplyForLP` via {emergencySweep}. Calibrated per chain at deploy time so that
-    /// it corresponds to roughly the same wall-time everywhere (block intervals differ across chains).
-    /// `leftoverRecipient` can always voluntarily wait longer if they want a softer landing.
+    /// recover the held `supplyForLP` via {emergencySweep}.
     uint256 public immutable emergencySweepDelay;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
-    /// @notice Remaining supplyForLP this strategy holds for each registered initializer. Set when the
-    /// initializer is registered; zeroed when its slice is consumed by {migrate} or {emergencySweep}.
-    /// A value of `0` means "never registered OR already consumed" and is the single source of truth
-    /// for whether either consumption path may run for the initializer.
+    /// @notice supplyForLP this strategy holds for each registered initializer. Set when the
+    /// initializer is registered; zeroed when its reserves are consumed by {migrate} or {emergencySweep}.
     mapping(ILBPInitializer initializer => uint256) public reserves;
 
     constructor(
@@ -123,8 +119,9 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
         IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.supplyForLP);
-        // Record the supplyForLP slice the strategy now owes this initializer. Doubles as the "live"
-        // flag — both {migrate} and {emergencySweep} require this to be nonzero, and both zero it.
+        // Track this initializer's held supplyForLP. {migrate} and {emergencySweep} both
+        // require this to be nonzero (rejecting unregistered or already-consumed initializers)
+        // and zero it after consuming the reserves.
         reserves[initializer] = migrationParams.supplyForLP;
         initializer.onTokensReceived();
 
@@ -206,17 +203,17 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
         }
 
-        // Mark this initializer's slice consumed — blocks future migrate or emergencySweep.
+        // Mark this initializer's reserves consumed — blocks future migrate or emergencySweep.
         reserves[initializer] = 0;
         emit Migrated(initializer, key, sqrtPriceX96);
     }
 
     /// @inheritdoc ILBPStrategy
-    /// @dev Recovery path for an initializer whose migrate never fired (auction failed, parameters
-    ///      ended up unmigratable, etc.). After `emergencySweepDelay` blocks past `migrationBlock`, the
-    ///      initializer's leftoverRecipient can pull the parked `supplyForLP` back out of the strategy.
+    /// @dev Recovery path for an initializer whose migrate failed. After `emergencySweepDelay` blocks past `migrationBlock`, the
+    ///      initializer's leftoverRecipient can pull the held `supplyForLP` back out of the strategy.
     function emergencySweep(ILBPInitializer initializer) external {
-        // Reserves doubles as the "still consumable" flag. Zero means unregistered or already swept/migrated.
+        // A zero reserves value means this initializer can't be consumed — either it was never
+        // registered, or its reserves were already taken by a prior `migrate` or `emergencySweep`.
         uint256 amount = reserves[initializer];
         if (amount == 0) revert AlreadyConsumed(initializer);
 

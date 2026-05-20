@@ -30,8 +30,8 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when an initializer's parked supplyForLP is swept by its leftoverRecipient after the
-    /// emergency-sweep delay expires (recovery path when migrate never fired).
+    /// @notice Emitted when an initializer's held supplyForLP is swept by its leftoverRecipient after the
+    /// emergency-sweep delay expires (recovery path when migrate fails).
     /// @param initializer The initializer whose reserves were swept
     /// @param leftoverRecipient The recipient that received the swept tokens
     /// @param amount The amount of supplyForLP transferred out of the strategy
@@ -109,10 +109,9 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
 
-    /// @notice Recovery path for an initializer whose `migrate` was never called. After the configured
+    /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
     /// emergency-sweep delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep the
-    /// parked `supplyForLP` directly out of the strategy. Consuming the reserves zeroes the per-initializer
-    /// `reserves` slot, which also blocks any subsequent `migrate` call for the same initializer.
+    /// held `supplyForLP` directly out of the strategy.
     /// @param initializer The initializer whose reserves to sweep
     function emergencySweep(ILBPInitializer initializer) external;
 

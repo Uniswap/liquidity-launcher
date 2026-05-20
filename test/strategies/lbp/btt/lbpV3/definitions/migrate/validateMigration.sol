@@ -141,7 +141,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint256 poolBefore = token.balanceOf(address(POOL_MANAGER));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // The LP slice (supplyForLP) is the only token slice the strategy handles; it lands in
+        // supplyForLP is the only portion the strategy handles; it lands in
         // leftoverRecipient or the pool manager. Unsold auction tokens stay in the CCA for the
         // tokensRecipient to claim separately.
         assertEq(

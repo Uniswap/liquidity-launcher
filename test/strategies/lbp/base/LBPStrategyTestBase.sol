@@ -129,7 +129,7 @@ abstract contract LBPStrategyTestBase is Test {
         if (currencyRaised > 0) {
             vm.deal(address(initializer), currencyRaised);
         }
-        // `_initializeWith` already pulled both slices: supplyForLP into the strategy and auctionSupply
+        // `_initializeWith` already pulled both portions: supplyForLP into the strategy and auctionSupply
         // into the initializer. Nothing else to fund. The `auctionSupply` local is unused here.
         auctionSupply;
         vm.roll(mp.migrationBlock);

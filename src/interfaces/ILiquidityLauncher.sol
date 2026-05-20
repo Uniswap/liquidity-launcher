@@ -21,7 +21,7 @@ interface ILiquidityLauncher {
     event TokenDistributed(address indexed tokenAddress, address indexed distributionContract, uint256 amount);
 
     /// @notice Creates a token via the configured factory.
-    /// @dev When `recipient == address(this)`, the newly minted tokens are parked in the launcher
+    /// @dev When `recipient == address(this)`, the newly minted tokens are held in the launcher
     ///      and ANY caller can subsequently invoke `distributeToken` on them with arbitrary strategy
     ///      parameters. ONLY pass `address(this)` when this call is batched with `distributeToken`
     ///      in the SAME `multicall`

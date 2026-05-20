@@ -136,8 +136,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     /// @notice A second initializer migrating for the same token cannot consume the first initializer's
-    /// parked `supplyForLP`. Registers A under fuzzed parameters, then registers a fully-fuzzed B for the
-    /// SAME token, migrates B, and asserts A's slice is still parked in the strategy untouched.
+    /// held `supplyForLP`. Registers A under fuzzed parameters, then registers a fully-fuzzed B for the
+    /// SAME token, migrates B, and asserts A's reserves are still held in the strategy untouched.
     function test_fuzz_secondInitializerMigrateCannotTouchFirstInitializersLpSupply(
         MigrationFuzzParams memory pA,
         MigrationFuzzParams memory pB
@@ -176,7 +176,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply_B, configData_B, bytes32(uint256(1)));
         MockLBPInitializer initB = factory.deployedInitializer();
 
-        // 5. Strategy now holds both slices.
+        // 5. Strategy now holds both initializers' reserves.
         assertEq(token.balanceOf(address(strategy)), uint256(supplyForLP_A) + uint256(mp_B.supplyForLP));
 
         // 6. Fund B's CCA with the currencyRaised it claims, roll past B's migrationBlock, and migrate B.
@@ -184,7 +184,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp_B.migrationBlock);
         strategy.migrate(ILBPInitializer(address(initB)));
 
-        // 7. A's supplyForLP is still parked in the strategy — untouched by B's migrate.
+        // 7. A's supplyForLP is still held in the strategy — untouched by B's migrate.
         assertEq(token.balanceOf(address(strategy)), supplyForLP_A);
         assertEq(strategy.initializers(ILBPInitializer(address(initA))).supplyForLP, supplyForLP_A);
     }

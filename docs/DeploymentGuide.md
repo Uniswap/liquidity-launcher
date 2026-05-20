@@ -35,7 +35,7 @@ function createToken(
 
 If you intend to distribute the token via a strategy in the same transaction, set `recipient` to the `LiquidityLauncher` contract address and batch with `distributeToken` inside `multicall` (see [Token distribution](#token-distribution)). For all other cases — including just minting a token to a user without distributing — set `recipient` to an address you control.
 
-> ⚠️ Tokens parked in `LiquidityLauncher` are unprotected: any caller can subsequently invoke `distributeToken` on them with arbitrary strategy parameters. **Only** pass `address(launcher)` as the recipient when the very next call in the same `multicall` is `distributeToken`.
+> ⚠️ Tokens held in `LiquidityLauncher` are unprotected: any caller can subsequently invoke `distributeToken` on them with arbitrary strategy parameters. **Only** pass `address(launcher)` as the recipient when the very next call in the same `multicall` is `distributeToken`.
 
 ## Token distribution
 
@@ -77,6 +77,10 @@ When configuring an LBP distribution, the `MigratorParameters.hook` field is the
 Do not configure third-party or custom hooks in `hook` unless they inherit `InitializerHook` and are deployed at an address with the correct v4 hook permission bits, including `BEFORE_INITIALIZE`.
 
 Passing `address(0)` keeps the launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly.
+
+### LBPStrategy `emergencySweepDelay`
+
+`LBPStrategy`'s constructor takes an immutable `emergencySweepDelay` (in blocks) — the wait past `migrationBlock` before `emergencySweep` can be called. Pick a per-chain value that corresponds to roughly the wall-time you want (e.g. `7_200` for ~1 day on a 12s-block chain).
 
 ## Example
 
