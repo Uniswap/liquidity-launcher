@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
@@ -98,15 +97,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    modifier whenCurrencyRaisedIsGTZero() {
-        _;
-    }
-
-    function test_CallsSweepOnInitializer(MigrationFuzzParams memory p)
-        public
-        whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
-    {
+    function test_CallsSweepOnInitializer(MigrationFuzzParams memory p) public whenBlockIsGTEMigrationBlock {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
 
         assertGt(Currency.wrap(initializer.currency()).balanceOfSelf(), 0);
@@ -124,38 +115,51 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     function test_SweepsLeftoverCurrencyToFundsRecipient(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
     {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
 
-        uint256 balBefore = fundsRecipient.balance;
+        uint256 fundsBefore = fundsRecipient.balance;
+        uint256 poolBefore = address(POOL_MANAGER).balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
-        assertGe(fundsRecipient.balance, balBefore);
-        assertEq(address(strategy).balance, 0); // Strategy should be empty
+
+        // Every wei raised reaches fundsRecipient or the pool manager — proves the sweep
+        assertEq((fundsRecipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
+        assertEq(address(strategy).balance, 0);
     }
 
     function test_SweepsLeftoverTokensToFundsRecipient(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
     {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        uint256 supplyForLP = strategy.initializers(ILBPInitializer(address(initializer))).supplyForLP;
+        uint256 unsoldInCca = token.balanceOf(address(initializer));
 
-        uint256 balBefore = token.balanceOf(fundsRecipient);
+        uint256 fundsBefore = token.balanceOf(fundsRecipient);
+        uint256 poolBefore = token.balanceOf(address(POOL_MANAGER));
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // The LP slice (supplyForLP) is the only token slice the strategy handles; it lands in
+        // fundsRecipient or the pool manager. Unsold auction tokens stay in the CCA for the
+        // tokensRecipient to claim separately.
+        assertEq(
+            (token.balanceOf(fundsRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
+            supplyForLP
+        );
         assertEq(token.balanceOf(address(strategy)), 0);
-        assertGe(token.balanceOf(fundsRecipient), balBefore);
+        // The CCA's unsold balance is untouched by migrate.
+        assertEq(token.balanceOf(address(initializer)), unsoldInCca);
     }
 
     function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook(MigrationFuzzParams memory p)
         public
         whenBlockIsGTEMigrationBlock
-        whenCurrencyRaisedIsGTZero
     {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 

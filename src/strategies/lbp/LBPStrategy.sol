@@ -49,9 +49,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
 
-    /// @notice The protocol fee controller
-    address public protocolFeeController;
-
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
@@ -65,14 +62,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        address _protocolFeeController,
         address _owner
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         _initializeOwner(_owner);
-        _setProtocolFeeController(_protocolFeeController);
     }
 
     /// @inheritdoc IDistributionStrategy
@@ -201,18 +196,6 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @inheritdoc ILBPStrategy
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
         return _initializers[initializer];
-    }
-
-    /// @inheritdoc ILBPStrategy
-    function setProtocolFeeController(address _protocolFeeController) external onlyOwner {
-        _setProtocolFeeController(_protocolFeeController);
-        emit ProtocolFeeControllerSet(_protocolFeeController);
-    }
-
-    /// @notice Sets the protocol fee controller
-    /// @param _protocolFeeController The protocol fee controller
-    function _setProtocolFeeController(address _protocolFeeController) internal {
-        protocolFeeController = _protocolFeeController;
     }
 
     /// @notice Receive native currency

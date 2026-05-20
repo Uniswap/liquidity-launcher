@@ -25,10 +25,6 @@ library TokenPricing {
     /// @param maxSqrtPriceX96 The maximum sqrt price (TickMath.MAX_SQRT_PRICE)
     error SqrtPriceX96OutOfBounds(uint160 sqrtPriceX96, uint160 minSqrtPriceX96, uint160 maxSqrtPriceX96);
 
-    /// @notice Thrown when calculated amount exceeds uint128 max value
-    /// @param currencyAmount The invalid currency amount
-    error AmountOverflow(uint256 currencyAmount);
-
     /// @notice Q192 format: 192-bit fixed-point number representation
     /// @dev Used for intermediate calculations to maintain precision
     uint256 public constant Q192 = 1 << 192;
@@ -77,46 +73,5 @@ library TokenPricing {
         }
 
         return sqrtPriceX96;
-    }
-
-    /// @notice Calculates token amount based on currency amount and price
-    /// @dev Uses Q192 fixed-point arithmetic for precision
-    /// @param priceX192 The price in Q192 fixed-point format
-    /// @param currencyAmount The amount of currency to convert
-    /// @param currencyIsCurrency0 True if the currency is currency0 (lower address)
-    /// @param reserveTokenAmount The reserve supply of the token
-    /// @return tokenAmount The calculated token amount
-    /// @return correspondingCurrencyAmount The corresponding currency amount
-    function calculateAmounts(
-        uint256 priceX192,
-        uint128 currencyAmount,
-        bool currencyIsCurrency0,
-        uint128 reserveTokenAmount
-    ) internal pure returns (uint128 tokenAmount, uint128 correspondingCurrencyAmount) {
-        // calculates corresponding token amount based on currency amount and price
-        uint256 tokenAmountUint256 = currencyIsCurrency0
-            ? FullMath.mulDiv(priceX192, currencyAmount, Q192)
-            : FullMath.mulDiv(currencyAmount, Q192, priceX192);
-
-        // if token amount is greater than reserve supply, there is leftover currency. we need to find new currency amount based on reserve supply and price.
-        if (tokenAmountUint256 > reserveTokenAmount) {
-            uint256 correspondingCurrencyAmountUint256 = currencyIsCurrency0
-                ? FullMath.mulDiv(reserveTokenAmount, Q192, priceX192)
-                : FullMath.mulDiv(priceX192, reserveTokenAmount, Q192);
-
-            if (correspondingCurrencyAmountUint256 > type(uint128).max) {
-                revert AmountOverflow(correspondingCurrencyAmountUint256);
-            }
-
-            correspondingCurrencyAmount = uint128(correspondingCurrencyAmountUint256);
-
-            tokenAmount = reserveTokenAmount; // tokenAmount will never be greater than reserveTokenAmount
-        } else {
-            correspondingCurrencyAmount = currencyAmount;
-            // tokenAmountUint256 is less than or equal to reserveTokenAmount which is less than or equal to type(uint128).max
-            tokenAmount = uint128(tokenAmountUint256);
-        }
-
-        return (tokenAmount, correspondingCurrencyAmount);
     }
 }

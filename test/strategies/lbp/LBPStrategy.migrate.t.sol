@@ -24,8 +24,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        // Check indexed param (fundsRecipient) but not data — exact amount may differ due to pool initialization dust
-        vm.expectEmit(true, false, false, false);
+        // Check indexed param (fundsRecipient); amount varies by fuzz inputs so left unchecked.
+        vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.CurrencySwept(fundsRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
@@ -63,7 +63,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        vm.expectEmit(true, false, false, false);
+        vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.TokensSwept(fundsRecipient, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
@@ -71,9 +71,10 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     function test_emitsMigrated(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        vm.expectEmit(false, false, false, false);
+        // Check indexed initializer (topic1); key and sqrtPriceX96 are derived from fuzz inputs.
+        vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.Migrated(
-            ILBPInitializer(address(0)),
+            ILBPInitializer(address(initializer)),
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
             0
         );
@@ -87,40 +88,29 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate});
 
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-
         // Bound so that hugeRaise * rate / MAX_BRACKET_RATE > int128.max (triggers the cap).
         // _calculateCurrencyAmountForLp does currencyRaised * rate, so cap hugeRaise to avoid that overflow.
         uint256 minRaise = uint256(uint128(type(int128).max)) * MigratorParams.MAX_BRACKET_RATE / rate + 1;
         uint256 hugeRaise = bound(_hugeRaise, minRaise, type(uint256).max / rate);
 
-        LBPInitializationParams memory lbpParams = LBPInitializationParams({
-            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: hugeRaise
-        });
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
-
-        // Fund the initializer with the huge raise + auction tokens; strategy holds supplyForLP as custody.
-        vm.deal(address(initializer), hugeRaise);
-        vm.roll(mp.migrationBlock);
-        // Keep this test focused on the int128 cap and sweep behavior; position execution is covered elsewhere.
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigrationWithSchedule(p, bp, hugeRaise);
 
         uint256 recipientBalBefore = fundsRecipient.balance;
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
 
-        // Migrate — should not revert, currency amount gets capped at int128.max
+        // Migrate — should not revert; currency amount gets capped at int128.max for the planner
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        uint256 received = fundsRecipient.balance - recipientBalBefore;
+        uint256 toRecipient = fundsRecipient.balance - recipientBalBefore;
+        uint256 toPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
 
-        // Conservation: total ETH is hugeRaise. With mocked modifyLiquidities, any value: currencyTransferAmount
-        // passed to PM remains in the strategy (the mock doesn't consume the value), so we account for it here
-        // instead of asserting strategy is empty. The singleton's delta sweep only sends this initializer's
-        // own leftover (currencyFromInitializer - currencyTransferAmount) to fundsRecipient.
-        assertEq(received + address(strategy).balance, hugeRaise);
+        // No protocol fee is configured, so all raised currency is either deposited into the pool or swept
+        assertEq(toRecipient + toPool, hugeRaise);
+        // The pool can never consume more than the int128.max cap (excess is swept to fundsRecipient)
+        assertLe(toPool, uint128(type(int128).max));
+
+        // Strategy should be empty
+        assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 
@@ -153,28 +143,35 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         vm.deal(address(initializer), maxV4Delta);
         vm.roll(mp.migrationBlock);
-        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         uint256 recipientBalBefore = fundsRecipient.balance;
         uint256 recipientTokenBalBefore = token.balanceOf(fundsRecipient);
-        uint256 positionManagerBalBefore = address(POSITION_MANAGER).balance;
-        uint256 positionManagerTokenBalBefore = token.balanceOf(address(POSITION_MANAGER));
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
+        uint256 poolManagerTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertApproxEqAbs(fundsRecipient.balance - recipientBalBefore, maxV4Delta, 2);
-        assertApproxEqAbs(token.balanceOf(fundsRecipient) - recipientTokenBalBefore, totalSupply, 2);
-        assertEq(address(POSITION_MANAGER).balance, positionManagerBalBefore);
-        assertEq(token.balanceOf(address(POSITION_MANAGER)), positionManagerTokenBalBefore);
+        // No protocol fee is configured, so all raised currency is either deposited into the pool or swept
+        assertEq(
+            (fundsRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
+            maxV4Delta
+        );
+        // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the CCA.
+        assertEq(
+            (token.balanceOf(fundsRecipient) - recipientTokenBalBefore)
+                + (token.balanceOf(address(POOL_MANAGER)) - poolManagerTokenBalBefore),
+            mp.supplyForLP
+        );
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
+        assertEq(token.balanceOf(address(initializer)), auctionSupply);
     }
 
     function test_noHookUsesStrategyHookWhenRawPoolExists(MigrationFuzzParams memory p) public {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
