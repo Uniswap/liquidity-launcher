@@ -31,11 +31,11 @@ interface ILBPStrategy is IDistributionStrategy {
     event TokensSwept(address indexed operator, uint256 amount);
 
     /// @notice Emitted when an initializer's held supplyForLP is swept by its leftoverRecipient after the
-    /// emergency-sweep delay expires (recovery path when migrate fails).
+    /// recovery delay expires (recovery path when migrate fails).
     /// @param initializer The initializer whose reserves were swept
     /// @param leftoverRecipient The recipient that received the swept tokens
     /// @param amount The amount of supplyForLP transferred out of the strategy
-    event EmergencySwept(ILBPInitializer indexed initializer, address indexed leftoverRecipient, uint256 amount);
+    event ReservesRecovered(ILBPInitializer indexed initializer, address indexed leftoverRecipient, uint256 amount);
 
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
@@ -94,30 +94,30 @@ interface ILBPStrategy is IDistributionStrategy {
     error Unregistered(ILBPInitializer initializer);
 
     /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
-    /// or `emergencySweep`.
+    /// or `recoverReserves`.
     /// @param initializer The initializer being acted on
     error AlreadyConsumed(ILBPInitializer initializer);
 
-    /// @notice Error thrown when emergencySweep is called before its unlock block
-    /// @param unlockBlock The earliest block at which emergencySweep is allowed
+    /// @notice Error thrown when recoverReserves is called before its unlock block
+    /// @param unlockBlock The earliest block at which recoverReserves is allowed
     /// @param currentBlock The current block
-    error EmergencySweepNotAllowed(uint256 unlockBlock, uint256 currentBlock);
+    error RecoveryNotYetAllowed(uint256 unlockBlock, uint256 currentBlock);
 
-    /// @notice Error thrown when emergencySweep is called by an address other than the initializer's
+    /// @notice Error thrown when recoverReserves is called by an address other than the initializer's
     /// leftoverRecipient.
-    /// @param caller The caller of emergencySweep
+    /// @param caller The caller of recoverReserves
     /// @param leftoverRecipient The configured leftoverRecipient for the initializer
-    error UnauthorizedEmergencySweep(address caller, address leftoverRecipient);
+    error UnauthorizedRecovery(address caller, address leftoverRecipient);
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @param initializer The initializer contract that was created
     function migrate(ILBPInitializer initializer) external;
 
     /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
-    /// emergency-sweep delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep the
+    /// recovery delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep the
     /// held `supplyForLP` directly out of the strategy.
     /// @param initializer The initializer whose reserves to sweep
-    function emergencySweep(ILBPInitializer initializer) external;
+    function recoverReserves(ILBPInitializer initializer) external;
 
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up

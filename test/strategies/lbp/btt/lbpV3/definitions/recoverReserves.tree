@@ -1,15 +1,15 @@
-EmergencySweepTest
+RecoverReservesTest
 ├── when initializer is unregistered (migrationBlock is 0)
 │   └── it reverts with {Unregistered}
 ├── when initializer was already migrated
 │   └── it reverts with {AlreadyConsumed}
-├── when initializer was already emergency-swept
+├── when initializer was already recovered
 │   └── it reverts with {AlreadyConsumed}
 ├── when caller is not the leftoverRecipient
-│   └── it reverts with {UnauthorizedEmergencySweep}
-├── when block.number is LT migrationBlock + emergencySweepDelay
-│   └── it reverts with {EmergencySweepNotAllowed}
+│   └── it reverts with {UnauthorizedRecovery}
+├── when block.number is LT migrationBlock + recoverReservesDelay
+│   └── it reverts with {RecoveryNotYetAllowed}
 └── when called by leftoverRecipient at or past the unlock block on a live initializer
     ├── it transfers supplyForLP from the strategy to leftoverRecipient
-    ├── it zeroes reserves so neither migrate nor emergencySweep can run again
-    └── it emits {EmergencySwept}
+    ├── it zeroes reserves so neither migrate nor recoverReserves can run again
+    └── it emits {ReservesRecovered}

@@ -49,14 +49,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @notice The initializer factory
     IDistributionStrategy public immutable initializerFactory;
     /// @notice Number of blocks past `migrationBlock` after which an initializer's `leftoverRecipient` may
-    /// recover the held `supplyForLP` via {emergencySweep}.
-    uint256 public immutable emergencySweepDelay;
+    /// recover the held `supplyForLP` via {recoverReserves}.
+    uint256 public immutable recoverReservesDelay;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     /// @notice supplyForLP this strategy holds for each registered initializer. Set when the
-    /// initializer is registered; zeroed when its reserves are consumed by {migrate} or {emergencySweep}.
+    /// initializer is registered; zeroed when its reserves are consumed by {migrate} or {recoverReserves}.
     mapping(ILBPInitializer initializer => uint256) public reserves;
 
     constructor(
@@ -64,12 +64,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
         address _owner,
-        uint256 _emergencySweepDelay
+        uint256 _recoverReservesDelay
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        emergencySweepDelay = _emergencySweepDelay;
+        recoverReservesDelay = _recoverReservesDelay;
         _initializeOwner(_owner);
     }
 
@@ -119,7 +119,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
         IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.supplyForLP);
-        // Track this initializer's held supplyForLP. {migrate} and {emergencySweep} both
+        // Track this initializer's held supplyForLP. {migrate} and {recoverReserves} both
         // require this to be nonzero (rejecting unregistered or already-consumed initializers)
         // and zero it after consuming the reserves.
         reserves[initializer] = migrationParams.supplyForLP;
@@ -130,8 +130,10 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     }
 
     /// @inheritdoc ILBPStrategy
-    /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
-    /// immutably set during initializeDistribution. Anyone can trigger migration
+    /// @dev Permissionless by design — anyone can trigger migration once the migration block is reached, and
+    /// the parameters used are the ones immutably set during initializeDistribution. A successful migrate
+    /// zeroes `reserves[initializer]`, which permanently blocks any subsequent `migrate` or `recoverReserves`
+    /// call on the same initializer.
     function migrate(ILBPInitializer initializer) external {
         // Load the stored migration parameters for the initializer
         MigratorParameters memory migrationParams = _initializers[initializer];
@@ -139,7 +141,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // migrationBlock == 0 means the initializer was never registered with this strategy.
         if (migrationParams.migrationBlock == 0) revert Unregistered(initializer);
         // reserves == 0 (with a nonzero migrationBlock) means it was already consumed by a prior
-        // migrate or emergencySweep.
+        // migrate or recoverReserves.
         if (reserves[initializer] == 0) revert AlreadyConsumed(initializer);
         if (_getBlockNumberish() < migrationParams.migrationBlock) {
             revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
@@ -203,32 +205,32 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
         }
 
-        // Mark this initializer's reserves consumed — blocks future migrate or emergencySweep.
+        // Mark this initializer's reserves consumed — blocks future migrate or recoverReserves.
         reserves[initializer] = 0;
         emit Migrated(initializer, key, sqrtPriceX96);
     }
 
     /// @inheritdoc ILBPStrategy
-    /// @dev Recovery path for an initializer whose migrate failed. After `emergencySweepDelay` blocks past `migrationBlock`, the
+    /// @dev Recovery path for an initializer whose migrate failed. After `recoverReservesDelay` blocks past `migrationBlock`, the
     ///      initializer's leftoverRecipient can pull the held `supplyForLP` back out of the strategy.
-    function emergencySweep(ILBPInitializer initializer) external {
+    function recoverReserves(ILBPInitializer initializer) external {
         MigratorParameters memory mp = _initializers[initializer];
 
         if (mp.migrationBlock == 0) revert Unregistered(initializer);
         uint256 amount = reserves[initializer];
         if (amount == 0) revert AlreadyConsumed(initializer);
         if (msg.sender != mp.leftoverRecipient) {
-            revert UnauthorizedEmergencySweep(msg.sender, mp.leftoverRecipient);
+            revert UnauthorizedRecovery(msg.sender, mp.leftoverRecipient);
         }
-        uint256 unlockBlock = mp.migrationBlock + emergencySweepDelay;
+        uint256 unlockBlock = mp.migrationBlock + recoverReservesDelay;
         if (_getBlockNumberish() < unlockBlock) {
-            revert EmergencySweepNotAllowed(unlockBlock, _getBlockNumberish());
+            revert RecoveryNotYetAllowed(unlockBlock, _getBlockNumberish());
         }
 
         // Clear before transfer to defend against any reentrancy via the token contract.
         reserves[initializer] = 0;
         IERC20(initializer.token()).safeTransfer(mp.leftoverRecipient, amount);
-        emit EmergencySwept(initializer, mp.leftoverRecipient, amount);
+        emit ReservesRecovered(initializer, mp.leftoverRecipient, amount);
     }
 
     /// @inheritdoc ILBPStrategy
