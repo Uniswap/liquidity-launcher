@@ -96,9 +96,10 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         uint256 auctionSupply = totalSupply - migrationParams.supplyForLP;
         ILBPInitializer initializer = ILBPInitializer(
             address(
-                IDistributionStrategy(initializerFactory).initializeDistribution(
-                    token, auctionSupply, initializerParams, keccak256(abi.encode(salt, migrationParams))
-                )
+                IDistributionStrategy(initializerFactory)
+                    .initializeDistribution(
+                        token, auctionSupply, initializerParams, keccak256(abi.encode(salt, migrationParams))
+                    )
             )
         );
 
