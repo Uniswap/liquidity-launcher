@@ -126,9 +126,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Pull tokens from the caller: auctionSupply directly into the initializer, supplyForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
         IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.supplyForLP);
-        // Track this initializer's held supplyForLP. {migrate} and {recoverFunds} both
-        // require this to be nonzero (rejecting unregistered or already-consumed initializers)
-        // and zero it after consuming the reserves.
+
+        // Set the reserves for the initializer
         reserves[initializer] = migrationParams.supplyForLP;
         initializer.onTokensReceived();
 
@@ -137,10 +136,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @inheritdoc ILBPStrategy
-    /// @dev Permissionless by design — anyone can trigger migration once the migration block is reached, and
-    /// the parameters used are the ones immutably set during initializeDistribution. A successful migrate
-    /// zeroes `reserves[initializer]`, which permanently blocks any subsequent `migrate` or `recoverFunds`
-    /// call on the same initializer.
     function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
         // Load the stored migration parameters for the initializer
         MigratorParameters memory migrationParams = _initializers[initializer];

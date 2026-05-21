@@ -115,7 +115,10 @@ interface ILBPStrategy is IDistributionStrategy {
     error UnauthorizedRecovery(address caller, address leftoverRecipient);
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
-    /// @param initializer The initializer contract that was created
+    /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
+    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
+    ///      to recover the reserved tokens and the currency raised by the initializer.
+    /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 
     /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
