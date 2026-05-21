@@ -11,6 +11,6 @@ RecoverFundsTest
 │   └── it reverts with {RecoveryNotYetAllowed}
 └── when called by leftoverRecipient at or past the unlock block on a live initializer
     ├── it transfers supplyForLP from the strategy to leftoverRecipient
-    ├── it sweeps the CCA's raised currency to leftoverRecipient
+    ├── it sweeps the initializer's raised currency to leftoverRecipient
     ├── it zeroes reserves so neither migrate nor recoverFunds can run again
     └── it emits {FundsRecovered}

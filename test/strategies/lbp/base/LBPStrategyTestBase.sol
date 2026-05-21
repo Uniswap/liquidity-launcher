@@ -23,7 +23,7 @@ import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
-/// Uses mock CCA (MockInitializerFactory + MockLBPInitializer) for auction simulation.
+/// Uses mock initializer (MockInitializerFactory + MockLBPInitializer) for auction simulation.
 abstract contract LBPStrategyTestBase is Test {
     // Canonical v4 deployment addresses
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
@@ -80,14 +80,13 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        bytes memory constructorArgs = abi.encode(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner, RECOVERY_DELAY_BLOCKS
-        );
+        bytes memory constructorArgs =
+            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), RECOVERY_DELAY_BLOCKS);
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
         strategy = new LBPStrategy{salt: salt}(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner, RECOVERY_DELAY_BLOCKS
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), RECOVERY_DELAY_BLOCKS
         );
 
         assertEq(address(strategy), strategyAddress);
@@ -169,7 +168,7 @@ abstract contract LBPStrategyTestBase is Test {
         bytes memory configData =
             _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, currency, lbpParams));
         // Mirror the production launcher flow: approve the strategy, then call initializeDistribution.
-        // The strategy pulls auctionSupply into the CCA and supplyForLP into itself.
+        // The strategy pulls auctionSupply into the initializer and supplyForLP into itself.
         token.approve(address(strategy), totalSupply);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
@@ -185,7 +184,7 @@ abstract contract LBPStrategyTestBase is Test {
     {
         p.poolLPFee = uint24(bound(p.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
         p.poolTickSpacing = int24(bound(p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
-        // CCA's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
+        // initializer's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
         // supplyForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
         p.supplyForLP = uint128(bound(p.supplyForLP, 1, uint128(type(int128).max) - auctionSupply));

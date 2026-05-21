@@ -11,7 +11,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 
-/// @notice Configurable mock of a CCA initializer for testing LBPStrategy
+/// @notice Configurable mock initializer for testing LBPStrategy
 contract MockLBPInitializer is ILBPInitializer {
     using CurrencyLibrary for Currency;
 
@@ -51,7 +51,7 @@ contract MockLBPInitializer is ILBPInitializer {
     }
 
     /// @notice Test-only mutator: lets a test flip the declared token after registration to
-    /// exercise the strategy's defense against malicious CCAs lying about their own properties.
+    /// exercise the strategy's defense against malicious initializers lying about their own properties.
     function setToken(address _token) external {
         token = _token;
     }

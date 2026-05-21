@@ -174,7 +174,7 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
 
         // Launcher should have no balance — it handed everything off to the strategy.
         assertEq(IERC20(tokenAddress).balanceOf(address(launcher)), 0);
-        // Strategy holds the LP portion; CCA holds the auction portion.
+        // Strategy holds the LP portion; initializer holds the auction portion.
         assertEq(IERC20(tokenAddress).balanceOf(address(strategy)), supplyForLP);
         assertEq(IERC20(tokenAddress).balanceOf(address(initializer)), auctionSupply);
         // Reserves tracks the strategy's portion.

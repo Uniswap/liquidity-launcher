@@ -160,14 +160,14 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // supplyForLP is the only portion the strategy handles; it lands in
-        // leftoverRecipient or the pool manager. Unsold auction tokens stay in the CCA for the
+        // leftoverRecipient or the pool manager. Unsold auction tokens stay in the initializer for the
         // tokensRecipient to claim separately.
         assertEq(
             (token.balanceOf(leftoverRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
             supplyForLP
         );
         assertEq(token.balanceOf(address(strategy)), 0);
-        // The CCA's unsold balance is untouched by migrate.
+        // The initializer's unsold balance is untouched by migrate.
         assertEq(token.balanceOf(address(initializer)), unsoldInCca);
     }
 

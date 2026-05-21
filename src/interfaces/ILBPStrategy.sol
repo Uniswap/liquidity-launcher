@@ -87,12 +87,10 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
-    /// @notice Error thrown when the three token sources disagree at registration. All three of
-    /// (the launcher's function-param `token`, the user-declared `MigratorParameters.token`, and
-    /// the freshly deployed CCA's `token()` getter) must agree.
+    /// @notice Error thrown when the three token sources disagree at registration.
     /// @param fromParam The function-param `token` (what the launcher is pulling)
     /// @param declared The user-declared MigratorParameters.token
-    /// @param fromInitializer The CCA's own `token()` getter at registration
+    /// @param fromInitializer The initializer's own `token()` getter at registration
     error TokenMismatch(address fromParam, address declared, address fromInitializer);
 
     /// @notice Error thrown when the user-declared `MigratorParameters.currency` does not agree
@@ -127,7 +125,7 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
     /// recovery delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep both
-    /// the held `supplyForLP` and any raised currency still held in the CCA out of the strategy.
+    /// the held `supplyForLP` and any raised currency still held in the initializer out of the strategy.
     /// @param initializer The initializer whose funds to recover
     function recoverFunds(ILBPInitializer initializer) external;
 

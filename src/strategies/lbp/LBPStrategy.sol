@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Ownable} from "solady/auth/Ownable.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -37,7 +36,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrategy, ReentrancyGuardTransient {
+contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, ReentrancyGuardTransient {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using MigratorParams for MigratorParameters;
@@ -64,20 +63,18 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        address _owner,
         uint256 _recoveryDelayBlocks
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         recoveryDelayBlocks = _recoveryDelayBlocks;
-        _initializeOwner(_owner);
     }
 
     /// @inheritdoc IDistributionStrategy
-    /// @dev Validates the params, deploys the initializer (CCA) via the factory, registers the migration
+    /// @dev Validates the params, deploys the initializer (initializer) via the factory, registers the migration
     ///      parameters, and pulls `totalSupply` tokens from the caller — `auctionSupply` directly into the
-    ///      CCA and `supplyForLP` into this strategy. The caller (typically the launcher) must have
+    ///      initializer and `supplyForLP` into this strategy. The caller (typically the launcher) must have
     ///      approved this strategy for at least `totalSupply` of `token` before calling. Returns this
     ///      strategy as the distribution contract.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
@@ -123,7 +120,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
 
         _initializers[initializer] = migrationParams;
 
-        // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
+        // Pull tokens from the caller: auctionSupply directly into the initializer, supplyForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
         IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.supplyForLP);
         // Track this initializer's held supplyForLP. {migrate} and {recoverFunds} both
@@ -221,7 +218,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     /// @inheritdoc ILBPStrategy
     /// @dev Recovery path for an initializer whose migrate failed. After `recoveryDelayBlocks` blocks past
     ///      `migrationBlock`, the initializer's leftoverRecipient can pull both the held `supplyForLP` and any
-    ///      raised currency still held in the CCA back out.
+    ///      raised currency still held in the initializer back out.
     function recoverFunds(ILBPInitializer initializer) external nonReentrant {
         MigratorParameters memory mp = _initializers[initializer];
 
@@ -239,7 +236,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Set the reserves to zero
         reserves[initializer] = 0;
 
-        // Sweep any raised currency still held on the CCA. The CCA's fundsRecipient is this strategy,
+        // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
         // so sweepCurrency moves it here; we then forward strictly the delta to leftoverRecipient.
         Currency currency = Currency.wrap(mp.currency);
         uint256 currencyBefore = currency.balanceOfSelf();

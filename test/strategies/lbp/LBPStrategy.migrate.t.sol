@@ -6,6 +6,7 @@ import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
+import {MockReentrantMigrateRecipient} from "test/mocks/MockReentrantMigrateRecipient.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -157,7 +158,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
             (leftoverRecipient.balance - recipientBalBefore) + (address(POOL_MANAGER).balance - poolManagerBalBefore),
             maxV4Delta
         );
-        // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the CCA.
+        // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the initializer.
         assertEq(
             (token.balanceOf(leftoverRecipient) - recipientTokenBalBefore)
                 + (token.balanceOf(address(POOL_MANAGER)) - poolManagerTokenBalBefore),
@@ -252,6 +253,40 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
             ReentrancyGuardTransient.Reentrancy.selector,
             "expected inner reentrant migrate to revert with Reentrancy"
         );
+    }
+
+    /// @notice A malicious leftoverRecipient that reenters migrate(self) from its receive() during
+    /// the leftover-currency-transfer leg must hit AlreadyConsumed — reserves are zeroed at the top
+    /// of migrate before any external interaction. Different reentry point than the sweepCurrency
+    /// vector above.
+    function test_fuzz_reentrantMigrateLeftoverRecipient_revertsWithAlreadyConsumed(MigrationFuzzParams memory p)
+        public
+    {
+        MockReentrantMigrateRecipient recipient = new MockReentrantMigrateRecipient(ILBPStrategy(address(strategy)));
+
+        LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
+
+        // Override leftoverRecipient with the malicious contract.
+        mp.leftoverRecipient = address(recipient);
+
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, brackets, address(0), lbpParams);
+
+        vm.deal(address(initializer), p.currencyRaised);
+        recipient.setInitializer(ILBPInitializer(address(initializer)));
+
+        vm.roll(mp.migrationBlock);
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertTrue(recipient.reentered());
+        assertEq(bytes4(recipient.capturedRevertData()), ILBPStrategy.AlreadyConsumed.selector);
     }
 
     function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
