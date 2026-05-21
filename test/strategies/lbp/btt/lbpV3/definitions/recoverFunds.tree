@@ -1,4 +1,4 @@
-RecoverReservesTest
+RecoverFundsTest
 ├── when initializer is unregistered (migrationBlock is 0)
 │   └── it reverts with {Unregistered}
 ├── when initializer was already migrated
@@ -7,9 +7,10 @@ RecoverReservesTest
 │   └── it reverts with {AlreadyConsumed}
 ├── when caller is not the leftoverRecipient
 │   └── it reverts with {UnauthorizedRecovery}
-├── when block.number is LT migrationBlock + recoverReservesDelay
+├── when block.number is LT migrationBlock + recoveryDelay
 │   └── it reverts with {RecoveryNotYetAllowed}
 └── when called by leftoverRecipient at or past the unlock block on a live initializer
     ├── it transfers supplyForLP from the strategy to leftoverRecipient
-    ├── it zeroes reserves so neither migrate nor recoverReserves can run again
-    └── it emits {ReservesRecovered}
+    ├── it sweeps the CCA's raised currency to leftoverRecipient
+    ├── it zeroes reserves so neither migrate nor recoverFunds can run again
+    └── it emits {FundsRecovered}

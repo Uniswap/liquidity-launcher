@@ -54,7 +54,7 @@ contract MockLBPInitializer is ILBPInitializer {
         return storedLbpParams;
     }
 
-    function sweepCurrency() external {
+    function sweepCurrency() external virtual {
         sweepCurrencyCalled = true;
         // Transfer all currency held by this contract to the caller (the strategy)
         Currency c = Currency.wrap(currency);

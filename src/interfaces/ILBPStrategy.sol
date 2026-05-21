@@ -35,7 +35,7 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param initializer The initializer whose reserves were swept
     /// @param leftoverRecipient The recipient that received the swept tokens
     /// @param amount The amount of supplyForLP transferred out of the strategy
-    event ReservesRecovered(ILBPInitializer indexed initializer, address indexed leftoverRecipient, uint256 amount);
+    event FundsRecovered(ILBPInitializer indexed initializer, address indexed leftoverRecipient, uint256 amount);
 
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
@@ -94,18 +94,18 @@ interface ILBPStrategy is IDistributionStrategy {
     error Unregistered(ILBPInitializer initializer);
 
     /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
-    /// or `recoverReserves`.
+    /// or `recoverFunds`.
     /// @param initializer The initializer being acted on
     error AlreadyConsumed(ILBPInitializer initializer);
 
-    /// @notice Error thrown when recoverReserves is called before its unlock block
-    /// @param unlockBlock The earliest block at which recoverReserves is allowed
+    /// @notice Error thrown when recoverFunds is called before its unlock block
+    /// @param unlockBlock The earliest block at which recoverFunds is allowed
     /// @param currentBlock The current block
     error RecoveryNotYetAllowed(uint256 unlockBlock, uint256 currentBlock);
 
-    /// @notice Error thrown when recoverReserves is called by an address other than the initializer's
+    /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
     /// leftoverRecipient.
-    /// @param caller The caller of recoverReserves
+    /// @param caller The caller of recoverFunds
     /// @param leftoverRecipient The configured leftoverRecipient for the initializer
     error UnauthorizedRecovery(address caller, address leftoverRecipient);
 
@@ -114,10 +114,10 @@ interface ILBPStrategy is IDistributionStrategy {
     function migrate(ILBPInitializer initializer) external;
 
     /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
-    /// recovery delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep the
-    /// held `supplyForLP` directly out of the strategy.
-    /// @param initializer The initializer whose reserves to sweep
-    function recoverReserves(ILBPInitializer initializer) external;
+    /// recovery delay past `migrationBlock`, the initializer's `leftoverRecipient` may sweep both
+    /// the held `supplyForLP` and any raised currency still held in the CCA out of the strategy.
+    /// @param initializer The initializer whose funds to recover
+    function recoverFunds(ILBPInitializer initializer) external;
 
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up

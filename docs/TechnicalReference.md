@@ -43,7 +43,7 @@ Creates standard ERC20 tokens with extended metadata. These tokens support Permi
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
-The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy` also exposes a `recoverReserves` recovery path: if `migrate` never fires, the initializer's `leftoverRecipient` may pull the held `supplyForLP` back out of the strategy after the configured delay past `migrationBlock`.
+The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy` also exposes a `recoverFunds` recovery path: if `migrate` never fires, the initializer's `leftoverRecipient` may pull the held `supplyForLP` and any raised currency still held on the CCA back out of the strategy after the configured delay past `migrationBlock`.
 
 They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
 
@@ -128,20 +128,20 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 - Create an optional one-sided position
 - Transfer the LP NFT to the designated recipient
 
-A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` or `recoverReserves` call for the same initializer.
+A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` or `recoverFunds` call for the same initializer.
 
 **Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
 
-#### 5. Reserves Recovery Path
+#### 5. Funds Recovery Path
 
-If `migrate()` is never called — for example, because the auction parameters made migration impossible, or because a transient issue stuck the migrate call — the held `supplyForLP` would otherwise sit in the strategy forever. `LBPStrategy.recoverReserves(initializer)` is the recovery path:
+If `migrate()` is never called — for example, because the auction parameters made migration impossible, or because a transient issue stuck the migrate call — the held `supplyForLP` and the auction's raised currency would otherwise sit forever (the former in the strategy, the latter on the CCA). `LBPStrategy.recoverFunds(initializer)` is the recovery path:
 
-- Available only after `migrationBlock + recoverReservesDelay` blocks have passed (`recoverReservesDelay` is an immutable set at deploy time, calibrated per chain so it corresponds to roughly the same wall-time everywhere).
+- Available only after `migrationBlock + recoveryDelay` blocks have passed (`recoveryDelay` is an immutable set at deploy time, calibrated per chain so it corresponds to roughly the same wall-time everywhere).
 - Callable only by the initializer's `leftoverRecipient`.
-- Transfers exactly the held `supplyForLP` to `leftoverRecipient` and zeroes `reserves[initializer]`, which also blocks any future `migrate` call on the same initializer.
-- The CCA's currency and unsold auction tokens are untouched — they remain on the CCA and can be recovered through the CCA's own paths.
+- Transfers the held `supplyForLP` AND sweeps the CCA's raised currency to `leftoverRecipient`, then zeroes `reserves[initializer]`, which also blocks any future `migrate` call on the same initializer.
+- Unsold auction tokens stay in the CCA and can be claimed through the CCA's own `tokensRecipient` path.
 
-Because each initializer's reserves are consumable exactly once (by either `migrate` or `recoverReserves`), one initializer's recovery sweep cannot reach into another initializer's held reserves on the same token.
+Because each initializer's reserves are consumable exactly once (by either `migrate` or `recoverFunds`), one initializer's recovery sweep cannot reach into another initializer's held reserves on the same token.
 
 ### LBP Hook Requirement
 

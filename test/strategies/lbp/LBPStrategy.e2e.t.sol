@@ -189,6 +189,79 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(strategy.initializers(ILBPInitializer(address(initA))).supplyForLP, supplyForLP_A);
     }
 
+    /// @notice Adversarial scenario from PR review: an attacker registers a separate auction B
+    /// whose CURRENCY is A's launch token, with B's migration block BEFORE A's. When B's migrate
+    /// runs, A's `supplyForLP` (token X) is still in the strategy because A hasn't migrated yet.
+    /// Pre-fix, B's leftover-currency sweep read the strategy's raw balance and drained A's
+    /// reserves. Post-fix the sweep is delta-scoped, so A's reserves survive.
+    function test_fuzz_crossInitializerCurrency_doesNotDrainReservesWhenBMigratesFirst(
+        MigrationFuzzParams memory pA,
+        MigrationFuzzParams memory pB
+    ) public {
+        // Register A (native ETH currency) without rolling so B's blocks can sit before A's.
+        (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX) = _registerInitA(pA);
+        assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
+
+        // Register B with currency = tokenX (A's launch token); B's launch token is a distinct ERC20.
+        (uint64 migrationBlockB, MockLBPInitializer initB) = _registerInitBWithCurrency(pB, address(tokenX));
+
+        // "Ends earlier" condition from the reviewer's quote.
+        vm.assume(migrationBlockB < migrationBlockA);
+
+        // Fund B's CCA with its raised tokenX, roll to B's migrationBlock (still BEFORE A's), migrate B.
+        deal(address(tokenX), address(initB), pB.currencyRaised);
+        vm.roll(migrationBlockB);
+        assertLt(block.number, migrationBlockA);
+        uint256 leftoverBefore = tokenX.balanceOf(leftoverRecipient);
+
+        strategy.migrate(ILBPInitializer(address(initB)));
+
+        // A's supplyForLP is still held in the strategy — untouched by B's migrate.
+        assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
+        // Sweep to B's leftoverRecipient is bounded by B's contribution, not the full strategy balance.
+        assertLe(tokenX.balanceOf(leftoverRecipient) - leftoverBefore, pB.currencyRaised);
+    }
+
+    /// @notice Bounds pA and registers A with native ETH currency. Returns just the locals the caller needs.
+    function _registerInitA(MigrationFuzzParams memory pA)
+        private
+        returns (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX)
+    {
+        LiquidityAllocationBracket[] memory bpA = _boundBrackets(pA.bpParams);
+        (MigratorParameters memory mpA, uint128 totalSupplyA, uint64 endBlockA, uint128 auctionSupplyA) =
+            _boundMigratorParams(pA);
+        pA.currencyRaised = _boundCurrencyRaised(pA.currencyRaised, bpA);
+        pA.initialPriceX96 = _boundInitialPriceX96(pA.initialPriceX96);
+        pA.tokensSold = uint128(bound(pA.tokensSold, 1, auctionSupplyA));
+
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: pA.initialPriceX96, tokensSold: pA.tokensSold, currencyRaised: pA.currencyRaised
+        });
+        (, tokenX) = _initializeWith(mpA, totalSupplyA, endBlockA, bpA, address(0), lbpParams);
+        migrationBlockA = mpA.migrationBlock;
+        supplyForLP_A = mpA.supplyForLP;
+    }
+
+    /// @notice Bounds pB and registers B with the given currency. Mutates pB.currencyRaised in place
+    /// so the caller can use the bounded value for deal() / asserts.
+    function _registerInitBWithCurrency(MigrationFuzzParams memory pB, address currency)
+        private
+        returns (uint64 migrationBlockB, MockLBPInitializer initB)
+    {
+        LiquidityAllocationBracket[] memory bpB = _boundBrackets(pB.bpParams);
+        (MigratorParameters memory mpB, uint128 totalSupplyB, uint64 endBlockB, uint128 auctionSupplyB) =
+            _boundMigratorParams(pB);
+        pB.currencyRaised = _boundCurrencyRaised(pB.currencyRaised, bpB);
+        pB.initialPriceX96 = _boundInitialPriceX96(pB.initialPriceX96);
+        pB.tokensSold = uint128(bound(pB.tokensSold, 1, auctionSupplyB));
+
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: pB.initialPriceX96, tokensSold: pB.tokensSold, currencyRaised: pB.currencyRaised
+        });
+        (initB,) = _initializeWith(mpB, totalSupplyB, endBlockB, bpB, currency, lbpParams);
+        migrationBlockB = mpB.migrationBlock;
+    }
+
     function test_fuzz_allRaisedCurrencyIsSentToFundsRecipientOrPool(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();

@@ -10,6 +10,7 @@ import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20Metada
 import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockDistributionStrategy} from "./mocks/MockDistributionStrategy.sol";
+import {MockUnderClaimingStrategy} from "./mocks/MockUnderClaimingStrategy.sol";
 import {Distribution} from "src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
@@ -154,6 +155,25 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategy), amount: amount, configData: ""});
 
         vm.expectRevert();
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
+    }
+
+    /// @notice distributeToken must revert if the strategy pulls less than the full pre-approved amount.
+    function test_fuzz_distributeToken_revertsWhenStrategyDoesNotExhaustAllowance(uint128 amount, uint256 shortfall)
+        public
+    {
+        amount = uint128(bound(amount, 2, type(uint128).max));
+        shortfall = bound(shortfall, 1, amount);
+
+        address tokenAddress = _mockToken(address(liquidityLauncher), amount, "Test Token", "TEST");
+        MockUnderClaimingStrategy underClaimer = new MockUnderClaimingStrategy(shortfall);
+
+        Distribution memory distribution =
+            Distribution({strategy: address(underClaimer), amount: amount, configData: ""});
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILiquidityLauncher.AllowanceNotExhausted.selector, address(underClaimer), shortfall)
+        );
         liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
     }
 

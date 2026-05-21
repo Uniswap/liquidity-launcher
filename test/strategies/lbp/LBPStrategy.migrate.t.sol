@@ -5,6 +5,7 @@ import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
+import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -56,7 +57,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: maxV4Delta
         });
-        (MockLBPInitializer initializer, MockERC20 token) =
+        (MockLBPInitializer initializer,) =
             _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
 
         vm.deal(address(initializer), maxV4Delta);
@@ -205,6 +206,51 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(rawSqrtPriceAfter, rawSqrtPrice);
         assertGt(strategySqrtPrice, 0);
         assertEq(address(strategyKey.hooks), address(strategy));
+    }
+
+    /// @notice An initializer that reenters migrate from inside sweepCurrency hits
+    /// AlreadyConsumed because reserves are zeroed at the top of migrate before any external call.
+    function test_fuzz_reentrantMigrateSweepCurrency_revertsWithAlreadyConsumed(MigrationFuzzParams memory p) public {
+        LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
+
+        MockERC20 token = new MockERC20("T", "T", totalSupply, address(this));
+        MockReentrantInitializer reentrant = new MockReentrantInitializer(
+            address(token),
+            address(0),
+            totalSupply,
+            tokensRecipient,
+            address(strategy),
+            0,
+            endBlock,
+            ILBPStrategy(strategy)
+        );
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
+        reentrant.setLbpInitializationParams(lbpParams);
+        factory.setOverrideInitializer(MockLBPInitializer(payable(address(reentrant))));
+
+        token.approve(address(strategy), totalSupply);
+        bytes memory configData =
+            _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, address(0), lbpParams));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+
+        vm.deal(address(reentrant), p.currencyRaised);
+        vm.roll(mp.migrationBlock);
+
+        strategy.migrate(ILBPInitializer(address(reentrant)));
+
+        assertTrue(reentrant.reentered(), "inner reentrant call did not fire");
+        assertEq(
+            bytes4(reentrant.capturedRevertData()),
+            ILBPStrategy.AlreadyConsumed.selector,
+            "expected inner reentrant migrate to revert with AlreadyConsumed"
+        );
     }
 
     function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
