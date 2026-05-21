@@ -113,7 +113,8 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         // Validate the initializer parameters are set as expected
         _validateInitializerParams(initializer, migrationParams);
 
-        // Store the parameters
+        _validateAssetAgreement(initializer, migrationParams, token);
+
         _initializers[initializer] = migrationParams;
 
         // Pull tokens from the caller: auctionSupply directly into the CCA, supplyForLP into self.
@@ -149,8 +150,9 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
 
         reserves[initializer] = 0;
 
-        Currency currency = Currency.wrap(initializer.currency());
-        Currency token = Currency.wrap(initializer.token());
+        // Use the (token, currency) snapshot captured into MigratorParameters at registration.
+        Currency currency = Currency.wrap(migrationParams.currency);
+        Currency token = Currency.wrap(migrationParams.token);
 
         uint256 currencyBefore = currency.balanceOfSelf();
         initializer.sweepCurrency();
@@ -230,9 +232,11 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
 
         reserves[initializer] = 0;
 
+        // Use the (token, currency) snapshot captured into MigratorParameters at registration.
+
         // Sweep any raised currency still held on the CCA. The CCA's fundsRecipient is this strategy,
         // so sweepCurrency moves it here; we then forward strictly the delta to leftoverRecipient.
-        Currency currency = Currency.wrap(initializer.currency());
+        Currency currency = Currency.wrap(mp.currency);
         uint256 currencyBefore = currency.balanceOfSelf();
         initializer.sweepCurrency();
         uint256 recoveredCurrency = currency.balanceOfSelf() - currencyBefore;
@@ -241,7 +245,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             emit CurrencySwept(mp.leftoverRecipient, recoveredCurrency);
         }
 
-        IERC20(initializer.token()).safeTransfer(mp.leftoverRecipient, amount);
+        IERC20(mp.token).safeTransfer(mp.leftoverRecipient, amount);
         emit FundsRecovered(initializer, mp.leftoverRecipient, amount);
     }
 
@@ -391,6 +395,22 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
         }
+    }
+
+    /// @notice Validates that the user's declared (token, currency) in MigratorParameters agrees with
+    /// (1) the function-param `token` (what the launcher is actually pulling), (2) the freshly
+    /// deployed CCA's own `token()` getter, and (3) the CCA's `currency()` getter. After registration,
+    /// these stored values drive {migrate} and {recoverFunds} — so a malicious CCA can't redirect
+    /// transfers cross-initializer by mutating its getters post-registration, and a mis-wired factory
+    /// is caught before any reserves are committed.
+    function _validateAssetAgreement(ILBPInitializer initializer, MigratorParameters memory mp, address token)
+        private
+        view
+    {
+        address ccaToken = initializer.token();
+        if (mp.token != token || ccaToken != token) revert TokenMismatch(token, mp.token, ccaToken);
+        address ccaCurrency = initializer.currency();
+        if (mp.currency != ccaCurrency) revert CurrencyMismatch(mp.currency, ccaCurrency);
     }
 
     /// @notice Calculates the currency amount allocated to the LP using a piecewise bracket curve

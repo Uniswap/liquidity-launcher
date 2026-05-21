@@ -87,6 +87,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             leftoverRecipient: leftoverRecipient,
             lpPositionRecipient: lpPositionRecipient,
             hook: address(0),
+            token: address(0),
+            currency: address(0),
             positionDefinitions: abi.encode(defs),
             lpAllocationSchedule: new bytes(0)
         });
@@ -170,7 +172,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         token.approve(address(strategy), totalSupply_B);
 
         // 4. Register B. Use a non-default salt so the mock factory deploys a fresh CCA distinct from A's.
-        // _encodeConfigData populates mp_B.lpAllocationSchedule with the bp_B brackets before encoding.
+        mp_B.token = address(token);
         bytes memory configData_B =
             _encodeConfigData(mp_B, bp_B, _encodeMockInitializerParams(endBlock_B, address(0), lbpParams_B));
         strategy.initializeDistribution(address(token), totalSupply_B, configData_B, bytes32(uint256(1)));
@@ -199,7 +201,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory pB
     ) public {
         // Register A (native ETH currency) without rolling so B's blocks can sit before A's.
-        (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX) = _registerInitA(pA);
+        (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX,) = _registerInitA(pA);
         assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
 
         // Register B with currency = tokenX (A's launch token); B's launch token is a distinct ERC20.
@@ -222,10 +224,108 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertLe(tokenX.balanceOf(leftoverRecipient) - leftoverBefore, pB.currencyRaised);
     }
 
+    /// @notice Even if a malicious initializer B mutates its `token()` getter AFTER registration
+    /// to point at A's launch token, B's migrate must use the snapshot taken at registration —
+    /// not the live (lying) getter — and therefore cannot drain A's reserves.
+    function test_fuzz_maliciousInitializerCannotRedirectTokenAfterRegistration(
+        MigrationFuzzParams memory pA,
+        MigrationFuzzParams memory pB
+    ) public {
+        // 1. Register A with native ETH currency — strategy holds supplyForLP_A of token X.
+        (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX, MockLBPInitializer initA) = _registerInitA(pA);
+
+        // 2. Register B with its own (distinct) launch token Y, also using native ETH currency.
+        (uint64 migrationBlockB, MockLBPInitializer initB) = _registerInitBWithCurrency(pB, address(0));
+        vm.assume(migrationBlockB < migrationBlockA);
+
+        // Capture B's honest snapshot for the assertion at the end.
+        address honestTokenB = strategy.initializers(ILBPInitializer(address(initB))).token;
+        assertTrue(honestTokenB != address(tokenX));
+
+        // 3. Attacker mutates B's declared token AFTER registration to point at A's token X.
+        initB.setToken(address(tokenX));
+        assertEq(initB.token(), address(tokenX));
+        assertEq(strategy.initializers(ILBPInitializer(address(initB))).token, honestTokenB);
+
+        // 4. Fund B's CCA with its claimed currencyRaised and migrate B. B's migrate runs against
+        //    the snapshot (honest token Y), so it uses B's own pre-pulled supplyForLP_B of Y —
+        //    never reaching for A's X.
+        vm.deal(address(initB), pB.currencyRaised);
+        vm.roll(migrationBlockB);
+        strategy.migrate(ILBPInitializer(address(initB)));
+
+        // 5. A's supplyForLP is untouched — the lie did not cross initializers.
+        assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
+        assertEq(strategy.reserves(ILBPInitializer(address(initA))), supplyForLP_A);
+    }
+
+    /// @notice initializeDistribution rejects configData whose declared `mp.token` doesn't match
+    /// the function-param `token` the launcher is actually pulling.
+    function test_fuzz_initializeDistribution_revertsWhenMpTokenDisagreesWithFunctionParam(MigrationFuzzParams memory p)
+        public
+    {
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 realToken = new MockERC20("Real", "R", totalSupply, address(this));
+        MockERC20 lyingToken = new MockERC20("Lie", "L", totalSupply, address(this));
+
+        // User declares mp.token = lyingToken, but the launcher pulls realToken.
+        mp.token = address(lyingToken);
+        bytes memory configData = _encodeConfigData(mp, bp, _emptyMockInitializerParams(endBlock));
+
+        realToken.approve(address(strategy), totalSupply);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategy.TokenMismatch.selector, address(realToken), address(lyingToken), address(realToken)
+            )
+        );
+        strategy.initializeDistribution(address(realToken), totalSupply, configData, bytes32(0));
+    }
+
+    /// @notice initializeDistribution rejects a mis-wired factory whose freshly deployed CCA reports
+    /// a `token()` different from what the launcher is pulling. Without this check, the user's
+    /// auction funds would be stuck on a CCA whose own logic references a token it doesn't hold.
+    function test_fuzz_initializeDistribution_revertsWhenInitializerReportsMismatchedToken(MigrationFuzzParams memory p)
+        public
+    {
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 realToken = new MockERC20("Real", "R", totalSupply, address(this));
+        MockERC20 lyingToken = new MockERC20("Lie", "L", totalSupply, address(this));
+
+        // Impostor CCA self-reports lyingToken via its `token()` getter even though the launcher
+        // pulls realToken.
+        MockLBPInitializer impostor = new MockLBPInitializer(
+            address(lyingToken), address(0), totalSupply, tokensRecipient, address(strategy), 0, endBlock
+        );
+        factory.setOverrideInitializer(impostor);
+
+        mp.token = address(realToken);
+        bytes memory configData = _encodeConfigData(mp, bp, _emptyMockInitializerParams(endBlock));
+
+        realToken.approve(address(strategy), totalSupply);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategy.TokenMismatch.selector, address(realToken), address(realToken), address(lyingToken)
+            )
+        );
+        strategy.initializeDistribution(address(realToken), totalSupply, configData, bytes32(0));
+    }
+
+    /// @notice Helper: encodes empty mock-initializer params (zero LBP outcomes; native-ETH currency).
+    /// Useful for tests that don't need to migrate (e.g. registration-time revert tests).
+    function _emptyMockInitializerParams(uint64 endBlock) private pure returns (bytes memory) {
+        return _encodeMockInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+    }
+
     /// @notice Bounds pA and registers A with native ETH currency. Returns just the locals the caller needs.
     function _registerInitA(MigrationFuzzParams memory pA)
         private
-        returns (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX)
+        returns (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX, MockLBPInitializer initA)
     {
         LiquidityAllocationBracket[] memory bpA = _boundBrackets(pA.bpParams);
         (MigratorParameters memory mpA, uint128 totalSupplyA, uint64 endBlockA, uint128 auctionSupplyA) =
@@ -237,7 +337,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: pA.initialPriceX96, tokensSold: pA.tokensSold, currencyRaised: pA.currencyRaised
         });
-        (, tokenX) = _initializeWith(mpA, totalSupplyA, endBlockA, bpA, address(0), lbpParams);
+        (initA, tokenX) = _initializeWith(mpA, totalSupplyA, endBlockA, bpA, address(0), lbpParams);
         migrationBlockA = mpA.migrationBlock;
         supplyForLP_A = mpA.supplyForLP;
     }

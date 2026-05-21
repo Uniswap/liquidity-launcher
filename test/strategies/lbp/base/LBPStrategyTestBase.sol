@@ -163,6 +163,8 @@ abstract contract LBPStrategyTestBase is Test {
         LBPInitializationParams memory lbpParams
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        mp.currency = currency;
         bytes memory configData =
             _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, currency, lbpParams));
         // Mirror the production launcher flow: approve the strategy, then call initializeDistribution.
@@ -200,6 +202,8 @@ abstract contract LBPStrategyTestBase is Test {
             leftoverRecipient: leftoverRecipient,
             lpPositionRecipient: lpPositionRecipient,
             hook: address(0),
+            token: address(0),
+            currency: address(0),
             positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
             lpAllocationSchedule: new bytes(0)
         });
@@ -264,7 +268,10 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(endBlock, currency, lbpParams);
     }
 
-    /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData
+    /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData.
+    /// @dev Populates mp.lpAllocationSchedule from the supplied brackets. The caller is responsible
+    /// for setting mp.token and mp.currency — the strategy validates them at registration against
+    /// the function-param token and the freshly deployed initializer's getters.
     function _encodeConfigData(
         MigratorParameters memory mp,
         LiquidityAllocationBracket[] memory brackets,

@@ -57,8 +57,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: maxV4Delta
         });
-        (MockLBPInitializer initializer,) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
 
         vm.deal(address(initializer), maxV4Delta);
         vm.roll(mp.migrationBlock);
@@ -236,6 +235,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         factory.setOverrideInitializer(MockLBPInitializer(payable(address(reentrant))));
 
         token.approve(address(strategy), totalSupply);
+        mp.token = address(token);
         bytes memory configData =
             _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, address(0), lbpParams));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));

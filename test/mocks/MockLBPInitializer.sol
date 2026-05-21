@@ -50,6 +50,17 @@ contract MockLBPInitializer is ILBPInitializer {
         storedLbpParams = _params;
     }
 
+    /// @notice Test-only mutator: lets a test flip the declared token after registration to
+    /// exercise the strategy's defense against malicious CCAs lying about their own properties.
+    function setToken(address _token) external {
+        token = _token;
+    }
+
+    /// @notice Test-only mutator: lets a test flip the declared currency after registration.
+    function setCurrency(address _currency) external {
+        currency = _currency;
+    }
+
     function lbpInitializationParams() external view returns (LBPInitializationParams memory) {
         return storedLbpParams;
     }

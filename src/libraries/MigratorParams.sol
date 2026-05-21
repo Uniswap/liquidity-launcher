@@ -17,6 +17,8 @@ struct MigratorParameters {
     address leftoverRecipient; // the address that will receive unused currency and unused LP supply after migration
     address lpPositionRecipient; // the address that will receive the created LP position
     address hook; // Nonzero hooks MUST inherit InitializerHook. address(0) uses the hookless pool unless it already exists at migration time.
+    address token; // launched token; must match function-param `token` AND `initializer.token()` at registration
+    address currency; // auction currency; must match `initializer.currency()` at registration
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
 }

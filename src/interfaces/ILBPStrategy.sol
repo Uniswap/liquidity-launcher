@@ -89,6 +89,20 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
+    /// @notice Error thrown when the three token sources disagree at registration. All three of
+    /// (the launcher's function-param `token`, the user-declared `MigratorParameters.token`, and
+    /// the freshly deployed CCA's `token()` getter) must agree.
+    /// @param fromParam The function-param `token` (what the launcher is pulling)
+    /// @param declared The user-declared MigratorParameters.token
+    /// @param fromInitializer The CCA's own `token()` getter at registration
+    error TokenMismatch(address fromParam, address declared, address fromInitializer);
+
+    /// @notice Error thrown when the user-declared `MigratorParameters.currency` does not agree
+    /// with the freshly deployed initializer's `currency()` getter at registration.
+    /// @param declared The user-declared currency (from MigratorParameters.currency)
+    /// @param fromInitializer The currency() value returned by the freshly deployed initializer
+    error CurrencyMismatch(address declared, address fromInitializer);
+
     /// @notice Error thrown when an initializer was never registered with the strategy
     /// @param initializer The initializer being acted on
     error Unregistered(ILBPInitializer initializer);

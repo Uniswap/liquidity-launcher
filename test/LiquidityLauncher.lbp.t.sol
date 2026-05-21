@@ -37,12 +37,13 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
     }
 
     function test_fuzz_e2e_multicall_createTokenAndDistributeViaLBPStrategy(MigrationFuzzParams memory p) public {
-        (MigratorParameters memory mp, uint128 totalSupply, bytes memory configData) = _buildE2EConfig(p);
-
-        // Precompute the would-be token address so we can build Distribution before the multicall fires.
+        // Precompute the would-be token address so we can populate mp.token and build Distribution
+        // before the multicall fires.
         address tokenAddress = uerc20Factory.getUERC20Address(
             "Test Token", "TEST", 18, address(launcher), launcher.getGraffiti(address(this))
         );
+
+        (MigratorParameters memory mp, uint128 totalSupply, bytes memory configData) = _buildE2EConfig(p, tokenAddress);
 
         Distribution memory distribution =
             Distribution({strategy: address(strategy), amount: totalSupply, configData: configData});
@@ -57,13 +58,13 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         MigrationFuzzParams memory p,
         uint48 deadlineOffset
     ) public {
-        (MigratorParameters memory mp, uint128 totalSupply, bytes memory configData) = _buildE2EConfig(p);
-
-        // Bob holds an existing ERC20 (not freshly minted via createToken). He approves Permit2 on it
-        // (one-time setup, not part of the multicall).
+        // Bound first so we know totalSupply (needed to mint bob's token before building configData).
+        (uint128 totalSupply,) = _boundForE2E(p);
         MockERC20 token = new MockERC20("Test Token", "TEST", totalSupply, bob);
         vm.prank(bob);
         token.approve(address(permit2), type(uint256).max);
+
+        (MigratorParameters memory mp,, bytes memory configData) = _buildE2EConfig(p, address(token));
 
         Distribution memory distribution =
             Distribution({strategy: address(strategy), amount: totalSupply, configData: configData});
@@ -79,10 +80,21 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         assertEq(token.balanceOf(bob), 0);
     }
 
+    /// @notice Lightweight bounding helper that returns just the supply numbers (no encoding).
+    /// Useful when the caller needs to know totalSupply before the token address is known.
+    function _boundForE2E(MigrationFuzzParams memory p)
+        internal
+        view
+        returns (uint128 totalSupply, uint128 auctionSupply)
+    {
+        (, totalSupply,, auctionSupply) = _boundMigratorParams(p);
+    }
+
     /// @notice Bounds the full MigrationFuzzParams and returns the strategy inputs needed to drive
-    /// either e2e flow (fresh-mint or permit-deposit). Extracted from the test bodies to keep
-    /// their local count under the stack-too-deep limit.
-    function _buildE2EConfig(MigrationFuzzParams memory p)
+    /// either e2e flow (fresh-mint or permit-deposit). The `tokenAddress` must equal the token that
+    /// will actually be pulled by the launcher — it's baked into mp.token for the strategy's
+    /// registration-time validation.
+    function _buildE2EConfig(MigrationFuzzParams memory p, address tokenAddress)
         internal
         view
         returns (MigratorParameters memory mp, uint128 totalSupply, bytes memory configData)
@@ -95,6 +107,8 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
+        mp.token = tokenAddress;
+        mp.currency = address(0);
         configData = _encodeConfigData(
             mp,
             bp,
