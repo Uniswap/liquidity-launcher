@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Ownable} from "solady/auth/Ownable.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -36,7 +35,7 @@ import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrategy {
+contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using MigratorParams for MigratorParameters;
@@ -63,14 +62,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
-        address _owner,
         uint256 _recoveryDelayBlocks
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
         recoveryDelayBlocks = _recoveryDelayBlocks;
-        _initializeOwner(_owner);
     }
 
     /// @inheritdoc IDistributionStrategy

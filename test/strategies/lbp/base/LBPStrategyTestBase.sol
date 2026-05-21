@@ -81,13 +81,13 @@ abstract contract LBPStrategyTestBase is Test {
         factory = new MockInitializerFactory(address(0));
 
         bytes memory constructorArgs = abi.encode(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner, RECOVERY_DELAY_BLOCKS
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), RECOVERY_DELAY_BLOCKS
         );
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
         strategy = new LBPStrategy{salt: salt}(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner, RECOVERY_DELAY_BLOCKS
+            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), RECOVERY_DELAY_BLOCKS
         );
 
         assertEq(address(strategy), strategyAddress);
