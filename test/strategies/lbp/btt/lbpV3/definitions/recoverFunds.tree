@@ -7,7 +7,7 @@ RecoverFundsTest
 │   └── it reverts with {AlreadyConsumed}
 ├── when caller is not the leftoverRecipient
 │   └── it reverts with {UnauthorizedRecovery}
-├── when block.number is LT migrationBlock + recoveryDelay
+├── when block.number is LT migrationBlock + recoveryDelayBlocks
 │   └── it reverts with {RecoveryNotYetAllowed}
 └── when called by leftoverRecipient at or past the unlock block on a live initializer
     ├── it transfers supplyForLP from the strategy to leftoverRecipient

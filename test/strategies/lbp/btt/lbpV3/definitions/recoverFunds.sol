@@ -19,7 +19,7 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 /// │   └── it reverts with AlreadyConsumed
 /// ├── when caller != leftoverRecipient
 /// │   └── it reverts with UnauthorizedRecovery
-/// ├── when block.number < migrationBlock + recoveryDelay
+/// ├── when block.number < migrationBlock + recoveryDelayBlocks
 /// │   └── it reverts with RecoveryNotYetAllowed
 /// └── when called by leftoverRecipient at or past the unlock block on a live initializer
 ///     ├── it transfers supplyForLP from strategy to leftoverRecipient
@@ -43,7 +43,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.assume(caller != leftoverRecipient);
 
         // Roll past the unlock block so the "too early" check passes and we reach the auth check.
-        vm.roll(p.migrationBlock + strategy.recoveryDelay());
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.UnauthorizedRecovery.selector, caller, leftoverRecipient));
         vm.prank(caller);
@@ -54,7 +54,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         // _setupForMigration rolled to migrationBlock; pick any block strictly before migrationBlock + delay.
-        uint256 unlock = p.migrationBlock + strategy.recoveryDelay();
+        uint256 unlock = p.migrationBlock + strategy.recoveryDelayBlocks();
         // Avoid wrapping when migrationBlock + delay overflows in extreme fuzz cases.
         vm.assume(unlock > block.number);
         _currentBlock = uint64(bound(_currentBlock, block.number, unlock - 1));
@@ -72,7 +72,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
 
         // Even if we now wait past the unlock block, recoverFunds should reject because reserves are 0.
-        vm.roll(p.migrationBlock + strategy.recoveryDelay());
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
@@ -84,7 +84,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
     function test_WhenAlreadyRecovered(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        vm.roll(p.migrationBlock + strategy.recoveryDelay());
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
@@ -105,7 +105,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
 
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), supplyForLP);
 
-        vm.roll(p.migrationBlock + strategy.recoveryDelay());
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.expectEmit(true, true, false, true, address(strategy));
         emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, supplyForLP);
@@ -129,7 +129,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         uint256 leftoverTokenBefore = token.balanceOf(leftoverRecipient);
 
         // migrate is never called.
-        vm.roll(p.migrationBlock + strategy.recoveryDelay());
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
@@ -145,7 +145,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
     function test_BlocksFutureMigrateAfterSweep(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
-        vm.roll(p.migrationBlock + strategy.recoveryDelay());
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 

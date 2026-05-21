@@ -171,9 +171,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         Distribution memory distribution =
             Distribution({strategy: address(underClaimer), amount: amount, configData: ""});
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ILiquidityLauncher.AllowanceNotExhausted.selector, address(underClaimer), shortfall)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ILiquidityLauncher.AllowanceNotFullyConsumed.selector));
         liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
     }
 

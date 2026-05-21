@@ -11,9 +11,7 @@ interface ILiquidityLauncher {
     error RecipientCannotBeZeroAddress();
 
     /// @notice Thrown when the distribution strategy did not consume the full pre-approved allowance.
-    /// @param strategy The strategy contract address with the unconsumed allowance
-    /// @param unconsumedAllowance The portion of the approved allowance the strategy did not pull
-    error AllowanceNotExhausted(address strategy, uint256 unconsumedAllowance);
+    error AllowanceNotFullyConsumed();
 
     /// @notice Emitted when a token is created
     /// @param tokenAddress The address of the token that was created

@@ -60,11 +60,8 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
                 token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
             );
 
-        // Reject strategies that pull less than the full approved amount
-        uint256 unconsumedAllowance = IERC20(token).allowance(address(this), distribution.strategy);
-        if (unconsumedAllowance != 0) {
-            revert AllowanceNotExhausted(distribution.strategy, unconsumedAllowance);
-        }
+        // Reject strategies that pull less than the full approved amount.
+        if (IERC20(token).allowance(address(this), distribution.strategy) != 0) revert AllowanceNotFullyConsumed();
 
         emit TokenDistributed(token, address(distributionContract), distribution.amount);
     }

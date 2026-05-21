@@ -50,7 +50,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     IDistributionStrategy public immutable initializerFactory;
     /// @notice Number of blocks past `migrationBlock` after which an initializer's `leftoverRecipient` may
     /// recover the held `supplyForLP` via {recoverFunds}.
-    uint256 public immutable recoveryDelay;
+    uint256 public immutable recoveryDelayBlocks;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
@@ -64,12 +64,12 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         IPoolManager _poolManager,
         IDistributionStrategy _initializerFactory,
         address _owner,
-        uint256 _recoveryDelay
+        uint256 _recoveryDelayBlocks
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        recoveryDelay = _recoveryDelay;
+        recoveryDelayBlocks = _recoveryDelayBlocks;
         _initializeOwner(_owner);
     }
 
@@ -213,7 +213,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
     }
 
     /// @inheritdoc ILBPStrategy
-    /// @dev Recovery path for an initializer whose migrate failed. After `recoveryDelay` blocks past
+    /// @dev Recovery path for an initializer whose migrate failed. After `recoveryDelayBlocks` blocks past
     ///      `migrationBlock`, the initializer's leftoverRecipient can pull both the held `supplyForLP` and any
     ///      raised currency still held in the CCA back out.
     function recoverFunds(ILBPInitializer initializer) external {
@@ -225,7 +225,7 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         if (msg.sender != mp.leftoverRecipient) {
             revert UnauthorizedRecovery(msg.sender, mp.leftoverRecipient);
         }
-        uint256 unlockBlock = mp.migrationBlock + recoveryDelay;
+        uint256 unlockBlock = mp.migrationBlock + recoveryDelayBlocks;
         if (_getBlockNumberish() < unlockBlock) {
             revert RecoveryNotYetAllowed(unlockBlock, _getBlockNumberish());
         }

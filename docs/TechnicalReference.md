@@ -136,7 +136,7 @@ A successful `migrate()` consumes the initializer's reservation in the strategy 
 
 If `migrate()` is never called — for example, because the auction parameters made migration impossible, or because a transient issue stuck the migrate call — the held `supplyForLP` and the auction's raised currency would otherwise sit forever (the former in the strategy, the latter on the CCA). `LBPStrategy.recoverFunds(initializer)` is the recovery path:
 
-- Available only after `migrationBlock + recoveryDelay` blocks have passed (`recoveryDelay` is an immutable set at deploy time, calibrated per chain so it corresponds to roughly the same wall-time everywhere).
+- Available only after `migrationBlock + recoveryDelayBlocks` blocks have passed (`recoveryDelayBlocks` is an immutable set at deploy time, calibrated per chain so it corresponds to roughly the same wall-time everywhere).
 - Callable only by the initializer's `leftoverRecipient`.
 - Transfers the held `supplyForLP` AND sweeps the CCA's raised currency to `leftoverRecipient`, then zeroes `reserves[initializer]`, which also blocks any future `migrate` call on the same initializer.
 - Unsold auction tokens stay in the CCA and can be claimed through the CCA's own `tokensRecipient` path.
