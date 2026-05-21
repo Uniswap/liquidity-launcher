@@ -36,7 +36,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     function test_multicall_create_and_distribute_token() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         uint128 initialSupply = 1e18;
@@ -85,10 +88,12 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(token.creator(), address(liquidityLauncher));
 
         // Verify metadata
-        (string memory description, string memory website, string memory image) = token.metadata();
+        (string memory description, string memory website, string memory image, uint256 xProofTweetId) =
+            token.metadata();
         assertEq(description, "Test token for launcher");
         assertEq(website, "https://test.com");
         assertEq(image, "https://test.com/image.png");
+        assertEq(xProofTweetId, 0);
 
         // Verify the distribution was successful
         assertEq(IERC20(precomputedAddress).balanceOf(address(distributionStrategyAndContract)), initialSupply);
@@ -136,7 +141,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     function test_multicall_create_and_distribute_token_gas() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         uint128 initialSupply = 1e18;
