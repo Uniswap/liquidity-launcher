@@ -42,7 +42,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
 
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         bytes memory tokenData = abi.encode(metadata);
@@ -71,10 +74,12 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         assertEq(token.graffiti(), keccak256(abi.encode(address(this))));
 
         // Verify metadata
-        (string memory description, string memory website, string memory image) = token.metadata();
+        (string memory description, string memory website, string memory image, uint256 xProofTweetId) =
+            token.metadata();
         assertEq(description, "Test token for launcher");
         assertEq(website, "https://test.com");
         assertEq(image, "https://test.com/image.png");
+        assertEq(xProofTweetId, 0);
     }
 
     function test_createToken_revertsWithRecipientCannotBeZeroAddress() public {
@@ -90,7 +95,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
                 UERC20Metadata({
                     description: "Test token for launcher",
                     website: "https://test.com",
-                    image: "https://test.com/image.png"
+                    image: "https://test.com/image.png",
+                    xProofTweetId: 0
                 })
             )
         );
@@ -194,7 +200,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         amount = uint128(bound(amount, 1, type(uint128).max));
         address alice = makeAddr("alice");
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         vm.prank(alice);
@@ -244,7 +253,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
     function test_createToken_gas() public {
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         bytes memory tokenData = abi.encode(metadata);

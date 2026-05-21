@@ -38,7 +38,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         initialSupply = uint128(bound(initialSupply, 1, type(uint128).max));
 
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
@@ -72,6 +75,15 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(token.totalSupply(), initialSupply);
         assertEq(token.creator(), address(liquidityLauncher));
 
+        // Verify metadata
+        (string memory description, string memory website, string memory image, uint256 xProofTweetId) =
+            token.metadata();
+        assertEq(description, "Test token for launcher");
+        assertEq(website, "https://test.com");
+        assertEq(image, "https://test.com/image.png");
+        assertEq(xProofTweetId, 0);
+
+        // Verify the distribution was successful
         // The full balance ended up in the distribution contract; nothing held in the launcher.
         assertEq(IERC20(precomputedAddress).balanceOf(address(distributionStrategyAndContract)), initialSupply);
         assertEq(token.balanceOf(address(liquidityLauncher)), 0);
@@ -119,7 +131,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     function test_multicall_create_and_distribute_token_gas() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         uint128 initialSupply = 1e18;
