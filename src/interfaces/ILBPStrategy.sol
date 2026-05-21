@@ -89,9 +89,7 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
-    /// @notice Error thrown when the three token sources disagree at registration. All three of
-    /// (the launcher's function-param `token`, the user-declared `MigratorParameters.token`, and
-    /// the freshly deployed initializer's `token()` getter) must agree.
+    /// @notice Error thrown when the three token sources disagree at registration.
     /// @param fromParam The function-param `token` (what the launcher is pulling)
     /// @param declared The user-declared MigratorParameters.token
     /// @param fromInitializer The initializer's own `token()` getter at registration
