@@ -65,7 +65,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - poolMgrTokenBalBefore;
 
         assertEq(currencyToFundsRecipient + currencyToPool, raised);
-        // Only supplyForLP is distributed by the strategy. Unsold auction tokens stay in the CCA
+        // Only supplyForLP is distributed by the strategy. Unsold auction tokens stay in the initializer
         // for the tokensRecipient to claim separately.
         assertEq(tokensToFundsRecipient + tokensToPool, storedParams.supplyForLP);
         assertEq(token.balanceOf(address(initializer)), unsoldInCca);
@@ -171,7 +171,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         deal(address(token), address(this), totalSupply_B);
         token.approve(address(strategy), totalSupply_B);
 
-        // 4. Register B. Use a non-default salt so the mock factory deploys a fresh CCA distinct from A's.
+        // 4. Register B. Use a non-default salt so the mock factory deploys a fresh initializer distinct from A's.
         mp_B.token = address(token);
         bytes memory configData_B =
             _encodeConfigData(mp_B, bp_B, _encodeMockInitializerParams(endBlock_B, address(0), lbpParams_B));
@@ -181,7 +181,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // 5. Strategy now holds both initializers' reserves.
         assertEq(token.balanceOf(address(strategy)), uint256(supplyForLP_A) + uint256(mp_B.supplyForLP));
 
-        // 6. Fund B's CCA with the currencyRaised it claims, roll past B's migrationBlock, and migrate B.
+        // 6. Fund B's initializer with the currencyRaised it claims, roll past B's migrationBlock, and migrate B.
         vm.deal(address(initB), pB.currencyRaised);
         vm.roll(mp_B.migrationBlock);
         strategy.migrate(ILBPInitializer(address(initB)));
@@ -210,7 +210,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // "Ends earlier" condition from the reviewer's quote.
         vm.assume(migrationBlockB < migrationBlockA);
 
-        // Fund B's CCA with its raised tokenX, roll to B's migrationBlock (still BEFORE A's), migrate B.
+        // Fund B's initializer with its raised tokenX, roll to B's migrationBlock (still BEFORE A's), migrate B.
         deal(address(tokenX), address(initB), pB.currencyRaised);
         vm.roll(migrationBlockB);
         assertLt(block.number, migrationBlockA);
@@ -247,7 +247,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(initB.token(), address(tokenX));
         assertEq(strategy.initializers(ILBPInitializer(address(initB))).token, honestTokenB);
 
-        // 4. Fund B's CCA with its claimed currencyRaised and migrate B. B's migrate runs against
+        // 4. Fund B's initializer with its claimed currencyRaised and migrate B. B's migrate runs against
         //    the snapshot (honest token Y), so it uses B's own pre-pulled supplyForLP_B of Y —
         //    never reaching for A's X.
         vm.deal(address(initB), pB.currencyRaised);
@@ -283,9 +283,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         strategy.initializeDistribution(address(realToken), totalSupply, configData, bytes32(0));
     }
 
-    /// @notice initializeDistribution rejects a mis-wired factory whose freshly deployed CCA reports
+    /// @notice initializeDistribution rejects a mis-wired factory whose freshly deployed initializer reports
     /// a `token()` different from what the launcher is pulling. Without this check, the user's
-    /// auction funds would be stuck on a CCA whose own logic references a token it doesn't hold.
+    /// auction funds would be stuck on a initializer whose own logic references a token it doesn't hold.
     function test_fuzz_initializeDistribution_revertsWhenInitializerReportsMismatchedToken(MigrationFuzzParams memory p)
         public
     {
@@ -295,7 +295,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockERC20 realToken = new MockERC20("Real", "R", totalSupply, address(this));
         MockERC20 lyingToken = new MockERC20("Lie", "L", totalSupply, address(this));
 
-        // Impostor CCA self-reports lyingToken via its `token()` getter even though the launcher
+        // Impostor initializer self-reports lyingToken via its `token()` getter even though the launcher
         // pulls realToken.
         MockLBPInitializer impostor = new MockLBPInitializer(
             address(lyingToken), address(0), totalSupply, tokensRecipient, address(strategy), 0, endBlock
@@ -414,7 +414,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // Strategy ends empty
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
         assertEq(token.balanceOf(address(strategy)), 0);
-        // Unsold auction tokens stay in the CCA.
+        // Unsold auction tokens stay in the initializer.
         assertEq(token.balanceOf(address(initializer)), auctionSupply);
     }
 
@@ -432,7 +432,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - beforeBalances.tokenPool;
 
         assertEq(currencyToFundsRecipient + currencyToPool, currencyRaised);
-        // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the CCA.
+        // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the initializer.
         assertEq(tokensToFundsRecipient + tokensToPool, supplyForLP);
     }
 
