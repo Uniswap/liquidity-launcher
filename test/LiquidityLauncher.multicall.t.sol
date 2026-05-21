@@ -156,4 +156,35 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         liquidityLauncher.multicall(calls);
         vm.snapshotGasLastCall("multicall create and distribute token");
     }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_multicall_permit_deposit_and_distribute_token_gas() public {
+        uint128 amount = 1e18;
+        uint48 deadline = uint48(block.timestamp + 1 days);
+
+        MockERC20 token = new MockERC20("Test Token", "TEST", amount, bob);
+        vm.prank(bob);
+        token.approve(address(permit2), type(uint256).max);
+
+        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+        Distribution memory distribution =
+            Distribution({strategy: address(distributionStrategyAndContract), amount: amount, configData: ""});
+
+        IAllowanceTransfer.PermitSingle memory permit =
+            defaultERC20PermitAllowance(address(token), uint160(amount), deadline, 0);
+        permit.spender = address(liquidityLauncher);
+        bytes memory sig = getPermitSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
+
+        bytes[] memory calls = new bytes[](3);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
+        calls[1] = abi.encodeWithSelector(LiquidityLauncher.depositToken.selector, address(token), uint160(amount));
+        calls[2] = abi.encodeWithSelector(
+            LiquidityLauncher.distributeToken.selector, address(token), distribution, bytes32(0)
+        );
+
+        vm.prank(bob);
+        liquidityLauncher.multicall(calls);
+        vm.snapshotGasLastCall("multicall permit deposit and distribute token");
+    }
 }
