@@ -13,7 +13,6 @@ import {MockDistributionStrategy} from "./mocks/MockDistributionStrategy.sol";
 import {MockUnderClaimingStrategy} from "./mocks/MockUnderClaimingStrategy.sol";
 import {Distribution} from "src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
 
@@ -108,11 +107,12 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategy), amount: amount, configData: ""});
 
         // Distribute the token
-        IDistributionContract distributionContract =
-            liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
+        vm.expectEmit(true, true, false, true);
+        emit ILiquidityLauncher.TokenDistributed(tokenAddress, address(distributionStrategy), amount);
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
 
         // Verify the distribution was successful
-        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), amount);
+        assertEq(IERC20(tokenAddress).balanceOf(address(distributionStrategy.distributionContract())), amount);
 
         // verify the liquidity launcher has no balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
@@ -130,14 +130,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(distributionStrategyAndContract), amount: amount, configData: ""});
 
         // Distribute the token
-        IDistributionContract distributionContract =
-            liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
-
-        // verify the distribution contract is the same as the strategy
-        assertEq(address(distributionContract), address(distributionStrategyAndContract));
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
 
         // Verify the distribution was successful
-        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), amount);
+        assertEq(IERC20(tokenAddress).balanceOf(address(distributionStrategyAndContract)), amount);
 
         // verify the liquidity launcher has no balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
@@ -211,10 +207,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             Distribution({strategy: address(bobsStrategy), amount: amount, configData: ""});
 
         vm.prank(bob);
-        IDistributionContract distributionContract =
-            liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
 
-        assertEq(address(distributionContract), address(bobsStrategy));
         assertEq(IERC20(tokenAddress).balanceOf(address(bobsStrategy)), amount);
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
     }

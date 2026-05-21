@@ -57,7 +57,7 @@ function distributeToken(
     address token,
     Distribution calldata distribution,
     bytes32 salt
-) external returns (IDistributionContract distributionContract);
+) external;
 ```
 
 `depositToken` requires the caller to have set up a Permit2 allowance for the launcher (either via a prior `permit2.approve(...)` or by calling `permit(...)` earlier in the same `multicall`). The amount type is `uint160` to match Permit2's allowance type.
@@ -66,7 +66,7 @@ The `salt` parameter is forwarded to the selected strategy after being domain-se
 
 Depending on the complexity of the distribution strategy, you may need to pass additional parameters to the strategy. These are passed in the `configData` parameter.
 
-Strategies may create any number of additional contracts, but may only return one address to the `LiquidityLauncher` contract. That returned contract is responsible for pulling the `amount` of tokens specified in the `Distribution` struct from the launcher inside its own `initializeDistribution` call.
+`Distribution.strategy` is the contract that receives the launcher's temporary allowance and must pull the full `amount` from the launcher inside `initializeDistribution`. Strategies may create any number of additional contracts, but those contracts are not returned to the launcher; strategy-specific events or prediction helpers should be used when callers need downstream contract addresses.
 
 > ⚠️ **Always batch token acquisition (`createToken` or `depositToken`) and `distributeToken` inside the same `multicall`.** Tokens that sit in the launcher between transactions can be distributed by anyone with arbitrary strategy parameters.
 

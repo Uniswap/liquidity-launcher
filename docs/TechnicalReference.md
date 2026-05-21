@@ -155,9 +155,11 @@ This requirement protects the committed pool from permissionless initialization 
 
 **ILiquidityLauncher** defines the main launcher interface for creating and distributing tokens.
 
-**IDistributionContract** implemented by contracts that receive and distribute tokens (e.g. the LBP initializer initializer). Exposes an `onTokensReceived()` hook that the parent strategy calls after pulling tokens into the contract — used by initializers to capture post-funding setup atomically with the pull.
+**IDistributionContract** implemented by contracts that receive and distribute tokens (e.g. the LBP initializer initializer). Distribution contracts use a push based token model: the caller sends token funds to the distribution contract, then MUST call `onTokensReceived()` after funding so the contract can capture post-funding setup atomically.
 
-**IDistributionStrategy** implemented by strategies that the launcher hands off to. The `initializeDistribution()` function is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom` — the launcher pre-approves the strategy for the full amount before invoking it. If a strategy or downstream factory uses deterministic deployment, it MUST include the provided `salt` in both deployment and address prediction calculations.
+**IDistributionStrategy** implemented by strategies that the launcher hands off to. The `initializeDistribution()` function is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom` — the launcher pre-approves the strategy for the full amount before invoking it. The function does not return a downstream distribution contract; `Distribution.strategy` is the token-pulling strategy, and strategy-specific events or prediction helpers expose any child contracts.
+
+**IDistributionContractFactory** implemented by factories that parent strategies use when they need a created distribution contract address, such as the LBP strategy's initializer factory. This minimal factory interface exposes `create(...)` and `getAddress(...)`; it does not fund the distribution contract, so the calling strategy remains responsible for token movement and `onTokensReceived()`.
 
 **ITokenFactory** defines the interface for token creation factories, standardizing how different token types are deployed.
 

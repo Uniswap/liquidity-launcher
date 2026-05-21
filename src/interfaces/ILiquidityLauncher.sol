@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {Distribution} from "../types/Distribution.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
 
 /// @title ILiquidityLauncher
 /// @notice Interface for the LiquidityLauncher contract
@@ -19,9 +18,9 @@ interface ILiquidityLauncher {
 
     /// @notice Emitted when a token is distributed
     /// @param tokenAddress The address of the token that was distributed
-    /// @param distributionContract The address of the distribution contract
+    /// @param distributionStrategy The strategy that pulled the distributed tokens
     /// @param amount The amount of tokens that were distributed
-    event TokenDistributed(address indexed tokenAddress, address indexed distributionContract, uint256 amount);
+    event TokenDistributed(address indexed tokenAddress, address indexed distributionStrategy, uint256 amount);
 
     /// @notice Creates a token via the configured factory.
     /// @dev When `recipient == address(this)`, the newly minted tokens are held in the launcher
@@ -64,10 +63,7 @@ interface ILiquidityLauncher {
     /// @param tokenAddress The address of the token to distribute
     /// @param distribution Distribution instructions
     /// @param salt The salt to pass into the distribution strategy contract if needed
-    /// @return distributionContract The address of the distribution contract
-    function distributeToken(address tokenAddress, Distribution memory distribution, bytes32 salt)
-        external
-        returns (IDistributionContract distributionContract);
+    function distributeToken(address tokenAddress, Distribution memory distribution, bytes32 salt) external;
 
     /// @notice Calculates the graffiti that will be used for a token creation
     /// @param originalCreator The address that will be set as the original creator

@@ -4,9 +4,7 @@ pragma solidity ^0.8.26;
 import {Script, stdJson} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {Distribution} from "src/types/Distribution.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
-import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 
 /// @notice Example script for distributing a token via LBPStrategy
 contract DeployExample is Script {
@@ -29,13 +27,9 @@ contract DeployExample is Script {
             Distribution({strategy: lbpStrategy, amount: totalSupply, configData: configData});
 
         // The launcher must already hold `totalSupply` of `token` before this call.
-        // Begin the distribution — LBPStrategy deploys a CCA initializer and returns its address
-        IDistributionContract distributionContract =
-            ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, salt);
-
-        // Sanity check: verify the deployed initializer references the correct token
-        vm.assertEq(ILBPInitializer(address(distributionContract)).token(), token, "Token mismatch");
-        console2.log("Distribution contract (CCA) deployed at:", address(distributionContract));
+        // Begin the distribution. The configured strategy pulls tokens from the launcher.
+        ILiquidityLauncher(liquidityLauncher).distributeToken(token, distribution, salt);
+        console2.log("Distribution strategy initialized:", lbpStrategy);
 
         vm.stopBroadcast();
     }

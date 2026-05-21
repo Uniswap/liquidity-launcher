@@ -23,13 +23,19 @@ contract MerkleClaimFactory is IDistributionStrategy {
     ///      caller must have approved this factory for at least `totalSupply` before calling.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
+    {
+        IDistributionContract distributionContract = _createDistributionContract(token, totalSupply, configData, salt);
+        IERC20(token).safeTransferFrom(msg.sender, address(distributionContract), totalSupply);
+        emit DistributionInitialized(address(distributionContract), token, totalSupply);
+    }
+
+    function _createDistributionContract(address token, uint256, bytes calldata configData, bytes32 salt)
+        private
         returns (IDistributionContract distributionContract)
     {
         bytes32 _salt = keccak256(abi.encode(msg.sender, salt));
         bytes memory deployedBytecode = _getDeployedBytecode(token, configData);
         distributionContract = IDistributionContract(Create2.deploy(0, _salt, deployedBytecode));
-        IERC20(token).safeTransferFrom(msg.sender, address(distributionContract), totalSupply);
-        emit DistributionInitialized(address(distributionContract), token, totalSupply);
     }
 
     function _getDeployedBytecode(address token, bytes calldata configData) private pure returns (bytes memory) {

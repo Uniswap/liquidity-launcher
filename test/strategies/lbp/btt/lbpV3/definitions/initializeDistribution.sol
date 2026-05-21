@@ -8,7 +8,7 @@ import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "sr
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {IDistributionContractFactory} from "src/interfaces/IDistributionContractFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -489,7 +489,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         vm.mockCall(
             address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
+            abi.encodeWithSelector(IDistributionContractFactory.create.selector),
             abi.encode(address(badInit))
         );
 
@@ -517,7 +517,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         vm.mockCall(
             address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
+            abi.encodeWithSelector(IDistributionContractFactory.create.selector),
             abi.encode(address(badInit))
         );
 
@@ -546,7 +546,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         vm.mockCall(
             address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
+            abi.encodeWithSelector(IDistributionContractFactory.create.selector),
             abi.encode(address(badInit))
         );
 

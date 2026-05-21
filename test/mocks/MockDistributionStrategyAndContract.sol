@@ -9,13 +9,8 @@ import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 contract MockDistributionStrategyAndContract is IDistributionStrategy, IDistributionContract {
     using SafeERC20 for IERC20;
 
-    function initializeDistribution(address token, uint256 amount, bytes calldata, bytes32)
-        external
-        override
-        returns (IDistributionContract distributionContract)
-    {
+    function initializeDistribution(address token, uint256 amount, bytes calldata, bytes32) external override {
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        return IDistributionContract(address(this));
     }
 
     function onTokensReceived() external {}

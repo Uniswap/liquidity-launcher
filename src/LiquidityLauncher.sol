@@ -5,7 +5,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Multicall} from "./Multicall.sol";
 import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
-import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
 import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
 import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
 import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
@@ -46,16 +45,12 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     }
 
     /// @inheritdoc ILiquidityLauncher
-    function distributeToken(address token, Distribution calldata distribution, bytes32 salt)
-        external
-        override
-        returns (IDistributionContract distributionContract)
-    {
+    function distributeToken(address token, Distribution calldata distribution, bytes32 salt) external override {
         // Approve the strategy to pull `distribution.amount` from this contract. The strategy is
         // expected to consume the full allowance via `safeTransferFrom` inside `initializeDistribution`.
         IERC20(token).forceApprove(distribution.strategy, distribution.amount);
 
-        distributionContract = IDistributionStrategy(distribution.strategy)
+        IDistributionStrategy(distribution.strategy)
             .initializeDistribution(
                 token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
             );
@@ -63,7 +58,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         // Reject strategies that pull less than the full approved amount.
         if (IERC20(token).allowance(address(this), distribution.strategy) != 0) revert AllowanceNotFullyConsumed();
 
-        emit TokenDistributed(token, address(distributionContract), distribution.amount);
+        emit TokenDistributed(token, distribution.strategy, distribution.amount);
     }
 
     /// @inheritdoc ILiquidityLauncher

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IDistributionContract} from "./IDistributionContract.sol";
-
 /// @title IDistributionStrategy
 /// @notice Interface for token distribution strategies.
 interface IDistributionStrategy {
@@ -21,15 +19,13 @@ interface IDistributionStrategy {
     /// @dev Contracts can choose to deploy an instance with a factory-model or handle all distributions within the
     /// implementing contract. For some strategies this function will handle the entire distribution, for others it
     /// could merely set up initial state and provide additional entrypoints to handle the distribution logic.
+    /// The strategy is responsible for pulling `totalSupply` of `token` from `msg.sender`.
     /// Implementations that deploy or predict deterministic distribution contracts MUST include `salt` in the
     /// address calculation so callers can domain-separate otherwise identical distributions.
     /// @param token The token that is being distributed.
     /// @param totalSupply The supply of the token that is being distributed.
     /// @param configData Arbitrary, strategy-specific parameters.
     /// @param salt The salt for deterministic deployment, if used by the strategy.
-    /// @return distributionContract The contract that will handle or manage the distribution.
-    ///         (Could be `address(this)` if the strategy is handled in-place, or a newly deployed instance).
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
-        external
-        returns (IDistributionContract distributionContract);
+        external;
 }
