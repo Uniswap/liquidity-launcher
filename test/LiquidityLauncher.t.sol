@@ -35,14 +35,16 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         tokenAddress = address(token);
     }
 
-    function test_createToken_succeeds() public {
+    function test_fuzz_createToken_succeeds(uint128 initialSupply) public {
+        // UERC20Factory rejects totalSupply == 0.
+        initialSupply = uint128(bound(initialSupply, 1, type(uint128).max));
+
         // Create metadata for the UERC20 token
         UERC20Metadata memory metadata = UERC20Metadata({
             description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
         });
 
         bytes memory tokenData = abi.encode(metadata);
-        uint128 initialSupply = 1e18; // 1 token with 18 decimals
 
         address tokenAddress = liquidityLauncher.createToken(
             address(uerc20Factory), "Test Token", "TEST", 18, initialSupply, address(liquidityLauncher), tokenData
@@ -93,38 +95,38 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         );
     }
 
-    function test_distributeToken_strategy_succeeds() public {
-        uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, "Test Token", "TEST");
+    function test_fuzz_distributeToken_strategy_succeeds(uint128 amount) public {
+        amount = uint128(bound(amount, 1, type(uint128).max));
+        address tokenAddress = _mockToken(address(liquidityLauncher), amount, "Test Token", "TEST");
 
         // Create a distribution strategy
         MockDistributionStrategy distributionStrategy = new MockDistributionStrategy();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategy), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(distributionStrategy), amount: amount, configData: ""});
 
         // Distribute the token
         IDistributionContract distributionContract =
             liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
 
         // Verify the distribution was successful
-        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), initialSupply);
+        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), amount);
 
         // verify the liquidity launcher has no balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
     }
 
-    function test_distributeToken_strategyAndContract_succeeds() public {
-        uint128 initialSupply = 1e18;
-        address tokenAddress = _mockToken(address(liquidityLauncher), initialSupply, "Test Token", "TEST");
+    function test_fuzz_distributeToken_strategyAndContract_succeeds(uint128 amount) public {
+        amount = uint128(bound(amount, 1, type(uint128).max));
+        address tokenAddress = _mockToken(address(liquidityLauncher), amount, "Test Token", "TEST");
 
         // Create a distribution strategy and contract
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(distributionStrategyAndContract), amount: amount, configData: ""});
 
         // Distribute the token
         IDistributionContract distributionContract =
@@ -134,23 +136,83 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         assertEq(address(distributionContract), address(distributionStrategyAndContract));
 
         // Verify the distribution was successful
-        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), initialSupply);
+        assertEq(IERC20(tokenAddress).balanceOf(address(distributionContract)), amount);
 
         // verify the liquidity launcher has no balance of the token
         assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
     }
 
-    function test_depositToken_pullsFromCaller() public {
-        uint128 initialSupply = 1e18;
-        MockERC20 token = new MockERC20("Test Token", "TEST", initialSupply, address(this));
+    function test_fuzz_distributeToken_revertsWhenLauncherHasInsufficientBalance(uint128 amount) public {
+        // No tokens are minted into the launcher — calling distributeToken makes the strategy try
+        // to pull from a zero balance, which reverts in safeTransferFrom.
+        amount = uint128(bound(amount, 1, type(uint128).max));
+        address tokenAddress = _mockToken(address(this), amount, "Test Token", "TEST");
+        assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
+
+        MockDistributionStrategy distributionStrategy = new MockDistributionStrategy();
+        Distribution memory distribution =
+            Distribution({strategy: address(distributionStrategy), amount: amount, configData: ""});
+
+        vm.expectRevert();
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
+    }
+
+    function test_fuzz_depositToken_revertsWithoutPermit2Allowance(uint128 amount) public {
+        // The caller approves Permit2 on the token but never grants the launcher a Permit2 allowance,
+        // so the launcher's permit2.transferFrom inside depositToken reverts (no allowance).
+        amount = uint128(bound(amount, 1, type(uint128).max));
+        MockERC20 token = new MockERC20("Test Token", "TEST", amount, address(this));
         token.approve(address(permit2), type(uint256).max);
-        permit2.approve(
-            address(token), address(liquidityLauncher), uint160(initialSupply), uint48(block.timestamp + 1 days)
+
+        vm.expectRevert();
+        liquidityLauncher.depositToken(address(token), uint160(amount));
+    }
+
+    /// @notice Documents the held-tokens footgun: tokens minted into the launcher (or deposited via
+    /// `depositToken`) without being followed by `distributeToken` in the same multicall can be picked
+    /// up by ANY caller, who can route them to an arbitrary strategy. This is the reason the launcher's
+    /// docs and natspec require batching token acquisition and distribution inside one multicall.
+    function test_fuzz_heldTokens_canBeDistributedByAnyone(uint128 amount) public {
+        amount = uint128(bound(amount, 1, type(uint128).max));
+        address alice = makeAddr("alice");
+        UERC20Metadata memory metadata = UERC20Metadata({
+            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+        });
+
+        vm.prank(alice);
+        address tokenAddress = liquidityLauncher.createToken(
+            address(uerc20Factory), "Test Token", "TEST", 18, amount, address(liquidityLauncher), abi.encode(metadata)
         );
+        assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), amount);
 
-        liquidityLauncher.depositToken(address(token), uint160(initialSupply));
+        // Bob — a completely unrelated caller — picks up Alice's held tokens by calling distributeToken
+        // with his own strategy. There is no on-chain authorization tying the tokens to Alice.
+        address bob = makeAddr("bob");
+        MockDistributionStrategyAndContract bobsStrategy = new MockDistributionStrategyAndContract();
+        Distribution memory distribution =
+            Distribution({strategy: address(bobsStrategy), amount: amount, configData: ""});
 
-        assertEq(IERC20(address(token)).balanceOf(address(liquidityLauncher)), initialSupply);
+        vm.prank(bob);
+        IDistributionContract distributionContract =
+            liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
+
+        assertEq(address(distributionContract), address(bobsStrategy));
+        assertEq(IERC20(tokenAddress).balanceOf(address(bobsStrategy)), amount);
+        assertEq(IERC20(tokenAddress).balanceOf(address(liquidityLauncher)), 0);
+    }
+
+    function test_fuzz_depositToken_pullsFromCaller(uint128 amount, uint48 deadlineOffset) public {
+        amount = uint128(bound(amount, 1, type(uint128).max));
+        deadlineOffset = uint48(bound(deadlineOffset, 1, type(uint48).max - block.timestamp));
+        uint48 deadline = uint48(block.timestamp) + deadlineOffset;
+
+        MockERC20 token = new MockERC20("Test Token", "TEST", amount, address(this));
+        token.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(token), address(liquidityLauncher), uint160(amount), deadline);
+
+        liquidityLauncher.depositToken(address(token), uint160(amount));
+
+        assertEq(IERC20(address(token)).balanceOf(address(liquidityLauncher)), amount);
         assertEq(IERC20(address(token)).balanceOf(address(this)), 0);
     }
 
