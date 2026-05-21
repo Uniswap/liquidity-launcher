@@ -17,6 +17,7 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {MigratorParams} from "src/libraries/MigratorParams.sol";
 
 contract MockInitializerHook {
     address public immutable authorized;
@@ -79,7 +80,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidHook.selector, mp.hook));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.hook));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 

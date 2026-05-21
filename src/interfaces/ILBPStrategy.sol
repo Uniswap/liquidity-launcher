@@ -83,10 +83,6 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param claimed The currencyRaised value reported by the initializer
     error CurrencyRaisedMismatch(uint256 swept, uint256 claimed);
 
-    /// @notice Error thrown when a configured hook does not support IInitializerHook
-    /// @param hook The invalid hook address
-    error InvalidHook(address hook);
-
     /// @notice Error thrown when the three token sources disagree at registration.
     /// @param fromParam The function-param `token` (what the launcher is pulling)
     /// @param declared The user-declared MigratorParameters.token
@@ -110,8 +106,7 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Error thrown when recoverFunds is called before its unlock block
     /// @param unlockBlock The earliest block at which recoverFunds is allowed
-    /// @param currentBlock The current block
-    error RecoveryNotYetAllowed(uint256 unlockBlock, uint256 currentBlock);
+    error RecoveryNotYetAllowed(uint256 unlockBlock);
 
     /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
     /// leftoverRecipient.

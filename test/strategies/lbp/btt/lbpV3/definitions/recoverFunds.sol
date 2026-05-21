@@ -63,7 +63,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         _currentBlock = uint64(bound(_currentBlock, block.number, unlock - 1));
         vm.roll(_currentBlock);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.RecoveryNotYetAllowed.selector, unlock, _currentBlock));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.RecoveryNotYetAllowed.selector, unlock));
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
     }
