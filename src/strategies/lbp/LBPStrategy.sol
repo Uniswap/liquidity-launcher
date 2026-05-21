@@ -244,9 +244,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         return _initializers[initializer];
     }
 
-    /// @notice Receive native currency
-    receive() external payable {}
-
     /// @notice Builds the weighted-position plan to be executed against the PositionManager
     /// @dev Returned transfer amounts are the amounts CONSUMED (not remaining), in (currency, token) order
     /// @param key The initialized pool key
@@ -446,4 +443,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         currency.transfer(recipient, amount);
         emit CurrencySwept(recipient, amount);
     }
+
+    /// @notice Receive native currency
+    receive() external payable {}
 }
