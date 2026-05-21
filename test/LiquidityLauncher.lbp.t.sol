@@ -148,7 +148,10 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         returns (bytes[] memory calls)
     {
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "E2E test token", website: "https://test.com", image: "https://test.com/image.png"
+            description: "E2E test token",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         calls = new bytes[](2);

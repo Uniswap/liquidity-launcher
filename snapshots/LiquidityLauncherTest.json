@@ -1,5 +1,6 @@
 {
-  "createToken": "1359808",
+  "createToken": "1373241",
   "distributeToken": "109308",
-  "multicall create and distribute token": "1385051"
+  "multicall create and distribute token": "1398491",
+  "multicall permit deposit and distribute token": "131939"
 }

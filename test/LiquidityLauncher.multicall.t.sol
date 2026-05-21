@@ -38,7 +38,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         initialSupply = uint128(bound(initialSupply, 1, type(uint128).max));
 
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
@@ -72,6 +75,15 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(token.totalSupply(), initialSupply);
         assertEq(token.creator(), address(liquidityLauncher));
 
+        // Verify metadata
+        (string memory description, string memory website, string memory image, uint256 xProofTweetId) =
+            token.metadata();
+        assertEq(description, "Test token for launcher");
+        assertEq(website, "https://test.com");
+        assertEq(image, "https://test.com/image.png");
+        assertEq(xProofTweetId, 0);
+
+        // Verify the distribution was successful
         // The full balance ended up in the distribution contract; nothing held in the launcher.
         assertEq(IERC20(precomputedAddress).balanceOf(address(distributionStrategyAndContract)), initialSupply);
         assertEq(token.balanceOf(address(liquidityLauncher)), 0);
@@ -119,7 +131,10 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
     function test_multicall_create_and_distribute_token_gas() public {
         // Create a token
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "Test token for launcher", website: "https://test.com", image: "https://test.com/image.png"
+            description: "Test token for launcher",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         uint128 initialSupply = 1e18;
@@ -155,5 +170,36 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
 
         liquidityLauncher.multicall(calls);
         vm.snapshotGasLastCall("multicall create and distribute token");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_multicall_permit_deposit_and_distribute_token_gas() public {
+        uint128 amount = 1e18;
+        uint48 deadline = uint48(block.timestamp + 1 days);
+
+        MockERC20 token = new MockERC20("Test Token", "TEST", amount, bob);
+        vm.prank(bob);
+        token.approve(address(permit2), type(uint256).max);
+
+        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+        Distribution memory distribution =
+            Distribution({strategy: address(distributionStrategyAndContract), amount: amount, configData: ""});
+
+        IAllowanceTransfer.PermitSingle memory permit =
+            defaultERC20PermitAllowance(address(token), uint160(amount), deadline, 0);
+        permit.spender = address(liquidityLauncher);
+        bytes memory sig = getPermitSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
+
+        bytes[] memory calls = new bytes[](3);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
+        calls[1] = abi.encodeWithSelector(LiquidityLauncher.depositToken.selector, address(token), uint160(amount));
+        calls[2] = abi.encodeWithSelector(
+            LiquidityLauncher.distributeToken.selector, address(token), distribution, bytes32(0)
+        );
+
+        vm.prank(bob);
+        liquidityLauncher.multicall(calls);
+        vm.snapshotGasLastCall("multicall permit deposit and distribute token");
     }
 }
