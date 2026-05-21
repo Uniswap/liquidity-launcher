@@ -8,6 +8,7 @@ import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/Migr
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantRecoverFundsRecipient} from "test/mocks/MockReentrantRecoverFundsRecipient.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 
 /// @title RecoverFundsTest
 /// @notice BTT tests for LBPStrategy.recoverFunds
@@ -208,9 +209,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
     }
 
     /// @notice A malicious leftoverRecipient that reenters recoverFunds(self) from its receive()
-    /// during the currency-transfer leg must hit AlreadyConsumed — the outer call has already zeroed
-    /// reserves at the top before any external interaction.
-    function test_fuzz_recoverFundsReentryViaLeftoverRecipient_revertsWithAlreadyConsumed(MigrationFuzzParams memory p)
+    function test_fuzz_recoverFundsReentryViaLeftoverRecipient_revertsWithReentrancy(MigrationFuzzParams memory p)
         public
     {
         MockReentrantRecoverFundsRecipient recipient =
@@ -238,7 +237,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
         assertTrue(recipient.reentered());
-        assertEq(bytes4(recipient.capturedRevertData()), ILBPStrategy.AlreadyConsumed.selector);
+        assertEq(bytes4(recipient.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
     }
 
     function test_BlocksFutureMigrateAfterSweep(MigrationFuzzParams memory p) public {

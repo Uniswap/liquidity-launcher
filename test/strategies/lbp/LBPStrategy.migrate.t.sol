@@ -256,12 +256,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     }
 
     /// @notice A malicious leftoverRecipient that reenters migrate(self) from its receive() during
-    /// the leftover-currency-transfer leg must hit AlreadyConsumed — reserves are zeroed at the top
-    /// of migrate before any external interaction. Different reentry point than the sweepCurrency
-    /// vector above.
-    function test_fuzz_reentrantMigrateLeftoverRecipient_revertsWithAlreadyConsumed(MigrationFuzzParams memory p)
-        public
-    {
+    function test_fuzz_reentrantMigrateLeftoverRecipient_revertsWithReentrancy(MigrationFuzzParams memory p) public {
         MockReentrantMigrateRecipient recipient = new MockReentrantMigrateRecipient(ILBPStrategy(address(strategy)));
 
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
@@ -286,7 +281,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertTrue(recipient.reentered());
-        assertEq(bytes4(recipient.capturedRevertData()), ILBPStrategy.AlreadyConsumed.selector);
+        assertEq(bytes4(recipient.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
     }
 
     function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
