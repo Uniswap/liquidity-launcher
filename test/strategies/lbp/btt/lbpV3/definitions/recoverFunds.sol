@@ -8,17 +8,18 @@ import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/Migr
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantRecoverFundsRecipient} from "test/mocks/MockReentrantRecoverFundsRecipient.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 
 /// @title RecoverFundsTest
 /// @notice BTT tests for LBPStrategy.recoverFunds
 ///
 /// recoverFunds
 /// ├── when initializer is unregistered (migrationBlock == 0)
-/// │   └── it reverts with Unregistered
+/// │   └── it reverts with InitializerNotRegistered
 /// ├── when initializer was already migrated
-/// │   └── it reverts with AlreadyConsumed
+/// │   └── it reverts with InsufficientReserves
 /// ├── when initializer was already recovered
-/// │   └── it reverts with AlreadyConsumed
+/// │   └── it reverts with InsufficientReserves
 /// ├── when caller != leftoverRecipient
 /// │   └── it reverts with UnauthorizedRecovery
 /// ├── when block.number < migrationBlock + recoveryDelayBlocks
@@ -28,7 +29,7 @@ import {MockERC20} from "test/mocks/MockERC20.sol";
 ///     ├── it zeroes reserves (blocks future migrate and recoverFunds)
 ///     └── it emits FundsRecovered
 contract RecoverFundsTest is LBPStrategyTestBase {
-    function test_WhenInitializerIsUnregistered() public {
+    function test_WhenInitializerIsInitializerNotRegistered() public {
         ILBPInitializer unregistered = ILBPInitializer(
             address(new MockLBPInitializer(address(1), address(0), 0, address(strategy), address(strategy), 0, 0))
         );
@@ -36,7 +37,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         // migrationBlock == 0 distinguishes unregistered from consumed.
         assertEq(strategy.initializers(unregistered).migrationBlock, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.Unregistered.selector, unregistered));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InitializerNotRegistered.selector, unregistered));
         strategy.recoverFunds(unregistered);
     }
 
@@ -62,7 +63,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         _currentBlock = uint64(bound(_currentBlock, block.number, unlock - 1));
         vm.roll(_currentBlock);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.RecoveryNotYetAllowed.selector, unlock, _currentBlock));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.RecoveryNotYetAllowed.selector, unlock));
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
     }
@@ -77,7 +78,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
@@ -90,9 +91,9 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // Second call should revert with AlreadyConsumed since reserves were zeroed.
+        // Second call should revert with InsufficientReserves since reserves were zeroed.
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
@@ -208,9 +209,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
     }
 
     /// @notice A malicious leftoverRecipient that reenters recoverFunds(self) from its receive()
-    /// during the currency-transfer leg must hit AlreadyConsumed — the outer call has already zeroed
-    /// reserves at the top before any external interaction.
-    function test_fuzz_recoverFundsReentryViaLeftoverRecipient_revertsWithAlreadyConsumed(MigrationFuzzParams memory p)
+    function test_fuzz_recoverFundsReentryViaLeftoverRecipient_revertsWithReentrancy(MigrationFuzzParams memory p)
         public
     {
         MockReentrantRecoverFundsRecipient recipient =
@@ -238,7 +237,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
         assertTrue(recipient.reentered());
-        assertEq(bytes4(recipient.capturedRevertData()), ILBPStrategy.AlreadyConsumed.selector);
+        assertEq(bytes4(recipient.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
     }
 
     function test_BlocksFutureMigrateAfterSweep(MigrationFuzzParams memory p) public {
@@ -248,9 +247,9 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // migrate now fails with AlreadyConsumed (reserves == 0).
+        // migrate now fails with InsufficientReserves (reserves == 0).
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }

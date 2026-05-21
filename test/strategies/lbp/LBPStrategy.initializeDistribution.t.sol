@@ -14,6 +14,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {MigratorParams} from "src/libraries/MigratorParams.sol";
 
 contract GatedSwapHookNoValidation is GatedSwapHook {
     constructor(IPoolManager _pm, address _strategy, address _gatekeeper) GatedSwapHook(_pm, _strategy, _gatekeeper) {}
@@ -120,7 +121,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidHook.selector, mp.hook));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.hook));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 

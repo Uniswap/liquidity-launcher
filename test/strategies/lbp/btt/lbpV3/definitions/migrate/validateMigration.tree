@@ -1,8 +1,8 @@
 ValidateMigrationTest
 ├── when initializer is unregistered (migrationBlock is 0)
-│   └── it reverts with {Unregistered}
+│   └── it reverts with {InitializerNotRegistered}
 ├── when initializer was already consumed (reserves is 0, migrationBlock is nonzero)
-│   └── it reverts with {AlreadyConsumed}
+│   └── it reverts with {InsufficientReserves}
 ├── when block.number is LT migrationBlock
 │   └── it reverts with {MigrationNotYetAllowed}
 └── when block.number is GTE migrationBlock

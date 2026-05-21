@@ -7,6 +7,8 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {ILBPStrategy} from "../interfaces/ILBPStrategy.sol";
 import {PositionPlanner} from "./PositionPlanner.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
+import {IInitializerHook} from "../interfaces/IInitializerHook.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 
 /// @notice Migration parameters for an initializer
 struct MigratorParameters {
@@ -43,6 +45,10 @@ library MigratorParams {
     /// @notice The maximum number of brackets in the LP allocation schedule
     uint256 internal constant MAX_BRACKETS = 3;
 
+    /// @notice Error thrown when a configured hook does not support IInitializerHook
+    /// @param hook The invalid hook address
+    error InvalidHook(address hook);
+
     /// @notice Error thrown when the LP allocation schedule has an invalid number of brackets (empty or exceeds max)
     /// @param count The invalid bracket count
     error InvalidBracketCount(uint256 count);
@@ -76,15 +82,26 @@ library MigratorParams {
         ) {
             revert ILBPStrategy.InvalidPositionRecipient(p.lpPositionRecipient);
         }
-        // supplyForLP must fit in int128 — v4's PoolManager._accountDelta uses int128 for token deltas,
-        // so values above int128.max would revert with SafeCastOverflow at migration time.
-        if (p.supplyForLP > uint128(type(int128).max)) {
-            revert ILBPStrategy.InvalidSupplyForLp(p.supplyForLP, uint128(type(int128).max));
+        // supplyForLP must be greater than 0 and less than int128.max
+        if (p.supplyForLP > uint128(type(int128).max) || p.supplyForLP == 0) {
+            revert ILBPStrategy.InvalidSupplyForLp();
         }
         // Position plan validation (non-empty, weights sum to MPS)
         PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));
         // LP allocation schedule validation (1..MAX_BRACKETS brackets, ascending, rates in [0, MAX_BRACKET_RATE])
         _validateLpAllocationSchedule(p.lpAllocationSchedule);
+    }
+
+    /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook
+    /// @dev Reverts if the hook does not implement IInitializerHook or is not authorized to initialize the pool
+    function validateHook(address hook) internal view {
+        if (
+            hook != address(0)
+                && (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
+                    || IInitializerHook(hook).authorized() != address(this))
+        ) {
+            revert InvalidHook(hook);
+        }
     }
 
     /// @notice Validates an abi-encoded LP allocation schedule

@@ -75,19 +75,13 @@ interface ILBPStrategy is IDistributionStrategy {
     error InvalidTokensRecipient(address actual);
 
     /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
-    /// @param supplyForLP The invalid supply
-    /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
-    error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
+    error InvalidSupplyForLp();
 
     /// @notice Error thrown when the currency swept from the initializer does not match the
     /// currencyRaised reported by the initializer's LBP parameters
     /// @param swept The amount of currency actually swept from the initializer
     /// @param claimed The currencyRaised value reported by the initializer
     error CurrencyRaisedMismatch(uint256 swept, uint256 claimed);
-
-    /// @notice Error thrown when a configured hook does not support IInitializerHook
-    /// @param hook The invalid hook address
-    error InvalidHook(address hook);
 
     /// @notice Error thrown when the three token sources disagree at registration.
     /// @param fromParam The function-param `token` (what the launcher is pulling)
@@ -103,17 +97,16 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Error thrown when an initializer was never registered with the strategy
     /// @param initializer The initializer being acted on
-    error Unregistered(ILBPInitializer initializer);
+    error InitializerNotRegistered(ILBPInitializer initializer);
 
     /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
     /// or `recoverFunds`.
     /// @param initializer The initializer being acted on
-    error AlreadyConsumed(ILBPInitializer initializer);
+    error InsufficientReserves(ILBPInitializer initializer);
 
     /// @notice Error thrown when recoverFunds is called before its unlock block
     /// @param unlockBlock The earliest block at which recoverFunds is allowed
-    /// @param currentBlock The current block
-    error RecoveryNotYetAllowed(uint256 unlockBlock, uint256 currentBlock);
+    error RecoveryNotYetAllowed(uint256 unlockBlock);
 
     /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
     /// leftoverRecipient.
@@ -122,7 +115,10 @@ interface ILBPStrategy is IDistributionStrategy {
     error UnauthorizedRecovery(address caller, address leftoverRecipient);
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
-    /// @param initializer The initializer contract that was created
+    /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
+    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
+    ///      to recover the reserved tokens and the currency raised by the initializer.
+    /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 
     /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
