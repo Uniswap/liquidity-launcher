@@ -71,11 +71,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         recoveryDelayBlocks = _recoveryDelayBlocks;
     }
 
-    /// @notice Modifier to ensure the initializer is registered
-    /// @dev Reverts if the initializer is not registered
+    /// @notice Modifier requiring the initializer to be in a pending migration state
+    /// @dev An initializer is pending migration if it is registered and has a non zero reserve amount
     modifier onlyPendingMigrate(ILBPInitializer initializer) {
-        if (_initializers[initializer].migrationBlock == 0) revert Unregistered(initializer);
-        if (reserves[initializer] == 0) revert AlreadyConsumed(initializer);
+        if (_initializers[initializer].migrationBlock == 0) revert InitializerNotRegistered(initializer);
+        if (reserves[initializer] == 0) revert InsufficientReserves(initializer);
         _;
     }
 

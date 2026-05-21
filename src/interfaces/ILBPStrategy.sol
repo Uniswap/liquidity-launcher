@@ -97,12 +97,12 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Error thrown when an initializer was never registered with the strategy
     /// @param initializer The initializer being acted on
-    error Unregistered(ILBPInitializer initializer);
+    error InitializerNotRegistered(ILBPInitializer initializer);
 
     /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
     /// or `recoverFunds`.
     /// @param initializer The initializer being acted on
-    error AlreadyConsumed(ILBPInitializer initializer);
+    error InsufficientReserves(ILBPInitializer initializer);
 
     /// @notice Error thrown when recoverFunds is called before its unlock block
     /// @param unlockBlock The earliest block at which recoverFunds is allowed

@@ -1,10 +1,10 @@
 RecoverFundsTest
 ├── when initializer is unregistered (migrationBlock is 0)
-│   └── it reverts with {Unregistered}
+│   └── it reverts with {InitializerNotRegistered}
 ├── when initializer was already migrated
-│   └── it reverts with {AlreadyConsumed}
+│   └── it reverts with {InsufficientReserves}
 ├── when initializer was already recovered
-│   └── it reverts with {AlreadyConsumed}
+│   └── it reverts with {InsufficientReserves}
 ├── when caller is not the leftoverRecipient
 │   └── it reverts with {UnauthorizedRecovery}
 ├── when block.number is LT migrationBlock + recoveryDelayBlocks

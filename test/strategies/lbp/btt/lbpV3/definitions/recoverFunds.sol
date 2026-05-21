@@ -15,11 +15,11 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 ///
 /// recoverFunds
 /// ├── when initializer is unregistered (migrationBlock == 0)
-/// │   └── it reverts with Unregistered
+/// │   └── it reverts with InitializerNotRegistered
 /// ├── when initializer was already migrated
-/// │   └── it reverts with AlreadyConsumed
+/// │   └── it reverts with InsufficientReserves
 /// ├── when initializer was already recovered
-/// │   └── it reverts with AlreadyConsumed
+/// │   └── it reverts with InsufficientReserves
 /// ├── when caller != leftoverRecipient
 /// │   └── it reverts with UnauthorizedRecovery
 /// ├── when block.number < migrationBlock + recoveryDelayBlocks
@@ -29,7 +29,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 ///     ├── it zeroes reserves (blocks future migrate and recoverFunds)
 ///     └── it emits FundsRecovered
 contract RecoverFundsTest is LBPStrategyTestBase {
-    function test_WhenInitializerIsUnregistered() public {
+    function test_WhenInitializerIsInitializerNotRegistered() public {
         ILBPInitializer unregistered = ILBPInitializer(
             address(new MockLBPInitializer(address(1), address(0), 0, address(strategy), address(strategy), 0, 0))
         );
@@ -37,7 +37,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         // migrationBlock == 0 distinguishes unregistered from consumed.
         assertEq(strategy.initializers(unregistered).migrationBlock, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.Unregistered.selector, unregistered));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InitializerNotRegistered.selector, unregistered));
         strategy.recoverFunds(unregistered);
     }
 
@@ -78,7 +78,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
@@ -91,9 +91,9 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // Second call should revert with AlreadyConsumed since reserves were zeroed.
+        // Second call should revert with InsufficientReserves since reserves were zeroed.
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
@@ -247,9 +247,9 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.prank(leftoverRecipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // migrate now fails with AlreadyConsumed (reserves == 0).
+        // migrate now fails with InsufficientReserves (reserves == 0).
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }

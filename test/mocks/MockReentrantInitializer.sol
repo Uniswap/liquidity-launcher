@@ -8,7 +8,7 @@ import {MockLBPInitializer} from "./MockLBPInitializer.sol";
 
 /// @notice Adversarial initializer that reenters `strategy.migrate(self)` from inside `sweepCurrency`.
 /// With CEI in place (`reserves[initializer] = 0` set before any external call in migrate), the inner
-/// reentrant call must revert with AlreadyConsumed.
+/// reentrant call must revert with InsufficientReserves.
 contract MockReentrantInitializer is MockLBPInitializer {
     using CurrencyLibrary for Currency;
 

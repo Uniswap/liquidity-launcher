@@ -21,9 +21,9 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 ///
 /// migrate
 /// ├── when initializer is unregistered (migrationBlock == 0)
-/// │   └── it reverts with Unregistered(initializer)
+/// │   └── it reverts with InitializerNotRegistered(initializer)
 /// ├── when initializer was already consumed (reserves == 0, migrationBlock != 0)
-/// │   └── it reverts with AlreadyConsumed(initializer)
+/// │   └── it reverts with InsufficientReserves(initializer)
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
@@ -40,8 +40,8 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
-    function test_WhenInitializerIsUnregistered(uint64 _currentBlock, uint128 _tokensSold) public {
-        // it reverts with {Unregistered}
+    function test_WhenInitializerIsInitializerNotRegistered(uint64 _currentBlock, uint128 _tokensSold) public {
+        // it reverts with {InitializerNotRegistered}
         _currentBlock = uint64(bound(_currentBlock, 1, type(uint64).max));
         vm.roll(_currentBlock);
 
@@ -53,26 +53,26 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
             )
         );
 
-        // Unregistered initializers have no params stored — migrationBlock == 0 distinguishes them
+        // InitializerNotRegistered initializers have no params stored — migrationBlock == 0 distinguishes them
         // from initializers that were registered and then consumed.
         assertEq(strategy.initializers(unregistered).migrationBlock, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.Unregistered.selector, unregistered));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InitializerNotRegistered.selector, unregistered));
         strategy.migrate(unregistered);
     }
 
-    function test_WhenInitializerWasAlreadyConsumed(MigrationFuzzParams memory p) public {
-        // it reverts with {AlreadyConsumed}
+    function test_WhenInitializerWasInsufficientReserves(MigrationFuzzParams memory p) public {
+        // it reverts with {InsufficientReserves}
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // After the first migrate, reserves are zeroed but migrationBlock remains nonzero —
-        // so the second call hits the AlreadyConsumed branch, not Unregistered.
+        // so the second call hits the InsufficientReserves branch, not InitializerNotRegistered.
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertGt(strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock, 0);
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.AlreadyConsumed.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
