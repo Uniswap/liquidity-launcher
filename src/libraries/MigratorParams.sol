@@ -76,10 +76,9 @@ library MigratorParams {
         ) {
             revert ILBPStrategy.InvalidPositionRecipient(p.lpPositionRecipient);
         }
-        // supplyForLP must fit in int128 — v4's PoolManager._accountDelta uses int128 for token deltas,
-        // so values above int128.max would revert with SafeCastOverflow at migration time.
-        if (p.supplyForLP > uint128(type(int128).max)) {
-            revert ILBPStrategy.InvalidSupplyForLp(p.supplyForLP, uint128(type(int128).max));
+        // supplyForLP must be greater than 0 and less than int128.max
+        if (p.supplyForLP > uint128(type(int128).max) || p.supplyForLP == 0) {
+            revert ILBPStrategy.InvalidSupplyForLp();
         }
         // Position plan validation (non-empty, weights sum to MPS)
         PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));

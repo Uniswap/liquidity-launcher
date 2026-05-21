@@ -52,6 +52,8 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidPositionRecipient
 /// ├── when supplyForLP > int128.max
 /// │   └── it reverts with InvalidSupplyForLp
+/// ├── when supplyForLP is zero
+/// │   └── it reverts with InvalidSupplyForLp
 /// ├── when position definitions contain invalid tick bounds
 /// │   └── it reverts with InvalidTickBounds
 /// ├── when position definitions exceed the max position count
@@ -337,9 +339,26 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.InvalidSupplyForLp.selector, _supplyForLP, uint128(type(int128).max))
-        );
+        vm.expectRevert(ILBPStrategy.InvalidSupplyForLp.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenSupplyForLpIsZero(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // it reverts with {InvalidSupplyForLp}
+        (MigratorParameters memory mp, uint128 totalSupply,, uint128 auctionSupply) = _boundMigratorParams(p);
+        mp.supplyForLP = 0;
+        totalSupply = auctionSupply;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(ILBPStrategy.InvalidSupplyForLp.selector);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 

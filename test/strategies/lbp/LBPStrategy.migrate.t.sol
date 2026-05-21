@@ -17,6 +17,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -207,9 +208,9 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(address(strategyKey.hooks), address(strategy));
     }
 
-    /// @notice An initializer that reenters migrate from inside sweepCurrency hits
-    /// AlreadyConsumed because reserves are zeroed at the top of migrate before any external call.
-    function test_fuzz_reentrantMigrateSweepCurrency_revertsWithAlreadyConsumed(MigrationFuzzParams memory p) public {
+    /// @notice An initializer that reenters migrate from inside sweepCurrency is blocked by the
+    /// reentrancy guard on migrate.
+    function test_fuzz_reentrantMigrateSweepCurrency_revertsWithReentrancy(MigrationFuzzParams memory p) public {
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
@@ -248,8 +249,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertTrue(reentrant.reentered(), "inner reentrant call did not fire");
         assertEq(
             bytes4(reentrant.capturedRevertData()),
-            ILBPStrategy.AlreadyConsumed.selector,
-            "expected inner reentrant migrate to revert with AlreadyConsumed"
+            ReentrancyGuardTransient.Reentrancy.selector,
+            "expected inner reentrant migrate to revert with Reentrancy"
         );
     }
 

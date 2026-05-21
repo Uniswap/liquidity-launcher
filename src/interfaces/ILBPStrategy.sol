@@ -75,9 +75,7 @@ interface ILBPStrategy is IDistributionStrategy {
     error InvalidTokensRecipient(address actual);
 
     /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
-    /// @param supplyForLP The invalid supply
-    /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
-    error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
+    error InvalidSupplyForLp();
 
     /// @notice Error thrown when the currency swept from the initializer does not match the
     /// currencyRaised reported by the initializer's LBP parameters
