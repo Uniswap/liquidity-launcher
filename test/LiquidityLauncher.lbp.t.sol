@@ -84,6 +84,7 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
     /// their local count under the stack-too-deep limit.
     function _buildE2EConfig(MigrationFuzzParams memory p)
         internal
+        view
         returns (MigratorParameters memory mp, uint128 totalSupply, bytes memory configData)
     {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
