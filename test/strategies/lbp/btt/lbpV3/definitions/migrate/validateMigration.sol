@@ -31,8 +31,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 ///     │   └── it reverts with CurrencyRaisedMismatch
 ///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
-///         ├── it sweeps leftover currency to leftoverRecipient
-///         ├── it sweeps leftover tokens to leftoverRecipient
+///         ├── it sweeps leftover currency to recipient
+///         ├── it sweeps leftover tokens to recipient
 ///         ├── it emits CurrencySwept
 ///         ├── it emits TokensSwept
 ///         └── it emits Migrated
@@ -138,12 +138,12 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         uint256 raised = initializer.lbpInitializationParams().currencyRaised;
 
-        uint256 fundsBefore = leftoverRecipient.balance;
+        uint256 fundsBefore = recipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // Every wei raised reaches leftoverRecipient or the pool manager — proves the sweep
-        assertEq((leftoverRecipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
+        // Every wei raised reaches recipient or the pool manager — proves the sweep
+        assertEq((recipient.balance - fundsBefore) + (address(POOL_MANAGER).balance - poolBefore), raised);
         assertEq(address(strategy).balance, 0);
     }
 
@@ -152,19 +152,20 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         whenBlockIsGTEMigrationBlock
     {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
-        uint256 supplyForLP = strategy.initializers(ILBPInitializer(address(initializer))).supplyForLP;
+        uint256 reservedTokenAmountForLP =
+            strategy.initializers(ILBPInitializer(address(initializer))).reservedTokenAmountForLP;
         uint256 unsoldInCca = token.balanceOf(address(initializer));
 
-        uint256 fundsBefore = token.balanceOf(leftoverRecipient);
+        uint256 fundsBefore = token.balanceOf(recipient);
         uint256 poolBefore = token.balanceOf(address(POOL_MANAGER));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // supplyForLP is the only portion the strategy handles; it lands in
-        // leftoverRecipient or the pool manager. Unsold auction tokens stay in the initializer for the
+        // reservedTokenAmountForLP is the only portion the strategy handles; it lands in
+        // recipient or the pool manager. Unsold auction tokens stay in the initializer for the
         // tokensRecipient to claim separately.
         assertEq(
-            (token.balanceOf(leftoverRecipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
-            supplyForLP
+            (token.balanceOf(recipient) - fundsBefore) + (token.balanceOf(address(POOL_MANAGER)) - poolBefore),
+            reservedTokenAmountForLP
         );
         assertEq(token.balanceOf(address(strategy)), 0);
         // The initializer's unsold balance is untouched by migrate.
@@ -192,8 +193,10 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
-        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
+        PoolKey memory rawKey =
+            _nativePoolKey(address(token), mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(0));
+        PoolKey memory strategyKey =
+            _nativePoolKey(address(token), mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(strategy));
 
         (uint160 rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
         (uint160 strategySqrtPrice,,,) = POOL_MANAGER.getSlot0(strategyKey.toId());
