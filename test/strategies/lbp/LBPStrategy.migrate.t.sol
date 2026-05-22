@@ -116,6 +116,72 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 
+    function test_fuzz_recoversFundsWhenPositionManagerReverts_nativeCurrency(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
+
+        uint256 recipientCurrencyBefore = leftoverRecipient.balance;
+        uint256 recipientTokenBefore = token.balanceOf(leftoverRecipient);
+
+        vm.mockCallRevert(
+            address(POSITION_MANAGER),
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector),
+            "POSITION_MANAGER_REVERT"
+        );
+
+        vm.expectEmit(true, true, false, true, address(strategy));
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(leftoverRecipient.balance, recipientCurrencyBefore + raised);
+        assertEq(token.balanceOf(leftoverRecipient), recipientTokenBefore + mp.supplyForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(address(initializer).balance, 0);
+        assertEq(address(strategy).balance, 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
+    }
+
+    function test_fuzz_recoversFundsWhenPositionManagerReverts_erc20Currency(MigrationFuzzParams memory p) public {
+        MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
+
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
+            _boundMigratorParams(p);
+        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
+
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
+        });
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, endBlock, bp, address(currencyToken), lbpParams);
+
+        deal(address(currencyToken), address(initializer), p.currencyRaised);
+        vm.roll(mp.migrationBlock);
+
+        uint256 recipientCurrencyBefore = currencyToken.balanceOf(leftoverRecipient);
+        uint256 recipientTokenBefore = token.balanceOf(leftoverRecipient);
+
+        vm.mockCallRevert(
+            address(POSITION_MANAGER),
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector),
+            "POSITION_MANAGER_REVERT"
+        );
+
+        vm.expectEmit(true, true, false, true, address(strategy));
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(currencyToken.balanceOf(leftoverRecipient), recipientCurrencyBefore + p.currencyRaised);
+        assertEq(token.balanceOf(leftoverRecipient), recipientTokenBefore + mp.supplyForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(currencyToken.balanceOf(address(initializer)), 0);
+        assertEq(currencyToken.balanceOf(address(strategy)), 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
+    }
+
     function test_skippedPositionBudgetsAreSweptToFundsRecipient(MigrationFuzzParams memory p) public {
         uint128 maxV4Delta = uint128(type(int128).max);
 

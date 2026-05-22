@@ -139,7 +139,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         return IDistributionContract(address(this));
     }
 
-    /// @notice Attempts to migrate the initializer, reverting to the caller so migrate can recover on failure
+    /// @notice Migrate the funds from the initializer and the reserve tokens to a v4 pool
+    /// @dev Reverts SHOULD be avoided as much as possible in this function to prevent the liquidity migration from being griefed
     function tryMigrate(ILBPInitializer initializer) external {
         if (msg.sender != address(this)) revert OnlySelfCall();
 

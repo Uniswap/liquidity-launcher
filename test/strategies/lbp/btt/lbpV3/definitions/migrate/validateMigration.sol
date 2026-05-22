@@ -23,7 +23,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// ├── when initializer is unregistered (migrationBlock == 0)
 /// │   └── it reverts with InitializerNotRegistered(initializer)
 /// ├── when initializer was already consumed (reserves == 0, migrationBlock != 0)
-/// │   └── it reverts with InsufficientReserves(initializer)
+/// │   ├── it reverts with InsufficientReserves(initializer)
+/// │   └── it reverts with InsufficientReserves(initializer) before checking migrationBlock
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
@@ -70,6 +71,21 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         // so the second call hits the InsufficientReserves branch, not InitializerNotRegistered.
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertGt(strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock, 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+    }
+
+    function test_WhenInitializerWasInsufficientReservesBeforeMigrationBlock(MigrationFuzzParams memory p) public {
+        // it reverts with {InsufficientReserves} before checking migrationBlock
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        uint256 migrationBlock = strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock;
+
+        // Roll back below migrationBlock to isolate onlyPendingMigrate's check order.
+        vm.roll(migrationBlock - 1);
 
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
