@@ -156,6 +156,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
         {
+            // Retrieves the LBP initialization parameters from the initializer. Must revert if the initializer is not graduated.
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
             uint256 currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
@@ -227,7 +228,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         reserves[initializer] = 0;
 
         // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
-        // so sweepCurrency moves it here; we then forward strictly the delta to leftoverRecipient.
+        // so sweepCurrency moves it here; we then forward strictly the delta to leftoverRecipient. For
+        // non-graduated auctions, the initializer must complete this call as a zero-amount sweep rather than
+        // reverting, which lets this function still recover the strategy-held supplyForLP.
         Currency currency = Currency.wrap(mp.currency);
         uint256 currencyBefore = currency.balanceOfSelf();
         // Sweep the currency from the initializer
