@@ -217,6 +217,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         try this.tryMigrate(initializer) {}
         catch {
             MigratorParameters memory mp = _initializers[initializer];
+            address leftoverRecipient = mp.leftoverRecipient;
             // Migration failed, recover the token reserves
             uint256 tokenReserves = reserves[initializer];
             // Set the reserves to zero
@@ -229,10 +230,10 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             // Sweep the currency from the initializer
             initializer.sweepCurrency();
             // Transfer what was received to the recipient
-            _transferCurrency(currency, mp.leftoverRecipient, currency.balanceOfSelf() - currencyBefore);
+            _transferCurrency(currency, leftoverRecipient, currency.balanceOfSelf() - currencyBefore);
 
-            IERC20(mp.token).safeTransfer(mp.leftoverRecipient, tokenReserves);
-            emit FundsRecovered(initializer, mp.leftoverRecipient, tokenReserves);
+            IERC20(mp.token).safeTransfer(leftoverRecipient, tokenReserves);
+            emit FundsRecovered(initializer, leftoverRecipient, tokenReserves);
         }
     }
 
