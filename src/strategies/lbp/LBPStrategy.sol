@@ -74,8 +74,12 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Modifier requiring the initializer to be in a pending migration state
     /// @dev An initializer is pending migration if it is registered and has a non zero reserve amount
     modifier onlyPendingMigrate(ILBPInitializer initializer) {
-        if (_initializers[initializer].migrationBlock == 0) revert InitializerNotRegistered(initializer);
+        MigratorParameters memory migrationParams = _initializers[initializer];
+        if (migrationParams.migrationBlock == 0) revert InitializerNotRegistered(initializer);
         if (reserves[initializer] == 0) revert InsufficientReserves(initializer);
+        if (_getBlockNumberish() < migrationParams.migrationBlock) {
+            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
+        }
         _;
     }
 
@@ -135,15 +139,14 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         return IDistributionContract(address(this));
     }
 
-    /// @inheritdoc ILBPStrategy
-    function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
+    /// @notice Attempts to migrate the initializer, reverting to the caller so migrate can recover on failure
+    function tryMigrate(ILBPInitializer initializer) external {
+        if (msg.sender != address(this)) revert OnlySelfCall();
+
         // Load the stored migration parameters for the initializer
         MigratorParameters memory migrationParams = _initializers[initializer];
 
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
-            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
-        }
-
+        // Zero out the reserves
         reserves[initializer] = 0;
 
         // Use the (token, currency) snapshot captured into MigratorParameters at registration.
@@ -208,35 +211,28 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         emit Migrated(initializer, key, sqrtPriceX96);
     }
 
-    /// @inheritdoc ILBPStrategy
-    /// @dev Recovery path for an initializer whose migrate failed. After `recoveryDelayBlocks` blocks past
-    ///      `migrationBlock`, the initializer's leftoverRecipient can pull both the held `supplyForLP` and any
-    ///      raised currency still held in the initializer back out.
-    function recoverFunds(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
-        MigratorParameters memory mp = _initializers[initializer];
+    /// @notice Attempts to migrate the initializer and recovers the token reserves if it fails
+    function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
+        try this.tryMigrate(initializer) {}
+        catch {
+            MigratorParameters memory mp = _initializers[initializer];
+            // Migration failed, recover the token reserves
+            uint256 tokenReserves = reserves[initializer];
+            // Set the reserves to zero
+            reserves[initializer] = 0;
 
-        if (msg.sender != mp.leftoverRecipient) {
-            revert UnauthorizedRecovery(msg.sender, mp.leftoverRecipient);
+            // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
+            // so sweepCurrency moves it here; we then forward strictly the delta to leftoverRecipient.
+            Currency currency = Currency.wrap(mp.currency);
+            uint256 currencyBefore = currency.balanceOfSelf();
+            // Sweep the currency from the initializer
+            initializer.sweepCurrency();
+            // Transfer what was received to the recipient
+            _transferCurrency(currency, mp.leftoverRecipient, currency.balanceOfSelf() - currencyBefore);
+
+            IERC20(mp.token).safeTransfer(mp.leftoverRecipient, tokenReserves);
+            emit FundsRecovered(initializer, mp.leftoverRecipient, tokenReserves);
         }
-        if (_getBlockNumberish() < mp.migrationBlock + recoveryDelayBlocks) {
-            revert RecoveryNotYetAllowed(mp.migrationBlock + recoveryDelayBlocks);
-        }
-
-        uint256 amount = reserves[initializer];
-        // Set the reserves to zero
-        reserves[initializer] = 0;
-
-        // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
-        // so sweepCurrency moves it here; we then forward strictly the delta to leftoverRecipient.
-        Currency currency = Currency.wrap(mp.currency);
-        uint256 currencyBefore = currency.balanceOfSelf();
-        // Sweep the currency from the initializer
-        initializer.sweepCurrency();
-        // Transfer what was received to the recipient
-        _transferCurrency(currency, mp.leftoverRecipient, currency.balanceOfSelf() - currencyBefore);
-
-        IERC20(mp.token).safeTransfer(mp.leftoverRecipient, amount);
-        emit FundsRecovered(initializer, mp.leftoverRecipient, amount);
     }
 
     /// @inheritdoc ILBPStrategy

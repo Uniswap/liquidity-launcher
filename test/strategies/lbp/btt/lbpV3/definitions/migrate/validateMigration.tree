@@ -7,7 +7,7 @@ ValidateMigrationTest
 │   └── it reverts with {MigrationNotYetAllowed}
 └── when block.number is GTE migrationBlock
     ├── when currencySwept != currencyRaised
-    │   └── it reverts with {CurrencyRaisedMismatch}
+    │   └── it recovers the initializer funds to leftoverRecipient
     └── when currencySwept == currencyRaised
         ├── it calls sweepCurrency on initializer
         ├── it sweeps leftover currency to leftoverRecipient

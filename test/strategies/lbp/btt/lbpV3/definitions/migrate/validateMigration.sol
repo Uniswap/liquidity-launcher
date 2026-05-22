@@ -28,7 +28,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
 ///     ├── when currencySwept != currencyRaised
-///     │   └── it reverts with CurrencyRaisedMismatch
+///     │   └── it recovers the initializer funds to leftoverRecipient
 ///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
 ///         ├── it sweeps leftover currency to leftoverRecipient
@@ -100,20 +100,32 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         public
         whenBlockIsGTEMigrationBlock
     {
-        // it reverts with {CurrencyRaisedMismatch}
-        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        // it recovers the initializer funds to leftoverRecipient
+        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
 
         // After _setupForMigration, p.currencyRaised is bounded and both the initializer's
         // ETH balance and reported currencyRaised equal it. Force a mismatch by overriding
-        // the initializer's balance.
+        // the initializer's balance. The failed migration should fall back to recovery.
         uint256 claimed = p.currencyRaised;
         actualAmount = bound(actualAmount, 0, uint256(uint128(type(int128).max)));
         vm.assume(actualAmount != claimed);
 
         vm.deal(address(initializer), actualAmount);
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.CurrencyRaisedMismatch.selector, actualAmount, claimed));
+        uint256 recipientCurrencyBefore = leftoverRecipient.balance;
+        uint256 recipientTokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 strategyTokenBefore = token.balanceOf(address(strategy));
+
+        vm.expectEmit(true, true, false, true, address(strategy));
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(leftoverRecipient.balance, recipientCurrencyBefore + actualAmount);
+        assertEq(token.balanceOf(leftoverRecipient), recipientTokenBefore + mp.supplyForLP);
+        assertEq(token.balanceOf(address(strategy)), strategyTokenBefore - mp.supplyForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(address(initializer).balance, 0);
     }
 
     function test_CallsSweepOnInitializer(MigrationFuzzParams memory p) public whenBlockIsGTEMigrationBlock {
