@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {Multicall} from "./Multicall.sol";
 import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
@@ -14,7 +15,7 @@ import {Distribution} from "./types/Distribution.sol";
 /// @title LiquidityLauncher
 /// @notice A contract that allows users to create tokens and distribute them via one or more strategies
 /// @custom:security-contact security@uniswap.org
-contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
+contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     constructor(IAllowanceTransfer _permit2) Permit2Forwarder(_permit2) {}
@@ -28,7 +29,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
-    ) external override returns (address tokenAddress) {
+    ) external override nonReentrant returns (address tokenAddress) {
         if (recipient == address(0)) {
             revert RecipientCannotBeZeroAddress();
         }
@@ -39,7 +40,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     }
 
     /// @inheritdoc ILiquidityLauncher
-    function depositToken(address token, uint160 amount) external override {
+    function depositToken(address token, uint160 amount) external override nonReentrant {
         // Pulls tokens from msg.sender via permit2 so the deposit can be batched with `distributeToken`
         // in a single multicall (preceded by a `permit` call for first-time approvals).
         permit2.transferFrom(msg.sender, address(this), amount, token);
@@ -49,6 +50,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     function distributeToken(address token, Distribution calldata distribution, bytes32 salt)
         external
         override
+        nonReentrant
         returns (IDistributionContract distributionContract)
     {
         // Approve the strategy to pull `distribution.amount` from this contract. The strategy is
