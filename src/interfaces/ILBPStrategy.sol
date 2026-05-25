@@ -15,7 +15,7 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters. Any nonzero migrationParams.hook MUST inherit InitializerHook.
     ///        If hook is address(0), migration uses the hookless pool unless it already exists, then falls back to
-    ///        the LBPStrategy address as the hook.
+    ///        the LBPStrategy address as the hook. address(0) is only valid with a static pool fee.
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
