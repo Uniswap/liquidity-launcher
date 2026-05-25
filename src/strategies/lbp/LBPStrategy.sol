@@ -87,6 +87,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     ///      strategy as the distribution contract.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
+        nonReentrant
         returns (IDistributionContract)
     {
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
@@ -155,10 +156,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
+        uint256 currencyFromInitializer;
         {
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
-            uint256 currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
+            currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
             if (currencyFromInitializer != lbpParams.currencyRaised) {
                 revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
             }
@@ -194,7 +196,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Sweep this initializer's leftover (non-LP currency and unused supplyForLP) to the leftover recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
+        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
         if (remainingCurrency > 0) {
             currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
             emit CurrencySwept(migrationParams.leftoverRecipient, remainingCurrency);
