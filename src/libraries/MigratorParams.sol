@@ -18,7 +18,7 @@ struct MigratorParameters {
     uint128 supplyForLP; // amount of the token used for LP creation
     address leftoverRecipient; // the address that will receive unused currency and unused LP supply after migration
     address lpPositionRecipient; // the address that will receive the created LP position
-    address hook; // Nonzero hooks MUST inherit InitializerHook. address(0) uses the hookless pool unless it already exists at migration time.
+    address hook; // Nonzero hooks MUST inherit InitializerHook. address(0) is only valid for static-fee pools.
     address token; // launched token; must match function-param `token` AND `initializer.token()` at registration
     address currency; // auction currency; must match `initializer.currency()` at registration
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
@@ -49,6 +49,9 @@ library MigratorParams {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
+    /// @notice Error thrown when dynamic LP fees are configured without a user-provided hook
+    error InvalidDynamicFeeHook();
+
     /// @notice Error thrown when the LP allocation schedule has an invalid number of brackets (empty or exceeds max)
     /// @param count The invalid bracket count
     error InvalidBracketCount(uint256 count);
@@ -74,6 +77,10 @@ library MigratorParams {
         // fee validation (static fees cannot be greater than the v4 max fee)
         if (p.poolLPFee > LPFeeLibrary.MAX_LP_FEE && p.poolLPFee != LPFeeLibrary.DYNAMIC_FEE_FLAG) {
             revert ILBPStrategy.InvalidFee(p.poolLPFee, LPFeeLibrary.MAX_LP_FEE);
+        }
+        // Dynamic-fee pools require hook-owned fee logic. The strategy's hookless fallback only gates initialization.
+        if (p.poolLPFee == LPFeeLibrary.DYNAMIC_FEE_FLAG && p.hook == address(0)) {
+            revert InvalidDynamicFeeHook();
         }
         // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
         if (

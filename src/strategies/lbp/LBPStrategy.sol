@@ -290,14 +290,15 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Initializes the pool with the calculated price
     /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for
     ///      IInitializerHook ERC165 support during initializeDistribution. If hook is address(0), initializes the
-    ///      hookless pool unless it already exists, then falls back to this strategy as the hook.
+    ///      hookless pool unless it already exists, then falls back to this strategy as the hook. address(0) is
+    ///      only valid for static-fee pools.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
     /// @param poolLPFee The LP fee for the pool
     /// @param poolTickSpacing The tick spacing for the pool
     /// @param hook The hook address for the pool. Any nonzero hook MUST inherit InitializerHook. address(0) targets
-    ///        the hookless pool unless it already exists.
+    ///        the hookless pool unless it already exists, and is only valid for static-fee pools.
     /// @return key The pool key for the initialized pool
     function _initializePool(
         Currency currency,

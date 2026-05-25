@@ -47,7 +47,9 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidTickSpacing
 /// ├── when fee > MAX_LP_FEE
 /// │   └── it reverts with InvalidFee
-/// ├── when fee is the dynamic fee flag
+/// ├── when fee is the dynamic fee flag without a hook
+/// │   └── it reverts with InvalidDynamicFeeHook
+/// ├── when fee is the dynamic fee flag with a hook
 /// │   └── it stores the migration parameters
 /// ├── when positionRecipient is reserved
 /// │   └── it reverts with InvalidPositionRecipient
@@ -277,7 +279,25 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
-    function test_WhenFeeIsDynamicFeeFlag(MigrationFuzzParams memory p)
+    function test_WhenFeeIsDynamicFeeFlagWithoutHook(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+    {
+        // it reverts with {InvalidDynamicFeeHook}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolLPFee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+        mp.hook = address(0);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData =
+            _encodeConfigData(mp, _boundBrackets(p.bpParams), abi.encode(mp.supplyForLP, endBlock));
+
+        vm.expectRevert(MigratorParams.InvalidDynamicFeeHook.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenFeeIsDynamicFeeFlagWithHook(MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
         whenTickSpacingIsValid
@@ -285,11 +305,13 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         // it stores the migration parameters
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         mp.poolLPFee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+        mp.hook = address(new MockInitializerHook(address(strategy)));
 
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertEq(storedParams.poolLPFee, LPFeeLibrary.DYNAMIC_FEE_FLAG);
+        assertEq(storedParams.hook, mp.hook);
     }
 
     modifier whenFeeIsValid() {
