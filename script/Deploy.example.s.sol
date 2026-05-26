@@ -35,7 +35,7 @@ contract DeployExample is Script {
         calls[1] = abi.encodeCall(ILiquidityLauncher.distributeToken, (token, distribution, salt));
 
         IMulticall(liquidityLauncher).multicall(calls);
-        console2.log("Distribution strategy initialized:", lbpStrategy);
+        console2.log("Strategy initialized:", lbpStrategy);
 
         vm.stopBroadcast();
     }

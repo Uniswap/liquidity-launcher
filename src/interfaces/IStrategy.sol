@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @title IDistributionStrategy
+/// @title IStrategy
 /// @notice Interface for token distribution strategies.
-interface IDistributionStrategy {
+interface IStrategy {
     /// @notice Emitted when a distribution is initialized
-    /// @param distributionContract The contract that was created that will handle or manage the distribution.
+    /// @param distributor The distributor that was created to handle or manage the distribution.
     /// @param token The token that is being distributed.
     /// @param totalSupply The supply of the token that is being distributed.
-    event DistributionInitialized(address indexed distributionContract, address indexed token, uint256 totalSupply);
+    event DistributionInitialized(address indexed distributor, address indexed token, uint256 totalSupply);
 
     /// @notice Error thrown when the amount to be distributed is invalid
     /// @param amount The invalid amount
@@ -20,7 +20,7 @@ interface IDistributionStrategy {
     /// implementing contract. For some strategies this function will handle the entire distribution, for others it
     /// could merely set up initial state and provide additional entrypoints to handle the distribution logic.
     /// The strategy is responsible for pulling `totalSupply` of `token` from `msg.sender`.
-    /// Implementations that deploy or predict deterministic distribution contracts MUST include `salt` in the
+    /// Implementations that deploy or predict deterministic distributors MUST include `salt` in the
     /// address calculation so callers can domain-separate otherwise identical distributions.
     /// @param token The token that is being distributed.
     /// @param totalSupply The supply of the token that is being distributed.

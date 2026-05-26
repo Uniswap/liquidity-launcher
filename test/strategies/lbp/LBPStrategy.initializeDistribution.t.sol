@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {IDistributionContractFactory} from "src/interfaces/IDistributionContractFactory.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
@@ -82,8 +82,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         vm.expectCall(
             address(factory),
             abi.encodeCall(
-                IDistributionContractFactory.create,
-                (address(token), auctionSupply, initializerParams, expectedInitializerSalt)
+                IDistributorFactory.create, (address(token), auctionSupply, initializerParams, expectedInitializerSalt)
             )
         );
 

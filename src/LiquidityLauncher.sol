@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Multicall} from "./Multicall.sol";
 import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
-import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
+import {IStrategy} from "./interfaces/IStrategy.sol";
 import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
 import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
 import {Distribution} from "./types/Distribution.sol";
@@ -50,7 +50,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         // expected to consume the full allowance via `safeTransferFrom` inside `initializeDistribution`.
         IERC20(token).forceApprove(distribution.strategy, distribution.amount);
 
-        IDistributionStrategy(distribution.strategy)
+        IStrategy(distribution.strategy)
             .initializeDistribution(
                 token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
             );

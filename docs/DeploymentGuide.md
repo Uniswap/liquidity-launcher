@@ -64,7 +64,7 @@ function distributeToken(
 
 The `salt` parameter is forwarded to the selected strategy after being domain-separated by the caller. Strategies and downstream factories that perform deterministic deployments MUST include the provided salt in their address calculation and any matching address prediction helpers.
 
-Depending on the complexity of the distribution strategy, you may need to pass additional parameters to the strategy. These are passed in the `configData` parameter.
+Depending on the complexity of the strategy, you may need to pass additional parameters to it. These are passed in the `configData` parameter.
 
 `Distribution.strategy` is the contract that receives the launcher's temporary allowance and must pull the full `amount` from the launcher inside `initializeDistribution`. Strategies may create any number of additional contracts, but those contracts are not returned to the launcher; strategy-specific events or prediction helpers should be used when callers need downstream contract addresses.
 

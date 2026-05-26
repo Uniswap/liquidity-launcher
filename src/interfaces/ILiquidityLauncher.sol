@@ -9,7 +9,7 @@ interface ILiquidityLauncher {
     /// @notice Thrown when the recipient is the zero address
     error RecipientCannotBeZeroAddress();
 
-    /// @notice Thrown when the distribution strategy did not consume the full pre-approved allowance.
+    /// @notice Thrown when the strategy did not consume the full pre-approved allowance.
     error AllowanceNotFullyConsumed();
 
     /// @notice Emitted when a token is created
@@ -18,9 +18,9 @@ interface ILiquidityLauncher {
 
     /// @notice Emitted when a token is distributed
     /// @param tokenAddress The address of the token that was distributed
-    /// @param distributionStrategy The strategy that pulled the distributed tokens
+    /// @param strategy The strategy that pulled the distributed tokens
     /// @param amount The amount of tokens that were distributed
-    event TokenDistributed(address indexed tokenAddress, address indexed distributionStrategy, uint256 amount);
+    event TokenDistributed(address indexed tokenAddress, address indexed strategy, uint256 amount);
 
     /// @notice Creates a token via the configured factory.
     /// @dev When `recipient == address(this)`, the newly minted tokens are held in the launcher
@@ -62,7 +62,7 @@ interface ILiquidityLauncher {
     ///      in a single `multicall`
     /// @param tokenAddress The address of the token to distribute
     /// @param distribution Distribution instructions
-    /// @param salt The salt to pass into the distribution strategy contract if needed
+    /// @param salt The salt to pass into the strategy contract if needed
     function distributeToken(address tokenAddress, Distribution memory distribution, bytes32 salt) external;
 
     /// @notice Calculates the graffiti that will be used for a token creation

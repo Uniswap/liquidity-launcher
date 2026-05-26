@@ -22,7 +22,7 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
-import {IDistributionContractFactory} from "../../interfaces/IDistributionContractFactory.sol";
+import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
 import {Plan, Position, PositionDefinition} from "../../types/PositionPlannerTypes.sol";
 import {
     ILBPInitializer,
@@ -46,7 +46,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
-    IDistributionContractFactory public immutable initializerFactory;
+    IDistributorFactory public immutable initializerFactory;
     /// @notice Number of blocks past `migrationBlock` after which an initializer's `recipient` may
     /// recover the held `reservedTokenAmountForLP` via {recoverFunds}.
     uint256 public immutable recoveryDelayBlocks;
@@ -61,7 +61,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributionContractFactory _initializerFactory,
+        IDistributorFactory _initializerFactory,
         uint256 _recoveryDelayBlocks
     ) {
         positionManager = _positionManager;

@@ -8,7 +8,7 @@ import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "sr
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
-import {IDistributionContractFactory} from "src/interfaces/IDistributionContractFactory.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -507,9 +507,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionContractFactory.create.selector),
-            abi.encode(address(badInit))
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
         );
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -535,9 +533,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionContractFactory.create.selector),
-            abi.encode(address(badInit))
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
         );
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -564,9 +560,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionContractFactory.create.selector),
-            abi.encode(address(badInit))
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
         );
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));

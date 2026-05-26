@@ -2,14 +2,14 @@
 pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IDistributionStrategy} from "./IDistributionStrategy.sol";
+import {IStrategy} from "./IStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
-interface ILBPStrategy is IDistributionStrategy {
+interface ILBPStrategy is IStrategy {
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters. Any nonzero migrationParams.poolParameters.hook MUST inherit InitializerHook.

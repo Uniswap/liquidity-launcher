@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
-import {IDistributionContractFactory} from "src/interfaces/IDistributionContractFactory.sol";
+import {IDistributor} from "src/interfaces/IDistributor.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
 import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 /// @notice Mock factory that deploys MockLBPInitializers
-contract MockInitializerFactory is IDistributionContractFactory {
+contract MockInitializerFactory is IDistributorFactory {
     MockLBPInitializer public deployedInitializer;
 
     address public strategyAddress;
@@ -35,7 +35,7 @@ contract MockInitializerFactory is IDistributionContractFactory {
     function create(address token, uint256 amount, bytes calldata configData, bytes32 salt)
         external
         override
-        returns (IDistributionContract)
+        returns (IDistributor)
     {
         salt;
         (uint64 endBlock, address currency, LBPInitializationParams memory lbpParams) =
@@ -51,15 +51,10 @@ contract MockInitializerFactory is IDistributionContractFactory {
         }
 
         deployedInitializer = initializer;
-        return IDistributionContract(address(initializer));
+        return IDistributor(address(initializer));
     }
 
-    function getAddress(address, uint256, bytes calldata, bytes32)
-        external
-        view
-        override
-        returns (IDistributionContract)
-    {
-        return IDistributionContract(address(deployedInitializer));
+    function getAddress(address, uint256, bytes calldata, bytes32) external view override returns (IDistributor) {
+        return IDistributor(address(deployedInitializer));
     }
 }
