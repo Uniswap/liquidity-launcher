@@ -56,6 +56,8 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when reservedTokenAmountForLP is zero
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when token and currency are the same
+/// │   └── it reverts with InvalidTokenCurrencyPair
 /// ├── when position definitions contain invalid tick bounds
 /// │   └── it reverts with InvalidTickBounds
 /// ├── when position definitions exceed the max position count
@@ -384,6 +386,31 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
     modifier whenReservetokenAmountForLPIsValid() {
         _;
+    }
+
+    function test_WhenTokenAndCurrencyAreTheSame(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it reverts with {InvalidTokenCurrencyPair}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        mp.currency = address(token);
+
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(token), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        token.approve(address(strategy), totalSupply);
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidTokenCurrencyPair.selector, address(token)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
     function test_WhenPositionDefinitionsIsEmpty(MigrationFuzzParams memory p)

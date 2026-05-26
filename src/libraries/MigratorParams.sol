@@ -57,6 +57,10 @@ library MigratorParams {
     /// @notice Error thrown when dynamic LP fees are configured without a user-provided hook
     error InvalidDynamicFeeHook();
 
+    /// @notice Error thrown when the launched token and auction currency are the same ERC20
+    /// @param token The token address configured as both token and currency
+    error InvalidTokenCurrencyPair(address token);
+
     /// @notice Error thrown when the LP allocation schedule has an invalid number of brackets (empty or exceeds max)
     /// @param count The invalid bracket count
     error InvalidBracketCount(uint256 count);
@@ -73,6 +77,10 @@ library MigratorParams {
     /// position plan definitions, and the embedded LP allocation schedule. Reverts on any invalidity.
     /// @param p The migrator parameters to validate
     function validate(MigratorParameters memory p) internal pure {
+        // A zero token is rejected later by token consistency checks. This guards real same-token ERC20 pairs
+        // without shadowing native-currency placeholder tests that intentionally leave both fields unset.
+        if (p.token != address(0) && p.token == p.currency) revert InvalidTokenCurrencyPair(p.token);
+
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
         if (
             p.poolParameters.tickSpacing > TickMath.MAX_TICK_SPACING
