@@ -20,12 +20,12 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 /// │   └── it reverts with InsufficientReserves
 /// ├── when initializer was already recovered
 /// │   └── it reverts with InsufficientReserves
-/// ├── when caller != leftoverRecipient
+/// ├── when caller != recipient
 /// │   └── it reverts with UnauthorizedRecovery
 /// ├── when block.number < migrationBlock + recoveryDelayBlocks
 /// │   └── it reverts with RecoveryNotYetAllowed
-/// └── when called by leftoverRecipient at or past the unlock block on a live initializer
-///     ├── it transfers supplyForLP from strategy to leftoverRecipient
+/// └── when called by recipient at or past the unlock block on a live initializer
+///     ├── it transfers reservedTokenAmountForLP from strategy to recipient
 ///     ├── it zeroes reserves (blocks future migrate and recoverFunds)
 ///     └── it emits FundsRecovered
 contract RecoverFundsTest is LBPStrategyTestBase {
@@ -41,14 +41,14 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         strategy.recoverFunds(unregistered);
     }
 
-    function test_WhenCallerIsNotLeftoverRecipient(MigrationFuzzParams memory p, address caller) public {
+    function test_WhenCallerIsNotRecipient(MigrationFuzzParams memory p, address caller) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
-        vm.assume(caller != leftoverRecipient);
+        vm.assume(caller != recipient);
 
         // Roll past the unlock block so the "too early" check passes and we reach the auth check.
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.UnauthorizedRecovery.selector, caller, leftoverRecipient));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.UnauthorizedRecovery.selector, caller, recipient));
         vm.prank(caller);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
     }
@@ -64,7 +64,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.roll(_currentBlock);
 
         vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.RecoveryNotYetAllowed.selector, unlock));
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
     }
 
@@ -80,7 +80,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
     }
 
@@ -88,65 +88,67 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
         // Second call should revert with InsufficientReserves since reserves were zeroed.
         vm.expectRevert(
             abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
         );
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
     }
 
-    function test_SweepsSupplyForLpToLeftoverRecipient(MigrationFuzzParams memory p) public {
+    function test_SweepsReservetokenAmountForLPToRecipient(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
-        uint128 supplyForLP = strategy.initializers(ILBPInitializer(address(initializer))).supplyForLP;
+        uint128 reservedTokenAmountForLP =
+            strategy.initializers(ILBPInitializer(address(initializer))).reservedTokenAmountForLP;
 
         uint256 strategyBalBefore = token.balanceOf(address(strategy));
-        uint256 recipientBalBefore = token.balanceOf(leftoverRecipient);
+        uint256 recipientBalBefore = token.balanceOf(recipient);
 
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), supplyForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), reservedTokenAmountForLP);
 
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, supplyForLP);
-        vm.prank(leftoverRecipient);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), recipient, reservedTokenAmountForLP);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        assertEq(token.balanceOf(address(strategy)), strategyBalBefore - supplyForLP);
-        assertEq(token.balanceOf(leftoverRecipient), recipientBalBefore + supplyForLP);
+        assertEq(token.balanceOf(address(strategy)), strategyBalBefore - reservedTokenAmountForLP);
+        assertEq(token.balanceOf(recipient), recipientBalBefore + reservedTokenAmountForLP);
         // Reserves zeroed → blocks future consumption.
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
-    /// @notice Currency raised in the initializer must also be recovered to leftoverRecipient — otherwise
+    /// @notice Currency raised in the initializer must also be recovered to recipient — otherwise
     /// migrate-never-called would brick the auction proceeds. recoverFunds calls sweepCurrency on
-    /// the initializer and forwards the delta atomically with the supplyForLP transfer.
-    function test_SweepsInitializerCurrencyToLeftoverRecipient(MigrationFuzzParams memory p) public {
+    /// the initializer and forwards the delta atomically with the reservedTokenAmountForLP transfer.
+    function test_SweepsInitializerCurrencyToRecipient(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
         uint256 raised = initializer.lbpInitializationParams().currencyRaised;
-        uint128 supplyForLP = strategy.initializers(ILBPInitializer(address(initializer))).supplyForLP;
-        uint256 leftoverEthBefore = leftoverRecipient.balance;
-        uint256 leftoverTokenBefore = token.balanceOf(leftoverRecipient);
+        uint128 reservedTokenAmountForLP =
+            strategy.initializers(ILBPInitializer(address(initializer))).reservedTokenAmountForLP;
+        uint256 leftoverEthBefore = recipient.balance;
+        uint256 leftoverTokenBefore = token.balanceOf(recipient);
 
         // migrate is never called.
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // supplyForLP forwarded
-        assertEq(token.balanceOf(leftoverRecipient), leftoverTokenBefore + supplyForLP);
+        // reservedTokenAmountForLP forwarded
+        assertEq(token.balanceOf(recipient), leftoverTokenBefore + reservedTokenAmountForLP);
         assertEq(token.balanceOf(address(strategy)), 0);
         // initializer's raised currency forwarded too (no longer bricked)
-        assertEq(leftoverRecipient.balance, leftoverEthBefore + raised);
+        assertEq(recipient.balance, leftoverEthBefore + raised);
         assertEq(address(initializer).balance, 0);
     }
 
     /// @notice When the auction raised no currency, recoverFunds still consumes the reservation
-    /// and forwards supplyForLP, but skips the currency-transfer leg and does NOT emit CurrencySwept.
+    /// and forwards reservedTokenAmountForLP, but skips the currency-transfer leg and does NOT emit CurrencySwept.
     function test_fuzz_doesNotEmitCurrencySweptWhenCurrencyRaisedIsZero(MigrationFuzzParams memory p) public {
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
@@ -159,22 +161,22 @@ contract RecoverFundsTest is LBPStrategyTestBase {
 
         vm.roll(mp.migrationBlock + strategy.recoveryDelayBlocks());
 
-        uint256 ethBefore = leftoverRecipient.balance;
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 ethBefore = recipient.balance;
+        uint256 tokenBefore = token.balanceOf(recipient);
 
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // Token side: supplyForLP forwarded normally.
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        // Token side: reservedTokenAmountForLP forwarded normally.
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
         // Currency side: no transfer (the `if (recoveredCurrency > 0)` branch is skipped). The
         // unchanged ETH balance is sufficient proof that the currency-transfer leg didn't fire.
-        assertEq(leftoverRecipient.balance, ethBefore);
+        assertEq(recipient.balance, ethBefore);
     }
 
     /// @notice Currency-side recovery works when the auction currency is an ERC20 (not native ETH).
     /// Exercises the ERC20 branch of CurrencyLibrary.transfer inside recoverFunds.
-    function test_fuzz_sweepsErc20CurrencyToLeftoverRecipient(MigrationFuzzParams memory p) public {
+    function test_fuzz_sweepsErc20CurrencyToRecipient(MigrationFuzzParams memory p) public {
         MockERC20 currencyToken = new MockERC20("Currency", "CUR", type(uint128).max, address(this));
 
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
@@ -195,23 +197,21 @@ contract RecoverFundsTest is LBPStrategyTestBase {
 
         vm.roll(mp.migrationBlock + strategy.recoveryDelayBlocks());
 
-        uint256 currencyBefore = currencyToken.balanceOf(leftoverRecipient);
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 currencyBefore = currencyToken.balanceOf(recipient);
+        uint256 tokenBefore = token.balanceOf(recipient);
 
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
-        // ERC20 currency forwarded to leftoverRecipient.
-        assertEq(currencyToken.balanceOf(leftoverRecipient), currencyBefore + p.currencyRaised);
+        // ERC20 currency forwarded to recipient.
+        assertEq(currencyToken.balanceOf(recipient), currencyBefore + p.currencyRaised);
         assertEq(currencyToken.balanceOf(address(initializer)), 0);
-        // Token side: supplyForLP forwarded.
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        // Token side: reservedTokenAmountForLP forwarded.
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
     }
 
-    /// @notice A malicious leftoverRecipient that reenters recoverFunds(self) from its receive()
-    function test_fuzz_recoverFundsReentryViaLeftoverRecipient_revertsWithReentrancy(MigrationFuzzParams memory p)
-        public
-    {
+    /// @notice A malicious recipient that reenters recoverFunds(self) from its receive()
+    function test_fuzz_recoverFundsReentryViaRecipient_revertsWithReentrancy(MigrationFuzzParams memory p) public {
         MockReentrantRecoverFundsRecipient recipient =
             new MockReentrantRecoverFundsRecipient(ILBPStrategy(address(strategy)));
 
@@ -222,7 +222,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        mp.leftoverRecipient = address(recipient);
+        mp.recipient = address(recipient);
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
@@ -244,7 +244,7 @@ contract RecoverFundsTest is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
 
         // migrate now fails with InsufficientReserves (reserves == 0).

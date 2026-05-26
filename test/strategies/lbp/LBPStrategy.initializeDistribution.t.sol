@@ -34,12 +34,12 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(init1)));
 
         assertEq(storedParams.migrationBlock, mp.migrationBlock);
-        assertEq(storedParams.poolLPFee, mp.poolLPFee);
-        assertEq(storedParams.poolTickSpacing, mp.poolTickSpacing);
-        assertEq(storedParams.supplyForLP, mp.supplyForLP);
-        assertEq(storedParams.leftoverRecipient, mp.leftoverRecipient);
-        assertEq(storedParams.lpPositionRecipient, mp.lpPositionRecipient);
-        assertEq(storedParams.hook, mp.hook);
+        assertEq(storedParams.poolParameters.fee, mp.poolParameters.fee);
+        assertEq(storedParams.poolParameters.tickSpacing, mp.poolParameters.tickSpacing);
+        assertEq(storedParams.reservedTokenAmountForLP, mp.reservedTokenAmountForLP);
+        assertEq(storedParams.recipient, mp.recipient);
+        assertEq(storedParams.positionRecipient, mp.positionRecipient);
+        assertEq(storedParams.poolParameters.hook, mp.poolParameters.hook);
         assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
         assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));
     }
@@ -76,7 +76,7 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
         (MigratorParameters memory decodedMigrationParams,) = abi.decode(configData, (MigratorParameters, bytes));
         bytes32 expectedInitializerSalt = keccak256(abi.encode(salt, decodedMigrationParams));
-        uint256 auctionSupply = totalSupply - mp.supplyForLP;
+        uint256 auctionSupply = totalSupply - mp.reservedTokenAmountForLP;
         token.approve(address(strategy), totalSupply);
 
         vm.expectCall(
@@ -116,21 +116,21 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
     {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        mp.hook = makeAddr("hookWithoutInitializerHookSupport");
+        mp.poolParameters.hook = makeAddr("hookWithoutInitializerHookSupport");
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
+        bytes memory initializerParams = abi.encode(mp.reservedTokenAmountForLP, endBlock);
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
 
-        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.hook));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
     function test_initializeDistribution_revertsIfDynamicFeeHasNoHook(MigrationFuzzParams memory p) public {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        mp.poolLPFee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
-        mp.hook = address(0);
+        mp.poolParameters.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+        mp.poolParameters.hook = address(0);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         mp.token = address(token);
@@ -153,12 +153,12 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
             IPoolManager(address(POOL_MANAGER)), address(strategy), makeAddr("gatekeeper")
         );
         vm.etch(hookAddr, address(impl).code);
-        mp.hook = hookAddr;
+        mp.poolParameters.hook = hookAddr;
 
         assertTrue(IInitializerHook(hookAddr).supportsInterface(type(IInitializerHook).interfaceId));
 
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, bp);
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
-        assertEq(storedParams.hook, hookAddr);
+        assertEq(storedParams.poolParameters.hook, hookAddr);
     }
 }

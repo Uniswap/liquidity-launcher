@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParameters, PoolParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -37,7 +37,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// - it stores the MigratorParameters
     /// - it migrates successfully after migrationBlock
     /// - it leaves no funds in the strategy
-    /// - it sends leftover currency and tokens to leftoverRecipient
+    /// - it sends leftover currency and tokens to recipient
     function test_fuzz_initAndMigrate_happyPath(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
         uint256 raised = initializer.lbpInitializationParams().currencyRaised;
@@ -46,8 +46,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertGt(storedParams.migrationBlock, 0);
 
-        uint256 recipientBalBefore = leftoverRecipient.balance;
-        uint256 recipientTokenBalBefore = token.balanceOf(leftoverRecipient);
+        uint256 recipientBalBefore = recipient.balance;
+        uint256 recipientTokenBalBefore = token.balanceOf(recipient);
         uint256 poolMgrBalBefore = address(POOL_MANAGER).balance;
         uint256 poolMgrTokenBalBefore = token.balanceOf(address(POOL_MANAGER));
         uint256 unsoldInCca = token.balanceOf(address(initializer));
@@ -59,15 +59,15 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(strategy)), 0);
         assertEq(address(strategy).balance, 0);
 
-        uint256 currencyToFundsRecipient = leftoverRecipient.balance - recipientBalBefore;
+        uint256 currencyToFundsRecipient = recipient.balance - recipientBalBefore;
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolMgrBalBefore;
-        uint256 tokensToFundsRecipient = token.balanceOf(leftoverRecipient) - recipientTokenBalBefore;
+        uint256 tokensToFundsRecipient = token.balanceOf(recipient) - recipientTokenBalBefore;
         uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - poolMgrTokenBalBefore;
 
         assertEq(currencyToFundsRecipient + currencyToPool, raised);
-        // Only supplyForLP is distributed by the strategy. Unsold auction tokens stay in the initializer
+        // Only reservedTokenAmountForLP is distributed by the strategy. Unsold auction tokens stay in the initializer
         // for the tokensRecipient to claim separately.
-        assertEq(tokensToFundsRecipient + tokensToPool, storedParams.supplyForLP);
+        assertEq(tokensToFundsRecipient + tokensToPool, storedParams.reservedTokenAmountForLP);
         assertEq(token.balanceOf(address(initializer)), unsoldInCca);
     }
 
@@ -80,19 +80,17 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         defs[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
 
         MigratorParameters memory mp = MigratorParameters({
-            migrationBlock: uint64(block.number + 1),
-            poolLPFee: 3000,
-            poolTickSpacing: 60,
-            supplyForLP: 100 ether,
-            leftoverRecipient: leftoverRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            hook: address(0),
             token: address(0),
             currency: address(0),
+            migrationBlock: uint64(block.number + 1),
+            reservedTokenAmountForLP: 100 ether,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(0)}),
             positionDefinitions: abi.encode(defs),
             lpAllocationSchedule: new bytes(0)
         });
-        uint128 totalSupply = mp.supplyForLP + 10 ether;
+        uint128 totalSupply = mp.reservedTokenAmountForLP + 10 ether;
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
@@ -108,7 +106,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
-        assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(lpPositionRecipient), 0);
+        assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(positionRecipient), 0);
     }
 
     /// forge-config: default.isolate = true
@@ -129,7 +127,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
 
-        vm.prank(leftoverRecipient);
+        vm.prank(recipient);
         strategy.recoverFunds(ILBPInitializer(address(initializer)));
         vm.snapshotGasLastCall("LBP recoverFunds: standard parameters with native currency");
     }
@@ -151,21 +149,22 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     /// @notice A second initializer migrating for the same token cannot consume the first initializer's
-    /// held `supplyForLP`. Registers A under fuzzed parameters, then registers a fully-fuzzed B for the
+    /// held `reservedTokenAmountForLP`. Registers A under fuzzed parameters, then registers a fully-fuzzed B for the
     /// SAME token, migrates B, and asserts A's reserves are still held in the strategy untouched.
     function test_fuzz_secondInitializerMigrateCannotTouchFirstInitializersLpSupply(
         MigrationFuzzParams memory pA,
         MigrationFuzzParams memory pB
     ) public {
-        // 1. Register A with fuzzed params — strategy ends up holding supplyForLP_A of `token`.
+        // 1. Register A with fuzzed params — strategy ends up holding reservedTokenAmountForLP_A of `token`.
         (MockLBPInitializer initA, MockERC20 token) = _setupForMigration(pA);
 
         // Need headroom in block.number for B's endBlock/migrationBlock to fit in uint64.
         // _boundMigratorParams uses [block.number, uint64.max-1] for endBlock, so block.number must be < uint64.max-1.
         vm.assume(block.number < type(uint64).max - 1);
 
-        uint128 supplyForLP_A = strategy.initializers(ILBPInitializer(address(initA))).supplyForLP;
-        assertEq(token.balanceOf(address(strategy)), supplyForLP_A);
+        uint128 reservedTokenAmountForLP_A =
+            strategy.initializers(ILBPInitializer(address(initA))).reservedTokenAmountForLP;
+        assertEq(token.balanceOf(address(strategy)), reservedTokenAmountForLP_A);
 
         // 2. Build B's params via the same bounding helpers. block.number is now mp_A.migrationBlock,
         //    so B's endBlock and migrationBlock will naturally end up > A's migrationBlock.
@@ -192,21 +191,26 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockLBPInitializer initB = factory.deployedInitializer();
 
         // 5. Strategy now holds both initializers' reserves.
-        assertEq(token.balanceOf(address(strategy)), uint256(supplyForLP_A) + uint256(mp_B.supplyForLP));
+        assertEq(
+            token.balanceOf(address(strategy)),
+            uint256(reservedTokenAmountForLP_A) + uint256(mp_B.reservedTokenAmountForLP)
+        );
 
         // 6. Fund B's initializer with the currencyRaised it claims, roll past B's migrationBlock, and migrate B.
         vm.deal(address(initB), pB.currencyRaised);
         vm.roll(mp_B.migrationBlock);
         strategy.migrate(ILBPInitializer(address(initB)));
 
-        // 7. A's supplyForLP is still held in the strategy — untouched by B's migrate.
-        assertEq(token.balanceOf(address(strategy)), supplyForLP_A);
-        assertEq(strategy.initializers(ILBPInitializer(address(initA))).supplyForLP, supplyForLP_A);
+        // 7. A's reservedTokenAmountForLP is still held in the strategy — untouched by B's migrate.
+        assertEq(token.balanceOf(address(strategy)), reservedTokenAmountForLP_A);
+        assertEq(
+            strategy.initializers(ILBPInitializer(address(initA))).reservedTokenAmountForLP, reservedTokenAmountForLP_A
+        );
     }
 
     /// @notice Adversarial scenario from PR review: an attacker registers a separate auction B
     /// whose CURRENCY is A's launch token, with B's migration block BEFORE A's. When B's migrate
-    /// runs, A's `supplyForLP` (token X) is still in the strategy because A hasn't migrated yet.
+    /// runs, A's `reservedTokenAmountForLP` (token X) is still in the strategy because A hasn't migrated yet.
     /// Pre-fix, B's leftover-currency sweep read the strategy's raw balance and drained A's
     /// reserves. Post-fix the sweep is delta-scoped, so A's reserves survive.
     function test_fuzz_crossInitializerCurrency_doesNotDrainReservesWhenBMigratesFirst(
@@ -214,8 +218,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory pB
     ) public {
         // Register A (native ETH currency) without rolling so B's blocks can sit before A's.
-        (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX,) = _registerInitA(pA);
-        assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
+        (uint64 migrationBlockA, uint128 reservedTokenAmountForLP_A, MockERC20 tokenX,) = _registerInitA(pA);
+        assertEq(tokenX.balanceOf(address(strategy)), reservedTokenAmountForLP_A);
 
         // Register B with currency = tokenX (A's launch token); B's launch token is a distinct ERC20.
         (uint64 migrationBlockB, MockLBPInitializer initB) = _registerInitBWithCurrency(pB, address(tokenX));
@@ -227,14 +231,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         deal(address(tokenX), address(initB), pB.currencyRaised);
         vm.roll(migrationBlockB);
         assertLt(block.number, migrationBlockA);
-        uint256 leftoverBefore = tokenX.balanceOf(leftoverRecipient);
+        uint256 leftoverBefore = tokenX.balanceOf(recipient);
 
         strategy.migrate(ILBPInitializer(address(initB)));
 
-        // A's supplyForLP is still held in the strategy — untouched by B's migrate.
-        assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
-        // Sweep to B's leftoverRecipient is bounded by B's contribution, not the full strategy balance.
-        assertLe(tokenX.balanceOf(leftoverRecipient) - leftoverBefore, pB.currencyRaised);
+        // A's reservedTokenAmountForLP is still held in the strategy — untouched by B's migrate.
+        assertEq(tokenX.balanceOf(address(strategy)), reservedTokenAmountForLP_A);
+        // Sweep to B's recipient is bounded by B's contribution, not the full strategy balance.
+        assertLe(tokenX.balanceOf(recipient) - leftoverBefore, pB.currencyRaised);
     }
 
     /// @notice Even if a malicious initializer B mutates its `token()` getter AFTER registration
@@ -244,8 +248,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MigrationFuzzParams memory pA,
         MigrationFuzzParams memory pB
     ) public {
-        // 1. Register A with native ETH currency — strategy holds supplyForLP_A of token X.
-        (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX, MockLBPInitializer initA) = _registerInitA(pA);
+        // 1. Register A with native ETH currency — strategy holds reservedTokenAmountForLP_A of token X.
+        (uint64 migrationBlockA, uint128 reservedTokenAmountForLP_A, MockERC20 tokenX, MockLBPInitializer initA) =
+            _registerInitA(pA);
 
         // 2. Register B with its own (distinct) launch token Y, also using native ETH currency.
         (uint64 migrationBlockB, MockLBPInitializer initB) = _registerInitBWithCurrency(pB, address(0));
@@ -261,15 +266,15 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         assertEq(strategy.initializers(ILBPInitializer(address(initB))).token, honestTokenB);
 
         // 4. Fund B's initializer with its claimed currencyRaised and migrate B. B's migrate runs against
-        //    the snapshot (honest token Y), so it uses B's own pre-pulled supplyForLP_B of Y —
+        //    the snapshot (honest token Y), so it uses B's own pre-pulled reservedTokenAmountForLP_B of Y —
         //    never reaching for A's X.
         vm.deal(address(initB), pB.currencyRaised);
         vm.roll(migrationBlockB);
         strategy.migrate(ILBPInitializer(address(initB)));
 
-        // 5. A's supplyForLP is untouched — the lie did not cross initializers.
-        assertEq(tokenX.balanceOf(address(strategy)), supplyForLP_A);
-        assertEq(strategy.reserves(ILBPInitializer(address(initA))), supplyForLP_A);
+        // 5. A's reservedTokenAmountForLP is untouched — the lie did not cross initializers.
+        assertEq(tokenX.balanceOf(address(strategy)), reservedTokenAmountForLP_A);
+        assertEq(strategy.reserves(ILBPInitializer(address(initA))), reservedTokenAmountForLP_A);
     }
 
     /// @notice initializeDistribution rejects configData whose declared `mp.token` doesn't match
@@ -338,7 +343,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     /// @notice Bounds pA and registers A with native ETH currency. Returns just the locals the caller needs.
     function _registerInitA(MigrationFuzzParams memory pA)
         private
-        returns (uint64 migrationBlockA, uint128 supplyForLP_A, MockERC20 tokenX, MockLBPInitializer initA)
+        returns (uint64 migrationBlockA, uint128 reservedTokenAmountForLP_A, MockERC20 tokenX, MockLBPInitializer initA)
     {
         LiquidityAllocationBracket[] memory bpA = _boundBrackets(pA.bpParams);
         (MigratorParameters memory mpA, uint128 totalSupplyA, uint64 endBlockA, uint128 auctionSupplyA) =
@@ -352,7 +357,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         });
         (initA, tokenX) = _initializeWith(mpA, totalSupplyA, endBlockA, bpA, address(0), lbpParams);
         migrationBlockA = mpA.migrationBlock;
-        supplyForLP_A = mpA.supplyForLP;
+        reservedTokenAmountForLP_A = mpA.reservedTokenAmountForLP;
     }
 
     /// @notice Bounds pB and registers B with the given currency. Mutates pB.currencyRaised in place
@@ -379,12 +384,12 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
 
-        uint256 recipientBalBefore = leftoverRecipient.balance;
+        uint256 recipientBalBefore = recipient.balance;
         uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        uint256 currencyToFundsRecipient = leftoverRecipient.balance - recipientBalBefore;
+        uint256 currencyToFundsRecipient = recipient.balance - recipientBalBefore;
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolManagerBalBefore;
 
         assertEq(currencyToFundsRecipient + currencyToPool, lbpParams.currencyRaised);
@@ -410,20 +415,22 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer, MockERC20 token) =
             _initializeWith(mp, totalSupply, endBlock, bp, address(currencyToken), lbpParams);
 
-        // Fund the initializer with ERC20 currency (not native ETH); strategy holds supplyForLP custody.
+        // Fund the initializer with ERC20 currency (not native ETH); strategy holds reservedTokenAmountForLP custody.
         deal(address(currencyToken), address(initializer), p.currencyRaised);
         vm.roll(mp.migrationBlock);
 
         Erc20MigrationBalances memory balancesBefore = Erc20MigrationBalances({
-            currencyFundsRecipient: currencyToken.balanceOf(leftoverRecipient),
+            currencyFundsRecipient: currencyToken.balanceOf(recipient),
             currencyPool: currencyToken.balanceOf(address(POOL_MANAGER)),
-            tokenFundsRecipient: token.balanceOf(leftoverRecipient),
+            tokenFundsRecipient: token.balanceOf(recipient),
             tokenPool: token.balanceOf(address(POOL_MANAGER))
         });
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        _assertErc20MigrationBalances(currencyToken, token, balancesBefore, p.currencyRaised, mp.supplyForLP);
+        _assertErc20MigrationBalances(
+            currencyToken, token, balancesBefore, p.currencyRaised, mp.reservedTokenAmountForLP
+        );
         // Strategy ends empty
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
         assertEq(token.balanceOf(address(strategy)), 0);
@@ -436,17 +443,17 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         MockERC20 token,
         Erc20MigrationBalances memory beforeBalances,
         uint256 currencyRaised,
-        uint256 supplyForLP
+        uint256 reservedTokenAmountForLP
     ) private view {
         uint256 currencyToFundsRecipient =
-            currencyToken.balanceOf(leftoverRecipient) - beforeBalances.currencyFundsRecipient;
+            currencyToken.balanceOf(recipient) - beforeBalances.currencyFundsRecipient;
         uint256 currencyToPool = currencyToken.balanceOf(address(POOL_MANAGER)) - beforeBalances.currencyPool;
-        uint256 tokensToFundsRecipient = token.balanceOf(leftoverRecipient) - beforeBalances.tokenFundsRecipient;
+        uint256 tokensToFundsRecipient = token.balanceOf(recipient) - beforeBalances.tokenFundsRecipient;
         uint256 tokensToPool = token.balanceOf(address(POOL_MANAGER)) - beforeBalances.tokenPool;
 
         assertEq(currencyToFundsRecipient + currencyToPool, currencyRaised);
-        // Only supplyForLP is distributed by the strategy; unsold auction tokens stay in the initializer.
-        assertEq(tokensToFundsRecipient + tokensToPool, supplyForLP);
+        // Only reservedTokenAmountForLP is distributed by the strategy; unsold auction tokens stay in the initializer.
+        assertEq(tokensToFundsRecipient + tokensToPool, reservedTokenAmountForLP);
     }
 
     /// @notice Helper to build a sorted pool key for a native-currency token pair
@@ -481,7 +488,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
+        PoolKey memory rawKey =
+            _nativePoolKey(address(token), mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(0));
         (uint160 rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
         assertEq(rawSqrtPrice, 0);
 
@@ -509,8 +517,10 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.roll(mp.migrationBlock);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
-        PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
-        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
+        PoolKey memory rawKey =
+            _nativePoolKey(address(token), mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(0));
+        PoolKey memory strategyKey =
+            _nativePoolKey(address(token), mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(strategy));
 
         (uint160 rawSqrtPrice,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
         (uint160 strategySqrtPrice,,,) = POOL_MANAGER.getSlot0(strategyKey.toId());
@@ -534,9 +544,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // Fixed values keep LBP gas benchmarks deterministic and representative of the standard launch path.
         p.endBlock = uint64(block.number);
         p.migrationBlock = uint64(block.number + 1);
-        p.poolLPFee = 3000;
-        p.poolTickSpacing = 60;
-        p.supplyForLP = 100 ether;
+        p.poolParameters.fee = 3000;
+        p.poolParameters.tickSpacing = 60;
+        p.reservedTokenAmountForLP = 100 ether;
         p.auctionSupply = 10 ether;
         p.bpParams.count = 1;
         p.bpParams.rate0 = 5e6;
