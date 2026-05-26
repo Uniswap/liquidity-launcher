@@ -11,6 +11,7 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
@@ -122,6 +123,24 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_initializeDistribution_revertsIfDynamicFeeHasNoHook(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        mp.poolParameters.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+        mp.poolParameters.hook = address(0);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
+        token.approve(address(strategy), totalSupply);
+
+        vm.expectRevert(MigratorParams.InvalidDynamicFeeHook.selector);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 

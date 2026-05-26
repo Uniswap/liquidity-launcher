@@ -156,6 +156,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
         {
+            // Retrieves the LBP initialization parameters from the initializer. Must revert if the initializer is not graduated.
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
             uint256 currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
@@ -227,7 +228,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         reserves[initializer] = 0;
 
         // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
-        // so sweepCurrency moves it here; we then forward strictly the delta to recipient.
+        // so sweepCurrency moves it here; we then forward strictly the delta to recipient. For
+        // non-graduated auctions, the initializer must complete this call as a zero-amount sweep rather than
+        // reverting, which lets this function still recover the strategy-held reservedTokenAmountForLP.
         Currency currency = Currency.wrap(mp.currency);
         uint256 currencyBefore = currency.balanceOfSelf();
         // Sweep the currency from the initializer
@@ -287,14 +290,15 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Initializes the pool with the calculated price
     /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for
     ///      IInitializerHook ERC165 support during initializeDistribution. If hook is address(0), initializes the
-    ///      hookless pool unless it already exists, then falls back to this strategy as the hook.
+    ///      hookless pool unless it already exists, then falls back to this strategy as the hook. address(0) is
+    ///      only valid for static-fee pools.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
     /// @param lpFee The LP fee for the pool
     /// @param poolTickSpacing The tick spacing for the pool
     /// @param hook The hook address for the pool. Any nonzero hook MUST inherit InitializerHook. address(0) targets
-    ///        the hookless pool unless it already exists.
+    ///        the hookless pool unless it already exists, and is only valid for static-fee pools.
     /// @return key The pool key for the initialized pool
     function _initializePool(
         Currency currency,

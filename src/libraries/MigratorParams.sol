@@ -12,9 +12,9 @@ import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165C
 
 /// @notice Migration parameters for an initializer
 struct MigratorParameters {
-    address token;
-    address currency;
-    uint64 migrationBlock; // block number when the migration is allowed
+    address token; // launched token; must match function-param `token` AND `initializer.token()` at registration
+    address currency; // auction currency; must match `initializer.currency()` at registration
+    uint64 migrationBlock; // block number when the migration can begin
     uint128 reservedTokenAmountForLP; // amount of the token reserved for LP creation
     address recipient; // the address that will receive unused currency and unused LP supply after migration
     address positionRecipient; // the address that will receive the created LP position
@@ -54,6 +54,9 @@ library MigratorParams {
     /// @param hook The invalid hook address
     error InvalidHook(address hook);
 
+    /// @notice Error thrown when dynamic LP fees are configured without a user-provided hook
+    error InvalidDynamicFeeHook();
+
     /// @notice Error thrown when the LP allocation schedule has an invalid number of brackets (empty or exceeds max)
     /// @param count The invalid bracket count
     error InvalidBracketCount(uint256 count);
@@ -82,6 +85,10 @@ library MigratorParams {
         // fee validation (static fees cannot be greater than the v4 max fee)
         if (p.poolParameters.fee > LPFeeLibrary.MAX_LP_FEE && p.poolParameters.fee != LPFeeLibrary.DYNAMIC_FEE_FLAG) {
             revert ILBPStrategy.InvalidFee(p.poolParameters.fee, LPFeeLibrary.MAX_LP_FEE);
+        }
+        // Dynamic-fee pools require hook-owned fee logic. The strategy's hookless fallback only gates initialization.
+        if (p.poolParameters.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG && p.poolParameters.hook == address(0)) {
+            revert InvalidDynamicFeeHook();
         }
         // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
         if (

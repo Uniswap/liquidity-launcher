@@ -104,8 +104,9 @@ For the LBP strategy, the distribution configuration includes:
 - **Pool Parameters**: Fee tier and tick spacing for the Uniswap V4 pool
 - **Hook**: Optional Uniswap v4 hook address. Any hook used in the `hook` field MUST inherit `InitializerHook`
   so `beforeInitialize` restricts pool initialization to the LBP strategy. The strategy checks ERC165 support for
-  `IInitializerHook` during `initializeDistribution`. If this field is `address(0)`, migration uses the hookless pool
-  unless that pool already exists, in which case it uses `LBPStrategy` itself as the hook.
+  `IInitializerHook` during `initializeDistribution`. If this field is `address(0)`, static-fee migration uses the
+  hookless pool unless that pool already exists, in which case it uses `LBPStrategy` itself as the hook. Dynamic-fee
+  pools must provide a nonzero hook with the fee logic.
 - **Auction Parameters**: Duration, pricing steps, and reserve price
 - **LP Recipient**: Address that will receive the liquidity position NFT
 
@@ -145,11 +146,11 @@ Because each initializer's reserves are consumable exactly once (by either `migr
 
 ### LBP Hook Requirement
 
-The `MigratorParameters.hook` field commits the exact Uniswap v4 hook used by the post-auction pool. Any nonzero hook configured in this field MUST inherit `InitializerHook`. `InitializerHook` enables the `BEFORE_INITIALIZE` permission, supports `IInitializerHook` via ERC165, and rejects pool initialization unless the PoolManager-reported sender is the singleton `LBPStrategy`. `LBPStrategy.initializeDistribution` checks this ERC165 support before storing the hook.
+The `MigratorParameters.poolParameters.hook` field commits the exact Uniswap v4 hook used by the post-auction pool. Any nonzero hook configured in this field MUST inherit `InitializerHook`. `InitializerHook` enables the `BEFORE_INITIALIZE` permission, supports `IInitializerHook` via ERC165, and rejects pool initialization unless the PoolManager-reported sender is the singleton `LBPStrategy`. `LBPStrategy.initializeDistribution` checks this ERC165 support before storing the hook.
 
-This requirement protects the committed pool from permissionless initialization at an arbitrary price. Hooks that do not inherit `InitializerHook` MUST NOT be used in `MigratorParameters.hook`. `GatedSwapHook` already inherits `InitializerHook` and satisfies this requirement.
+This requirement protects the committed pool from permissionless initialization at an arbitrary price. Hooks that do not inherit `InitializerHook` MUST NOT be used in `MigratorParameters.poolParameters.hook`. `GatedSwapHook` already inherits `InitializerHook` and satisfies this requirement.
 
-`address(0)` is the only exception to the nonzero hook requirement. With `hook == address(0)`, migration first targets the hookless pool. If that pool is already initialized, `LBPStrategy` switches the pool key to `hooks = IHooks(address(this))` and initializes the strategy-hooked pool. The strategy therefore must be deployed at an address with the `BEFORE_INITIALIZE` hook permission bit, and its self-initializer only permits pool initialization when the PoolManager-reported sender is the strategy itself.
+`address(0)` is the only exception to the nonzero hook requirement for static-fee pools. With `hook == address(0)`, migration first targets the hookless pool. If that pool is already initialized, `LBPStrategy` switches the pool key to `hooks = IHooks(address(this))` and initializes the strategy-hooked pool. The strategy therefore must be deployed at an address with the `BEFORE_INITIALIZE` hook permission bit, and its self-initializer only permits pool initialization when the PoolManager-reported sender is the strategy itself. Dynamic-fee pools must configure a nonzero hook because `LBPStrategy` does not implement dynamic fee updates.
 
 ## Key Interfaces
 
