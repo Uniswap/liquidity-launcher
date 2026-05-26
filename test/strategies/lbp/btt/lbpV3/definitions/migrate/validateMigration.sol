@@ -124,7 +124,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         // ETH balance and reported currencyRaised equal it. Force a mismatch by overriding
         // the initializer's balance. The failed migration should fall back to recovery.
         uint256 claimed = p.currencyRaised;
-        actualAmount = bound(actualAmount, 0, uint256(uint128(type(int128).max)));
+        actualAmount = bound(actualAmount, 1, uint256(uint128(type(int128).max)));
         vm.assume(actualAmount != claimed);
 
         vm.deal(address(initializer), actualAmount);
@@ -134,7 +134,13 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint256 strategyTokenBefore = token.balanceOf(address(strategy));
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        emit ILBPStrategy.FallbackMigrationReleased(
+            ILBPInitializer(address(initializer)),
+            leftoverRecipient,
+            actualAmount,
+            mp.supplyForLP,
+            ILBPStrategy.FallbackReleaseReason.CurrencyMismatch
+        );
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, recipientCurrencyBefore + actualAmount);

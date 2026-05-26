@@ -11,6 +11,15 @@ import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/Migra
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
 interface ILBPStrategy is IDistributionStrategy {
+    enum FallbackReleaseReason {
+        NoCurrency,
+        CurrencyMismatch,
+        InvalidPrice,
+        NoLiquidity,
+        PoolInitializationFailed,
+        PositionManagerFailed
+    }
+
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
     /// @param migrationParams The migration parameters. Any nonzero migrationParams.hook MUST inherit InitializerHook.
@@ -30,12 +39,33 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when an initializer's held supplyForLP is swept by its leftoverRecipient after the
-    /// recovery delay expires (recovery path when migrate fails).
-    /// @param initializer The initializer whose reserves were swept
-    /// @param leftoverRecipient The recipient that received the swept tokens
-    /// @param amount The amount of supplyForLP transferred out of the strategy
-    event FundsRecovered(ILBPInitializer indexed initializer, address indexed leftoverRecipient, uint256 amount);
+    /// @notice Emitted when fallback migration creates a v4 pool position.
+    /// @param initializer The initializer that was fallback migrated
+    /// @param key The key of the pool that received fallback liquidity
+    /// @param initialSqrtPriceX96 The initial sqrt price of the pool
+    /// @param currencyAmount The amount of currency sent to the fallback LP position
+    /// @param tokenAmount The amount of token sent to the fallback LP position
+    event FallbackMigrated(
+        ILBPInitializer indexed initializer,
+        PoolKey indexed key,
+        uint160 initialSqrtPriceX96,
+        uint256 currencyAmount,
+        uint256 tokenAmount
+    );
+
+    /// @notice Emitted when fallback migration cannot create a v4 pool position and releases assets.
+    /// @param initializer The initializer whose fallback assets were released
+    /// @param leftoverRecipient The recipient that received the released assets
+    /// @param currencyAmount The amount of currency released
+    /// @param tokenAmount The amount of token released
+    /// @param reason Why fallback migration released assets instead of creating LP
+    event FallbackMigrationReleased(
+        ILBPInitializer indexed initializer,
+        address indexed leftoverRecipient,
+        uint256 currencyAmount,
+        uint256 tokenAmount,
+        FallbackReleaseReason reason
+    );
 
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
@@ -99,28 +129,21 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param initializer The initializer being acted on
     error InitializerNotRegistered(ILBPInitializer initializer);
 
-    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
-    /// or `recoverFunds`.
+    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`.
     /// @param initializer The initializer being acted on
     error InsufficientReserves(ILBPInitializer initializer);
 
-    /// @notice Error thrown when recoverFunds is called before its unlock block
-    /// @param unlockBlock The earliest block at which recoverFunds is allowed
-    error RecoveryNotYetAllowed(uint256 unlockBlock);
-
-    /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
-    /// leftoverRecipient.
-    /// @param caller The caller of recoverFunds
-    /// @param leftoverRecipient The configured leftoverRecipient for the initializer
-    error UnauthorizedRecovery(address caller, address leftoverRecipient);
-
-    /// @notice Error thrown when the function is called by an address other than the strategy
+    /// @notice Error thrown when an internal try-function is invoked by anyone other than the strategy itself.
     error OnlySelfCall();
 
-    /// @notice Migrates the raised funds and tokens to a v4 pool
-    /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
-    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
-    ///      to recover the reserved tokens and the currency raised by the initializer.
+    /// @notice Migrates the raised funds and tokens to a v4 pool, with internal fallback tiers.
+    /// @dev `migrate` is the sole public entrypoint and waterfalls through three tiers:
+    ///        1. configured-plan migration on the committed pool key,
+    ///        2. full-range LP on the strategy-as-hook pool (independent of `MigratorParameters.hook`),
+    ///        3. release of `supplyForLP` and swept currency to the initializer's `leftoverRecipient`.
+    ///      Tier 2 and 3 are entered automatically when an earlier tier reverts; there is no separate
+    ///      recovery delay or recovery entrypoint. `Migrated`, `FallbackMigrated`, and
+    ///      `FallbackMigrationReleased` mark which tier produced the terminal outcome.
     /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 
