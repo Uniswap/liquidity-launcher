@@ -13,7 +13,7 @@ import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 /// @title GatedSwapHook
 /// @notice Hook that requires gatekeeper approval before swaps are allowed on the pool
 /// @dev Inherits InitializerHook and supports IInitializerHook, which is required for any hook configured in
-///      MigratorParameters.hook.
+///      MigratorParameters.poolParameters.hook.
 contract GatedSwapHook is InitializerHook {
     /// @notice Emitted when swaps are approved by the gatekeeper
     event SwapsApproved();
