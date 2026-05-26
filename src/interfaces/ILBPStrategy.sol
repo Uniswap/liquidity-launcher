@@ -75,7 +75,7 @@ interface ILBPStrategy is IDistributionStrategy {
     error InvalidTokensRecipient(address actual);
 
     /// @notice Error thrown when reservedTokenAmountForLP exceeds v4's int128 amount limit
-    error InvalidReservetokenAmountForLP();
+    error InvalidReservedTokenAmountForLP();
 
     /// @notice Error thrown when the currency swept from the initializer does not match the
     /// currencyRaised reported by the initializer's LBP parameters

@@ -99,7 +99,7 @@ library MigratorParams {
         }
         // reservedTokenAmountForLP must be greater than 0 and less than int128.max
         if (p.reservedTokenAmountForLP > uint128(type(int128).max) || p.reservedTokenAmountForLP == 0) {
-            revert ILBPStrategy.InvalidReservetokenAmountForLP();
+            revert ILBPStrategy.InvalidReservedTokenAmountForLP();
         }
         // Position plan validation (non-empty, weights sum to MPS)
         PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));
