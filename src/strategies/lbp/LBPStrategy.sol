@@ -221,6 +221,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     ///      layout-specific, or adversarial — cannot block this path. The trade-off is that fallback LP lands
     ///      on a different `PoolId` than `migrate` would have. Either succeeds and emits {FallbackMigrated},
     ///      or reverts. The outer {migrate} then falls through to {_release}.
+    ///      Tier 2 preserves the bracket schedule (`lpAllocationSchedule`) and `supplyForLP` commitments from
+    ///      `MigratorParameters`; only the configured `hook` and `positionDefinitions` are overridden.
     function tryFallbackMigrate(ILBPInitializer initializer) external {
         if (msg.sender != address(this)) revert OnlySelfCall();
         MigratorParameters memory migrationParams = _initializers[initializer];
@@ -235,9 +237,16 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint256 swept = currency.balanceOfSelf() - currencyBefore;
 
         uint160 sqrtPriceX96;
+        uint256 currencyAmountForLp;
         {
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             if (swept != lbpParams.currencyRaised) revert CurrencyRaisedMismatch(swept, lbpParams.currencyRaised);
+
+            // Apply the bracket schedule to derive the LP currency budget.
+            // Any excess (above the int128 cap or beyond bracket allocation) is swept to leftoverRecipient.
+            currencyAmountForLp =
+                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
+
             sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
         }
 
@@ -245,9 +254,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // tier-1 planner against the strategy-as-hook pool.
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK,
-            offsetUpper: TickMath.MAX_TICK,
-            weight: PositionPlanner.MPS
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: PositionPlanner.MPS
         });
         migrationParams.positionDefinitions = abi.encode(defs);
 
@@ -263,15 +270,15 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 key,
                 currency,
                 sqrtPriceX96,
-                uint128(FixedPointMathLib.min(swept, uint128(type(int128).max))),
+                uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
                 migrationParams
             );
             _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
         }
 
-        // Sweep any leftovers (excess currency or unused supplyForLP) to leftoverRecipient.
-        // `balanceOfSelf() - currencyBefore` already reflects `swept - currencyTransferAmount` because
-        // `_transferAssetsAndExecutePlan` moved `currencyTransferAmount` out of the strategy.
+        // Sweep any leftovers to leftoverRecipient.
+        // Leftover = `swept - currencyTransferAmount` = (currency above the bracket allocation)
+        // + (currency the planner couldn't consume within the bracket budget). Both flow to leftoverRecipient.
         uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
         if (remainingCurrency > 0) {
             currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
@@ -299,7 +306,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         reserves[initializer] = 0;
 
         uint256 currencyBefore = currency.balanceOfSelf();
-        try initializer.sweepCurrency() {} catch {}
+        try initializer.sweepCurrency() {} catch {} // Ignore errors to prevent tokens
         uint256 swept = currency.balanceOfSelf() - currencyBefore;
 
         if (swept > 0) {
