@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 
-/// @notice Adversarial leftoverRecipient that reenters `strategy.recoverFunds(initializer)` from
+/// @notice Adversarial recipient that reenters `strategy.recoverFunds(initializer)` from
 /// its receive() when it gets ETH during recoverFunds's currency-transfer leg.
 contract MockReentrantRecoverFundsRecipient {
     ILBPStrategy public immutable strategy;

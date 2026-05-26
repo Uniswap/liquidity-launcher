@@ -51,7 +51,9 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         // Multicall the canonical fresh-mint flow: createToken into launcher → distributeToken via LBPStrategy.
         launcher.multicall(_buildCalls(tokenAddress, totalSupply, distribution));
 
-        _assertE2EState(tokenAddress, mp.supplyForLP, totalSupply - mp.supplyForLP, mp.migrationBlock);
+        _assertE2EState(
+            tokenAddress, mp.reservedTokenAmountForLP, totalSupply - mp.reservedTokenAmountForLP, mp.migrationBlock
+        );
     }
 
     function test_fuzz_e2e_multicall_permitDepositAndDistributeViaLBPStrategy(
@@ -75,7 +77,9 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
             _buildPermitDepositDistributeCalls(address(token), totalSupply, deadlineOffset, distribution)
         );
 
-        _assertE2EState(address(token), mp.supplyForLP, totalSupply - mp.supplyForLP, mp.migrationBlock);
+        _assertE2EState(
+            address(token), mp.reservedTokenAmountForLP, totalSupply - mp.reservedTokenAmountForLP, mp.migrationBlock
+        );
         // Bob is left with no tokens — the launcher pulled the full balance from him.
         assertEq(token.balanceOf(bob), 0);
     }
@@ -148,7 +152,10 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         returns (bytes[] memory calls)
     {
         UERC20Metadata memory metadata = UERC20Metadata({
-            description: "E2E test token", website: "https://test.com", image: "https://test.com/image.png"
+            description: "E2E test token",
+            website: "https://test.com",
+            image: "https://test.com/image.png",
+            xProofTweetId: 0
         });
 
         calls = new bytes[](2);
@@ -166,24 +173,26 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
             abi.encodeWithSelector(LiquidityLauncher.distributeToken.selector, tokenAddress, distribution, bytes32(0));
     }
 
-    function _assertE2EState(address tokenAddress, uint128 supplyForLP, uint128 auctionSupply, uint64 migrationBlock)
-        internal
-        view
-    {
+    function _assertE2EState(
+        address tokenAddress,
+        uint128 reservedTokenAmountForLP,
+        uint128 auctionSupply,
+        uint64 migrationBlock
+    ) internal view {
         MockLBPInitializer initializer = factory.deployedInitializer();
 
         // Launcher should have no balance — it handed everything off to the strategy.
         assertEq(IERC20(tokenAddress).balanceOf(address(launcher)), 0);
         // Strategy holds the LP portion; initializer holds the auction portion.
-        assertEq(IERC20(tokenAddress).balanceOf(address(strategy)), supplyForLP);
+        assertEq(IERC20(tokenAddress).balanceOf(address(strategy)), reservedTokenAmountForLP);
         assertEq(IERC20(tokenAddress).balanceOf(address(initializer)), auctionSupply);
         // Reserves tracks the strategy's portion.
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), supplyForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), reservedTokenAmountForLP);
 
         // MigratorParameters were stored correctly on the strategy.
         MigratorParameters memory stored = strategy.initializers(ILBPInitializer(address(initializer)));
         assertEq(stored.migrationBlock, migrationBlock);
-        assertEq(stored.supplyForLP, supplyForLP);
-        assertEq(stored.leftoverRecipient, leftoverRecipient);
+        assertEq(stored.reservedTokenAmountForLP, reservedTokenAmountForLP);
+        assertEq(stored.recipient, recipient);
     }
 }
