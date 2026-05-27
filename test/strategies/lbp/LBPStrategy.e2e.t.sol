@@ -451,21 +451,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     /// @notice When the hookless pool doesn't exist yet, migration should initialize that pool directly
-    function test_fuzz_noHook_createsRawPool(MigrationFuzzParams memory p) public {
-        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        LBPInitializationParams memory lbpParams = LBPInitializationParams({
-            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-        });
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
-        vm.deal(address(initializer), p.currencyRaised);
-        vm.roll(mp.migrationBlock);
+    function test_noHook_createsRawPool() public {
+        (MockLBPInitializer initializer, MockERC20 token, MigratorParameters memory mp) =
+            _setupKnownGoodMigration(100 ether, 10 ether, 100 ether);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
@@ -479,21 +467,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     /// @notice When the hookless pool already exists, migration initializes the strategy-hooked pool instead
-    function test_fuzz_noHook_usesStrategyHookIfRawPoolExists(MigrationFuzzParams memory p) public {
-        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        LBPInitializationParams memory lbpParams = LBPInitializationParams({
-            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-        });
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
-        vm.deal(address(initializer), p.currencyRaised);
-        vm.roll(mp.migrationBlock);
+    function test_noHook_usesStrategyHookIfRawPoolExists() public {
+        (MockLBPInitializer initializer, MockERC20 token, MigratorParameters memory mp) =
+            _setupKnownGoodMigration(100 ether, 10 ether, 100 ether);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));

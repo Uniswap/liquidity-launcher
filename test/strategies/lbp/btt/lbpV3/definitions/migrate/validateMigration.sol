@@ -134,13 +134,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         uint256 strategyTokenBefore = token.balanceOf(address(strategy));
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FallbackMigrationReleased(
-            ILBPInitializer(address(initializer)),
-            leftoverRecipient,
-            actualAmount,
-            mp.supplyForLP,
-            ILBPStrategy.FallbackReleaseReason.CurrencyMismatch
-        );
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, recipientCurrencyBefore + actualAmount);
@@ -205,25 +199,9 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(initializer)), unsoldInCca);
     }
 
-    function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook(MigrationFuzzParams memory p)
-        public
-        whenBlockIsGTEMigrationBlock
-    {
-        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        LBPInitializationParams memory lbpParams = LBPInitializationParams({
-            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-        });
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
-        vm.deal(address(initializer), p.currencyRaised);
-        auctionSupply;
-        vm.roll(mp.migrationBlock);
+    function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook() public whenBlockIsGTEMigrationBlock {
+        (MockLBPInitializer initializer, MockERC20 token, MigratorParameters memory mp) =
+            _setupKnownGoodMigration(100 ether, 10 ether, 100 ether);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));

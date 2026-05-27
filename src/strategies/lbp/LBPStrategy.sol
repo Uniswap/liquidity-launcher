@@ -51,11 +51,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// initializer is registered; zeroed when its reserves are consumed by the {migrate} waterfall.
     mapping(ILBPInitializer initializer => uint256) public reserves;
 
-    constructor(
-        IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        IDistributionStrategy _initializerFactory
-    ) {
+    constructor(IPositionManager _positionManager, IPoolManager _poolManager, IDistributionStrategy _initializerFactory)
+    {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
@@ -315,6 +312,20 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         key = _initializePool(
             currency, token, sqrtPriceX96, migrationParams.poolLPFee, migrationParams.poolTickSpacing, hook
         );
+
+        (currencyTransferAmount, tokenTransferAmount) =
+            _executePositionPlanAndSweep(key, sqrtPriceX96, currencyAmountForLp, migrationParams, currencyBefore);
+    }
+
+    function _executePositionPlanAndSweep(
+        PoolKey memory key,
+        uint160 sqrtPriceX96,
+        uint256 currencyAmountForLp,
+        MigratorParameters memory migrationParams,
+        uint256 currencyBefore
+    ) private returns (uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
+        Currency currency = Currency.wrap(migrationParams.currency);
+        Currency token = Currency.wrap(migrationParams.token);
 
         {
             bytes memory plan;
