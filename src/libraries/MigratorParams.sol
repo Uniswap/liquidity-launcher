@@ -3,7 +3,6 @@ pragma solidity ^0.8.26;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {ILBPStrategy} from "../interfaces/ILBPStrategy.sol";
 import {PositionPlanner} from "./PositionPlanner.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
@@ -104,23 +103,8 @@ library MigratorParams {
         // Position plan validation (non-empty, weights sum to MPS)
         PositionDefinition[] memory positionDefinitions = abi.decode(p.positionDefinitions, (PositionDefinition[]));
         PositionPlanner.validate(positionDefinitions);
-        _validatePositionRecipients(positionDefinitions);
         // LP allocation schedule validation (1..MAX_BRACKETS brackets, ascending, rates in [0, MAX_BRACKET_RATE])
         _validateLpAllocationSchedule(p.lpAllocationSchedule);
-    }
-
-    /// @notice Validates that every position definition has a concrete non-reserved recipient
-    /// @dev address(1) and address(2) are reserved recipient sentinels in the position manager
-    function _validatePositionRecipients(PositionDefinition[] memory positionDefinitions) private pure {
-        for (uint256 i; i < positionDefinitions.length; i++) {
-            address recipient = positionDefinitions[i].recipient;
-            if (
-                recipient == address(0) || recipient == ActionConstants.MSG_SENDER
-                    || recipient == ActionConstants.ADDRESS_THIS
-            ) {
-                revert ILBPStrategy.InvalidPositionRecipient(recipient);
-            }
-        }
     }
 
     /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook

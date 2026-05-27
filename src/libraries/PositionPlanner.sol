@@ -39,6 +39,9 @@ library PositionPlanner {
     /// @param offsetLower The invalid lower tick bound
     /// @param offsetUpper The invalid upper tick bound
     error InvalidTickBounds(int24 offsetLower, int24 offsetUpper);
+    /// @notice Thrown when a position recipient is the zero address, address(1), or address(2)
+    /// @param recipient The invalid position recipient
+    error InvalidPositionRecipient(address recipient);
     /// @notice Thrown when the number of positions exceeds the maximum allowed
     /// @param actual The actual number of positions
     /// @param max The maximum allowed number of positions
@@ -55,6 +58,13 @@ library PositionPlanner {
         for (uint256 i; i < _definitions.length; i++) {
             if (_definitions[i].offsetLower >= _definitions[i].offsetUpper) {
                 revert InvalidTickBounds(_definitions[i].offsetLower, _definitions[i].offsetUpper);
+            }
+            address recipient = _definitions[i].recipient;
+            if (
+                recipient == address(0) || recipient == ActionConstants.MSG_SENDER
+                    || recipient == ActionConstants.ADDRESS_THIS
+            ) {
+                revert InvalidPositionRecipient(recipient);
             }
             totalWeight += _definitions[i].weight;
         }

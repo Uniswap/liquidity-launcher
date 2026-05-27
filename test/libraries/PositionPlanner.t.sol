@@ -133,6 +133,19 @@ contract PositionPlannerTest is Test {
         mockPositionPlanner.validate(defs);
     }
 
+    function test_validate_revertsOnInvalidPositionRecipient(uint256 seed) public {
+        address invalidRecipient =
+            seed % 3 == 0 ? address(0) : seed % 3 == 1 ? ActionConstants.MSG_SENDER : ActionConstants.ADDRESS_THIS;
+
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7, recipient: invalidRecipient
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidPositionRecipient.selector, invalidRecipient));
+        mockPositionPlanner.validate(defs);
+    }
+
     function test_validate_succeedsAtMaxPositionCount() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN);
         for (uint256 i; i < defs.length; i++) {
