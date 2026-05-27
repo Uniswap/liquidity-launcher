@@ -141,7 +141,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint256 currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
         // Do not revert here on currencyFromInitializer mismatch. Migrations will revert later until release is called.
 
-
         try this.tryMigrate(initializer, migrationParams, currencyBefore, currencyFromInitializer) {}
         catch {
             try this.tryFallbackMigrate(initializer, migrationParams, currencyBefore, currencyFromInitializer) {}
@@ -154,64 +153,17 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Tier 1: configured-plan migration on the committed pool key.
     /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. Reverts on any failure;
     ///      the outer {migrate} then falls through to {tryFallbackMigrate}.
-    function tryMigrate(ILBPInitializer initializer, MigratorParameters memory migrationParams, uint256 currencyBefore, uint256 currencyFromInitializer) external {
+    function tryMigrate(
+        ILBPInitializer initializer,
+        MigratorParameters memory migrationParams,
+        uint256 currencyBefore,
+        uint256 currencyFromInitializer
+    ) external {
         if (msg.sender != address(this)) revert OnlySelfCall();
-        // Use the (token, currency) snapshot captured into MigratorParameters at registration.
-        Currency currency = Currency.wrap(migrationParams.currency);
-        Currency token = Currency.wrap(migrationParams.token);
 
-        uint160 sqrtPriceX96;
-        uint256 currencyAmountForLp;
-        {
-            // Get the lbp params from the initializer. If reverted, the migrations will revert until release is called.
-            LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
-            // amount actually swept must match the currencyRaised the initializer reports.
-            if (currencyFromInitializer != lbpParams.currencyRaised) {
-                revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
-            }
-            // Apply the bracket schedule to derive the LP currency budget.
-            // Any excess (above the int128 cap or beyond bracket allocation) is swept to leftoverRecipient.
-            currencyAmountForLp =
-                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
-            // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
-            sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
-        }
-
-        PoolKey memory key = _initializePool(
-            currency,
-            token,
-            sqrtPriceX96,
-            migrationParams.poolLPFee,
-            migrationParams.poolTickSpacing,
-            migrationParams.hook
+        (PoolKey memory key, uint160 sqrtPriceX96,,) = _executeMigration(
+            initializer, migrationParams, currencyBefore, currencyFromInitializer, migrationParams.hook
         );
-
-        // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
-        // supplyForLP is already enforced <= int128.max in MigratorParams.validate.
-        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
-            key,
-            currency,
-            sqrtPriceX96,
-            uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
-            migrationParams
-        );
-
-        // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
-        _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
-
-        // Sweep this initializer's leftover (non-LP currency and unused supplyForLP) to the leftover recipient.
-        // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
-        if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.leftoverRecipient, remainingCurrency);
-        }
-        uint256 remainingToken = migrationParams.supplyForLP - tokenTransferAmount;
-        if (remainingToken > 0) {
-            token.transfer(migrationParams.leftoverRecipient, remainingToken);
-            emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
-        }
-
         emit Migrated(initializer, key, sqrtPriceX96);
     }
 
@@ -224,27 +176,13 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     ///      or reverts. The outer {migrate} then falls through to {_release}.
     ///      Tier 2 preserves the bracket schedule (`lpAllocationSchedule`) and `supplyForLP` commitments from
     ///      `MigratorParameters`; only the configured `hook` and `positionDefinitions` are overridden.
-    function tryFallbackMigrate(ILBPInitializer initializer, MigratorParameters memory migrationParams, uint256 currencyBefore, uint256 currencyFromInitializer) external {
+    function tryFallbackMigrate(
+        ILBPInitializer initializer,
+        MigratorParameters memory migrationParams,
+        uint256 currencyBefore,
+        uint256 currencyFromInitializer
+    ) external {
         if (msg.sender != address(this)) revert OnlySelfCall();
-
-        Currency currency = Currency.wrap(migrationParams.currency);
-        Currency token = Currency.wrap(migrationParams.token);
-
-        uint160 sqrtPriceX96;
-        uint256 currencyAmountForLp;
-        {
-            // Get the lbp params from the initializer. If reverted, the migration will revert and release is called.
-            LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
-            // Amount actually swept must match the currencyRaised the initializer reports.
-            if (currencyFromInitializer != lbpParams.currencyRaised) revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
-
-            // Apply the bracket schedule to derive the LP currency budget.
-            // Any excess (above the int128 cap or beyond bracket allocation) is swept to leftoverRecipient.
-            currencyAmountForLp =
-                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
-
-            sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
-        }
 
         // Override the configured position plan with a single full-range position so we can reuse the
         // tier-1 planner against the strategy-as-hook pool.
@@ -254,46 +192,22 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         });
         migrationParams.positionDefinitions = abi.encode(defs);
 
-        PoolKey memory key =
-            _getPoolKey(currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing, address(this));
-        poolManager.initialize(key, sqrtPriceX96);
-
-        uint128 currencyTransferAmount;
-        uint128 tokenTransferAmount;
-        {
-            bytes memory plan;
-            (plan, currencyTransferAmount, tokenTransferAmount) = _createPositionPlan(
-                key,
-                currency,
-                sqrtPriceX96,
-                uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
-                migrationParams
-            );
-            _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
-        }
-
-        // Sweep any leftovers to leftoverRecipient.
-        // Leftover = `swept - currencyTransferAmount` = (currency above the bracket allocation)
-        // + (currency the planner couldn't consume within the bracket budget). Both flow to leftoverRecipient.
-        uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
-        if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.leftoverRecipient, remainingCurrency);
-        }
-        uint256 remainingToken = migrationParams.supplyForLP - tokenTransferAmount;
-        if (remainingToken > 0) {
-            token.transfer(migrationParams.leftoverRecipient, remainingToken);
-            emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
-        }
+        (PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount) =
+            _executeMigration(initializer, migrationParams, currencyBefore, currencyFromInitializer, address(this));
 
         emit FallbackMigrated(initializer, key, sqrtPriceX96, currencyTransferAmount, tokenTransferAmount);
     }
 
-    /// @notice Tier 3: unconditional release of held `supplyForLP` and any swept currency to `leftoverRecipient`.
-    /// @dev Fires only when both {tryMigrate} and {tryFallbackMigrate} reverted. Best-effort sweep — if
-    ///      `initializer.sweepCurrency` itself reverts (the most likely cause of tier-2's revert), still
-    ///      release the strategy-held `supplyForLP` so funds aren't permanently locked.
-    function _release(ILBPInitializer initializer, MigratorParameters memory migrationParams, uint256 tokenReserves, uint256 currencyFromInitializer) private {
+    /// @notice Tier 3: releases held `supplyForLP` and any currency swept during upfront preparation.
+    /// @dev Fires only when both {tryMigrate} and {tryFallbackMigrate} reverted. Currency sweeping is attempted
+    ///      once in {migrate}; this function only forwards the amount that was actually swept and always releases
+    ///      the strategy-held `supplyForLP`.
+    function _release(
+        ILBPInitializer initializer,
+        MigratorParameters memory migrationParams,
+        uint256 tokenReserves,
+        uint256 currencyFromInitializer
+    ) private {
         address recipient = migrationParams.leftoverRecipient;
         Currency currency = Currency.wrap(migrationParams.currency);
 
@@ -351,6 +265,83 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.lpPositionRecipient);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
+    }
+
+    /// @notice Executes one migration tier using the supplied pool hook and position plan.
+    /// @dev Reverts on any failure so the outer {migrate} waterfall can catch it and advance to the next tier.
+    ///      `migrationParams.positionDefinitions` and `hook` are the only tier-specific inputs; all accounting,
+    ///      pool initialization, position minting, and leftover sweeps are shared.
+    /// @param initializer The initializer whose prepared migration is being executed
+    /// @param migrationParams The migration parameters to use, including the tier's position definitions
+    /// @param currencyBefore The strategy's currency balance before the upfront sweep in {migrate}
+    /// @param currencyFromInitializer The amount swept from the initializer during upfront preparation
+    /// @param hook The hook address for this tier's pool key
+    /// @return key The pool key initialized by this tier
+    /// @return sqrtPriceX96 The initial pool price
+    /// @return currencyTransferAmount The amount of raised currency consumed by the LP position plan
+    /// @return tokenTransferAmount The amount of launched token consumed by the LP position plan
+    function _executeMigration(
+        ILBPInitializer initializer,
+        MigratorParameters memory migrationParams,
+        uint256 currencyBefore,
+        uint256 currencyFromInitializer,
+        address hook
+    )
+        private
+        returns (PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount)
+    {
+        // Use the (token, currency) snapshot captured into MigratorParameters at registration.
+        Currency currency = Currency.wrap(migrationParams.currency);
+        Currency token = Currency.wrap(migrationParams.token);
+
+        uint256 currencyAmountForLp;
+        {
+            // Get the lbp params from the initializer. If reverted, the migration will revert and release is called.
+            LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+            // Amount actually swept must match the currencyRaised the initializer reports.
+            if (currencyFromInitializer != lbpParams.currencyRaised) {
+                revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
+            }
+
+            // Apply the bracket schedule to derive the LP currency budget.
+            // Any excess (above the int128 cap or beyond bracket allocation) is swept to leftoverRecipient.
+            currencyAmountForLp =
+                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
+
+            // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
+            sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
+        }
+
+        key = _initializePool(
+            currency, token, sqrtPriceX96, migrationParams.poolLPFee, migrationParams.poolTickSpacing, hook
+        );
+
+        {
+            bytes memory plan;
+            // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
+            // supplyForLP is already enforced <= int128.max in MigratorParams.validate.
+            (plan, currencyTransferAmount, tokenTransferAmount) = _createPositionPlan(
+                key,
+                currency,
+                sqrtPriceX96,
+                uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
+                migrationParams
+            );
+            _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
+        }
+
+        // Sweep this initializer's leftover (non-LP currency and unused supplyForLP) to the leftover recipient.
+        // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
+        uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
+        if (remainingCurrency > 0) {
+            currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
+            emit CurrencySwept(migrationParams.leftoverRecipient, remainingCurrency);
+        }
+        uint256 remainingToken = migrationParams.supplyForLP - tokenTransferAmount;
+        if (remainingToken > 0) {
+            token.transfer(migrationParams.leftoverRecipient, remainingToken);
+            emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
+        }
     }
 
     /// @notice Initializes the pool with the calculated price
