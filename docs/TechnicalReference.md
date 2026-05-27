@@ -30,7 +30,7 @@ The main entry point contract that orchestrates token creation and distribution.
 
 `depositToken` pulls an existing ERC20 balance from `msg.sender` into the launcher via Permit2. Used for the "distribute a token I already hold" flow; the caller must have a Permit2 allowance for the launcher (set in a prior tx or via `permit(...)` earlier in the same multicall).
 
-`distributeToken` hands off tokens already held by the launcher to a distribution strategy. The launcher approves the strategy and the strategy pulls via `safeTransferFrom` inside its own `initializeDistribution` (a pull-flow design). Token acquisition (`createToken` or `depositToken`) and `distributeToken` MUST be batched in the same `multicall`; tokens left in the launcher between transactions can be distributed by any caller.
+`distributeToken` hands off tokens already held by the launcher to a strategy. The launcher approves the strategy and the strategy pulls via `safeTransferFrom` inside its own `initializeDistribution` (a pull-flow design). Token acquisition (`createToken` or `depositToken`) and `distributeToken` MUST be batched in the same `multicall`; tokens left in the launcher between transactions can be distributed by any caller.
 
 ### Token Factories
 
@@ -112,7 +112,7 @@ For the LBP strategy, the distribution configuration includes:
 
 #### 2. Auction Phase
 
-The distribution strategy deploys an auction contract and transfers the allocated tokens. The auction runs according to the specified parameters, allowing users to bid for tokens at decreasing prices.
+The strategy deploys an auction contract and transfers the allocated tokens. The auction runs according to the specified parameters, allowing users to bid for tokens at decreasing prices.
 
 #### 3. Price Discovery Notification
 
@@ -172,9 +172,11 @@ This requirement protects the committed pool from permissionless initialization 
 
 **ILiquidityLauncher** defines the main launcher interface for creating and distributing tokens.
 
-**IDistributionContract** implemented by contracts that receive and distribute tokens (e.g. the LBP initializer initializer). Exposes an `onTokensReceived()` hook that the parent strategy calls after pulling tokens into the contract — used by initializers to capture post-funding setup atomically with the pull.
+**IDistributor** implemented by contracts that receive and distribute tokens (e.g. the LBP initializer). Distributors use a push based token model: the caller sends token funds to the distributor, then MUST call `onTokensReceived()` after funding so the distributor can capture post-funding setup atomically.
 
-**IDistributionStrategy** implemented by strategies that the launcher hands off to. The `initializeDistribution()` function is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom` — the launcher pre-approves the strategy for the full amount before invoking it. If a strategy or downstream factory uses deterministic deployment, it MUST include the provided `salt` in both deployment and address prediction calculations.
+**IStrategy** implemented by strategies that the launcher hands off to. The `initializeDistribution()` function is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom` — the launcher pre-approves the strategy for the full amount before invoking it. The function does not return a downstream distributor; `Distribution.strategy` is the token-pulling strategy, and strategy-specific events or prediction helpers expose any child contracts.
+
+**IDistributorFactory** implemented by factories that parent strategies use when they need a created distributor address, such as the LBP strategy's initializer factory. This minimal factory interface exposes `create(...)` and `getAddress(...)`; it does not fund the distributor, so the calling strategy remains responsible for token movement and `onTokensReceived()`.
 
 **ITokenFactory** defines the interface for token creation factories, standardizing how different token types are deployed.
 

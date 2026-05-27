@@ -8,7 +8,7 @@ import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "sr
 import {Ownable} from "solady/auth/Ownable.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -56,6 +56,8 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when reservedTokenAmountForLP is zero
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when token and currency are the same
+/// │   └── it reverts with InvalidTokenCurrencyPair
 /// ├── when position definitions contain invalid tick bounds
 /// │   └── it reverts with InvalidTickBounds
 /// ├── when position definitions exceed the max position count
@@ -386,6 +388,31 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
+    function test_WhenTokenAndCurrencyAreTheSame(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it reverts with {InvalidTokenCurrencyPair}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        mp.currency = address(token);
+
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(token), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        token.approve(address(strategy), totalSupply);
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidTokenCurrencyPair.selector, address(token)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
     function test_WhenPositionDefinitionsIsEmpty(MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
@@ -507,9 +534,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
-            abi.encode(address(badInit))
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
         );
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -535,9 +560,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
-            abi.encode(address(badInit))
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
         );
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -564,9 +587,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
 
         vm.mockCall(
-            address(factory),
-            abi.encodeWithSelector(IDistributionStrategy.initializeDistribution.selector),
-            abi.encode(address(badInit))
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
         );
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
