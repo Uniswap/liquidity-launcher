@@ -72,11 +72,11 @@ Strategies may create any number of additional contracts, but may only return on
 
 ### LBP hook requirement
 
-When configuring an LBP distribution, the `MigratorParameters.hook` field is the Uniswap v4 hook for the post-auction pool. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. This is required because `InitializerHook` implements the `beforeInitialize` gate that only allows the singleton `LBPStrategy` to initialize the committed pool.
+When configuring an LBP distribution, the `MigratorParameters.poolParameters.hook` field is the Uniswap v4 hook for the post-auction pool. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. This is required because `InitializerHook` implements the `beforeInitialize` gate that only allows the singleton `LBPStrategy` to initialize the committed pool.
 
 Do not configure third-party or custom hooks in `hook` unless they inherit `InitializerHook` and are deployed at an address with the correct v4 hook permission bits, including `BEFORE_INITIALIZE`.
 
-Passing `address(0)` keeps the launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly.
+Passing `address(0)` keeps a static-fee launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly. Dynamic-fee launches must provide a nonzero hook with the fee logic.
 
 ### LBPStrategy `recoveryDelayBlocks`
 

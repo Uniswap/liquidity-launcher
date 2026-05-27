@@ -5,12 +5,12 @@ RecoverFundsTest
 │   └── it reverts with {InsufficientReserves}
 ├── when initializer was already recovered
 │   └── it reverts with {InsufficientReserves}
-├── when caller is not the leftoverRecipient
+├── when caller is not the recipient
 │   └── it reverts with {UnauthorizedRecovery}
 ├── when block.number is LT migrationBlock + recoveryDelayBlocks
 │   └── it reverts with {RecoveryNotYetAllowed}
-└── when called by leftoverRecipient at or past the unlock block on a live initializer
-    ├── it transfers supplyForLP from the strategy to leftoverRecipient
-    ├── it sweeps the initializer's raised currency to leftoverRecipient
+└── when called by recipient at or past the unlock block on a live initializer
+    ├── it transfers reservedTokenAmountForLP from the strategy to recipient
+    ├── it sweeps the initializer's raised currency to recipient
     ├── it zeroes reserves so neither migrate nor recoverFunds can run again
     └── it emits {FundsRecovered}
