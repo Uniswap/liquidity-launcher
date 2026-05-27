@@ -58,9 +58,9 @@ interface ILBPStrategy is IStrategy {
     /// @param fee The invalid fee
     error InvalidFee(uint24 fee, uint24 maxFee);
 
-    /// @notice Error thrown when the position recipient is the zero address, address(1), or address(2)
-    /// @param positionRecipient The invalid position recipient
-    error InvalidPositionRecipient(address positionRecipient);
+    /// @notice Error thrown when a position recipient is the zero address, address(1), or address(2)
+    /// @param recipient The invalid position recipient
+    error InvalidPositionRecipient(address recipient);
 
     /// @notice Error thrown when the initializer's fundsRecipient is not the strategy
     /// @param actual The fundsRecipient configured on the initializer

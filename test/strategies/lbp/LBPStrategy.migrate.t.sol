@@ -53,7 +53,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7, recipient: positionRecipient});
         mp.positionDefinitions = abi.encode(defs);
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
@@ -134,7 +134,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7, recipient: positionRecipient});
         mp.positionDefinitions = abi.encode(defs);
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({

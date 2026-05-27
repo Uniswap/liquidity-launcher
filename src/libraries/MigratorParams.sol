@@ -17,7 +17,6 @@ struct MigratorParameters {
     uint64 migrationBlock; // block number when the migration can begin
     uint128 reservedTokenAmountForLP; // amount of the token reserved for LP creation
     address recipient; // the address that will receive unused currency and unused LP supply after migration
-    address positionRecipient; // the address that will receive the created LP position
     PoolParameters poolParameters;
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
@@ -98,21 +97,30 @@ library MigratorParams {
         if (p.poolParameters.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG && p.poolParameters.hook == address(0)) {
             revert InvalidDynamicFeeHook();
         }
-        // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
-        if (
-            p.positionRecipient == address(0) || p.positionRecipient == ActionConstants.MSG_SENDER
-                || p.positionRecipient == ActionConstants.ADDRESS_THIS
-        ) {
-            revert ILBPStrategy.InvalidPositionRecipient(p.positionRecipient);
-        }
         // reservedTokenAmountForLP must be greater than 0 and less than int128.max
         if (p.reservedTokenAmountForLP > uint128(type(int128).max) || p.reservedTokenAmountForLP == 0) {
             revert ILBPStrategy.InvalidReservedTokenAmountForLP();
         }
         // Position plan validation (non-empty, weights sum to MPS)
-        PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));
+        PositionDefinition[] memory positionDefinitions = abi.decode(p.positionDefinitions, (PositionDefinition[]));
+        PositionPlanner.validate(positionDefinitions);
+        _validatePositionRecipients(positionDefinitions);
         // LP allocation schedule validation (1..MAX_BRACKETS brackets, ascending, rates in [0, MAX_BRACKET_RATE])
         _validateLpAllocationSchedule(p.lpAllocationSchedule);
+    }
+
+    /// @notice Validates that every position definition has a concrete non-reserved recipient
+    /// @dev address(1) and address(2) are reserved recipient sentinels in the position manager
+    function _validatePositionRecipients(PositionDefinition[] memory positionDefinitions) private pure {
+        for (uint256 i; i < positionDefinitions.length; i++) {
+            address recipient = positionDefinitions[i].recipient;
+            if (
+                recipient == address(0) || recipient == ActionConstants.MSG_SENDER
+                    || recipient == ActionConstants.ADDRESS_THIS
+            ) {
+                revert ILBPStrategy.InvalidPositionRecipient(recipient);
+            }
+        }
     }
 
     /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook

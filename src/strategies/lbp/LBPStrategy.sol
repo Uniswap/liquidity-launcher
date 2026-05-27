@@ -278,7 +278,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             tokenTransferAmount = currencyIsCurrency0 ? amount1In - remaining1 : amount0In - remaining0;
         }
 
-        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.positionRecipient);
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.recipient);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 

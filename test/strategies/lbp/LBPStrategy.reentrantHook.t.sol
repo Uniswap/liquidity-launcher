@@ -54,8 +54,7 @@ contract ReentrantInitializeHookNoValidation is InitializerHook {
     function _afterInitialize(address, PoolKey calldata, uint160, int24) internal override returns (bytes4) {
         if (!executed && armedReentry) {
             executed = true;
-            IStrategy(authorized)
-                .initializeDistribution(attackToken, attackTotalSupply, attackConfigData, attackSalt);
+            IStrategy(authorized).initializeDistribution(attackToken, attackTotalSupply, attackConfigData, attackSalt);
         } else if (!executed && armedDonation) {
             executed = true;
             IERC20(attackToken).transfer(authorized, attackTotalSupply);
@@ -249,16 +248,17 @@ contract LBPStrategyReentrantHookTest is LBPStrategyTestBase {
             migrationBlock: migrationBlock,
             reservedTokenAmountForLP: reservedTokenAmountForLP,
             recipient: recipient,
-            positionRecipient: positionRecipient,
             poolParameters: PoolParameters({fee: 0, tickSpacing: 1, hook: hook}),
             positionDefinitions: _fullRangePositionDefinitions(),
             lpAllocationSchedule: new bytes(0)
         });
     }
 
-    function _fullRangePositionDefinitions() internal pure returns (bytes memory) {
+    function _fullRangePositionDefinitions() internal view returns (bytes memory) {
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7, recipient: positionRecipient
+        });
         return abi.encode(defs);
     }
 

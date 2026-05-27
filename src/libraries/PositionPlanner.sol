@@ -158,29 +158,14 @@ library PositionPlanner {
         positions = new Position[](ticks.length);
         uint256 cnt;
         for (uint256 i; i < ticks.length; i++) {
-            TickBounds memory bounds = ticks[i];
-            if (bounds.lowerTick >= bounds.upperTick) continue;
-            uint256 liquidity = liquidityPerAllocation * _definitions[i].weight;
-            if (liquidity == 0 || liquidity > Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing)) {
-                continue;
-            }
+            (bool valid, Position memory position) =
+                _resolvePosition(_definitions[i], ticks[i], _sqrtPriceX96, _tickSpacing, liquidityPerAllocation);
+            if (!valid) continue;
+            if (position.amount0 > _currency0Amount || position.amount1 > _currency1Amount) continue;
 
-            (uint256 amount0, uint256 amount1) = getAmountsForLiquidity(
-                _sqrtPriceX96, bounds.lowerTick, bounds.upperTick, SafeCastLib.toUint128(liquidity)
-            );
-
-            if (amount0 > _currency0Amount || amount1 > _currency1Amount) continue;
-
-            _currency0Amount -= uint128(amount0);
-            _currency1Amount -= uint128(amount1);
-
-            positions[cnt++] = Position({
-                amount0: SafeCastLib.toUint128(amount0),
-                amount1: SafeCastLib.toUint128(amount1),
-                tickLower: bounds.lowerTick,
-                tickUpper: bounds.upperTick,
-                liquidity: SafeCastLib.toUint128(liquidity)
-            });
+            _currency0Amount -= position.amount0;
+            _currency1Amount -= position.amount1;
+            positions[cnt++] = position;
         }
 
         assembly {
@@ -188,6 +173,37 @@ library PositionPlanner {
         }
 
         return (positions, _currency0Amount, _currency1Amount);
+    }
+
+    /// @notice Resolves a single weighted definition into a concrete position if it has valid bounds and amounts
+    function _resolvePosition(
+        PositionDefinition memory _definition,
+        TickBounds memory _bounds,
+        uint160 _sqrtPriceX96,
+        int24 _tickSpacing,
+        uint256 _liquidityPerAllocation
+    ) private pure returns (bool valid, Position memory position) {
+        if (_bounds.lowerTick >= _bounds.upperTick) return (false, position);
+
+        uint256 liquidity = _liquidityPerAllocation * _definition.weight;
+        if (liquidity == 0 || liquidity > Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing)) {
+            return (false, position);
+        }
+
+        (uint256 amount0, uint256 amount1) = getAmountsForLiquidity(
+            _sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, SafeCastLib.toUint128(liquidity)
+        );
+        if (amount0 > type(uint128).max || amount1 > type(uint128).max) return (false, position);
+
+        position = Position({
+            amount0: SafeCastLib.toUint128(amount0),
+            amount1: SafeCastLib.toUint128(amount1),
+            tickLower: _bounds.lowerTick,
+            tickUpper: _bounds.upperTick,
+            liquidity: SafeCastLib.toUint128(liquidity),
+            recipient: _definition.recipient
+        });
+        return (true, position);
     }
 
     /// @notice Quotes the weighted currency amounts for all valid tick ranges at reference liquidity
@@ -212,12 +228,12 @@ library PositionPlanner {
     }
 
     /// @notice Converts concrete positions into a PositionManager plan
-    /// @dev Dust left over after minting is returned to `positionRecipient`
+    /// @dev Dust left over after minting is returned to `recipient`
     /// @param positions The positions to mint
     /// @param poolKey The pool key for the positions
-    /// @param positionRecipient The recipient of minted positions and leftover dust
+    /// @param recipient The recipient of leftover dust
     /// @return The encoded action and parameter plan
-    function toPlan(Position[] memory positions, PoolKey memory poolKey, address positionRecipient)
+    function toPlan(Position[] memory positions, PoolKey memory poolKey, address recipient)
         internal
         pure
         returns (Plan memory)
@@ -234,7 +250,7 @@ library PositionPlanner {
                 position.liquidity,
                 position.amount0,
                 position.amount1,
-                positionRecipient,
+                position.recipient,
                 bytes("")
             );
         }
@@ -244,7 +260,7 @@ library PositionPlanner {
         actions[offset + 2] = bytes1(uint8(Actions.TAKE_PAIR));
         params[offset] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
         params[offset + 1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[offset + 2] = abi.encode(poolKey.currency0, poolKey.currency1, positionRecipient);
+        params[offset + 2] = abi.encode(poolKey.currency0, poolKey.currency1, recipient);
         return Plan({actions: actions, params: params});
     }
 

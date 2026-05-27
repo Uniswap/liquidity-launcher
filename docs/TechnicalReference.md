@@ -75,7 +75,7 @@ The following periphery contracts are provided as examples.
 #### TimelockedPositionRecipient
 The `TimelockedPositionRecipient` contract is a utility contract for holding a v4 LP position until a timelock period has passed. It is used to ensure that the position is not transferred to the recipient before the timelock expires.
 
-A deployed instance can be used as the `positionRecipient` when using an LBPStrategy.
+A deployed instance can be used as a `PositionDefinition.recipient` when using an LBPStrategy.
 
 #### PositionFeesForwarder
 The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract and forwards all collected fees to a recipient.
@@ -127,7 +127,7 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 - Initialize the Uniswap V4 pool at the discovered price
 - Deploy liquidity as a full-range position
 - Create an optional one-sided position
-- Transfer the LP NFT to the designated recipient
+- Transfer each LP NFT to the recipient configured on its `PositionDefinition`
 
 A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` or `recoverFunds` call for the same initializer.
 

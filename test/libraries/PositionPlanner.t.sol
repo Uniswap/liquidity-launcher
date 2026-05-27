@@ -26,12 +26,12 @@ contract MockPositionPlanner {
         return PositionPlanner.resolve(definitions, sqrtPriceX96, tickSpacing, currency0Amount, currency1Amount);
     }
 
-    function toPlan(Position[] memory positions, PoolKey memory poolKey, address positionRecipient)
+    function toPlan(Position[] memory positions, PoolKey memory poolKey, address recipient)
         external
         pure
         returns (Plan memory)
     {
-        return PositionPlanner.toPlan(positions, poolKey, positionRecipient);
+        return PositionPlanner.toPlan(positions, poolKey, recipient);
     }
 }
 
@@ -96,7 +96,9 @@ contract PositionPlannerTest is Test {
         vm.assume(weight != 1e7);
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight, recipient: address(3)
+        });
         vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, weight));
         mockPositionPlanner.validate(defs);
     }
@@ -105,9 +107,14 @@ contract PositionPlannerTest is Test {
         weight0 = uint24(bound(weight0, 1, 1e7 - 1));
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight0});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight0, recipient: address(3)
+        });
         defs[1] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: uint24(1e7) - weight0
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: uint24(1e7) - weight0,
+            recipient: address(4)
         });
 
         mockPositionPlanner.validate(defs);
@@ -118,7 +125,9 @@ contract PositionPlannerTest is Test {
         offsetUpper = int24(bound(offsetUpper, TickMath.MIN_TICK, offsetLower));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: offsetLower, offsetUpper: offsetUpper, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: offsetLower, offsetUpper: offsetUpper, weight: 1e7, recipient: address(3)
+        });
 
         vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidTickBounds.selector, offsetLower, offsetUpper));
         mockPositionPlanner.validate(defs);
@@ -129,7 +138,7 @@ contract PositionPlannerTest is Test {
         for (uint256 i; i < defs.length; i++) {
             uint24 weight =
                 i == defs.length - 1 ? uint24(1e7 - (PositionPlanner.MAX_POSITIONS_PER_PLAN - 1)) : uint24(1);
-            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
+            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight, recipient: address(3)});
         }
 
         mockPositionPlanner.validate(defs);
@@ -139,7 +148,7 @@ contract PositionPlannerTest is Test {
         PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN + 1);
         for (uint256 i; i < defs.length; i++) {
             uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_POSITIONS_PER_PLAN) : uint24(1);
-            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
+            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight, recipient: address(3)});
         }
 
         vm.expectRevert(
@@ -157,7 +166,9 @@ contract PositionPlannerTest is Test {
         // rather than reverting on int24 arithmetic overflow.
         int24 tickSpacing = 60;
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: type(int24).min, offsetUpper: type(int24).max, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: type(int24).min, offsetUpper: type(int24).max, weight: 1e7, recipient: address(3)
+        });
 
         (Position[] memory positions,,) =
             mockPositionPlanner.resolve(defs, TickMath.getSqrtPriceAtTick(0), tickSpacing, 100e18, 100e18);
@@ -178,7 +189,9 @@ contract PositionPlannerTest is Test {
         currentTick = int24(bound(currentTick, TickMath.MIN_TICK + 1, TickMath.MAX_TICK - 1));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7, recipient: address(3)
+        });
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) = mockPositionPlanner.resolve(
             defs, TickMath.getSqrtPriceAtTick(currentTick), tickSpacing, currency0Amount, currency1Amount
@@ -204,7 +217,9 @@ contract PositionPlannerTest is Test {
         offsetUpper = int24(bound(offsetUpper, 1, 10000));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: offsetLower, offsetUpper: offsetUpper, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: offsetLower, offsetUpper: offsetUpper, weight: 1e7, recipient: address(3)
+        });
 
         // positions.length may be 0 if the single position overflows uint128 liquidity or exhausts the budget
         (Position[] memory positions,,) =
@@ -223,7 +238,7 @@ contract PositionPlannerTest is Test {
         // offsetLower: 50, offsetUpper: 100 should intuitively mean
         // [currentTick + 50, currentTick + 100] — entirely above, token0 only
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: 50, offsetUpper: 100, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: 50, offsetUpper: 100, weight: 1e7, recipient: address(3)});
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(defs, TickMath.getSqrtPriceAtTick(0), 10, 100e18, 100e18);
@@ -239,7 +254,7 @@ contract PositionPlannerTest is Test {
         // offsetLower: -100, offsetUpper: -50 should intuitively mean
         // [currentTick - 100, currentTick - 50] — entirely below, token1 only
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -100, offsetUpper: -50, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: -100, offsetUpper: -50, weight: 1e7, recipient: address(3)});
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
             mockPositionPlanner.resolve(defs, TickMath.getSqrtPriceAtTick(0), 10, 100e18, 100e18);
@@ -253,7 +268,9 @@ contract PositionPlannerTest is Test {
 
     function test_resolve_singlePositionConsumedTokensAccountedFor() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 1e7, recipient: address(3)
+        });
 
         // First resolve to find exact amounts the position consumes
         (Position[] memory probe,,) =
@@ -274,9 +291,9 @@ contract PositionPlannerTest is Test {
 
     function test_resolve_truncatesWhenBudgetExhausted() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](3);
-        defs[0] = PositionDefinition({offsetLower: -20, offsetUpper: 20, weight: 4e6});
-        defs[1] = PositionDefinition({offsetLower: -40, offsetUpper: 40, weight: 3e6});
-        defs[2] = PositionDefinition({offsetLower: -60, offsetUpper: 60, weight: 3e6});
+        defs[0] = PositionDefinition({offsetLower: -20, offsetUpper: 20, weight: 4e6, recipient: address(3)});
+        defs[1] = PositionDefinition({offsetLower: -40, offsetUpper: 40, weight: 3e6, recipient: address(4)});
+        defs[2] = PositionDefinition({offsetLower: -60, offsetUpper: 60, weight: 3e6, recipient: address(5)});
 
         // Tiny budget cannot fit the full plan; saturating subtraction drops later positions
         (Position[] memory positions,,) =
@@ -286,7 +303,7 @@ contract PositionPlannerTest is Test {
 
     function test_resolve_skipsPositionAboveMaxLiquidityPerTick() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
+        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7, recipient: address(3)});
 
         uint128 amount = uint128(type(int128).max);
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) =
@@ -307,8 +324,10 @@ contract PositionPlannerTest is Test {
         uint128 currency1Amount = 100e18;
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-        defs[1] = PositionDefinition({offsetLower: -20, offsetUpper: 20, weight: 5e6});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6, recipient: address(3)
+        });
+        defs[1] = PositionDefinition({offsetLower: -20, offsetUpper: 20, weight: 5e6, recipient: address(4)});
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) = mockPositionPlanner.resolve(
             defs, TickMath.getSqrtPriceAtTick(currentTick), tickSpacing, currency0Amount, currency1Amount
@@ -331,7 +350,7 @@ contract PositionPlannerTest is Test {
         assertLe(remaining1, currency1Amount);
 
         assertMintParam(result.params[0], poolKey.tickSpacing, positions[0], address(3));
-        assertMintParam(result.params[1], poolKey.tickSpacing, positions[1], address(3));
+        assertMintParam(result.params[1], poolKey.tickSpacing, positions[1], address(4));
         assertSettleParam(result.params[2], poolKey.currency0);
         assertSettleParam(result.params[3], poolKey.currency1);
         assertTakePairParam(result.params[4], poolKey.currency0, poolKey.currency1, address(3));
@@ -363,7 +382,8 @@ contract PositionPlannerTest is Test {
                 amount1: uint128(bound(entropy >> 64, 0, type(uint128).max)),
                 tickLower: tickLower,
                 tickUpper: tickUpper,
-                liquidity: uint128(bound(entropy >> 96, 1, type(uint128).max))
+                liquidity: uint128(bound(entropy >> 96, 1, type(uint128).max)),
+                recipient: address(uint160(3 + i))
             });
         }
 
@@ -373,7 +393,7 @@ contract PositionPlannerTest is Test {
         assertEq(result.actions.length, positions.length + 3);
         for (uint256 i; i < positions.length; i++) {
             assertEq(uint8(result.actions[i]), uint8(Actions.MINT_POSITION));
-            assertMintParam(result.params[i], poolKey.tickSpacing, positions[i], address(3));
+            assertMintParam(result.params[i], poolKey.tickSpacing, positions[i], positions[i].recipient);
         }
         uint256 offset = positions.length;
         assertEq(uint8(result.actions[offset]), uint8(Actions.SETTLE));
@@ -412,8 +432,12 @@ contract PositionPlannerTest is Test {
                 weight = uint24(bound(entropy, 1, remainingWeight - positionsLeft));
                 remainingWeight -= weight;
             }
-            defs[i] =
-                PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight});
+            defs[i] = PositionDefinition({
+                offsetLower: TickMath.MIN_TICK,
+                offsetUpper: TickMath.MAX_TICK,
+                weight: weight,
+                recipient: address(uint160(3 + i))
+            });
         }
 
         (Position[] memory positions, uint128 remaining0, uint128 remaining1) = mockPositionPlanner.resolve(
@@ -438,6 +462,9 @@ contract PositionPlannerTest is Test {
         assertLe(consumed1 + remaining1, currency1Amount);
         // If no positions are skipped, check the proportion of liquidity allocated to each position is correct
         if (positions.length == defs.length) {
+            for (uint256 i; i < positions.length; i++) {
+                assertEq(positions[i].recipient, defs[i].recipient);
+            }
             for (uint256 i = 1; i < positions.length; i++) {
                 assertEq(positions[0].tickLower, positions[i].tickLower);
                 assertEq(positions[0].tickUpper, positions[i].tickUpper);

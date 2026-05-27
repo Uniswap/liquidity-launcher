@@ -206,7 +206,6 @@ abstract contract LBPStrategyTestBase is Test {
             migrationBlock: p.migrationBlock,
             reservedTokenAmountForLP: p.reservedTokenAmountForLP,
             recipient: recipient,
-            positionRecipient: positionRecipient,
             poolParameters: PoolParameters({
                 fee: p.poolParameters.fee, tickSpacing: p.poolParameters.tickSpacing, hook: address(0)
             }),
@@ -248,7 +247,7 @@ abstract contract LBPStrategyTestBase is Test {
     /// @notice Bounds fuzzed position inputs into a valid two-position plan.
     function _boundPositionDefinitions(int24 _offsetLower, int24 _offsetUpper, uint24 _fullRangeWeight)
         internal
-        pure
+        view
         returns (bytes memory)
     {
         _offsetLower = int24(bound(_offsetLower, -10000, -1));
@@ -257,10 +256,16 @@ abstract contract LBPStrategyTestBase is Test {
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         defs[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _fullRangeWeight
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: _fullRangeWeight,
+            recipient: positionRecipient
         });
         defs[1] = PositionDefinition({
-            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
+            offsetLower: _offsetLower,
+            offsetUpper: _offsetUpper,
+            weight: uint24(1e7) - _fullRangeWeight,
+            recipient: positionRecipient
         });
         return abi.encode(defs);
     }
