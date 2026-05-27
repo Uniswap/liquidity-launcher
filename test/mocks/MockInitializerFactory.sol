@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+import {IDistributor} from "src/interfaces/IDistributor.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
 import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 
 /// @notice Mock factory that deploys MockLBPInitializers
-contract MockInitializerFactory is IDistributionStrategy {
+contract MockInitializerFactory is IDistributorFactory {
     MockLBPInitializer public deployedInitializer;
 
     address public strategyAddress;
     address public tokensRecipient;
 
-    /// @notice If set, initializeDistribution returns this address instead of deploying a new one
+    /// @notice If set, create returns this address instead of deploying a new one
     MockLBPInitializer public overrideInitializer;
 
     constructor(address _strategyAddress) {
@@ -32,10 +32,12 @@ contract MockInitializerFactory is IDistributionStrategy {
         tokensRecipient = _tokensRecipient;
     }
 
-    function initializeDistribution(address token, uint256 amount, bytes calldata configData, bytes32)
+    function create(address token, uint256 amount, bytes calldata configData, bytes32 salt)
         external
-        returns (IDistributionContract)
+        override
+        returns (IDistributor)
     {
+        salt;
         (uint64 endBlock, address currency, LBPInitializationParams memory lbpParams) =
             abi.decode(configData, (uint64, address, LBPInitializationParams));
 
@@ -49,6 +51,10 @@ contract MockInitializerFactory is IDistributionStrategy {
         }
 
         deployedInitializer = initializer;
-        return IDistributionContract(address(initializer));
+        return IDistributor(address(initializer));
+    }
+
+    function getAddress(address, uint256, bytes calldata, bytes32) external view override returns (IDistributor) {
+        return IDistributor(address(deployedInitializer));
     }
 }

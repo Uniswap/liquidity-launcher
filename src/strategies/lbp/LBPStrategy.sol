@@ -22,8 +22,7 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
-import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
+import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
 import {Plan, Position, PositionDefinition} from "../../types/PositionPlannerTypes.sol";
 import {
     ILBPInitializer,
@@ -47,7 +46,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
-    IDistributionStrategy public immutable initializerFactory;
+    IDistributorFactory public immutable initializerFactory;
     /// @notice Number of blocks past `migrationBlock` after which an initializer's `recipient` may
     /// recover the held `reservedTokenAmountForLP` via {recoverFunds}.
     uint256 public immutable recoveryDelayBlocks;
@@ -62,7 +61,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributionStrategy _initializerFactory,
+        IDistributorFactory _initializerFactory,
         uint256 _recoveryDelayBlocks
     ) {
         positionManager = _positionManager;
@@ -79,16 +78,14 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         _;
     }
 
-    /// @inheritdoc IDistributionStrategy
+    /// @notice Initialize an LBP distribution.
     /// @dev Validates the params, deploys the initializer (initializer) via the factory, registers the migration
     ///      parameters, and pulls `totalSupply` tokens from the caller — `auctionSupply` directly into the
     ///      initializer and `reservedTokenAmountForLP` into this strategy. The caller (typically the launcher) must have
-    ///      approved this strategy for at least `totalSupply` of `token` before calling. Returns this
-    ///      strategy as the distribution contract.
+    ///      approved this strategy for at least `totalSupply` of `token` before calling.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
         nonReentrant
-        returns (IDistributionContract)
     {
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
@@ -104,10 +101,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Deploy the initializer contract via factory with only auction supply (totalSupply - reservedTokenAmountForLP) passed as the amount
         uint256 auctionSupply = totalSupply - migrationParams.reservedTokenAmountForLP;
         ILBPInitializer initializer = ILBPInitializer(
-            address(
-                IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, auctionSupply, initializerParams, initializerSalt)
-            )
+            address(initializerFactory.create(token, auctionSupply, initializerParams, initializerSalt))
         );
 
         if (_initializers[initializer].migrationBlock != 0) revert InitializerAlreadyCreated(initializer);
@@ -133,7 +127,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         initializer.onTokensReceived();
 
         emit InitializerCreated(initializer, migrationParams);
-        return IDistributionContract(address(this));
     }
 
     /// @inheritdoc ILBPStrategy
@@ -195,7 +188,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
-        // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the leftover recipient.
+        // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
         uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
         if (remainingCurrency > 0) {
