@@ -17,7 +17,7 @@ interface ILBPStrategy is IStrategy {
     ///        the LBPStrategy address as the hook. address(0) is only valid with a static pool fee.
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
-    /// @notice Emitted when tier-1 (`tryMigrate`) successfully migrates to the configured v4 pool.
+    /// @notice Emitted when `tryMigrate` successfully migrates to the configured v4 pool.
     /// @param initializer The initializer that was migrated
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
@@ -29,9 +29,7 @@ interface ILBPStrategy is IStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when tier-2 (`tryFallbackMigrate`) successfully mints a full-range position on the
-    /// strategy-as-hook pool. Note the pool key here differs from the configured pool key — it uses
-    /// `address(LBPStrategy)` as the hook so the fallback path is unblockable.
+    /// @notice Emitted when `tryFallbackMigrate` successfully mints a full-range position
     /// @param initializer The initializer that was fallback migrated
     /// @param key The strategy-as-hook pool key that received fallback liquidity
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
@@ -45,12 +43,10 @@ interface ILBPStrategy is IStrategy {
         uint256 tokenAmount
     );
 
-    /// @notice Emitted when tier-3 releases the strategy-held `reservedTokenAmountForLP` to `recipient` after
-    /// both `tryMigrate` and `tryFallbackMigrate` reverted. Any currency swept from the initializer in the
-    /// same transaction is forwarded via the existing {CurrencySwept} event before this fires.
+    /// @notice Emitted when `_release` releases the `reservedTokenAmountForLP` to `recipient`
     /// @param initializer The initializer whose reserves were released
     /// @param recipient The recipient that received the swept tokens
-    /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
+    /// @param amount The amount of `reservedTokenAmountForLP` transferred out of the strategy
     event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
 
     /// @notice Error thrown when the initializer was already created
@@ -126,15 +122,11 @@ interface ILBPStrategy is IStrategy {
     error NoLiquidity();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool. Sole public entrypoint for terminating an
-    /// initializer; internally waterfalls through three tiers, each invoked via an isolated self-call:
-    ///        1. {tryMigrate} — configured-plan migration on the committed pool key (uses `MigratorParameters.hook`).
-    ///        2. {tryFallbackMigrate} — single full-range LP on the strategy-as-hook pool, ignoring the
-    ///           configured hook so a misbehaving hook cannot block the fallback.
-    ///        3. {_release} — sweep currency from the initializer and transfer the held `reservedTokenAmountForLP` plus
-    ///           any swept currency to `recipient`.
-    /// @dev Tiers 2 and 3 are entered automatically when an earlier tier reverts. There is no separate
-    ///      recovery entrypoint and no recovery delay. The terminal outcome is observable from exactly one of
-    ///      {Migrated} (tier 1), {FallbackMigrated} (tier 2), or {FundsRecovered} (tier 3).
+    /// initializer; internally waterfalls through three functions, each invoked via an isolated self-call:
+    ///        1. `tryMigrate` — migrate and create the LP positions according to the configured plan.
+    ///        2. `tryFallbackMigrate` — migrate and create a single full-range LP on the strategy-as-hook pool.
+    ///        3. `_release` — transfer `reservedTokenAmountForLP` and any currency from the initializer to the `recipient`
+    /// @dev The migration is atomic and must not revert or funds will be permanently locked
     /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 

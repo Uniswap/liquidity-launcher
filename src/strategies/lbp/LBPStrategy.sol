@@ -131,10 +131,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint256 tokenReserves = reserves[initializer];
         reserves[initializer] = 0;
         Currency currency = Currency.wrap(migrationParams.currency);
+
+        // Do not revert here on currencyFromInitializer mismatch. Migrations will revert later until release is called.
         uint256 balanceOfBeforeInit = currency.balanceOfSelf();
         try initializer.sweepCurrency() {} catch {}
         uint256 currencyFromInitializer = currency.balanceOfSelf() - balanceOfBeforeInit;
-        // Do not revert here on currencyFromInitializer mismatch. Migrations will revert later until release is called.
 
         try this.tryMigrate(initializer, migrationParams, balanceOfBeforeInit, currencyFromInitializer) {}
         catch {
@@ -145,9 +146,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         }
     }
 
-    /// @notice Tier 1: configured-plan migration on the committed pool key.
-    /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. Reverts on any failure;
-    ///      the outer {migrate} then falls through to {tryFallbackMigrate}.
+    /// @notice Migrate the raised funds and tokens to a v4 pool according to the original parameters
+    /// @dev Only self callable from within the outer `migrate`. Should be maximally resitant to reverts,
+    ///      but in case of failures during migration, the outer `migrate` will fall through to `tryFallbackMigrate`.
     function tryMigrate(
         ILBPInitializer initializer,
         MigratorParameters memory migrationParams,
@@ -161,14 +162,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         emit Migrated(initializer, key, sqrtPriceX96);
     }
 
-    /// @notice Tier 2: attempts migration with a single full-range LP on the original pool key.
-    /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. This fallback preserves the
-    ///      configured hook and pool key from `MigratorParameters`, and only overrides the configured
-    ///      position plan with one full-range position. This is not a hook fallback: the configured hook
-    ///      intentionally remains part of the pool key. As a result, tier 2 can recover from position-plan
-    ///      failures such as {NoLiquidity}, but it does not recover from failures caused by the configured
-    ///      hook or by pool initialization for that same key. If this tier reverts, the outer {migrate}
-    ///      falls through to {_release}.
+    /// @notice Attempts migration with a single full-range LP using the original pool key
+    /// @dev Only self callable from within the outer `migrate`. Should be maximally resitant to reverts,
+    ///      but in case of failures during migration, the outer `migrate` will fall through to `_release`.
     function tryFallbackMigrate(
         ILBPInitializer initializer,
         MigratorParameters memory migrationParams,
@@ -177,8 +173,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     ) external {
         if (msg.sender != address(this)) revert OnlySelfCall();
 
-        // Override the configured position plan with a single full-range position so we can reuse the
-        // tier-1 planner against the strategy-as-hook pool.
+        // Override the configured position plan with a single full-range position with 100% allocation weight
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({
             offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: PositionPlanner.MPS
@@ -191,10 +186,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         emit FallbackMigrated(initializer, key, sqrtPriceX96, currencyTransferAmount, tokenTransferAmount);
     }
 
-    /// @notice Tier 3: releases held `reservedTokenAmountForLP` and any currency swept during upfront preparation.
-    /// @dev Fires only when both {tryMigrate} and {tryFallbackMigrate} reverted. Currency sweeping is attempted
-    ///      once in {migrate}; this function only forwards the amount that was actually swept and always releases
-    ///      the strategy-held `reservedTokenAmountForLP`.
+    /// @notice Releases held `reservedTokenAmountForLP` and any currency from the initializer to the recipient.
+    /// @dev Must not revert or funds will be permanently locked.
     function _release(
         ILBPInitializer initializer,
         MigratorParameters memory migrationParams,
