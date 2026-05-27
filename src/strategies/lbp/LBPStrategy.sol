@@ -151,7 +151,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         Currency currency = Currency.wrap(migrationParams.currency);
         Currency token = Currency.wrap(migrationParams.token);
 
-        uint256 currencyBefore = currency.balanceOfSelf();
+        uint256 balanceOfBeforeInit = currency.balanceOfSelf();
         initializer.sweepCurrency();
 
         uint160 sqrtPriceX96;

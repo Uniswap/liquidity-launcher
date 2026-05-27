@@ -16,6 +16,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {PoolParameters} from "src/libraries/MigratorParams.sol";
 
 contract ReentrantInitializeHookNoValidation is InitializerHook {
     address public attackToken;
@@ -237,21 +238,19 @@ contract LBPStrategyReentrantHookTest is LBPStrategyTestBase {
     function _migratorParams(
         address token,
         address currency,
-        address leftover,
+        address recipient,
         address hook,
         uint64 migrationBlock,
-        uint128 supplyForLP
+        uint128 reservedTokenAmountForLP
     ) internal view returns (MigratorParameters memory mp) {
         mp = MigratorParameters({
-            migrationBlock: migrationBlock,
-            poolLPFee: 0,
-            poolTickSpacing: 1,
-            supplyForLP: supplyForLP,
-            leftoverRecipient: leftover,
-            lpPositionRecipient: lpPositionRecipient,
-            hook: hook,
             token: token,
             currency: currency,
+            migrationBlock: migrationBlock,
+            reservedTokenAmountForLP: reservedTokenAmountForLP,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 0, tickSpacing: 1, hook: hook}),
             positionDefinitions: _fullRangePositionDefinitions(),
             lpAllocationSchedule: new bytes(0)
         });
