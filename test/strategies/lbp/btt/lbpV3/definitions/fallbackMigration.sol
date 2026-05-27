@@ -75,7 +75,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
     }
 
     /// @notice Tier 1 must not emit Migrated when the configured position plan resolves to no positions.
-    function test_FallbackMigratesWhenConfiguredPlanResolvesNoLiquidity() public {
+    function test_FallbackMigratesWhenConfiguredPlanResolvesNoResolvedPositions() public {
         (
             MigratorParameters memory mp,
             uint128 totalSupply,
@@ -109,7 +109,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
     }
 
     /// @notice Fallback preserves lpAllocationSchedule; it does not use the full raise as the LP budget.
-    function test_FallbackPreservesBracketScheduleWhenConfiguredPlanResolvesNoLiquidity() public {
+    function test_FallbackPreservesBracketScheduleWhenConfiguredPlanResolvesNoResolvedPositions() public {
         (
             MigratorParameters memory mp,
             uint128 totalSupply,

@@ -244,7 +244,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 amount0In,
                 amount1In
             );
-            if (positions.length == 0) revert NoLiquidity();
+            // Revert if the position plan does not resolve to any created positions
+            if (positions.length == 0) revert NoResolvedPositions();
             currencyTransferAmount = currencyIsCurrency0 ? amount0In - remaining0 : amount1In - remaining1;
             tokenTransferAmount = currencyIsCurrency0 ? amount1In - remaining1 : amount0In - remaining0;
         }
@@ -253,19 +254,15 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
-    /// @notice Executes one migration tier using the hook and position plan in `migrationParams`.
-    /// @dev Reverts on any failure so the outer {migrate} waterfall can catch it and advance to the next tier.
-    ///      Tier-specific callers may mutate `migrationParams.positionDefinitions` before calling this function,
-    ///      but the hook is always read from `migrationParams.hook`. All accounting, pool initialization,
-    ///      position minting, and leftover sweeps are shared.
+    /// @notice Executes the migration and creates the LP positions according to the configured plan
+    /// @dev Reverts on any failure so the outer `migrate` can catch it and fall through to `tryFallbackMigrate`
     /// @param initializer The initializer whose prepared migration is being executed
-    /// @param migrationParams The migration parameters to use, including the tier's position definitions
-    /// @param currencyBefore The strategy's currency balance before the upfront sweep in {migrate}
+    /// @param migrationParams The migration parameters to use
+    /// @param currencyBefore The strategy's currency balance before the upfront sweep in `migrate`
     /// @param currencyFromInitializer The amount swept from the initializer during upfront preparation
-    /// @return key The pool key initialized by this tier
+    /// @return key The pool key initialized by the migration
     /// @return sqrtPriceX96 The initial pool price
     /// @return currencyTransferAmount The amount of raised currency consumed by the LP position plan
-    /// @return tokenTransferAmount The amount of launched token consumed by the LP position plan
     function _executeMigration(
         ILBPInitializer initializer,
         MigratorParameters memory migrationParams,
@@ -299,20 +296,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         key = _initializePool(currency, token, sqrtPriceX96, migrationParams.poolParameters);
 
-        (currencyTransferAmount, tokenTransferAmount) =
-            _executePositionPlanAndSweep(key, sqrtPriceX96, currencyAmountForLp, migrationParams, currencyBefore);
-    }
-
-    function _executePositionPlanAndSweep(
-        PoolKey memory key,
-        uint160 sqrtPriceX96,
-        uint256 currencyAmountForLp,
-        MigratorParameters memory migrationParams,
-        uint256 currencyBefore
-    ) private returns (uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
-        Currency currency = Currency.wrap(migrationParams.currency);
-        Currency token = Currency.wrap(migrationParams.token);
-
         {
             bytes memory plan;
             // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
@@ -340,6 +323,21 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             emit TokensSwept(migrationParams.recipient, remainingToken);
         }
     }
+
+    /// @notice Executes the position plan and sweeps the remaining currency and tokens to the recipient
+    /// @dev Must not revert or funds will be permanently locked
+    /// @param key The pool key initialized by the migration
+    /// @param sqrtPriceX96 The initial pool price
+    /// @param currencyAmountForLp The currency budget for LP positions
+    /// @param migrationParams The migration parameters to use
+    /// @param currencyBefore The strategy's currency balance before the upfront sweep in `migrate`
+    function _executePositionPlanAndSweep(
+        PoolKey memory key,
+        uint160 sqrtPriceX96,
+        uint256 currencyAmountForLp,
+        MigratorParameters memory migrationParams,
+        uint256 currencyBefore
+    ) private returns (uint128 currencyTransferAmount, uint128 tokenTransferAmount) {}
 
     /// @notice Initializes the pool with the calculated price
     /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for

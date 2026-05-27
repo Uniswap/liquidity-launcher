@@ -16,7 +16,7 @@ contract DeployAllScript is Script {
         lbpStrategyDeployer = new DeployLBPStrategyScript();
     }
 
-    function run(IDistributionStrategy initializerFactory) public {
+    function run(IDistributorFactory initializerFactory) public {
         console.log("Deploying all contracts on chain", block.chainid);
 
         liquidityLauncherDeployer.run();

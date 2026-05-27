@@ -119,7 +119,7 @@ interface ILBPStrategy is IStrategy {
     error OnlySelfCall();
 
     /// @notice Error thrown when a position plan resolves to no mintable liquidity.
-    error NoLiquidity();
+    error NoResolvedPositions();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool. Sole public entrypoint for terminating an
     /// initializer; internally waterfalls through three functions, each invoked via an isolated self-call:

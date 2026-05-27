@@ -102,7 +102,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         );
 
         // Reason depends on whether tier-2's planner resolves any liquidity (full-range with small amounts may
-        // resolve to NoLiquidity before reaching the mocked PM call). Either reason is a valid recovery outcome;
+        // resolve to NoResolvedPositions before reaching the mocked PM call). Either reason is a valid recovery outcome;
         // assert only on balances/reserves.
         strategy.migrate(ILBPInitializer(address(initializer)));
 
@@ -142,7 +142,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
             "POSITION_MANAGER_REVERT"
         );
 
-        // Reason varies between PositionManagerFailed and NoLiquidity depending on fuzz inputs; assert balances.
+        // Reason varies between PositionManagerFailed and NoResolvedPositions depending on fuzz inputs; assert balances.
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(currencyToken.balanceOf(mp.recipient), recipientCurrencyBefore + p.currencyRaised);
