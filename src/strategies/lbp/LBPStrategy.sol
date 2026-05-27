@@ -85,6 +85,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     ///      approved this strategy for at least `totalSupply` of `token` before calling.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
+        nonReentrant
     {
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
@@ -143,16 +144,17 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         Currency currency = Currency.wrap(migrationParams.currency);
         Currency token = Currency.wrap(migrationParams.token);
 
-        uint256 currencyBefore = currency.balanceOfSelf();
+        uint256 balanceOfBeforeInit = currency.balanceOfSelf();
         initializer.sweepCurrency();
 
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
+        uint256 currencyFromInitializer;
         {
             // Retrieves the LBP initialization parameters from the initializer. Must revert if the initializer is not graduated.
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
-            uint256 currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
+            currencyFromInitializer = currency.balanceOfSelf() - balanceOfBeforeInit;
             if (currencyFromInitializer != lbpParams.currencyRaised) {
                 revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
             }
@@ -188,7 +190,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
+        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
         if (remainingCurrency > 0) {
             currency.transfer(migrationParams.recipient, remainingCurrency);
             emit CurrencySwept(migrationParams.recipient, remainingCurrency);
