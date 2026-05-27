@@ -160,7 +160,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         {
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
-            currencyFromInitializer = currency.balanceOfSelf() - currencyBefore;
+            currencyFromInitializer = currency.balanceOfSelf() - balanceOfBeforeInit;
             if (currencyFromInitializer != lbpParams.currencyRaised) {
                 revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
             }
