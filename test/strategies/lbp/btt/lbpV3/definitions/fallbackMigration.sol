@@ -40,8 +40,8 @@ contract MaliciousBeforeInitializeHook {
 /// @title FallbackMigrationTest
 /// @notice Tests for the migrate() waterfall: configured migration -> full-range fallback -> release.
 contract FallbackMigrationTest is LBPStrategyTestBase {
-    /// @notice Tier 2 succeeds when the configured hook blocks tier 1.
-    function test_FallbackMigratesOnStrategyHookPoolWhenConfiguredHookReverts() public {
+    /// @notice Tier 2 preserves the configured hook, so a hook that blocks tier 1 also blocks fallback.
+    function test_FallbackReleasesWhenConfiguredHookReverts() public {
         (
             MigratorParameters memory mp,
             uint128 totalSupply,
@@ -56,14 +56,15 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), lbpParams.currencyRaised);
         vm.roll(mp.migrationBlock);
 
-        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
-        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+        uint256 ethBefore = leftoverRecipient.balance;
+        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
 
-        vm.expectEmit(true, true, false, false, address(strategy));
-        emit ILBPStrategy.FallbackMigrated(ILBPInitializer(address(initializer)), strategyKey, 0, 0, 0);
+        vm.expectEmit(true, true, false, true, address(strategy));
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
+        assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
+        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(initializer).balance, 0);
     }
@@ -92,10 +93,10 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), lbpParams.currencyRaised);
         vm.roll(mp.migrationBlock);
 
-        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
+        PoolKey memory key = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, mp.hook);
 
         vm.expectEmit(true, true, false, false, address(strategy));
-        emit ILBPStrategy.FallbackMigrated(ILBPInitializer(address(initializer)), strategyKey, 0, 0, 0);
+        emit ILBPStrategy.FallbackMigrated(ILBPInitializer(address(initializer)), key, 0, 0, 0);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertGt(POSITION_MANAGER.nextTokenId(), 1);
@@ -103,7 +104,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
     }
 
     /// @notice Fallback preserves lpAllocationSchedule; it does not use the full raise as the LP budget.
-    function test_FallbackPreservesBracketScheduleWhenConfiguredHookReverts() public {
+    function test_FallbackPreservesBracketScheduleWhenConfiguredPlanResolvesNoLiquidity() public {
         (
             MigratorParameters memory mp,
             uint128 totalSupply,
@@ -111,7 +112,16 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
             LBPInitializationParams memory lbpParams
         ) = _fallbackSuccessParams();
         brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE / 2});
-        mp.hook = _installRevertingInitializerHook();
+
+        mp.supplyForLP = 1e30;
+        totalSupply = mp.supplyForLP + 10 ether;
+        lbpParams.currencyRaised = 1e30;
+        lbpParams.tokensSold = 1 ether;
+        mp.poolTickSpacing = 1;
+
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: PositionPlanner.MPS});
+        mp.positionDefinitions = abi.encode(defs);
 
         (MockLBPInitializer initializer, MockERC20 token) =
             _initializeWith(mp, totalSupply, uint64(block.number), brackets, address(0), lbpParams);
@@ -123,8 +133,8 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertApproxEqAbs(address(POOL_MANAGER).balance - poolBefore, lbpParams.currencyRaised / 2, 2);
-        assertApproxEqAbs(leftoverRecipient.balance - recipientBefore, lbpParams.currencyRaised / 2, 2);
+        assertApproxEqAbs(address(POOL_MANAGER).balance - poolBefore, lbpParams.currencyRaised / 2, 1e12);
+        assertApproxEqAbs(leftoverRecipient.balance - recipientBefore, lbpParams.currencyRaised / 2, 1e12);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 

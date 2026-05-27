@@ -159,20 +159,19 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         if (msg.sender != address(this)) revert OnlySelfCall();
 
         (PoolKey memory key, uint160 sqrtPriceX96,,) = _executeMigration(
-            initializer, migrationParams, currencyBefore, currencyFromInitializer, migrationParams.hook
+            initializer, migrationParams, currencyBefore, currencyFromInitializer
         );
         emit Migrated(initializer, key, sqrtPriceX96);
     }
 
-    /// @notice Tier 2: attempt a single full-range LP on the strategy-as-hook pool.
-    /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. Ignores `MigratorParameters.hook`
-    ///      and targets the pool key whose `hooks` is `address(this)`. `SelfInitializerMixin` reserves that
-    ///      key for the strategy's own initialization, so the configured hook — buggy, paused,
-    ///      layout-specific, or adversarial — cannot block this path. The trade-off is that fallback LP lands
-    ///      on a different `PoolId` than `migrate` would have. Either succeeds and emits {FallbackMigrated},
-    ///      or reverts. The outer {migrate} then falls through to {_release}.
-    ///      Tier 2 preserves the bracket schedule (`lpAllocationSchedule`) and `supplyForLP` commitments from
-    ///      `MigratorParameters`; only the configured `hook` and `positionDefinitions` are overridden.
+    /// @notice Tier 2: attempts migration with a single full-range LP on the original pool key.
+    /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. This fallback preserves the
+    ///      configured hook and pool key from `MigratorParameters`, and only overrides the configured
+    ///      position plan with one full-range position. This is not a hook fallback: the configured hook
+    ///      intentionally remains part of the pool key. As a result, tier 2 can recover from position-plan
+    ///      failures such as {NoLiquidity}, but it does not recover from failures caused by the configured
+    ///      hook or by pool initialization for that same key. If this tier reverts, the outer {migrate}
+    ///      falls through to {_release}.
     function tryFallbackMigrate(
         ILBPInitializer initializer,
         MigratorParameters memory migrationParams,
@@ -190,7 +189,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         migrationParams.positionDefinitions = abi.encode(defs);
 
         (PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount) =
-            _executeMigration(initializer, migrationParams, currencyBefore, currencyFromInitializer, address(this));
+            _executeMigration(initializer, migrationParams, currencyBefore, currencyFromInitializer);
 
         emit FallbackMigrated(initializer, key, sqrtPriceX96, currencyTransferAmount, tokenTransferAmount);
     }
@@ -264,15 +263,15 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
-    /// @notice Executes one migration tier using the supplied pool hook and position plan.
+    /// @notice Executes one migration tier using the hook and position plan in `migrationParams`.
     /// @dev Reverts on any failure so the outer {migrate} waterfall can catch it and advance to the next tier.
-    ///      `migrationParams.positionDefinitions` and `hook` are the only tier-specific inputs; all accounting,
-    ///      pool initialization, position minting, and leftover sweeps are shared.
+    ///      Tier-specific callers may mutate `migrationParams.positionDefinitions` before calling this function,
+    ///      but the hook is always read from `migrationParams.hook`. All accounting, pool initialization,
+    ///      position minting, and leftover sweeps are shared.
     /// @param initializer The initializer whose prepared migration is being executed
     /// @param migrationParams The migration parameters to use, including the tier's position definitions
     /// @param currencyBefore The strategy's currency balance before the upfront sweep in {migrate}
     /// @param currencyFromInitializer The amount swept from the initializer during upfront preparation
-    /// @param hook The hook address for this tier's pool key
     /// @return key The pool key initialized by this tier
     /// @return sqrtPriceX96 The initial pool price
     /// @return currencyTransferAmount The amount of raised currency consumed by the LP position plan
@@ -281,8 +280,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         ILBPInitializer initializer,
         MigratorParameters memory migrationParams,
         uint256 currencyBefore,
-        uint256 currencyFromInitializer,
-        address hook
+        uint256 currencyFromInitializer
     )
         private
         returns (PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount)
@@ -310,7 +308,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         }
 
         key = _initializePool(
-            currency, token, sqrtPriceX96, migrationParams.poolLPFee, migrationParams.poolTickSpacing, hook
+            currency, token, sqrtPriceX96, migrationParams.poolLPFee, migrationParams.poolTickSpacing, migrationParams.hook
         );
 
         (currencyTransferAmount, tokenTransferAmount) =
