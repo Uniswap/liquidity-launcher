@@ -6,4 +6,4 @@ FallbackMigrationTest
     ├── it releases assets when the fallback price is invalid
     ├── it releases assets when the strategy-hook pool is already initialized
     ├── it releases assets when PositionManager modifyLiquidities always reverts (tier-3 emergency)
-    └── it rejects reentrancy from leftoverRecipient.receive() back into migrate
+    └── it rejects reentrancy from recipient.receive() back into migrate

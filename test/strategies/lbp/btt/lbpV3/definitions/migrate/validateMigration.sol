@@ -29,7 +29,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
 ///     ├── when currencySwept != currencyRaised
-///     │   └── it recovers the initializer funds to leftoverRecipient
+///     │   └── it recovers the initializer funds to recipient
 ///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
 ///         ├── it sweeps leftover currency to recipient
@@ -116,7 +116,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         public
         whenBlockIsGTEMigrationBlock
     {
-        // it recovers the initializer funds to leftoverRecipient
+        // it recovers the initializer funds to recipient
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
         MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
 

@@ -15,7 +15,12 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {
+    MigratorParams,
+    MigratorParameters,
+    LiquidityAllocationBracket,
+    PoolParameters
+} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -77,13 +82,11 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        bytes memory constructorArgs =
-            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
+        bytes memory constructorArgs = abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
-        strategy =
-            new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
+        strategy = new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
 
         assertEq(address(strategy), strategyAddress);
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);
@@ -105,7 +108,7 @@ abstract contract LBPStrategyTestBase is Test {
     }
 
     /// @notice Deterministic migration setup for tests whose assertion is not about fuzzed sizing.
-    function _setupKnownGoodMigration(uint128 supplyForLP, uint128 auctionSupply, uint256 currencyRaised)
+    function _setupKnownGoodMigration(uint128 reservedTokenAmountForLP, uint128 auctionSupply, uint256 currencyRaised)
         internal
         returns (MockLBPInitializer initializer, MockERC20 token, MigratorParameters memory mp)
     {
@@ -119,12 +122,10 @@ abstract contract LBPStrategyTestBase is Test {
 
         mp = MigratorParameters({
             migrationBlock: uint64(block.number + 1),
-            poolLPFee: 3000,
-            poolTickSpacing: 60,
-            supplyForLP: supplyForLP,
-            leftoverRecipient: leftoverRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            hook: address(0),
+            reservedTokenAmountForLP: reservedTokenAmountForLP,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(0)}),
             token: address(0),
             currency: address(0),
             positionDefinitions: abi.encode(defs),
@@ -137,8 +138,9 @@ abstract contract LBPStrategyTestBase is Test {
             initialPriceX96: uint160(1 << 96), tokensSold: tokensSold, currencyRaised: currencyRaised
         });
 
-        (initializer, token) =
-            _initializeWith(mp, supplyForLP + auctionSupply, uint64(block.number), brackets, address(0), lbpParams);
+        (initializer, token) = _initializeWith(
+            mp, reservedTokenAmountForLP + auctionSupply, uint64(block.number), brackets, address(0), lbpParams
+        );
         if (currencyRaised > 0) {
             vm.deal(address(initializer), currencyRaised);
         }
@@ -225,7 +227,8 @@ abstract contract LBPStrategyTestBase is Test {
         // initializer's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
         // reservedTokenAmountForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
-        p.reservedTokenAmountForLP = uint128(bound(p.supplyForLP, 1 ether, uint128(type(int128).max) - auctionSupply));
+        p.reservedTokenAmountForLP =
+            uint128(bound(p.reservedTokenAmountForLP, 1 ether, uint128(type(int128).max) - auctionSupply));
         totalSupply = p.reservedTokenAmountForLP + auctionSupply;
         // endBlock must be < migrationBlock (validated by _validateInitializer)
         p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));

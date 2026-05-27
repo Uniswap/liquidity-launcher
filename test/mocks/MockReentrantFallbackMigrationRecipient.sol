@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 
-/// @notice Adversarial leftoverRecipient that reenters `strategy.migrate(initializer)` from
+/// @notice Adversarial recipient that reenters `strategy.migrate(initializer)` from
 /// its receive() when it gets ETH during the fallback release leg of the migrate waterfall.
 contract MockReentrantFallbackMigrationRecipient {
     ILBPStrategy public immutable strategy;

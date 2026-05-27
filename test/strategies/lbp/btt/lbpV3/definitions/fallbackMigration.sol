@@ -5,7 +5,12 @@ import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {
+    MigratorParams,
+    MigratorParameters,
+    LiquidityAllocationBracket,
+    PoolParameters
+} from "src/libraries/MigratorParams.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -49,22 +54,22 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
             LBPInitializationParams memory lbpParams
         ) = _fallbackSuccessParams();
 
-        mp.hook = _installRevertingInitializerHook();
+        mp.poolParameters.hook = _installRevertingInitializerHook();
 
         (MockLBPInitializer initializer, MockERC20 token) =
             _initializeWith(mp, totalSupply, uint64(block.number), brackets, address(0), lbpParams);
         vm.deal(address(initializer), lbpParams.currencyRaised);
         vm.roll(mp.migrationBlock);
 
-        uint256 ethBefore = leftoverRecipient.balance;
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 ethBefore = recipient.balance;
+        uint256 tokenBefore = token.balanceOf(recipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), recipient, mp.reservedTokenAmountForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(recipient.balance, ethBefore + lbpParams.currencyRaised);
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(initializer).balance, 0);
     }
@@ -78,11 +83,11 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
             LBPInitializationParams memory lbpParams
         ) = _fallbackSuccessParams();
 
-        mp.supplyForLP = 1e30;
-        totalSupply = mp.supplyForLP + 10 ether;
+        mp.reservedTokenAmountForLP = 1e30;
+        totalSupply = mp.reservedTokenAmountForLP + 10 ether;
         lbpParams.currencyRaised = 1e30;
         lbpParams.tokensSold = 1 ether;
-        mp.poolTickSpacing = 1;
+        mp.poolParameters.tickSpacing = 1;
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: PositionPlanner.MPS});
@@ -93,7 +98,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), lbpParams.currencyRaised);
         vm.roll(mp.migrationBlock);
 
-        PoolKey memory key = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, mp.hook);
+        PoolKey memory key = _nativePoolKey(address(token), mp.poolParameters);
 
         vm.expectEmit(true, true, false, false, address(strategy));
         emit ILBPStrategy.FallbackMigrated(ILBPInitializer(address(initializer)), key, 0, 0, 0);
@@ -113,11 +118,12 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         ) = _fallbackSuccessParams();
         brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE / 2});
 
-        mp.supplyForLP = 1e30;
-        totalSupply = mp.supplyForLP + 10 ether;
+        mp.reservedTokenAmountForLP = 1e30;
+        totalSupply = mp.reservedTokenAmountForLP + 10 ether;
         lbpParams.currencyRaised = 1e30;
         lbpParams.tokensSold = 1 ether;
-        mp.poolTickSpacing = 1;
+        // Override the pool parameters to use a tick spacing of 1
+        mp.poolParameters.tickSpacing = 1;
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: PositionPlanner.MPS});
@@ -128,13 +134,13 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), lbpParams.currencyRaised);
         vm.roll(mp.migrationBlock);
 
-        uint256 recipientBefore = leftoverRecipient.balance;
+        uint256 recipientBefore = recipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
 
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertApproxEqAbs(address(POOL_MANAGER).balance - poolBefore, lbpParams.currencyRaised / 2, 1e12);
-        assertApproxEqAbs(leftoverRecipient.balance - recipientBefore, lbpParams.currencyRaised / 2, 1e12);
+        assertApproxEqAbs(recipient.balance - recipientBefore, lbpParams.currencyRaised / 2, 1e12);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
 
@@ -150,15 +156,15 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), 1);
         vm.roll(mp.migrationBlock);
 
-        uint256 ethBefore = leftoverRecipient.balance;
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 ethBefore = recipient.balance;
+        uint256 tokenBefore = token.balanceOf(recipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), recipient, mp.reservedTokenAmountForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(leftoverRecipient.balance, ethBefore + 1);
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(recipient.balance, ethBefore + 1);
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(initializer).balance, 0);
     }
@@ -175,15 +181,15 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), 1);
         vm.roll(mp.migrationBlock);
 
-        uint256 ethBefore = leftoverRecipient.balance;
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 ethBefore = recipient.balance;
+        uint256 tokenBefore = token.balanceOf(recipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), recipient, mp.reservedTokenAmountForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(leftoverRecipient.balance, ethBefore + 1);
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(recipient.balance, ethBefore + 1);
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
@@ -199,23 +205,31 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
             _initializeWith(mp, totalSupply, uint64(block.number), brackets, address(0), lbpParams);
         vm.deal(address(initializer), lbpParams.currencyRaised);
 
-        PoolKey memory rawKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(0));
-        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
+        PoolKey memory rawKey = _nativePoolKey(
+            address(token),
+            PoolParameters({fee: mp.poolParameters.fee, tickSpacing: mp.poolParameters.tickSpacing, hook: address(0)})
+        );
+        PoolKey memory strategyKey = _nativePoolKey(
+            address(token),
+            PoolParameters({
+                fee: mp.poolParameters.fee, tickSpacing: mp.poolParameters.tickSpacing, hook: address(strategy)
+            })
+        );
         POOL_MANAGER.initialize(rawKey, uint160(1 << 96));
         vm.prank(address(strategy));
         POOL_MANAGER.initialize(strategyKey, uint160(1 << 96));
 
         vm.roll(mp.migrationBlock);
 
-        uint256 ethBefore = leftoverRecipient.balance;
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 ethBefore = recipient.balance;
+        uint256 tokenBefore = token.balanceOf(recipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), recipient, mp.reservedTokenAmountForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(recipient.balance, ethBefore + lbpParams.currencyRaised);
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
@@ -236,26 +250,26 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
             address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "PM_FAILED"
         );
 
-        uint256 ethBefore = leftoverRecipient.balance;
-        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 ethBefore = recipient.balance;
+        uint256 tokenBefore = token.balanceOf(recipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), recipient, mp.reservedTokenAmountForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
-        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(recipient.balance, ethBefore + lbpParams.currencyRaised);
+        assertEq(token.balanceOf(recipient), tokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
-    /// @notice A malicious leftoverRecipient cannot reenter migrate during release.
+    /// @notice A malicious recipient cannot reenter migrate during release.
     function test_fuzz_migrateReentryViaLeftoverRecipient_revertsWithReentrancy(MigrationFuzzParams memory p) public {
         MockReentrantFallbackMigrationRecipient recipient =
             new MockReentrantFallbackMigrationRecipient(ILBPStrategy(address(strategy)));
 
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
-        mp.leftoverRecipient = address(recipient);
+        mp.recipient = address(recipient);
 
         LBPInitializationParams memory lbpParams =
             LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 2});
@@ -288,18 +302,16 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
 
         mp = MigratorParameters({
             migrationBlock: uint64(block.number + 1),
-            poolLPFee: 3000,
-            poolTickSpacing: 60,
-            supplyForLP: 100 ether,
-            leftoverRecipient: leftoverRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            hook: address(0),
+            reservedTokenAmountForLP: 100 ether,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(0)}),
             token: address(0),
             currency: address(0),
             positionDefinitions: abi.encode(defs),
             lpAllocationSchedule: new bytes(0)
         });
-        totalSupply = mp.supplyForLP + 10 ether;
+        totalSupply = mp.reservedTokenAmountForLP + 10 ether;
         lbpParams = LBPInitializationParams({
             initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
         });
@@ -311,16 +323,18 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.etch(hookAddr, address(impl).code);
     }
 
-    function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
-        private
-        pure
-        returns (PoolKey memory)
-    {
+    function _nativePoolKey(address token, PoolParameters memory poolParameters) private pure returns (PoolKey memory) {
         Currency c0 = Currency.wrap(address(0));
         Currency c1 = Currency.wrap(token);
         if (uint160(address(0)) > uint160(token)) {
             (c0, c1) = (c1, c0);
         }
-        return PoolKey({currency0: c0, currency1: c1, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hook)});
+        return PoolKey({
+            currency0: c0,
+            currency1: c1,
+            fee: poolParameters.fee,
+            tickSpacing: poolParameters.tickSpacing,
+            hooks: IHooks(poolParameters.hook)
+        });
     }
 }

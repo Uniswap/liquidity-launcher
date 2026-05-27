@@ -45,7 +45,7 @@ interface ILBPStrategy is IStrategy {
         uint256 tokenAmount
     );
 
-    /// @notice Emitted when tier-3 releases the strategy-held `supplyForLP` to `leftoverRecipient` after
+    /// @notice Emitted when tier-3 releases the strategy-held `reservedTokenAmountForLP` to `recipient` after
     /// both `tryMigrate` and `tryFallbackMigrate` reverted. Any currency swept from the initializer in the
     /// same transaction is forwarded via the existing {CurrencySwept} event before this fires.
     /// @param initializer The initializer whose reserves were released
@@ -130,8 +130,8 @@ interface ILBPStrategy is IStrategy {
     ///        1. {tryMigrate} — configured-plan migration on the committed pool key (uses `MigratorParameters.hook`).
     ///        2. {tryFallbackMigrate} — single full-range LP on the strategy-as-hook pool, ignoring the
     ///           configured hook so a misbehaving hook cannot block the fallback.
-    ///        3. {_release} — sweep currency from the initializer and transfer the held `supplyForLP` plus
-    ///           any swept currency to `leftoverRecipient`.
+    ///        3. {_release} — sweep currency from the initializer and transfer the held `reservedTokenAmountForLP` plus
+    ///           any swept currency to `recipient`.
     /// @dev Tiers 2 and 3 are entered automatically when an earlier tier reverts. There is no separate
     ///      recovery entrypoint and no recovery delay. The terminal outcome is observable from exactly one of
     ///      {Migrated} (tier 1), {FallbackMigrated} (tier 2), or {FundsRecovered} (tier 3).

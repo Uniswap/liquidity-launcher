@@ -80,7 +80,7 @@ Passing `address(0)` keeps a static-fee launch on the hookless pool when that po
 
 ### LBPStrategy `recoveryDelayBlocks`
 
-`LBPStrategy`'s constructor accepts an immutable `recoveryDelayBlocks` parameter for forward compatibility, but the current implementation no longer uses it: recovery is no longer a separate, delayed entrypoint. Instead, `migrate()` is the sole public entrypoint and internally waterfalls — first attempting the configured-plan migration, then a full-range LP attempt on the strategy-as-hook pool (independent of `MigratorParameters.hook`), and finally a release of held assets to `leftoverRecipient` if both prior tiers fail. The argument can be set to any value (e.g. `0`) at deploy time without changing behavior.
+`LBPStrategy`'s constructor accepts an immutable `recoveryDelayBlocks` parameter for forward compatibility, but the current implementation no longer uses it: recovery is no longer a separate, delayed entrypoint. Instead, `migrate()` is the sole public entrypoint and internally waterfalls — first attempting the configured-plan migration, then a full-range LP attempt on the strategy-as-hook pool (independent of `MigratorParameters.hook`), and finally a release of held assets to `recipient` if both prior tiers fail. The argument can be set to any value (e.g. `0`) at deploy time without changing behavior.
 
 ## Example
 
