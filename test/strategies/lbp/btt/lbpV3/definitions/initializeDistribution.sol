@@ -128,6 +128,17 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
+    function test_WhenBracketRateIsZero(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, 0));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
     function test_WhenNonLastBracketLowerThresholdIsZero(uint24 _rate0, uint24 _rate1, MigrationFuzzParams memory p)
         public
     {
@@ -441,7 +452,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         whenReservetokenAmountForLPIsValid
     {
         // it reverts with {InvalidAllocationWeights}
-        _weight = uint24(bound(_weight, 0, type(uint24).max));
+        _weight = uint24(bound(_weight, 1, type(uint24).max));
         vm.assume(_weight != 1e7);
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
@@ -453,6 +464,27 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
         vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionWeightIsZero(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 0});
+        defs[1] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: 1e7});
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.ZeroPositionWeight.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
