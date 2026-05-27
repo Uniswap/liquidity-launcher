@@ -43,7 +43,7 @@ Creates standard ERC20 tokens with extended metadata. These tokens support Permi
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
-The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy.migrate()` is a one-shot action: if the internal migration attempt succeeds, liquidity is deployed to V4; if it reverts, the strategy immediately sweeps the held LP token reserves and any raised currency back to the initializer's configured `recipient`.
+The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy` also exposes a delayed `fallbackMigration` path: if `migrate` never fires, anyone may trigger one final full-range LP attempt after the configured delay past `migrationBlock`; only if that fallback cannot be executed are assets released to the initializer's `recipient`.
 
 They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
 
@@ -128,11 +128,28 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 - Deploy liquidity according to the configured position definitions
 - Transfer the LP NFT or NFTs to the designated position recipient
 
+A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` call for the same initializer.
+
+**Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
+
+#### 5. Internal Fallback Waterfall
+
+`migrate()` is the **sole public entrypoint** for terminating an initializer. There is no separate recovery function and no recovery delay. Internally `migrate()` waterfalls through three tiers in a single transaction; each tier is invoked via an external self-call so it has its own isolated state frame and its revert can be caught by the outer wrapper:
+
+1. **Tier 1 — `tryMigrate`**: the configured-plan migration. Reads the auction's discovered price, initializes the committed pool (using `MigratorParameters.hook`, or the hookless / strategy-hook fallback per `_getPoolKey`), and executes the encoded `positionDefinitions` against the PositionManager. If anything reverts — bad price, currency mismatch, configured hook reverts, PositionManager rejects the plan — the outer `migrate` catches it and falls through.
+
+2. **Tier 2 — `tryFallbackMigrate`**: a single full-range LP attempt on the **strategy-as-hook pool**, *ignoring* `MigratorParameters.hook`. Because `SelfInitializerMixin` reserves the strategy-hook pool key for the strategy's own initialization, no configured hook (buggy, paused, layout-specific, or adversarial) can block this pool. Tier 2 handles its own known failure modes (no currency raised, swept-vs-claimed mismatch, invalid price, no resolvable liquidity, pool already initialized, PositionManager revert) internally by releasing `reservedTokenAmountForLP` and the swept currency to `recipient` and emitting `FallbackMigrationReleased` with a typed `FallbackReleaseReason`. The trade-off: fallback LP lands on a **different `PoolId`** than `migrate` would have produced. Only `tryFallbackMigrate`'s unexpected reverts (e.g. `initializer.sweepCurrency()` reverts) propagate to tier 3.
+
+3. **Tier 3 — `_emergencyRelease`**: the final safety net. Reached only if `tryFallbackMigrate` itself reverts. Best-effort sweeps the initializer's currency, then releases whatever the strategy can move to `recipient` and emits `FallbackMigrationReleased(reason = PositionManagerFailed)`. Funds are not permanently locked even if both prior tiers fail unexpectedly.
+
+Outcomes are observable from three distinct events: `Migrated` (tier 1 success), `FallbackMigrated` (tier 2 success on the strategy-hook pool), or `FallbackMigrationReleased(reason)` (tier 2 or tier 3 release).
+
+Because each initializer's reserves are consumable exactly once (by `migrate`), one initializer's release path cannot reach into another initializer's held reserves on the same token.
 `migrate()` attempts the actual pool initialization and liquidity creation through an internal self-call. A successful migration consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` call for the same initializer.
 
 **Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
 
-#### 5. Migration Failure and Recovery
+#### Migration Failure and Recovery
 
 If the internal migration attempt reverts after the initializer is eligible to migrate, `migrate()` catches the revert and treats the migration as terminal. It then:
 

@@ -1,0 +1,9 @@
+FallbackMigrationTest
+└── when migrate() runs and tier-1 (tryMigrate) cannot produce LP
+    ├── it falls through to tier-2 on the strategy-hook pool and mints when the configured hook reverts
+    ├── it releases assets when no currency was raised/swept
+    ├── it releases assets when swept currency does not match the reported raise
+    ├── it releases assets when the fallback price is invalid
+    ├── it releases assets when the strategy-hook pool is already initialized
+    ├── it releases assets when PositionManager modifyLiquidities always reverts (tier-3 emergency)
+    └── it rejects reentrancy from recipient.receive() back into migrate

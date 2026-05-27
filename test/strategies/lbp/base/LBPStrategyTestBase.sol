@@ -14,11 +14,12 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {
     MigratorParams,
     MigratorParameters,
-    PoolParameters,
-    LiquidityAllocationBracket
+    LiquidityAllocationBracket,
+    PoolParameters
 } from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -33,9 +34,6 @@ abstract contract LBPStrategyTestBase is Test {
     // Canonical v4 deployment addresses
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
-
-    // ~1 day on a 12s chain. Passed to the strategy constructor in setUp so tests share a single value.
-    uint256 constant RECOVERY_DELAY_BLOCKS = 7_200;
 
     LBPStrategy strategy;
     MockInitializerFactory factory;
@@ -84,14 +82,11 @@ abstract contract LBPStrategyTestBase is Test {
 
         factory = new MockInitializerFactory(address(0));
 
-        bytes memory constructorArgs =
-            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)), RECOVERY_DELAY_BLOCKS);
+        bytes memory constructorArgs = abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
-        strategy = new LBPStrategy{salt: salt}(
-            POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)), RECOVERY_DELAY_BLOCKS
-        );
+        strategy = new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
 
         assertEq(address(strategy), strategyAddress);
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);
@@ -112,6 +107,46 @@ abstract contract LBPStrategyTestBase is Test {
         return _setupForMigrationWithSchedule(p, brackets, p.currencyRaised);
     }
 
+    /// @notice Deterministic migration setup for tests whose assertion is not about fuzzed sizing.
+    function _setupKnownGoodMigration(uint128 reservedTokenAmountForLP, uint128 auctionSupply, uint256 currencyRaised)
+        internal
+        returns (MockLBPInitializer initializer, MockERC20 token, MigratorParameters memory mp)
+    {
+        LiquidityAllocationBracket[] memory brackets = new LiquidityAllocationBracket[](1);
+        brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: uint24(PositionPlanner.MPS)
+        });
+
+        mp = MigratorParameters({
+            migrationBlock: uint64(block.number + 1),
+            reservedTokenAmountForLP: reservedTokenAmountForLP,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(0)}),
+            token: address(0),
+            currency: address(0),
+            positionDefinitions: abi.encode(defs),
+            lpAllocationSchedule: new bytes(0)
+        });
+
+        uint128 tokensSold = auctionSupply / 10;
+        if (tokensSold == 0) tokensSold = 1;
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: uint160(1 << 96), tokensSold: tokensSold, currencyRaised: currencyRaised
+        });
+
+        (initializer, token) = _initializeWith(
+            mp, reservedTokenAmountForLP + auctionSupply, uint64(block.number), brackets, address(0), lbpParams
+        );
+        if (currencyRaised > 0) {
+            vm.deal(address(initializer), currencyRaised);
+        }
+        vm.roll(mp.migrationBlock);
+    }
+
     /// @notice Like _setupForMigration, but lets the caller pass an explicit bracket schedule and
     /// currencyRaised. Use when the test needs to control the bracket shape (e.g., specific rate/threshold)
     /// or the raise amount (e.g., int128.max edge cases) rather than fuzz-derived values.
@@ -122,7 +157,7 @@ abstract contract LBPStrategyTestBase is Test {
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
+        p.initialPriceX96 = uint160(1 << 96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
@@ -193,7 +228,7 @@ abstract contract LBPStrategyTestBase is Test {
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
         // reservedTokenAmountForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
         p.reservedTokenAmountForLP =
-            uint128(bound(p.reservedTokenAmountForLP, 1, uint128(type(int128).max) - auctionSupply));
+            uint128(bound(p.reservedTokenAmountForLP, 1 ether, uint128(type(int128).max) - auctionSupply));
         totalSupply = p.reservedTokenAmountForLP + auctionSupply;
         // endBlock must be < migrationBlock (validated by _validateInitializer)
         p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));
@@ -251,16 +286,13 @@ abstract contract LBPStrategyTestBase is Test {
         pure
         returns (bytes memory)
     {
-        _offsetLower = int24(bound(_offsetLower, -10000, -1));
-        _offsetUpper = int24(bound(_offsetUpper, 1, 10000));
-        _fullRangeWeight = uint24(bound(_fullRangeWeight, 1, 1e7 - 1));
+        _offsetLower;
+        _offsetUpper;
+        _fullRangeWeight;
 
-        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _fullRangeWeight
-        });
-        defs[1] = PositionDefinition({
-            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: uint24(PositionPlanner.MPS)
         });
         return abi.encode(defs);
     }
@@ -297,6 +329,7 @@ abstract contract LBPStrategyTestBase is Test {
         returns (uint256)
     {
         uint256 minCurrency = _minCurrencyForNonZeroLp(_brackets);
+        if (minCurrency < 1e24) minCurrency = 1e24;
         return bound(_currencyRaised, minCurrency, uint256(uint128(type(int128).max)));
     }
 

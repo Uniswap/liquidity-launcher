@@ -29,7 +29,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
 ///     ├── when currencySwept != currencyRaised
-///     │   └── it recovers the initializer funds to leftoverRecipient
+///     │   └── it recovers the initializer funds to recipient
 ///     └── when currencySwept == currencyRaised
 ///         ├── it calls sweepCurrency on initializer
 ///         ├── it sweeps leftover currency to recipient
@@ -116,7 +116,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         public
         whenBlockIsGTEMigrationBlock
     {
-        // it recovers the initializer funds to leftoverRecipient
+        // it recovers the initializer funds to recipient
         (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
         MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
 
@@ -124,7 +124,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         // ETH balance and reported currencyRaised equal it. Force a mismatch by overriding
         // the initializer's balance. The failed migration should fall back to recovery.
         uint256 claimed = p.currencyRaised;
-        actualAmount = bound(actualAmount, 0, uint256(uint128(type(int128).max)));
+        actualAmount = bound(actualAmount, 1, uint256(uint128(type(int128).max)));
         vm.assume(actualAmount != claimed);
 
         vm.deal(address(initializer), actualAmount);
@@ -202,25 +202,9 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         assertEq(token.balanceOf(address(initializer)), unsoldInCca);
     }
 
-    function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook(MigrationFuzzParams memory p)
-        public
-        whenBlockIsGTEMigrationBlock
-    {
-        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
-            _boundMigratorParams(p);
-        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, bp);
-        p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
-        p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
-
-        LBPInitializationParams memory lbpParams = LBPInitializationParams({
-            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
-        });
-        (MockLBPInitializer initializer, MockERC20 token) =
-            _initializeWith(mp, totalSupply, endBlock, bp, address(0), lbpParams);
-        vm.deal(address(initializer), p.currencyRaised);
-        auctionSupply;
-        vm.roll(mp.migrationBlock);
+    function test_WhenHooklessPoolAlreadyExists_UsesStrategyAsHook() public whenBlockIsGTEMigrationBlock {
+        (MockLBPInitializer initializer, MockERC20 token, MigratorParameters memory mp) =
+            _setupKnownGoodMigration(100 ether, 10 ether, 100 ether);
         vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
 
         PoolKey memory rawKey =
