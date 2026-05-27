@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {IStrategy} from "src/interfaces/IStrategy.sol";
 import {MigratorParameters, LiquidityAllocationBracket, MigratorParams} from "src/libraries/MigratorParams.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {InitializerHook} from "src/periphery/hooks/InitializerHook.sol";
@@ -54,7 +54,7 @@ contract ReentrantInitializeHookNoValidation is InitializerHook {
     function _afterInitialize(address, PoolKey calldata, uint160, int24) internal override returns (bytes4) {
         if (!executed && armedReentry) {
             executed = true;
-            IDistributionStrategy(authorized)
+            IStrategy(authorized)
                 .initializeDistribution(attackToken, attackTotalSupply, attackConfigData, attackSalt);
         } else if (!executed && armedDonation) {
             executed = true;
