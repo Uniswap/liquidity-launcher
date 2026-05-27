@@ -11,8 +11,8 @@ ValidateMigrationTest
     │   └── it recovers the initializer funds to leftoverRecipient
     └── when currencySwept == currencyRaised
         ├── it calls sweepCurrency on initializer
-        ├── it sweeps leftover currency to leftoverRecipient
-        ├── it sweeps leftover tokens to leftoverRecipient
+        ├── it sweeps leftover currency to recipient
+        ├── it sweeps leftover tokens to recipient
         ├── it emits {CurrencySwept}
         ├── it emits {TokensSwept}
         └── it emits {Migrated}

@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {LBPStrategy} from "src/strategies/lbp/LBPStrategy.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -34,9 +34,9 @@ abstract contract LBPStrategyTestBase is Test {
     MockInitializerFactory factory;
 
     address owner;
-    address leftoverRecipient = makeAddr("leftoverRecipient");
+    address recipient = makeAddr("recipient");
     address tokensRecipient = makeAddr("tokensRecipient");
-    address lpPositionRecipient = makeAddr("lpPositionRecipient");
+    address positionRecipient = makeAddr("positionRecipient");
 
     /// @notice Raw fuzz inputs for LP allocation bracket generation — pass this as a fuzz parameter
     struct BracketFuzzParams {
@@ -53,9 +53,8 @@ abstract contract LBPStrategyTestBase is Test {
     struct MigrationFuzzParams {
         uint64 endBlock;
         uint64 migrationBlock;
-        uint24 poolLPFee;
-        int24 poolTickSpacing;
-        uint128 supplyForLP;
+        PoolParameters poolParameters;
+        uint128 reservedTokenAmountForLP;
         uint128 auctionSupply;
         BracketFuzzParams bpParams;
         uint256 currencyRaised;
@@ -79,12 +78,12 @@ abstract contract LBPStrategyTestBase is Test {
         factory = new MockInitializerFactory(address(0));
 
         bytes memory constructorArgs =
-            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)));
+            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
         strategy =
-            new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)));
+            new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)));
 
         assertEq(address(strategy), strategyAddress);
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);
@@ -166,7 +165,7 @@ abstract contract LBPStrategyTestBase is Test {
         if (currencyRaised > 0) {
             vm.deal(address(initializer), currencyRaised);
         }
-        // `_initializeWith` already pulled both portions: supplyForLP into the strategy and auctionSupply
+        // `_initializeWith` already pulled both portions: reservedTokenAmountForLP into the strategy and auctionSupply
         // into the initializer. Nothing else to fund. The `auctionSupply` local is unused here.
         auctionSupply;
         vm.roll(mp.migrationBlock);
@@ -206,7 +205,7 @@ abstract contract LBPStrategyTestBase is Test {
         bytes memory configData =
             _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, currency, lbpParams));
         // Mirror the production launcher flow: approve the strategy, then call initializeDistribution.
-        // The strategy pulls auctionSupply into the initializer and supplyForLP into itself.
+        // The strategy pulls auctionSupply into the initializer and reservedTokenAmountForLP into itself.
         token.approve(address(strategy), totalSupply);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
@@ -220,28 +219,29 @@ abstract contract LBPStrategyTestBase is Test {
         view
         returns (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
     {
-        p.poolLPFee = uint24(bound(p.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
-        p.poolTickSpacing = int24(bound(p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+        p.poolParameters.fee = uint24(bound(p.poolParameters.fee, 0, LPFeeLibrary.MAX_LP_FEE));
+        p.poolParameters.tickSpacing =
+            int24(bound(p.poolParameters.tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         // initializer's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
-        // supplyForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
-        p.supplyForLP = uint128(bound(p.supplyForLP, 1 ether, uint128(type(int128).max) - auctionSupply));
-        totalSupply = p.supplyForLP + auctionSupply;
+        // reservedTokenAmountForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
+        p.reservedTokenAmountForLP = uint128(bound(p.supplyForLP, 1 ether, uint128(type(int128).max) - auctionSupply));
+        totalSupply = p.reservedTokenAmountForLP + auctionSupply;
         // endBlock must be < migrationBlock (validated by _validateInitializer)
         p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));
         p.migrationBlock = uint64(bound(p.migrationBlock, p.endBlock + 1, type(uint64).max));
         endBlock = p.endBlock;
 
         mp = MigratorParameters({
-            migrationBlock: p.migrationBlock,
-            poolLPFee: p.poolLPFee,
-            poolTickSpacing: p.poolTickSpacing,
-            supplyForLP: p.supplyForLP,
-            leftoverRecipient: leftoverRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            hook: address(0),
             token: address(0),
             currency: address(0),
+            migrationBlock: p.migrationBlock,
+            reservedTokenAmountForLP: p.reservedTokenAmountForLP,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({
+                fee: p.poolParameters.fee, tickSpacing: p.poolParameters.tickSpacing, hook: address(0)
+            }),
             positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
             lpAllocationSchedule: new bytes(0)
         });

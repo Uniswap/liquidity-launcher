@@ -2,20 +2,19 @@
 pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
-import {IDistributionStrategy} from "./IDistributionStrategy.sol";
+import {IStrategy} from "./IStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
-interface ILBPStrategy is IDistributionStrategy {
+interface ILBPStrategy is IStrategy {
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
-    /// @param migrationParams The migration parameters. Any nonzero migrationParams.hook MUST inherit InitializerHook.
+    /// @param migrationParams The migration parameters. Any nonzero migrationParams.poolParameters.hook MUST inherit InitializerHook.
     ///        If hook is address(0), migration uses the hookless pool unless it already exists, then falls back to
-    ///        the LBPStrategy address as the hook.
+    ///        the LBPStrategy address as the hook. address(0) is only valid with a static pool fee.
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when tier-1 (`tryMigrate`) successfully migrates to the configured v4 pool.
@@ -50,8 +49,8 @@ interface ILBPStrategy is IDistributionStrategy {
     /// both `tryMigrate` and `tryFallbackMigrate` reverted. Any currency swept from the initializer in the
     /// same transaction is forwarded via the existing {CurrencySwept} event before this fires.
     /// @param initializer The initializer whose reserves were released
-    /// @param recipient The configured `leftoverRecipient` that received the swept tokens
-    /// @param amount The amount of `supplyForLP` transferred out of the strategy
+    /// @param recipient The recipient that received the swept tokens
+    /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
     event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
 
     /// @notice Error thrown when the initializer was already created
@@ -91,8 +90,8 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param actual The tokensRecipient configured on the initializer (always equal to the strategy when this fires)
     error InvalidTokensRecipient(address actual);
 
-    /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
-    error InvalidSupplyForLp();
+    /// @notice Error thrown when reservedTokenAmountForLP exceeds v4's int128 amount limit
+    error InvalidReservedTokenAmountForLP();
 
     /// @notice Error thrown when the currency swept from the initializer does not match the
     /// currencyRaised reported by the initializer's LBP parameters

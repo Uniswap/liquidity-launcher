@@ -4,7 +4,7 @@
       "totalSupply": "",
       "configData": "",
       "salt":"",
-      "strategyFactory": "",
+      "lbpStrategy": "",
       "liquidityLauncher": ""
    }
 }

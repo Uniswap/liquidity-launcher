@@ -11,7 +11,7 @@ import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Distribution} from "src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
-import {MockDistributionStrategyAndContract} from "./mocks/MockDistributionStrategyAndContract.sol";
+import {MockStrategyAndDistributor} from "./mocks/MockStrategyAndDistributor.sol";
 import {Permit2Forwarder} from "src/Permit2Forwarder.sol";
 import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";
 
@@ -44,9 +44,9 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             xProofTweetId: 0
         });
 
-        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+        MockStrategyAndDistributor strategyAndDistributor = new MockStrategyAndDistributor();
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(strategyAndDistributor), amount: initialSupply, configData: ""});
 
         bytes32 graffiti = liquidityLauncher.getGraffiti(address(this));
         address precomputedAddress =
@@ -84,8 +84,8 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(xProofTweetId, 0);
 
         // Verify the distribution was successful
-        // The full balance ended up in the distribution contract; nothing held in the launcher.
-        assertEq(IERC20(precomputedAddress).balanceOf(address(distributionStrategyAndContract)), initialSupply);
+        // The full balance ended up in the distributor; nothing held in the launcher.
+        assertEq(IERC20(precomputedAddress).balanceOf(address(strategyAndDistributor)), initialSupply);
         assertEq(token.balanceOf(address(liquidityLauncher)), 0);
     }
 
@@ -100,9 +100,9 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         vm.prank(bob);
         token.approve(address(permit2), type(uint256).max);
 
-        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+        MockStrategyAndDistributor strategyAndDistributor = new MockStrategyAndDistributor();
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: amount, configData: ""});
+            Distribution({strategy: address(strategyAndDistributor), amount: amount, configData: ""});
 
         // Sign a permit2 allowance for the launcher to pull from bob.
         IAllowanceTransfer.PermitSingle memory permit =
@@ -121,7 +121,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         vm.prank(bob);
         liquidityLauncher.multicall(calls);
 
-        assertEq(IERC20(address(token)).balanceOf(address(distributionStrategyAndContract)), amount);
+        assertEq(IERC20(address(token)).balanceOf(address(strategyAndDistributor)), amount);
         assertEq(token.balanceOf(address(liquidityLauncher)), 0);
         assertEq(token.balanceOf(bob), 0);
     }
@@ -139,12 +139,12 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
 
         uint128 initialSupply = 1e18;
 
-        // Create a distribution strategy and contract
-        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+        // Create a strategy that is also a distributor
+        MockStrategyAndDistributor strategyAndDistributor = new MockStrategyAndDistributor();
 
         // Create a distribution
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: initialSupply, configData: ""});
+            Distribution({strategy: address(strategyAndDistributor), amount: initialSupply, configData: ""});
 
         bytes32 graffiti = liquidityLauncher.getGraffiti(address(this));
 
@@ -182,9 +182,9 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         vm.prank(bob);
         token.approve(address(permit2), type(uint256).max);
 
-        MockDistributionStrategyAndContract distributionStrategyAndContract = new MockDistributionStrategyAndContract();
+        MockStrategyAndDistributor strategyAndDistributor = new MockStrategyAndDistributor();
         Distribution memory distribution =
-            Distribution({strategy: address(distributionStrategyAndContract), amount: amount, configData: ""});
+            Distribution({strategy: address(strategyAndDistributor), amount: amount, configData: ""});
 
         IAllowanceTransfer.PermitSingle memory permit =
             defaultERC20PermitAllowance(address(token), uint160(amount), deadline, 0);

@@ -57,26 +57,26 @@ function distributeToken(
     address token,
     Distribution calldata distribution,
     bytes32 salt
-) external returns (IDistributionContract distributionContract);
+) external;
 ```
 
 `depositToken` requires the caller to have set up a Permit2 allowance for the launcher (either via a prior `permit2.approve(...)` or by calling `permit(...)` earlier in the same `multicall`). The amount type is `uint160` to match Permit2's allowance type.
 
 The `salt` parameter is forwarded to the selected strategy after being domain-separated by the caller. Strategies and downstream factories that perform deterministic deployments MUST include the provided salt in their address calculation and any matching address prediction helpers.
 
-Depending on the complexity of the distribution strategy, you may need to pass additional parameters to the strategy. These are passed in the `configData` parameter.
+Depending on the complexity of the strategy, you may need to pass additional parameters to it. These are passed in the `configData` parameter.
 
-Strategies may create any number of additional contracts, but may only return one address to the `LiquidityLauncher` contract. That returned contract is responsible for pulling the `amount` of tokens specified in the `Distribution` struct from the launcher inside its own `initializeDistribution` call.
+`Distribution.strategy` is the contract that receives the launcher's temporary allowance and must pull the full `amount` from the launcher inside `initializeDistribution`. Strategies may create any number of additional contracts, but those contracts are not returned to the launcher; strategy-specific events or prediction helpers should be used when callers need downstream contract addresses.
 
 > ⚠️ **Always batch token acquisition (`createToken` or `depositToken`) and `distributeToken` inside the same `multicall`.** Tokens that sit in the launcher between transactions can be distributed by anyone with arbitrary strategy parameters.
 
 ### LBP hook requirement
 
-When configuring an LBP distribution, the `MigratorParameters.hook` field is the Uniswap v4 hook for the post-auction pool. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. This is required because `InitializerHook` implements the `beforeInitialize` gate that only allows the singleton `LBPStrategy` to initialize the committed pool.
+When configuring an LBP distribution, the `MigratorParameters.poolParameters.hook` field is the Uniswap v4 hook for the post-auction pool. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. This is required because `InitializerHook` implements the `beforeInitialize` gate that only allows the singleton `LBPStrategy` to initialize the committed pool.
 
 Do not configure third-party or custom hooks in `hook` unless they inherit `InitializerHook` and are deployed at an address with the correct v4 hook permission bits, including `BEFORE_INITIALIZE`.
 
-Passing `address(0)` keeps the launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly.
+Passing `address(0)` keeps a static-fee launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly. Dynamic-fee launches must provide a nonzero hook with the fee logic.
 
 ### LBPStrategy `recoveryDelayBlocks`
 
