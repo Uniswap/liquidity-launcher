@@ -4,9 +4,7 @@ pragma solidity ^0.8.26;
 import {Script, stdJson} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {Distribution} from "src/types/Distribution.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
-import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
 import {IMulticall} from "src/interfaces/IMulticall.sol";
 
 /// @notice Example script for distributing a token via LBPStrategy
@@ -36,12 +34,8 @@ contract DeployExample is Script {
         calls[0] = abi.encodeCall(ILiquidityLauncher.depositToken, (token, uint160(totalSupply)));
         calls[1] = abi.encodeCall(ILiquidityLauncher.distributeToken, (token, distribution, salt));
 
-        bytes[] memory results = IMulticall(liquidityLauncher).multicall(calls);
-        IDistributionContract distributionContract = abi.decode(results[1], (IDistributionContract));
-
-        // Sanity check: verify the deployed initializer references the correct token
-        vm.assertEq(ILBPInitializer(address(distributionContract)).token(), token, "Token mismatch");
-        console2.log("Distribution contract (CCA) deployed at:", address(distributionContract));
+        IMulticall(liquidityLauncher).multicall(calls);
+        console2.log("Strategy initialized:", lbpStrategy);
 
         vm.stopBroadcast();
     }

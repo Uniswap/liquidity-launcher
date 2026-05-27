@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {LBPStrategy} from "src/strategies/lbp/LBPStrategy.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -85,12 +85,12 @@ abstract contract LBPStrategyTestBase is Test {
         factory = new MockInitializerFactory(address(0));
 
         bytes memory constructorArgs =
-            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), RECOVERY_DELAY_BLOCKS);
+            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)), RECOVERY_DELAY_BLOCKS);
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
         strategy = new LBPStrategy{salt: salt}(
-            POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), RECOVERY_DELAY_BLOCKS
+            POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)), RECOVERY_DELAY_BLOCKS
         );
 
         assertEq(address(strategy), strategyAddress);

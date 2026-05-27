@@ -2,8 +2,8 @@
 pragma solidity 0.8.26;
 
 import "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {MerkleClaimFactory} from "src/factories/periphery/MerkleClaimFactory.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
@@ -41,8 +41,19 @@ contract MerkleClaimFactoryTest is Test {
 
         token.approve(address(factory), TOTAL_SUPPLY);
 
-        IMerkleClaim merkleClaim =
-            IMerkleClaim(address(factory.initializeDistribution(address(token), TOTAL_SUPPLY, configData, salt)));
+        vm.recordLogs();
+        factory.initializeDistribution(address(token), TOTAL_SUPPLY, configData, salt);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 initializedTopic = keccak256("DistributionInitialized(address,address,uint256)");
+        address merkleClaimAddress;
+        for (uint256 i; i < entries.length; ++i) {
+            if (entries[i].topics[0] == initializedTopic) {
+                merkleClaimAddress = address(uint160(uint256(entries[i].topics[1])));
+                break;
+            }
+        }
+        assertNotEq(merkleClaimAddress, address(0));
+        IMerkleClaim merkleClaim = IMerkleClaim(merkleClaimAddress);
 
         assertEq(merkleClaim.token(), address(token));
         assertEq(merkleClaim.merkleRoot(), merkleRoot);
