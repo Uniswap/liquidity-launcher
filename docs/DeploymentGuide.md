@@ -78,9 +78,9 @@ Do not configure third-party or custom hooks in `hook` unless they inherit `Init
 
 Passing `address(0)` keeps the launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly.
 
-### LBPStrategy `recoveryDelayBlocks`
+### LBPStrategy migration recovery
 
-`LBPStrategy`'s constructor accepts an immutable `recoveryDelayBlocks` parameter for forward compatibility, but the current implementation no longer uses it: recovery is no longer a separate, delayed entrypoint. Instead, `migrate()` is the sole public entrypoint and internally waterfalls — first attempting the configured-plan migration, then a full-range LP attempt on the strategy-as-hook pool (independent of `MigratorParameters.hook`), and finally a release of held assets to `leftoverRecipient` if both prior tiers fail. The argument can be set to any value (e.g. `0`) at deploy time without changing behavior.
+Recovery is no longer a separate, delayed entrypoint. Instead, `migrate()` is the sole public entrypoint and internally waterfalls — first attempting the configured-plan migration, then retrying with the same `MigratorParameters` except for a single full-range LP position definition, and finally releasing held assets to `leftoverRecipient` if both prior attempts fail.
 
 ## Example
 

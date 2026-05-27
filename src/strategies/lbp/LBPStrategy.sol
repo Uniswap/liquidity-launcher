@@ -131,23 +131,35 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
     /// @inheritdoc ILBPStrategy
     function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
-        try this.tryMigrate(initializer) {}
-        catch {
-            try this.tryFallbackMigrate(initializer) {}
-            catch {
+        MigratorParameters memory migrationParams = _initializers[initializer];
+
+        try this.tryMigrate(initializer, migrationParams) returns (
+            PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount
+        ) {
+            currencyTransferAmount;
+            tokenTransferAmount;
+            emit Migrated(initializer, key, sqrtPriceX96);
+        } catch {
+            migrationParams.positionDefinitions = _fullRangePositionDefinitions();
+
+            try this.tryMigrate(initializer, migrationParams) returns (
+                PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount
+            ) {
+                emit FallbackMigrated(initializer, key, sqrtPriceX96, currencyTransferAmount, tokenTransferAmount);
+            } catch {
                 _release(initializer);
             }
         }
     }
 
-    /// @notice Tier 1: configured-plan migration on the committed pool key.
+    /// @notice Attempts migration with the supplied parameters.
     /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. Reverts on any failure;
-    ///      the outer {migrate} then falls through to {tryFallbackMigrate}.
-    function tryMigrate(ILBPInitializer initializer) external {
+    ///      the outer {migrate} then retries with a full-range position plan before releasing funds.
+    function tryMigrate(ILBPInitializer initializer, MigratorParameters memory migrationParams)
+        external
+        returns (PoolKey memory key, uint160 sqrtPriceX96, uint128 currencyTransferAmount, uint128 tokenTransferAmount)
+    {
         if (msg.sender != address(this)) revert OnlySelfCall();
-
-        // Load the stored migration parameters for the initializer
-        MigratorParameters memory migrationParams = _initializers[initializer];
 
         // Zero out the reserves
         reserves[initializer] = 0;
@@ -159,7 +171,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint256 currencyBefore = currency.balanceOfSelf();
         initializer.sweepCurrency();
 
-        uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
         {
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
@@ -176,7 +187,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
         }
 
-        PoolKey memory key = _initializePool(
+        key = _initializePool(
             currency,
             token,
             sqrtPriceX96,
@@ -187,7 +198,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
         // supplyForLP is already enforced <= int128.max in MigratorParams.validate.
-        (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
+        bytes memory plan;
+        (plan, currencyTransferAmount, tokenTransferAmount) = _createPositionPlan(
             key,
             currency,
             sqrtPriceX96,
@@ -210,91 +222,18 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             token.transfer(migrationParams.leftoverRecipient, remainingToken);
             emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
         }
-
-        emit Migrated(initializer, key, sqrtPriceX96);
     }
 
-    /// @notice Tier 2: attempt a single full-range LP on the strategy-as-hook pool.
-    /// @dev Self-call only; the outer {migrate} holds the reentrancy guard. Ignores `MigratorParameters.hook`
-    ///      and targets the pool key whose `hooks` is `address(this)`. `SelfInitializerMixin` reserves that
-    ///      key for the strategy's own initialization, so the configured hook — buggy, paused,
-    ///      layout-specific, or adversarial — cannot block this path. The trade-off is that fallback LP lands
-    ///      on a different `PoolId` than `migrate` would have. Either succeeds and emits {FallbackMigrated},
-    ///      or reverts. The outer {migrate} then falls through to {_release}.
-    ///      Tier 2 preserves the bracket schedule (`lpAllocationSchedule`) and `supplyForLP` commitments from
-    ///      `MigratorParameters`; only the configured `hook` and `positionDefinitions` are overridden.
-    function tryFallbackMigrate(ILBPInitializer initializer) external {
-        if (msg.sender != address(this)) revert OnlySelfCall();
-        MigratorParameters memory migrationParams = _initializers[initializer];
-
-        reserves[initializer] = 0;
-
-        Currency currency = Currency.wrap(migrationParams.currency);
-        Currency token = Currency.wrap(migrationParams.token);
-
-        uint256 currencyBefore = currency.balanceOfSelf();
-        initializer.sweepCurrency();
-        uint256 swept = currency.balanceOfSelf() - currencyBefore;
-
-        uint160 sqrtPriceX96;
-        uint256 currencyAmountForLp;
-        {
-            LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
-            if (swept != lbpParams.currencyRaised) revert CurrencyRaisedMismatch(swept, lbpParams.currencyRaised);
-
-            // Apply the bracket schedule to derive the LP currency budget.
-            // Any excess (above the int128 cap or beyond bracket allocation) is swept to leftoverRecipient.
-            currencyAmountForLp =
-                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
-
-            sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
-        }
-
-        // Override the configured position plan with a single full-range position so we can reuse the
-        // tier-1 planner against the strategy-as-hook pool.
+    function _fullRangePositionDefinitions() private pure returns (bytes memory) {
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({
             offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: PositionPlanner.MPS
         });
-        migrationParams.positionDefinitions = abi.encode(defs);
-
-        PoolKey memory key =
-            _getPoolKey(currency, token, migrationParams.poolLPFee, migrationParams.poolTickSpacing, address(this));
-        poolManager.initialize(key, sqrtPriceX96);
-
-        uint128 currencyTransferAmount;
-        uint128 tokenTransferAmount;
-        {
-            bytes memory plan;
-            (plan, currencyTransferAmount, tokenTransferAmount) = _createPositionPlan(
-                key,
-                currency,
-                sqrtPriceX96,
-                uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
-                migrationParams
-            );
-            _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
-        }
-
-        // Sweep any leftovers to leftoverRecipient.
-        // Leftover = `swept - currencyTransferAmount` = (currency above the bracket allocation)
-        // + (currency the planner couldn't consume within the bracket budget). Both flow to leftoverRecipient.
-        uint256 remainingCurrency = currency.balanceOfSelf() - currencyBefore;
-        if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.leftoverRecipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.leftoverRecipient, remainingCurrency);
-        }
-        uint256 remainingToken = migrationParams.supplyForLP - tokenTransferAmount;
-        if (remainingToken > 0) {
-            token.transfer(migrationParams.leftoverRecipient, remainingToken);
-            emit TokensSwept(migrationParams.leftoverRecipient, remainingToken);
-        }
-
-        emit FallbackMigrated(initializer, key, sqrtPriceX96, currencyTransferAmount, tokenTransferAmount);
+        return abi.encode(defs);
     }
 
     /// @notice Tier 3: unconditional release of held `supplyForLP` and any swept currency to `leftoverRecipient`.
-    /// @dev Fires only when both {tryMigrate} and {tryFallbackMigrate} reverted. Best-effort sweep — if
+    /// @dev Fires only when both migration attempts reverted. Best-effort sweep — if
     ///      `initializer.sweepCurrency` itself reverts (the most likely cause of tier-2's revert), still
     ///      release the strategy-held `supplyForLP` so funds aren't permanently locked.
     function _release(ILBPInitializer initializer) private {

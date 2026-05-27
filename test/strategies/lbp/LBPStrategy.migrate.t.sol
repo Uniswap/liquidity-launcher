@@ -16,9 +16,28 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+
+contract RevertingBeforeInitializeHook {
+    address public immutable authorized;
+
+    constructor(address _authorized) {
+        authorized = _authorized;
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IInitializerHook).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+
+    function beforeInitialize(address, PoolKey calldata, uint160) external pure returns (bytes4) {
+        revert("HOOK_REVERT");
+    }
+}
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -273,6 +292,56 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(rawSqrtPriceAfter, rawSqrtPrice);
         assertGt(strategySqrtPrice, 0);
         assertEq(address(strategyKey.hooks), address(strategy));
+    }
+
+    function test_fallbackKeepsConfiguredHookWhenConfiguredHookReverts() public {
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: MigratorParams.MAX_BRACKET_RATE
+        });
+
+        address hookAddr = address(uint160(Hooks.BEFORE_INITIALIZE_FLAG));
+        RevertingBeforeInitializeHook impl = new RevertingBeforeInitializeHook(address(strategy));
+        vm.etch(hookAddr, address(impl).code);
+
+        MigratorParameters memory mp = MigratorParameters({
+            migrationBlock: uint64(block.number + 1),
+            poolLPFee: 3000,
+            poolTickSpacing: 60,
+            supplyForLP: 100 ether,
+            leftoverRecipient: leftoverRecipient,
+            lpPositionRecipient: lpPositionRecipient,
+            hook: hookAddr,
+            token: address(0),
+            currency: address(0),
+            positionDefinitions: abi.encode(defs),
+            lpAllocationSchedule: new bytes(0)
+        });
+
+        uint128 auctionSupply = 10 ether;
+        uint128 totalSupply = mp.supplyForLP + auctionSupply;
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
+        });
+
+        (MockLBPInitializer initializer, MockERC20 token) =
+            _initializeWith(mp, totalSupply, uint64(block.number), bp, address(0), lbpParams);
+        vm.deal(address(initializer), lbpParams.currencyRaised);
+        vm.roll(mp.migrationBlock);
+
+        uint256 ethBefore = leftoverRecipient.balance;
+        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
+        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
+        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
     /// @notice An initializer that reenters migrate from inside sweepCurrency is blocked by the

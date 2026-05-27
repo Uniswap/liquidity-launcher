@@ -41,14 +41,14 @@ contract MaliciousBeforeInitializeHook {
 }
 
 /// @title FallbackMigrationTest
-/// @notice BTT tests for the migrate() waterfall: tryMigrate → tryFallbackMigrate → emergency release.
+/// @notice BTT tests for the migrate() waterfall: configured tryMigrate → full-range tryMigrate → release.
 /// @dev Pending future PR work: the planner-grief case (positions resolve to empty) is not yet covered here
 ///      because `tryMigrate` currently doesn't revert on a zero-position resolution, so the fallback path
 ///      isn't reachable for that scenario. Will be added once the position-count revert lands on
 ///      `feat/tryMigrate`.
 contract FallbackMigrationTest is LBPStrategyTestBase {
-    /// @notice Tier-2 success: a malicious configured hook blocks tier-1, fallback mints on the strategy-hook pool.
-    function test_FallbackMigratesOnStrategyHookPoolWhenConfiguredHookReverts() public {
+    /// @notice A malicious configured hook blocks both attempts because fallback preserves the configured hook.
+    function test_FallbackReleasesWhenConfiguredHookReverts() public {
         (
             MigratorParameters memory mp,
             uint128 totalSupply,
@@ -66,18 +66,21 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         vm.deal(address(initializer), lbpParams.currencyRaised);
         vm.roll(mp.migrationBlock);
 
-        PoolKey memory strategyKey = _nativePoolKey(address(token), mp.poolLPFee, mp.poolTickSpacing, address(strategy));
+        uint256 ethBefore = leftoverRecipient.balance;
+        uint256 tokenBefore = token.balanceOf(leftoverRecipient);
         uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
 
         vm.expectEmit(true, true, false, false, address(strategy));
-        emit ILBPStrategy.FallbackMigrated(ILBPInitializer(address(initializer)), strategyKey, 0, 0, 0);
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
+        assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
+        assertEq(token.balanceOf(leftoverRecipient), tokenBefore + mp.supplyForLP);
+        assertEq(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
-    /// @notice Tier-2 release: tryFallbackMigrate detects no swept currency and releases.
+    /// @notice Release: both migration attempts detect no swept currency and revert.
     function test_FallbackReleasesWhenCurrencySweptIsZero(MigrationFuzzParams memory p) public {
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
@@ -94,13 +97,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         uint256 tokenBefore = token.balanceOf(leftoverRecipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FallbackMigrationReleased(
-            ILBPInitializer(address(initializer)),
-            leftoverRecipient,
-            0,
-            mp.supplyForLP,
-            ILBPStrategy.FallbackReleaseReason.NoCurrency
-        );
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, ethBefore);
@@ -124,13 +121,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         uint256 tokenBefore = token.balanceOf(leftoverRecipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FallbackMigrationReleased(
-            ILBPInitializer(address(initializer)),
-            leftoverRecipient,
-            1,
-            mp.supplyForLP,
-            ILBPStrategy.FallbackReleaseReason.CurrencyMismatch
-        );
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, ethBefore + 1);
@@ -154,13 +145,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         uint256 tokenBefore = token.balanceOf(leftoverRecipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FallbackMigrationReleased(
-            ILBPInitializer(address(initializer)),
-            leftoverRecipient,
-            1,
-            mp.supplyForLP,
-            ILBPStrategy.FallbackReleaseReason.InvalidPrice
-        );
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, ethBefore + 1);
@@ -194,13 +179,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         uint256 tokenBefore = token.balanceOf(leftoverRecipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FallbackMigrationReleased(
-            ILBPInitializer(address(initializer)),
-            leftoverRecipient,
-            lbpParams.currencyRaised,
-            mp.supplyForLP,
-            ILBPStrategy.FallbackReleaseReason.PoolInitializationFailed
-        );
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);
@@ -208,8 +187,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
     }
 
-    /// @notice Tier-3 emergency release: every modifyLiquidities call reverts (including tier-2's sweep-back),
-    /// so tryFallbackMigrate itself reverts and the outer migrate falls through to _emergencyRelease.
+    /// @notice Release: every modifyLiquidities call reverts, so both migration attempts fail.
     function test_FallbackReleasesWhenPositionManagerAlwaysReverts() public {
         (
             MigratorParameters memory mp,
@@ -231,13 +209,7 @@ contract FallbackMigrationTest is LBPStrategyTestBase {
         uint256 tokenBefore = token.balanceOf(leftoverRecipient);
 
         vm.expectEmit(true, true, false, true, address(strategy));
-        emit ILBPStrategy.FallbackMigrationReleased(
-            ILBPInitializer(address(initializer)),
-            leftoverRecipient,
-            lbpParams.currencyRaised,
-            mp.supplyForLP,
-            ILBPStrategy.FallbackReleaseReason.PositionManagerFailed
-        );
+        emit ILBPStrategy.FundsRecovered(ILBPInitializer(address(initializer)), leftoverRecipient, mp.supplyForLP);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(leftoverRecipient.balance, ethBefore + lbpParams.currencyRaised);

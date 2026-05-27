@@ -30,11 +30,9 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when tier-2 (`tryFallbackMigrate`) successfully mints a full-range position on the
-    /// strategy-as-hook pool. Note the pool key here differs from the configured pool key — it uses
-    /// `address(LBPStrategy)` as the hook so the fallback path is unblockable.
+    /// @notice Emitted when tier-2 successfully mints a full-range position after the configured plan reverted.
     /// @param initializer The initializer that was fallback migrated
-    /// @param key The strategy-as-hook pool key that received fallback liquidity
+    /// @param key The pool key that received fallback liquidity
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
     /// @param currencyAmount The amount of currency consumed by the fallback LP position
     /// @param tokenAmount The amount of token consumed by the fallback LP position
@@ -47,7 +45,7 @@ interface ILBPStrategy is IDistributionStrategy {
     );
 
     /// @notice Emitted when tier-3 releases the strategy-held `supplyForLP` to `leftoverRecipient` after
-    /// both `tryMigrate` and `tryFallbackMigrate` reverted. Any currency swept from the initializer in the
+    /// both migration attempts reverted. Any currency swept from the initializer in the
     /// same transaction is forwarded via the existing {CurrencySwept} event before this fires.
     /// @param initializer The initializer whose reserves were released
     /// @param recipient The configured `leftoverRecipient` that received the swept tokens
@@ -125,9 +123,9 @@ interface ILBPStrategy is IDistributionStrategy {
 
     /// @notice Migrates the raised funds and tokens to a v4 pool. Sole public entrypoint for terminating an
     /// initializer; internally waterfalls through three tiers, each invoked via an isolated self-call:
-    ///        1. {tryMigrate} — configured-plan migration on the committed pool key (uses `MigratorParameters.hook`).
-    ///        2. {tryFallbackMigrate} — single full-range LP on the strategy-as-hook pool, ignoring the
-    ///           configured hook so a misbehaving hook cannot block the fallback.
+    ///        1. {tryMigrate} — configured-plan migration on the committed pool key.
+    ///        2. {tryMigrate} — retry with the same `MigratorParameters`, except `positionDefinitions`
+    ///           is replaced with a single full-range LP definition.
     ///        3. {_release} — sweep currency from the initializer and transfer the held `supplyForLP` plus
     ///           any swept currency to `leftoverRecipient`.
     /// @dev Tiers 2 and 3 are entered automatically when an earlier tier reverts. There is no separate
