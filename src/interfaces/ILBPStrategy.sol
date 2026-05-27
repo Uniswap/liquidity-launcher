@@ -123,6 +123,9 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Error thrown when an internal try-function is invoked by anyone other than the strategy itself.
     error OnlySelfCall();
 
+    /// @notice Error thrown when a position plan resolves to no mintable liquidity.
+    error NoLiquidity();
+
     /// @notice Migrates the raised funds and tokens to a v4 pool. Sole public entrypoint for terminating an
     /// initializer; internally waterfalls through three tiers, each invoked via an isolated self-call:
     ///        1. {tryMigrate} — configured-plan migration on the committed pool key (uses `MigratorParameters.hook`).
