@@ -28,8 +28,8 @@ library PositionPlanner {
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
-    /// @notice The maximum number of explicit position definitions in a plan, in addition to the
-    ///         implicit full range fallback. Bounded to prevent OOG.
+    /// @notice The maximum number of additional positions which can be defined in addition
+    ///         to the implicit full range fallback (10 + 1 = 11 maximum positions possible)
     uint24 public constant MAX_ADDITIONAL_POSITIONS_PER_PLAN = 10;
 
     /// @notice Thrown when the weights across a plan exceed `MPS`
