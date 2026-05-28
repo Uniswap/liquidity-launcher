@@ -56,6 +56,8 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when reservedTokenAmountForLP is zero
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when reservedTokenAmountForLP equals totalSupply
+/// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when token and currency are the same
 /// │   └── it reverts with InvalidTokenCurrencyPair
 /// ├── when position definitions are empty
@@ -391,6 +393,24 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,, uint128 auctionSupply) = _boundMigratorParams(p);
         mp.reservedTokenAmountForLP = 0;
         totalSupply = auctionSupply;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(ILBPStrategy.InvalidReservedTokenAmountForLP.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenReservetokenAmountForLPEqualsTotalSupply(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // it reverts with {InvalidReservedTokenAmountForLP}
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.reservedTokenAmountForLP = totalSupply;
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");

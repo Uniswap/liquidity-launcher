@@ -107,10 +107,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Calculate the salt for the initializer by hashing the caller provided salt with the MigratorParams
         bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
         // Deploy the initializer contract via factory with only auction supply (totalSupply - reservedTokenAmountForLP) passed as the amount
-        if (migrationParams.reservedTokenAmountForLP > totalSupply) {
+        uint128 reservedTokenAmountForLP = migrationParams.reservedTokenAmountForLP;
+        if (reservedTokenAmountForLP >= totalSupply) {
             revert InvalidReservedTokenAmountForLP();
         }
-        uint256 auctionSupply = totalSupply - migrationParams.reservedTokenAmountForLP;
+        uint256 auctionSupply = totalSupply - reservedTokenAmountForLP;
         ILBPInitializer initializer = ILBPInitializer(
             address(initializerFactory.create(token, auctionSupply, initializerParams, initializerSalt))
         );
@@ -136,18 +137,16 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Pull tokens from the caller: auctionSupply directly into the initializer, reservedTokenAmountForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
-        IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.reservedTokenAmountForLP);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), reservedTokenAmountForLP);
 
         // Compare balances after token distribution to ensure the expected funds are received.
         uint256 tokenLBPStrategyAfter = Currency.wrap(token).balanceOfSelf();
-        if (tokenLBPStrategyAfter - tokenLBPStrategyBefore != migrationParams.reservedTokenAmountForLP) {
-            revert TokenAmountMismatch(
-                tokenLBPStrategyAfter - tokenLBPStrategyBefore, migrationParams.reservedTokenAmountForLP
-            );
+        if (tokenLBPStrategyAfter - tokenLBPStrategyBefore != reservedTokenAmountForLP) {
+            revert TokenAmountMismatch(tokenLBPStrategyAfter - tokenLBPStrategyBefore, reservedTokenAmountForLP);
         }
 
         // Set the reserves for the initializer
-        reserves[initializer] = migrationParams.reservedTokenAmountForLP;
+        reserves[initializer] = reservedTokenAmountForLP;
         initializer.onTokensReceived();
 
         emit InitializerCreated(initializer, migrationParams);
