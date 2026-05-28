@@ -129,7 +129,6 @@ library PositionPlanner {
             // Get the position's share of the remaining currency budget (defined in MPS terms)
             Position memory position = ticks[i].resolvePosition(
                 _sqrtPriceX96,
-                Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing),
                 _currency0Amount * weight / MPS,
                 _currency1Amount * weight / MPS
             );
@@ -149,7 +148,7 @@ library PositionPlanner {
                 lowerTick: TickMath.minUsableTick(_tickSpacing), upperTick: TickMath.maxUsableTick(_tickSpacing)
             });
             Position memory position = fullRangeBounds.resolvePosition(
-                _sqrtPriceX96, Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing), _currency0Amount, _currency1Amount
+                _sqrtPriceX96, _currency0Amount, _currency1Amount
             );
             if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
                 _currency0Amount -= position.amount0;
@@ -181,7 +180,6 @@ library PositionPlanner {
     function resolvePosition(
         TickBounds memory _bounds,
         uint160 _sqrtPriceX96,
-        uint128 _maxLiquidityPerTick,
         uint256 _currency0Budget,
         uint256 _currency1Budget
     ) internal pure returns (Position memory position) {
@@ -196,7 +194,7 @@ library PositionPlanner {
             _currency1Budget
         );
         // Skip positions that are too large or have no liquidity
-        if (liquidity > _maxLiquidityPerTick || liquidity == 0) return position;
+        if (liquidity > uint128(type(int128).max) || liquidity == 0) return position;
 
         // amounts will be less than or equal to the budget amounts
         (uint256 amount0, uint256 amount1) =

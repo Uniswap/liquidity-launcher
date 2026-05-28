@@ -12,6 +12,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {Plan, Position, PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {TickCalculations} from "src/libraries/TickCalculations.sol";
 
 contract MockPositionPlanner {
     function validate(PositionDefinition[] memory definitions) external pure {
@@ -416,6 +417,42 @@ contract PositionPlannerTest is Test {
         assertEq(positions[1].tickUpper, 20);
     }
 
+    function test_resolve_neverReturnsEmptyPositions(uint256 seed, uint8 cnt, int24 tickSpacing, uint160 sqrtPriceX96, uint128 amount0, uint128 amount1)
+        public
+        view
+    {
+        if (tickSpacing < 0) tickSpacing = TickMath.MIN_TICK_SPACING;
+        tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+        sqrtPriceX96 = uint160(
+            bound(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(TickMath.MIN_TICK / 2),
+                TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / 2)
+            )
+        );
+        cnt = uint8(bound(cnt, 1, PositionPlanner.MAX_POSITIONS_PER_PLAN));
+
+        int24 currentTick = TickCalculations.tickFloor(TickMath.getTickAtSqrtPrice(sqrtPriceX96), tickSpacing);
+        vm.assume(currentTick != TickMath.MIN_TICK && currentTick != TickMath.MAX_TICK);
+
+        PositionDefinition[] memory defs = new PositionDefinition[](cnt);
+        uint24 weight = uint24(uint256(1e7) / cnt);
+        for (uint256 i; i < defs.length; i++) {
+            (int24 offsetLower, int24 offsetUpper) = _fuzzTickOffsets(seed, currentTick, tickSpacing);
+            defs[i] = PositionDefinition({offsetLower: offsetLower, offsetUpper: offsetUpper, weight: weight});
+        }
+        // Validate the position defs
+        mockPositionPlanner.validate(defs);
+
+        (Position[] memory positions,,) =
+            mockPositionPlanner.resolve(defs, sqrtPriceX96, int24(tickSpacing), amount0, amount1);
+        // At least one position should be created
+        assertGt(positions.length, 0, "At least one position should be created");
+        for (uint256 i; i < positions.length; i++) {
+            assertGt(positions[i].liquidity, 0, "Any created positions should have liquidity");
+        }
+    }
+
     // --- resolve → toPlan ---
 
     function test_toPlan_buildsFixedSharePlan() public view {
@@ -582,5 +619,33 @@ contract PositionPlannerTest is Test {
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
         });
+    }
+
+    /// @notice Fuzz the tick offsets for a given seed, current tick, and tick spacing
+    function _fuzzTickOffsets(uint256 seed, int24 currentTick, int24 tickSpacing) private pure returns (int24, int24) {
+        int24 minUsableTick = TickMath.minUsableTick(tickSpacing);
+        int24 maxUsableTick = TickMath.maxUsableTick(tickSpacing);
+        // minOffset is the signed offset between currentTick and minUsableTick
+        int24 minOffset = minUsableTick - currentTick;
+        // maxOffset is the signed offset between currentTick and maxUsableTick
+        int24 maxOffset = maxUsableTick - currentTick;
+
+        uint256 absRange = uint256(int256(maxOffset) - int256(minOffset) + 1);
+
+        int24 offsetLower = int24(
+            _bound(int256(uint256(keccak256(abi.encode(seed, 0))) % absRange), int256(minOffset), int256(maxOffset))
+        );
+        int24 offsetUpper = int24(
+            _bound(int256(uint256(keccak256(abi.encode(seed, 1))) % absRange), int256(minOffset), int256(maxOffset))
+        );
+        if (offsetLower == offsetUpper) {
+            if (offsetUpper < maxOffset) offsetUpper++;
+            else offsetLower--;
+        }
+        // Ensure ordering is right
+        if (offsetLower > offsetUpper) {
+            (offsetLower, offsetUpper) = (offsetUpper, offsetLower);
+        }
+        return (offsetLower, offsetUpper);
     }
 }
