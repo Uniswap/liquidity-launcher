@@ -111,19 +111,8 @@ interface ILBPStrategy is IStrategy {
     error InitializerNotRegistered(ILBPInitializer initializer);
 
     /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
-    /// or `recoverFunds`.
     /// @param initializer The initializer being acted on
     error InsufficientReserves(ILBPInitializer initializer);
-
-    /// @notice Error thrown when recoverFunds is called before its unlock block
-    /// @param unlockBlock The earliest block at which recoverFunds is allowed
-    error RecoveryNotYetAllowed(uint256 unlockBlock);
-
-    /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
-    /// recipient.
-    /// @param caller The caller of recoverFunds
-    /// @param recipient The configured recipient for the initializer
-    error UnauthorizedRecovery(address caller, address recipient);
 
     /// @notice Error thrown when the function is called by an address other than the strategy
     error OnlySelfCall();
@@ -133,8 +122,6 @@ interface ILBPStrategy is IStrategy {
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
-    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
-    ///      to recover the reserved tokens and the currency raised by the initializer.
     /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 

@@ -127,14 +127,17 @@ library PositionPlanner {
         remaining0 = _currency0Amount;
         remaining1 = _currency1Amount;
         uint24 cnt = 0;
+        // Definitions are processed in order: each accepted position decrements the shared maxLiquidityPerTick
+        // budget and the remaining amounts available to the full range fallback. Reordering the same
+        // definitions can therefore result in a different set of positions being created
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
             // Get the position's share of the total currency budget (defined in MPS terms)
             Position memory position = ticks[i].resolvePosition(
                 _sqrtPriceX96, maxLiquidityPerTick, _currency0Amount * weight / MPS, _currency1Amount * weight / MPS
             );
-            // Empty positions are skipped and their allocations will be used to create a full range position
-            // Likewise, positions that would cause the total liquidity to exceed max liquidity per tick are skipped
+            // Empty positions are skipped and their allocations will be used to create a full range position.
+            // Positions that would exceed maxLiquidityPerTick are capped within resolvePosition()
             if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
                 remaining0 -= position.amount0;
                 remaining1 -= position.amount1;
@@ -154,7 +157,6 @@ library PositionPlanner {
                 remaining0,
                 remaining1
             );
-            // If the position exceeds the max liquidity per tick, adjust the amounts down
             if (!position.isEmpty()) {
                 remaining0 -= position.amount0;
                 remaining1 -= position.amount1;

@@ -48,27 +48,22 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
     IDistributorFactory public immutable initializerFactory;
-    /// @notice Number of blocks past `migrationBlock` after which an initializer's `recipient` may
-    /// recover the held `reservedTokenAmountForLP` via {recoverFunds}.
-    uint256 public immutable recoveryDelayBlocks;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     /// @notice reservedTokenAmountForLP this strategy holds for each registered initializer. Set when the
-    /// initializer is registered; zeroed when its reserves are consumed by {migrate} or {recoverFunds}.
+    /// initializer is registered; zeroed when its reserves are consumed by {migrate}.
     mapping(ILBPInitializer initializer => uint256) public reserves;
 
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributorFactory _initializerFactory,
-        uint256 _recoveryDelayBlocks
+        IDistributorFactory _initializerFactory
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        recoveryDelayBlocks = _recoveryDelayBlocks;
     }
 
     /// @notice Modifier requiring the initializer to be in a pending migration state
