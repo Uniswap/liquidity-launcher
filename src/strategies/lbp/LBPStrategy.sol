@@ -132,19 +132,14 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         _initializers[initializer] = migrationParams;
 
         // Record balances before token distribution to ensure the expected funds are received. Fee on transfer tokens are not supported.
-        uint256 tokenInitializerBefore = Currency.wrap(migrationParams.token).balanceOf(address(initializer));
-        uint256 tokenLBPStrategyBefore = Currency.wrap(migrationParams.token).balanceOfSelf();
+        uint256 tokenLBPStrategyBefore = Currency.wrap(token).balanceOfSelf();
 
         // Pull tokens from the caller: auctionSupply directly into the initializer, reservedTokenAmountForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
         IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.reservedTokenAmountForLP);
 
         // Compare balances after token distribution to ensure the expected funds are received.
-        uint256 tokenInitializerAfter = Currency.wrap(migrationParams.token).balanceOf(address(initializer));
-        uint256 tokenLBPStrategyAfter = Currency.wrap(migrationParams.token).balanceOfSelf();
-        if (tokenInitializerAfter - tokenInitializerBefore != auctionSupply) {
-            revert TokenAmountMismatch(tokenInitializerAfter - tokenInitializerBefore, auctionSupply);
-        }
+        uint256 tokenLBPStrategyAfter = Currency.wrap(token).balanceOfSelf();
         if (tokenLBPStrategyAfter - tokenLBPStrategyBefore != migrationParams.reservedTokenAmountForLP) {
             revert TokenAmountMismatch(
                 tokenLBPStrategyAfter - tokenLBPStrategyBefore, migrationParams.reservedTokenAmountForLP

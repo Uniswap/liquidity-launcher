@@ -13,8 +13,6 @@ import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
-import {console} from "forge-std/console.sol";
-
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
@@ -57,11 +55,12 @@ library PositionPlanner {
         }
         uint256 totalWeight;
         for (uint256 i; i < _definitions.length; i++) {
-            if (_definitions[i].offsetLower >= _definitions[i].offsetUpper) {
-                revert InvalidTickBounds(_definitions[i].offsetLower, _definitions[i].offsetUpper);
+            PositionDefinition memory definition = _definitions[i];
+            if (definition.offsetLower >= definition.offsetUpper) {
+                revert InvalidTickBounds(definition.offsetLower, definition.offsetUpper);
             }
-            if (_definitions[i].weight == 0) revert ZeroPositionWeight(i);
-            totalWeight += _definitions[i].weight;
+            if (definition.weight == 0) revert ZeroPositionWeight(i);
+            totalWeight += definition.weight;
         }
         if (totalWeight > MPS) {
             revert InvalidAllocationWeights(totalWeight);
