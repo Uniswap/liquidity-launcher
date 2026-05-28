@@ -31,6 +31,7 @@ import {
 } from "../../interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -265,8 +266,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         {
             uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : mp.reservedTokenAmountForLP;
             uint128 amount1In = currencyIsCurrency0 ? mp.reservedTokenAmountForLP : currencyAmountForLp;
-            uint128 remaining0;
-            uint128 remaining1;
+            uint256 remaining0;
+            uint256 remaining1;
             (positions, remaining0, remaining1) = PositionPlanner.resolve(
                 abi.decode(mp.positionDefinitions, (PositionDefinition[])),
                 sqrtPriceX96,
@@ -274,8 +275,12 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 amount0In,
                 amount1In
             );
-            currencyTransferAmount = currencyIsCurrency0 ? amount0In - remaining0 : amount1In - remaining1;
-            tokenTransferAmount = currencyIsCurrency0 ? amount1In - remaining1 : amount0In - remaining0;
+            currencyTransferAmount = currencyIsCurrency0
+                ? amount0In - SafeCastLib.toUint128(remaining0)
+                : amount1In - SafeCastLib.toUint128(remaining1);
+            tokenTransferAmount = currencyIsCurrency0
+                ? amount1In - SafeCastLib.toUint128(remaining1)
+                : amount0In - SafeCastLib.toUint128(remaining0);
         }
 
         Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.positionRecipient);

@@ -109,7 +109,7 @@ library MigratorParams {
         if (p.reservedTokenAmountForLP > uint128(type(int128).max) || p.reservedTokenAmountForLP == 0) {
             revert ILBPStrategy.InvalidReservedTokenAmountForLP();
         }
-        // Position plan validation (non-empty, weights sum to MPS)
+        // Position plan validation (explicit weights do not exceed MPS)
         PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));
         // LP allocation schedule validation (1..MAX_BRACKETS brackets, ascending, rates in [0, MAX_BRACKET_RATE])
         _validateLpAllocationSchedule(p.lpAllocationSchedule);

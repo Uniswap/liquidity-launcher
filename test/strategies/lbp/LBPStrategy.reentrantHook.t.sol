@@ -54,8 +54,7 @@ contract ReentrantInitializeHookNoValidation is InitializerHook {
     function _afterInitialize(address, PoolKey calldata, uint160, int24) internal override returns (bytes4) {
         if (!executed && armedReentry) {
             executed = true;
-            IStrategy(authorized)
-                .initializeDistribution(attackToken, attackTotalSupply, attackConfigData, attackSalt);
+            IStrategy(authorized).initializeDistribution(attackToken, attackTotalSupply, attackConfigData, attackSalt);
         } else if (!executed && armedDonation) {
             executed = true;
             IERC20(attackToken).transfer(authorized, attackTotalSupply);

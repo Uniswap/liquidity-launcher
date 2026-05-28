@@ -58,6 +58,10 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when token and currency are the same
 /// │   └── it reverts with InvalidTokenCurrencyPair
+/// ├── when position definitions are empty
+/// │   └── it stores the migration parameters
+/// ├── when position definitions weights exceed 1e7
+/// │   └── it reverts with InvalidAllocationWeights
 /// ├── when position definitions contain invalid tick bounds
 /// │   └── it reverts with InvalidTickBounds
 /// ├── when position definitions exceed the max position count
@@ -413,7 +417,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
-    function test_WhenPositionDefinitionsIsEmpty(MigrationFuzzParams memory p)
+    function test_WhenPositionDefinitionsAreEmpty(MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
         whenTickSpacingIsValid
@@ -421,18 +425,17 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         whenPositionRecipientIsValid
         whenReservetokenAmountForLPIsValid
     {
-        // it reverts with {EmptyPositionPlan}
-        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        // it stores the migration parameters
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
 
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
-        vm.expectRevert(PositionPlanner.EmptyPositionPlan.selector);
-        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
     }
 
-    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight, MigrationFuzzParams memory p)
+    function test_WhenAllocationWeightsExceedMPS(uint24 _weight, MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
         whenTickSpacingIsValid
@@ -441,8 +444,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         whenReservetokenAmountForLPIsValid
     {
         // it reverts with {InvalidAllocationWeights}
-        _weight = uint24(bound(_weight, 0, type(uint24).max));
-        vm.assume(_weight != 1e7);
+        _weight = uint24(bound(_weight, 1e7 + 1, type(uint24).max));
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](1);
