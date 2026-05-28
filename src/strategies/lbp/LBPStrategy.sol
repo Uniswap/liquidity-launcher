@@ -240,7 +240,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             // Sweep the currency from the initializer
             initializer.sweepCurrency();
             // Transfer what was received to the recipient
-            _transferCurrency(currency, recipient, currency.balanceOfSelf() - currencyBefore);
+            uint256 amount = currency.balanceOfSelf() - currencyBefore;
+            if (amount > 0) {
+                currency.transfer(recipient, amount);
+                emit CurrencySwept(recipient, amount);
+            }
 
             IERC20(mp.token).safeTransfer(recipient, tokenReserves);
             emit FundsRecovered(initializer, recipient, tokenReserves);
