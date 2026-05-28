@@ -111,7 +111,6 @@ library MigratorParams {
         }
 
         PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));
-
         _validateLpAllocationSchedule(p.lpAllocationSchedule);
     }
 
@@ -129,7 +128,7 @@ library MigratorParams {
 
     /// @notice Validates an abi-encoded LP allocation schedule
     /// @dev The schedule is an abi-encoded LiquidityAllocationBracket[]. It must contain 1 to MAX_BRACKETS brackets,
-    /// with the first bracket's lowerThreshold = 0, all rates in [0, MAX_BRACKET_RATE], and strictly ascending
+    /// with the first bracket's lowerThreshold = 0, all rates in (0, MAX_BRACKET_RATE], and strictly ascending
     /// lowerThresholds.
     /// @param _schedule The abi-encoded LP allocation schedule
     function _validateLpAllocationSchedule(bytes memory _schedule) private pure {
@@ -141,7 +140,7 @@ library MigratorParams {
         for (uint256 i = 0; i < count; i++) {
             uint128 lowerThreshold = brackets[i].lowerThreshold;
             uint24 rate = brackets[i].rate;
-            if (rate > MAX_BRACKET_RATE) revert InvalidBracketRate(rate);
+            if (rate == 0 || rate > MAX_BRACKET_RATE) revert InvalidBracketRate(rate);
             if (i == 0 && lowerThreshold != 0) revert InvalidBracketThreshold(lowerThreshold);
             if (i > 0 && lowerThreshold <= prevLower) revert InvalidBracketThreshold(lowerThreshold);
             prevLower = lowerThreshold;

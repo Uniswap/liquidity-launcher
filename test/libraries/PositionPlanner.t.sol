@@ -100,6 +100,15 @@ contract PositionPlannerTest is Test {
         mockPositionPlanner.validate(defs);
     }
 
+    function test_validate_revertsOnZeroPositionWeight() public {
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 0});
+        defs[1] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: 1e7});
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.ZeroPositionWeight.selector, 0));
+        mockPositionPlanner.validate(defs);
+    }
+
     function test_fuzz_validate_succeedsOnValidWeights(uint24 weight0) public view {
         weight0 = uint24(bound(weight0, 1, 1e7 - 1));
 
