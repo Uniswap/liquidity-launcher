@@ -14,8 +14,6 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
-import {console} from "forge-std/console.sol";
-
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
@@ -46,8 +44,10 @@ library PositionPlanner {
     /// @param max The maximum allowed number of positions
     error TooManyPositions(uint24 actual, uint24 max);
 
-    /// @notice Validates that a position plan's explicit weights do not exceed `MPS`
-    /// @param _definitions The weighted position definitions to validate
+    /// @notice Validates that position definitions are correct
+    /// @dev Reverts if the number of definitions exceeds to the maximum allowed,
+    ///      if tick offsets are out of order, or if the total weight exceeds `MPS`
+    /// @param _definitions the position definitions
     function validate(PositionDefinition[] memory _definitions) internal pure {
         if (_definitions.length > MAX_POSITIONS_PER_PLAN) {
             revert TooManyPositions(uint24(_definitions.length), MAX_POSITIONS_PER_PLAN);
@@ -65,13 +65,13 @@ library PositionPlanner {
     }
 
     /// @notice Converts each definition's relative offsets into absolute tick bounds snapped to `_tickSpacing`
-    /// @dev Will clamp to the usable range if the offset exceeds it
+    /// @notice MAY return invalid tick ranges which MUST be checked by the caller
     /// @param _definitions The weighted position definitions to resolve
     /// @param _currentTick The current pool tick
     /// @param _tickSpacing The pool tick spacing
     /// @return ticks The absolute tick bounds for each definition
-    function _resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
-        private
+    function resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
+        internal
         pure
         returns (TickBounds[] memory ticks)
     {
@@ -115,9 +115,7 @@ library PositionPlanner {
         uint256 _currency0Amount,
         uint256 _currency1Amount
     ) internal pure returns (Position[] memory positions, uint256, uint256) {
-        TickBounds[] memory ticks = _resolveTicks(
-            _definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing
-        );
+        TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
         positions = new Position[](ticks.length + 1);
 
         uint24 remainingPercentage = MPS;
@@ -186,7 +184,7 @@ library PositionPlanner {
         // Skip invalid tick bounds
         if (!_bounds.areValid()) return position;
 
-        uint256 liquidity = getLiquidityForAmounts(
+        uint256 liquidity = _getLiquidityForAmounts(
             _sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(_bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(_bounds.upperTick),
@@ -198,7 +196,7 @@ library PositionPlanner {
 
         // amounts will be less than or equal to the budget amounts
         (uint256 amount0, uint256 amount1) =
-            getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
+            _getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
 
         return Position({
             amount0: amount0,
@@ -247,8 +245,8 @@ library PositionPlanner {
     }
 
     /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmount0` without the downcast to uint128
-    function getLiquidityForAmount0(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount0)
-        internal
+    function _getLiquidityForAmount0(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount0)
+        private
         pure
         returns (uint256 liquidity)
     {
@@ -260,8 +258,8 @@ library PositionPlanner {
     }
 
     /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmount1` without the downcast to uint128
-    function getLiquidityForAmount1(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount1)
-        internal
+    function _getLiquidityForAmount1(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount1)
+        private
         pure
         returns (uint256 liquidity)
     {
@@ -272,26 +270,26 @@ library PositionPlanner {
     }
 
     /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmounts` without the downcast to uint128
-    function getLiquidityForAmounts(
+    function _getLiquidityForAmounts(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceAX96,
         uint160 sqrtPriceBX96,
         uint256 amount0,
         uint256 amount1
-    ) internal pure returns (uint256 liquidity) {
+    ) private pure returns (uint256 liquidity) {
         if (sqrtPriceAX96 > sqrtPriceBX96) {
             (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
         }
 
         if (sqrtPriceX96 <= sqrtPriceAX96) {
-            liquidity = getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
+            liquidity = _getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
         } else if (sqrtPriceX96 < sqrtPriceBX96) {
-            uint256 liquidity0 = getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
-            uint256 liquidity1 = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
+            uint256 liquidity0 = _getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
+            uint256 liquidity1 = _getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
 
             liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
         } else {
-            liquidity = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
+            liquidity = _getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
         }
     }
 
@@ -302,8 +300,8 @@ library PositionPlanner {
     /// @param _tickUpper The upper tick of the position
     /// @param _liquidity The liquidity amount to quote
     /// @return The quoted amount0 and amount1
-    function getAmountsForLiquidity(uint160 _sqrtPriceX96, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
-        internal
+    function _getAmountsForLiquidity(uint160 _sqrtPriceX96, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
+        private
         pure
         returns (uint256, uint256)
     {
