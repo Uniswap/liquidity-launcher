@@ -43,7 +43,7 @@ Creates standard ERC20 tokens with extended metadata. These tokens support Permi
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
-The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy` also exposes a `recoverFunds` recovery path: if `migrate` never fires, the initializer's `recipient` may pull the held `reservedTokenAmountForLP` and any raised currency still held on the initializer back out of the strategy after the configured delay past `migrationBlock`.
+The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy.migrate()` is a one-shot action: if the internal migration attempt succeeds, liquidity is deployed to V4; if it reverts, the strategy immediately sweeps the held LP token reserves and any raised currency back to the initializer's configured `recipient`.
 
 They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
 
@@ -65,7 +65,7 @@ All of the above strategies are provided as-is, and custom strategies can be imp
 
 Users should be aware that it is trivially easy to create a LBPStrategy and corresponding Auction with malicious parameters. This can lead to a loss of funds or a degraded experience. You must validate all parameters set on each contract in the system before interacting with them.
 
-Since LBPStrategies cannot control the final price of the Auction, or how much currency is raised, it is possible to configure an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters to eventually sweep the currency and tokens from the contract.
+Since LBPStrategies cannot control the final price of the Auction, or how much currency is raised, it is possible to configure an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters so a failed migration returns the raised currency and reserved LP tokens to the configured `recipient` instead of creating the expected V4 liquidity.
 
 We strongly recommend that a token with value such as ETH or USDC is used as the `currency`.
 
@@ -123,26 +123,42 @@ grabs the final clearing price.
 
 After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 
-- Validate a v4 pool can be created
+- Validate the initializer is registered, still has reserved LP tokens, and is past `migrationBlock`
 - Initialize the Uniswap V4 pool at the discovered price
-- Deploy liquidity as a full-range position
-- Create an optional one-sided position
-- Transfer the LP NFT to the designated recipient
+- Deploy liquidity according to the configured position definitions
+- Transfer the LP NFT or NFTs to the designated position recipient
 
-A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` or `recoverFunds` call for the same initializer.
+`migrate()` attempts the actual pool initialization and liquidity creation through an internal self-call. A successful migration consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` call for the same initializer.
 
 **Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
 
-#### 5. Funds Recovery Path
+#### 5. Migration Failure and Recovery
 
-If `migrate()` is never called — for example, because the auction parameters made migration impossible, or because a transient issue stuck the migrate call — the held `reservedTokenAmountForLP` and the auction's raised currency would otherwise sit forever (the former in the strategy, the latter on the initializer). `LBPStrategy.recoverFunds(initializer)` is the recovery path:
+If the internal migration attempt reverts after the initializer is eligible to migrate, `migrate()` catches the revert and treats the migration as terminal. It then:
 
-- Available only after `migrationBlock + recoveryDelayBlocks` blocks have passed (`recoveryDelayBlocks` is an immutable set at deploy time, calibrated per chain so it corresponds to roughly the same wall-time everywhere).
-- Callable only by the initializer's `recipient`.
-- Transfers the held `reservedTokenAmountForLP` AND sweeps the initializer's raised currency to `recipient`, then zeroes `reserves[initializer]`, which also blocks any future `migrate` call on the same initializer.
+- Sweeps any raised currency still held by the initializer to the strategy.
+- Transfers the swept currency and the held `reservedTokenAmountForLP` to the initializer's configured `recipient`.
+- Zeroes `reserves[initializer]`, which blocks any future migration attempt for the same initializer.
 - Unsold auction tokens stay in the initializer and can be claimed through the initializer's own `tokensRecipient` path.
 
-Because each initializer's reserves are consumable exactly once (by either `migrate` or `recoverFunds`), one initializer's recovery sweep cannot reach into another initializer's held reserves on the same token.
+This behavior prevents funds from being stuck behind a migration path that is not expected to become valid later. Because each initializer's reserves are consumable exactly once, one initializer's failure recovery cannot reach into another initializer's held reserves on the same token.
+
+#### 6. Ways Migration Can Fail
+
+The strategy is written to make migration difficult to grief, but it cannot guarantee that every configured launch can create V4 liquidity. Users and integrators should treat migration safety as part of launch validation, especially when a launcher presents auctions as curated or safe.
+
+The public `migrate()` call can still revert before attempting migration if the initializer is not registered, the reserved LP tokens were already consumed, or the current block is before `migrationBlock`. It can also revert during failure recovery if the strategy cannot sweep or transfer assets to the configured `recipient`.
+
+Potential migration failure cases include:
+
+- **Malicious or non-standard token:** The launched token can revert, return unexpected transfer behavior, block transfers to the PositionManager, or otherwise fail during LP funding or recovery. Fee-on-transfer and rebasing tokens are not supported and can also break accounting assumptions.
+- **Malicious hook:** A configured V4 hook can revert during pool initialization or liquidity modification, or implement behavior that makes the committed pool unsafe for users. The strategy checks that nonzero migration hooks inherit `InitializerHook`, but that check does not prove the hook's economic behavior is safe.
+- **Recipient unable to receive ETH:** If the raised currency is native ETH and the configured `recipient` rejects ETH, a successful migration can revert while sweeping leftovers, and a failed migration can also revert while trying to recover funds. In that case the public `migrate()` call reverts and the initializer remains pending until a later call can complete.
+- **Position definitions that resolve to zero value:** Position definitions can resolve to no usable liquidity because of tiny budgets, extreme prices, tick rounding, or ranges that collapse after clamping to usable ticks. This can cause the position plan to create no meaningful LP, or cause the internal migration attempt to fail and trigger recovery.
+- **Position definitions that cannot be created:** Position definitions can be syntactically valid at initialization but fail at migration time because the discovered price, tick spacing, max liquidity per tick, pool state, or PositionManager execution makes the final positions invalid or impossible to mint.
+- **Overlapping snapped ranges that exceed per-tick liquidity:** Position planning caps liquidity per position, but not aggregate liquidity per tick. Multiple position definitions can snap to overlapping tick ranges, and their combined liquidity can exceed Uniswap V4's per-tick max liquidity during mint execution, causing migration to revert.
+
+When the internal migration attempt fails and recovery succeeds, no V4 LP is created by the strategy; the raised currency and reserved LP tokens are returned to `recipient`. Users should validate the parameters set by the deployer before interacting with any strategies or associated contracts.
 
 ### LBP Hook Requirement
 
