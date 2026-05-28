@@ -14,6 +14,7 @@ import {Plan, Position, PositionDefinition} from "src/types/PositionPlannerTypes
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {TickCalculations} from "src/libraries/TickCalculations.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract MockPositionPlanner {
     function validate(PositionDefinition[] memory definitions) external pure {
@@ -327,7 +328,7 @@ contract PositionPlannerTest is Test {
         assertLe(positions.length, defs.length + 1);
     }
 
-    function test_resolve_skipsPositionAboveMaxLiquidityPerTick() public view {
+    function test_resolve_clampsPositionsAboveMaxLiquidityPerTick() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
 
@@ -335,9 +336,17 @@ contract PositionPlannerTest is Test {
         (Position[] memory positions, uint256 remaining0, uint256 remaining1) =
             mockPositionPlanner.resolve(defs, TickMath.getSqrtPriceAtTick(0), 1, amount, amount);
 
-        assertEq(positions.length, 0);
-        assertEq(remaining0, amount);
-        assertEq(remaining1, amount);
+        assertEq(positions.length, 1);
+        // Should be the position as defined
+        assertEq(positions[0].tickLower, -1);
+        assertEq(positions[0].tickUpper, 1);
+        // With non zero liquidity
+        assertGt(positions[0].liquidity, 0);
+        // And less than the max liquidity per tick
+        assertLt(positions[0].liquidity, Pool.tickSpacingToMaxLiquidityPerTick(1));
+        // With remaining budget
+        assertGt(remaining0, 0);
+        assertGt(remaining1, 0);
     }
 
     function test_resolve_partialExplicitWeightsLeaveFullRangeFallback() public view {
@@ -435,11 +444,13 @@ contract PositionPlannerTest is Test {
                 TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / 2)
             )
         );
-        (amount0, amount1) = _fuzzAmountsForLiquidity(seed, TickMath.MIN_TICK, TickMath.MAX_TICK, tickSpacing);
         cnt = uint8(bound(cnt, 1, PositionPlanner.MAX_POSITIONS_PER_PLAN));
 
         int24 currentTick = TickCalculations.tickFloor(TickMath.getTickAtSqrtPrice(sqrtPriceX96), tickSpacing);
         vm.assume(currentTick != TickMath.MIN_TICK && currentTick != TickMath.MAX_TICK);
+
+        (amount0, amount1) =
+            _fuzzAmountsForLiquidity(seed, currentTick, TickMath.MIN_TICK, TickMath.MAX_TICK, tickSpacing);
 
         PositionDefinition[] memory defs = new PositionDefinition[](cnt);
         uint24 weight = uint24(uint256(1e7) / cnt);
@@ -629,21 +640,25 @@ contract PositionPlannerTest is Test {
 
     /// @notice Fuzz the amount0/1 for a given seed, tick lower, tick upper, and tick spacing
     /// @dev Returns amounts which will not overflow max liquidity per tick, and will result in non zero liquidity positions
-    function _fuzzAmountsForLiquidity(uint256 seed, int24 tickLower, int24 tickUpper, int24 tickSpacing)
-        private
-        pure
-        returns (uint128 amount0, uint128 amount1)
-    {
+    function _fuzzAmountsForLiquidity(
+        uint256 seed,
+        int24 currentTick,
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickSpacing
+    ) private pure returns (uint128 amount0, uint128 amount1) {
+        uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing);
+        // Generate amounts that will not exceed the max liquidity per tick
         amount0 = uint128(
             bound(
                 uint128(uint256(keccak256(abi.encode(seed, 0))) % type(uint128).max),
                 SqrtPriceMath.getAmount0Delta(
-                    TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), 1, false
+                    TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(currentTick), 1, false
                 ),
                 SqrtPriceMath.getAmount0Delta(
                     TickMath.getSqrtPriceAtTick(tickLower),
-                    TickMath.getSqrtPriceAtTick(tickUpper),
-                    Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing),
+                    TickMath.getSqrtPriceAtTick(currentTick),
+                    maxLiquidity,
                     false
                 )
             )
@@ -652,14 +667,36 @@ contract PositionPlannerTest is Test {
             bound(
                 uint128(uint256(keccak256(abi.encode(seed, 1))) % type(uint128).max),
                 SqrtPriceMath.getAmount1Delta(
-                    TickMath.getSqrtPriceAtTick(tickUpper), TickMath.getSqrtPriceAtTick(tickLower), 1, false
+                    TickMath.getSqrtPriceAtTick(tickUpper), TickMath.getSqrtPriceAtTick(currentTick), 1, false
                 ),
                 SqrtPriceMath.getAmount1Delta(
                     TickMath.getSqrtPriceAtTick(tickUpper),
-                    TickMath.getSqrtPriceAtTick(tickLower),
-                    Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing),
+                    TickMath.getSqrtPriceAtTick(currentTick),
+                    maxLiquidity,
                     false
                 )
+            )
+        );
+        // Back out the liquidity from the amounts
+        uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(
+            TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(currentTick), amount0
+        );
+        uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmount1(
+            TickMath.getSqrtPriceAtTick(currentTick), TickMath.getSqrtPriceAtTick(tickUpper), amount1
+        );
+        // Take the larger non zero liquidity
+        uint128 liquidity = liquidity0 > 0 && liquidity0 < liquidity1 ? liquidity0 : (liquidity1 > 0 ? liquidity1 : 0);
+        vm.assume(liquidity > 0);
+
+        // Find the amounts that will result in the given liquidity
+        amount0 = SafeCast.toUint128(
+            SqrtPriceMath.getAmount0Delta(
+                TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(currentTick), liquidity, false
+            )
+        );
+        amount1 = SafeCast.toUint128(
+            SqrtPriceMath.getAmount1Delta(
+                TickMath.getSqrtPriceAtTick(currentTick), TickMath.getSqrtPriceAtTick(tickUpper), liquidity, false
             )
         );
         return (amount0, amount1);

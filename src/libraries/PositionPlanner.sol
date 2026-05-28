@@ -118,26 +118,28 @@ library PositionPlanner {
         int24 _tickSpacing,
         uint256 _currency0Amount,
         uint256 _currency1Amount
-    ) internal pure returns (Position[] memory positions, uint256, uint256) {
+    ) internal pure returns (Position[] memory positions, uint256 remaining0, uint256 remaining1) {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
         positions = new Position[](ticks.length + 1);
 
         // Track one global remaining cap across the whole plan, conservatively assuming all positions share a tick.
         // This may skip positions V4 would accept, but guarantees planned positions cannot exceed the cap on a fresh pool.
-        uint256 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
+        uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
+        remaining0 = _currency0Amount;
+        remaining1 = _currency1Amount;
         uint24 cnt = 0;
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
-            // Get the position's share of the remaining currency budget (defined in MPS terms)
+            // Get the position's share of the total currency budget (defined in MPS terms)
             Position memory position = ticks[i].resolvePosition(
-                _sqrtPriceX96, _currency0Amount * weight / MPS, _currency1Amount * weight / MPS
+                _sqrtPriceX96, maxLiquidityPerTick, _currency0Amount * weight / MPS, _currency1Amount * weight / MPS
             );
             // Empty positions are skipped and their allocations will be used to create a full range position
             // Likewise, positions that would cause the total liquidity to exceed max liquidity per tick are skipped
             if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
-                _currency0Amount -= position.amount0;
-                _currency1Amount -= position.amount1;
-                maxLiquidityPerTick -= position.liquidity;
+                remaining0 -= position.amount0;
+                remaining1 -= position.amount1;
+                maxLiquidityPerTick -= uint128(position.liquidity);
                 positions[cnt++] = position;
             }
         }
@@ -148,19 +150,11 @@ library PositionPlanner {
                 lowerTick: TickMath.minUsableTick(_tickSpacing), upperTick: TickMath.maxUsableTick(_tickSpacing)
             });
             Position memory position =
-                fullRangeBounds.resolvePosition(_sqrtPriceX96, _currency0Amount, _currency1Amount);
+                fullRangeBounds.resolvePosition(_sqrtPriceX96, maxLiquidityPerTick, remaining0, remaining1);
             // If the position exceeds the max liquidity per tick, adjust the amounts down
-            if (position.liquidity > maxLiquidityPerTick) {
-                (uint256 amount0, uint256 amount1) = _getAmountsForLiquidity(
-                    _sqrtPriceX96, fullRangeBounds.lowerTick, fullRangeBounds.upperTick, uint128(maxLiquidityPerTick)
-                );
-                position.amount0 = amount0;
-                position.amount1 = amount1;
-                position.liquidity = maxLiquidityPerTick;
-            }
             if (!position.isEmpty()) {
-                _currency0Amount -= position.amount0;
-                _currency1Amount -= position.amount1;
+                remaining0 -= position.amount0;
+                remaining1 -= position.amount1;
                 positions[cnt++] = position;
             }
         }
@@ -170,7 +164,7 @@ library PositionPlanner {
             mstore(positions, cnt)
         }
 
-        return (positions, _currency0Amount, _currency1Amount);
+        return (positions, remaining0, remaining1);
     }
 
     /// @notice Returns true if tick bounds are correctly ordered
@@ -188,6 +182,7 @@ library PositionPlanner {
     function resolvePosition(
         TickBounds memory _bounds,
         uint160 _sqrtPriceX96,
+        uint128 _maxLiquidity,
         uint256 _currency0Budget,
         uint256 _currency1Budget
     ) internal pure returns (Position memory position) {
@@ -201,8 +196,10 @@ library PositionPlanner {
             _currency0Budget,
             _currency1Budget
         );
-        // Skip positions that are too large or have no liquidity
-        if (liquidity > uint128(type(int128).max) || liquidity == 0) return position;
+        // Skip positions that have no liquidity
+        if (liquidity == 0) return position;
+        // Cap the liquidity to the max liquidity allowable
+        liquidity = liquidity > _maxLiquidity ? _maxLiquidity : liquidity;
 
         // amounts will be less than or equal to the budget amounts
         (uint256 amount0, uint256 amount1) =
