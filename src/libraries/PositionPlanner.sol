@@ -13,6 +13,8 @@ import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
+import {console} from "forge-std/console.sol";
+
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
@@ -147,7 +149,16 @@ library PositionPlanner {
             });
             Position memory position =
                 fullRangeBounds.resolvePosition(_sqrtPriceX96, _currency0Amount, _currency1Amount);
-            if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
+            // If the position exceeds the max liquidity per tick, adjust the amounts down
+            if (position.liquidity > maxLiquidityPerTick) {
+                (uint256 amount0, uint256 amount1) = _getAmountsForLiquidity(
+                    _sqrtPriceX96, fullRangeBounds.lowerTick, fullRangeBounds.upperTick, uint128(maxLiquidityPerTick)
+                );
+                position.amount0 = amount0;
+                position.amount1 = amount1;
+                position.liquidity = maxLiquidityPerTick;
+            }
+            if (!position.isEmpty()) {
                 _currency0Amount -= position.amount0;
                 _currency1Amount -= position.amount1;
                 positions[cnt++] = position;

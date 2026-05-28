@@ -13,6 +13,7 @@ import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {Plan, Position, PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {TickCalculations} from "src/libraries/TickCalculations.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 
 contract MockPositionPlanner {
     function validate(PositionDefinition[] memory definitions) external pure {
@@ -434,6 +435,7 @@ contract PositionPlannerTest is Test {
                 TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK / 2)
             )
         );
+        (amount0, amount1) = _fuzzAmountsForLiquidity(seed, TickMath.MIN_TICK, TickMath.MAX_TICK, tickSpacing);
         cnt = uint8(bound(cnt, 1, PositionPlanner.MAX_POSITIONS_PER_PLAN));
 
         int24 currentTick = TickCalculations.tickFloor(TickMath.getTickAtSqrtPrice(sqrtPriceX96), tickSpacing);
@@ -623,6 +625,44 @@ contract PositionPlannerTest is Test {
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
         });
+    }
+
+    /// @notice Fuzz the amount0/1 for a given seed, tick lower, tick upper, and tick spacing
+    /// @dev Returns amounts which will not overflow max liquidity per tick, and will result in non zero liquidity positions
+    function _fuzzAmountsForLiquidity(uint256 seed, int24 tickLower, int24 tickUpper, int24 tickSpacing)
+        private
+        pure
+        returns (uint128 amount0, uint128 amount1)
+    {
+        amount0 = uint128(
+            bound(
+                uint128(uint256(keccak256(abi.encode(seed, 0))) % type(uint128).max),
+                SqrtPriceMath.getAmount0Delta(
+                    TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), 1, false
+                ),
+                SqrtPriceMath.getAmount0Delta(
+                    TickMath.getSqrtPriceAtTick(tickLower),
+                    TickMath.getSqrtPriceAtTick(tickUpper),
+                    Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing),
+                    false
+                )
+            )
+        );
+        amount1 = uint128(
+            bound(
+                uint128(uint256(keccak256(abi.encode(seed, 1))) % type(uint128).max),
+                SqrtPriceMath.getAmount1Delta(
+                    TickMath.getSqrtPriceAtTick(tickUpper), TickMath.getSqrtPriceAtTick(tickLower), 1, false
+                ),
+                SqrtPriceMath.getAmount1Delta(
+                    TickMath.getSqrtPriceAtTick(tickUpper),
+                    TickMath.getSqrtPriceAtTick(tickLower),
+                    Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing),
+                    false
+                )
+            )
+        );
+        return (amount0, amount1);
     }
 
     /// @notice Fuzz the tick offsets for a given seed, current tick, and tick spacing
