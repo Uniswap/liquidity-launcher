@@ -417,10 +417,14 @@ contract PositionPlannerTest is Test {
         assertEq(positions[1].tickUpper, 20);
     }
 
-    function test_resolve_neverReturnsEmptyPositions(uint256 seed, uint8 cnt, int24 tickSpacing, uint160 sqrtPriceX96, uint128 amount0, uint128 amount1)
-        public
-        view
-    {
+    function test_resolve_neverReturnsEmptyPositions(
+        uint256 seed,
+        uint8 cnt,
+        int24 tickSpacing,
+        uint160 sqrtPriceX96,
+        uint128 amount0,
+        uint128 amount1
+    ) public view {
         if (tickSpacing < 0) tickSpacing = TickMath.MIN_TICK_SPACING;
         tickSpacing = int24(bound(tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
         sqrtPriceX96 = uint160(
