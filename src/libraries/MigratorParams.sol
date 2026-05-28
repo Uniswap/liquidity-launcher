@@ -98,6 +98,10 @@ library MigratorParams {
         if (p.poolParameters.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG && p.poolParameters.hook == address(0)) {
             revert InvalidDynamicFeeHook();
         }
+        // recipient validation (cannot be zero address).
+        if (p.recipient == address(0)) {
+            revert ILBPStrategy.InvalidRecipient();
+        }
         // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
         if (
             p.positionRecipient == address(0) || p.positionRecipient == ActionConstants.MSG_SENDER

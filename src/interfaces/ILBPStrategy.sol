@@ -62,6 +62,9 @@ interface ILBPStrategy is IStrategy {
     /// @param positionRecipient The invalid position recipient
     error InvalidPositionRecipient(address positionRecipient);
 
+    /// @notice Error thrown when the recipient of unallocated currency is the zero address
+    error InvalidRecipient();
+
     /// @notice Error thrown when the initializer's fundsRecipient is not the strategy
     /// @param actual The fundsRecipient configured on the initializer
     /// @param expected The required fundsRecipient (the strategy address)
@@ -82,6 +85,9 @@ interface ILBPStrategy is IStrategy {
     /// @param claimed The currencyRaised value reported by the initializer
     error CurrencyRaisedMismatch(uint256 swept, uint256 claimed);
 
+    /// @notice Error thrown when the token is the zero address
+    error ZeroAddressToken();
+
     /// @notice Error thrown when the three token sources disagree at registration.
     /// @param fromParam The function-param `token` (what the launcher is pulling)
     /// @param declared The user-declared MigratorParameters.token
@@ -93,6 +99,11 @@ interface ILBPStrategy is IStrategy {
     /// @param declared The user-declared currency (from MigratorParameters.currency)
     /// @param fromInitializer The currency() value returned by the freshly deployed initializer
     error CurrencyMismatch(address declared, address fromInitializer);
+
+    /// @notice Error thrown when the token amount mismatch after distribution
+    /// @param actual The actual amount of token available after distribution
+    /// @param expected The expected amount of token
+    error TokenAmountMismatch(uint256 actual, uint256 expected);
 
     /// @notice Error thrown when an initializer was never registered with the strategy
     /// @param initializer The initializer being acted on
