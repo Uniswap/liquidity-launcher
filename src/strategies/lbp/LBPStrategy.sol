@@ -266,6 +266,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         {
             uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : mp.reservedTokenAmountForLP;
             uint128 amount1In = currencyIsCurrency0 ? mp.reservedTokenAmountForLP : currencyAmountForLp;
+            // We use uint256 for remaining amounts for simplicity. They are guaranteed to fit within a uint128 since the inputs are uint128s.
             uint256 remaining0;
             uint256 remaining1;
             (positions, remaining0, remaining1) = PositionPlanner.resolve(

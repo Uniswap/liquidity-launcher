@@ -28,15 +28,6 @@ library PositionPlanner {
         int24 upperTick;
     }
 
-    /// @notice Mutable state used while resolving a plan
-    struct ResolveState {
-        uint128 remainingCurrency0Amount;
-        uint128 remainingCurrency1Amount;
-        uint128 maxLiquidityPerTick;
-        uint256 positionCount;
-        uint256 remainingPercentage;
-    }
-
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
     /// @notice Reference liquidity used to quote token consumption
@@ -130,7 +121,7 @@ library PositionPlanner {
         positions = new Position[](ticks.length + 1);
 
         uint24 remainingPercentage = MPS;
-        uint24 positionCount = 0;
+        uint24 cnt = 0;
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
             // Get the position's share of the remaining currency budget (defined in MPS terms)
@@ -146,7 +137,7 @@ library PositionPlanner {
             if (!position.isEmpty()) {
                 _currency0Amount -= position.amount0;
                 _currency1Amount -= position.amount1;
-                positions[positionCount++] = position;
+                positions[cnt++] = position;
             }
         }
 
@@ -161,27 +152,30 @@ library PositionPlanner {
             if (!position.isEmpty()) {
                 _currency0Amount -= position.amount0;
                 _currency1Amount -= position.amount1;
-                positions[positionCount++] = position;
+                positions[cnt++] = position;
             }
         }
 
         // truncate the positions array to the actual created number of positions
         assembly {
-            mstore(positions, positionCount)
+            mstore(positions, cnt)
         }
 
         return (positions, _currency0Amount, _currency1Amount);
     }
 
+    /// @notice Returns true if tick bounds are correctly ordered
     function areValid(TickBounds memory _bounds) internal pure returns (bool) {
         return _bounds.lowerTick < _bounds.upperTick;
     }
 
-    /// @notice Checks if a position is empty
+    /// @notice Returns true if a position is empty
     function isEmpty(Position memory _position) internal pure returns (bool) {
         return _position.liquidity == 0;
     }
 
+    /// @notice Resolves tick bounds into a position, allocating up to the provided budgets
+    /// @dev The actual amounts required for the computed liquidity will be less than or equal to the budget
     function resolvePosition(
         TickBounds memory _bounds,
         uint160 _sqrtPriceX96,
