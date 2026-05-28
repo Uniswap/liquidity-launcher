@@ -120,6 +120,9 @@ library PositionPlanner {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
         positions = new Position[](ticks.length + 1);
 
+        // Track one global remaining cap across the whole plan, conservatively assuming all positions share a tick.
+        // This may skip positions V4 would accept, but guarantees planned positions cannot exceed the cap on a fresh pool.
+        uint256 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
         uint24 cnt = 0;
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
@@ -131,9 +134,11 @@ library PositionPlanner {
                 _currency1Amount * weight / MPS
             );
             // Empty positions are skipped and their allocations will be used to create a full range position
-            if (!position.isEmpty()) {
+            // Likewise, positions that would cause the total liquidity to exceed max liquidity per tick are skipped
+            if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
                 _currency0Amount -= position.amount0;
                 _currency1Amount -= position.amount1;
+                maxLiquidityPerTick -= position.liquidity;
                 positions[cnt++] = position;
             }
         }
@@ -146,7 +151,7 @@ library PositionPlanner {
             Position memory position = fullRangeBounds.resolvePosition(
                 _sqrtPriceX96, Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing), _currency0Amount, _currency1Amount
             );
-            if (!position.isEmpty()) {
+            if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
                 _currency0Amount -= position.amount0;
                 _currency1Amount -= position.amount1;
                 positions[cnt++] = position;
