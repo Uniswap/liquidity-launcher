@@ -120,7 +120,6 @@ library PositionPlanner {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
         positions = new Position[](ticks.length + 1);
 
-        uint24 remainingPercentage = MPS;
         uint24 cnt = 0;
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
@@ -128,12 +127,10 @@ library PositionPlanner {
             Position memory position = ticks[i].resolvePosition(
                 _sqrtPriceX96,
                 Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing),
-                _currency0Amount * weight / remainingPercentage,
-                _currency1Amount * weight / remainingPercentage
+                _currency0Amount * weight / MPS,
+                _currency1Amount * weight / MPS
             );
-            remainingPercentage -= weight;
-            // Empty positions are skipped but their weights are subtracted from the remaining percentage
-            // such that future positions will consume a larger proportion of the remaining budget
+            // Empty positions are skipped and their allocations will be used to create a full range position
             if (!position.isEmpty()) {
                 _currency0Amount -= position.amount0;
                 _currency1Amount -= position.amount1;

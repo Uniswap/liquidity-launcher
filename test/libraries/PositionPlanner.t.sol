@@ -11,6 +11,7 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {Plan, Position, PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 contract MockPositionPlanner {
     function validate(PositionDefinition[] memory definitions) external pure {
@@ -357,20 +358,47 @@ contract PositionPlannerTest is Test {
         assertGt(fallbackOnly[0].liquidity, 0);
     }
 
-    function test_resolve_failedAllocationIncreasesLaterShares() public view {
+    function test_resolve_skippedPositionAllocateToFullRange() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         // First position definition is invalid as it resolves to MAX_TICK == MAX_TICK
         defs[0] = PositionDefinition({offsetLower: 1, offsetUpper: 2, weight: 4e6});
-        // The unused weight should rollover entirely to the second position
         defs[1] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 6e6});
 
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK - 1);
         (Position[] memory positions,,) = mockPositionPlanner.resolve(defs, sqrtPriceX96, 10, 100e18, 100e18);
 
-        assertEq(positions.length, 1);
-        // Should only be one full range position created
+        assertEq(positions.length, 2);
+        // Should create two positions: the defined full range with 60% weight and the fall back with the remainder
         assertEq(positions[0].tickLower, TickMath.minUsableTick(10));
         assertEq(positions[0].tickUpper, TickMath.maxUsableTick(10));
+        assertEq(positions[1].tickLower, TickMath.minUsableTick(10));
+        assertEq(positions[1].tickUpper, TickMath.maxUsableTick(10));
+        // Assert ratios are correct between the two positions
+        assertEq(positions[0].liquidity, positions[1].liquidity * 6e6 / 4e6);
+    }
+
+    function test_resolve_skippedPositionAllocateToFullRange_fuzz(uint24 weight0) public view {
+        // Fuzz the weight of the skipped position
+        weight0 = uint24(bound(weight0, 1, 1e7 - 1));
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({offsetLower: 1, offsetUpper: 2, weight: weight0});
+
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK - 1);
+        (Position[] memory positions,,) = mockPositionPlanner.resolve(defs, sqrtPriceX96, 10, 100e18, 100e18);
+        assertEq(positions.length, 1);
+        assertEq(positions[0].tickLower, TickMath.minUsableTick(10));
+        assertEq(positions[0].tickUpper, TickMath.maxUsableTick(10));
+        assertEq(
+            positions[0].liquidity,
+            // Should be 100% weight, using the rollover from the skipped position
+            LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(positions[0].tickLower),
+                TickMath.getSqrtPriceAtTick(positions[0].tickUpper),
+                100e18,
+                100e18
+            )
+        );
     }
 
     function test_resolve_keepsDefinitionsInInputOrder() public view {
