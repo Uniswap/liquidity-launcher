@@ -6,12 +6,12 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "src/interfaces/ILBPInitializer.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+import {IDistributor} from "src/interfaces/IDistributor.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 
-/// @notice Configurable mock of a CCA initializer for testing LBPStrategy
+/// @notice Configurable mock initializer for testing LBPStrategy
 contract MockLBPInitializer is ILBPInitializer {
     using CurrencyLibrary for Currency;
 
@@ -50,11 +50,22 @@ contract MockLBPInitializer is ILBPInitializer {
         storedLbpParams = _params;
     }
 
+    /// @notice Test-only mutator: lets a test flip the declared token after registration to
+    /// exercise the strategy's defense against malicious initializers lying about their own properties.
+    function setToken(address _token) external {
+        token = _token;
+    }
+
+    /// @notice Test-only mutator: lets a test flip the declared currency after registration.
+    function setCurrency(address _currency) external {
+        currency = _currency;
+    }
+
     function lbpInitializationParams() external view returns (LBPInitializationParams memory) {
         return storedLbpParams;
     }
 
-    function sweepCurrency() external {
+    function sweepCurrency() external virtual {
         sweepCurrencyCalled = true;
         // Transfer all currency held by this contract to the caller (the strategy)
         Currency c = Currency.wrap(currency);

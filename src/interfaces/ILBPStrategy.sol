@@ -2,20 +2,19 @@
 pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
-import {IDistributionStrategy} from "./IDistributionStrategy.sol";
+import {IStrategy} from "./IStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
-interface ILBPStrategy is IDistributionStrategy {
+interface ILBPStrategy is IStrategy {
     /// @notice Emitted when the auction is initialized
     /// @param initializer The initializer contract that was created
-    /// @param migrationParams The migration parameters. Any nonzero migrationParams.hook MUST inherit InitializerHook.
+    /// @param migrationParams The migration parameters. Any nonzero migrationParams.poolParameters.hook MUST inherit InitializerHook.
     ///        If hook is address(0), migration uses the hookless pool unless it already exists, then falls back to
-    ///        the LBPStrategy address as the hook.
+    ///        the LBPStrategy address as the hook. address(0) is only valid with a static pool fee.
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
     /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
@@ -30,6 +29,13 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
+    /// @notice Emitted when an initializer's held reservedTokenAmountForLP is swept by its recipient after the
+    /// recovery delay expires (recovery path when migrate fails).
+    /// @param initializer The initializer whose reserves were swept
+    /// @param recipient The recipient that received the swept tokens
+    /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
+    event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
+
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);
@@ -37,7 +43,7 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
     /// @param currentBlock The current block number
-    error MigrationNotAllowed(uint256 migrationBlock, uint256 currentBlock);
+    error MigrationNotYetAllowed(uint256 migrationBlock, uint256 currentBlock);
 
     /// @notice Error thrown when the end block is at or after the migration block
     /// @param endBlock The invalid end block
@@ -56,22 +62,69 @@ interface ILBPStrategy is IDistributionStrategy {
     /// @param positionRecipient The invalid position recipient
     error InvalidPositionRecipient(address positionRecipient);
 
-    /// @notice Error thrown when the funds recipient is not set to the strategy
-    /// @param expectedRecipient The expected recipient
-    error InvalidRecipient(address expectedRecipient);
+    /// @notice Error thrown when the initializer's fundsRecipient is not the strategy
+    /// @param actual The fundsRecipient configured on the initializer
+    /// @param expected The required fundsRecipient (the strategy address)
+    error InvalidFundsRecipient(address actual, address expected);
 
-    /// @notice Error thrown when supplyForLP exceeds v4's int128 amount limit
-    /// @param supplyForLP The invalid supply
-    /// @param maxSupplyForLP The max supply (uint128(type(int128).max))
-    error InvalidSupplyForLp(uint128 supplyForLP, uint128 maxSupplyForLP);
+    /// @notice Error thrown when the initializer's tokensRecipient is the strategy
+    /// (the strategy must never be the tokensRecipient — unsold auction tokens are claimed by the
+    /// configured tokensRecipient directly from the initializer)
+    /// @param actual The tokensRecipient configured on the initializer (always equal to the strategy when this fires)
+    error InvalidTokensRecipient(address actual);
 
-    /// @notice Error thrown when a configured hook does not support IInitializerHook
-    /// @param hook The invalid hook address
-    error InvalidHook(address hook);
+    /// @notice Error thrown when reservedTokenAmountForLP exceeds v4's int128 amount limit
+    error InvalidReservedTokenAmountForLP();
+
+    /// @notice Error thrown when the currency swept from the initializer does not match the
+    /// currencyRaised reported by the initializer's LBP parameters
+    /// @param swept The amount of currency actually swept from the initializer
+    /// @param claimed The currencyRaised value reported by the initializer
+    error CurrencyRaisedMismatch(uint256 swept, uint256 claimed);
+
+    /// @notice Error thrown when the three token sources disagree at registration.
+    /// @param fromParam The function-param `token` (what the launcher is pulling)
+    /// @param declared The user-declared MigratorParameters.token
+    /// @param fromInitializer The initializer's own `token()` getter at registration
+    error TokenMismatch(address fromParam, address declared, address fromInitializer);
+
+    /// @notice Error thrown when the user-declared `MigratorParameters.currency` does not agree
+    /// with the freshly deployed initializer's `currency()` getter at registration.
+    /// @param declared The user-declared currency (from MigratorParameters.currency)
+    /// @param fromInitializer The currency() value returned by the freshly deployed initializer
+    error CurrencyMismatch(address declared, address fromInitializer);
+
+    /// @notice Error thrown when an initializer was never registered with the strategy
+    /// @param initializer The initializer being acted on
+    error InitializerNotRegistered(ILBPInitializer initializer);
+
+    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
+    /// or `recoverFunds`.
+    /// @param initializer The initializer being acted on
+    error InsufficientReserves(ILBPInitializer initializer);
+
+    /// @notice Error thrown when recoverFunds is called before its unlock block
+    /// @param unlockBlock The earliest block at which recoverFunds is allowed
+    error RecoveryNotYetAllowed(uint256 unlockBlock);
+
+    /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
+    /// recipient.
+    /// @param caller The caller of recoverFunds
+    /// @param recipient The configured recipient for the initializer
+    error UnauthorizedRecovery(address caller, address recipient);
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
-    /// @param initializer The initializer contract that was created
+    /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
+    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
+    ///      to recover the reserved tokens and the currency raised by the initializer.
+    /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
+
+    /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
+    /// recovery delay past `migrationBlock`, the initializer's `recipient` may sweep both
+    /// the held `reservedTokenAmountForLP` and any raised currency still held in the initializer out of the strategy.
+    /// @param initializer The initializer whose funds to recover
+    function recoverFunds(ILBPInitializer initializer) external;
 
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up

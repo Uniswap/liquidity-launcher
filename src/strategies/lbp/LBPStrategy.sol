@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Ownable} from "solady/auth/Ownable.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -20,166 +22,219 @@ import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
-import {IDistributionStrategy} from "../../interfaces/IDistributionStrategy.sol";
-import {IDistributionContract} from "../../interfaces/IDistributionContract.sol";
+import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
 import {Plan, Position, PositionDefinition} from "../../types/PositionPlannerTypes.sol";
 import {
     ILBPInitializer,
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "../../interfaces/ILBPInitializer.sol";
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrategy {
+contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, ReentrancyGuardTransient {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
-    using MigratorParams for MigratorParameters;
+    using MigratorParams for *;
+    using SafeERC20 for IERC20;
 
     /// @notice The v4 pool manager
     IPoolManager public immutable poolManager;
     /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
-    IDistributionStrategy public immutable initializerFactory;
+    IDistributorFactory public immutable initializerFactory;
+    /// @notice Number of blocks past `migrationBlock` after which an initializer's `recipient` may
+    /// recover the held `reservedTokenAmountForLP` via {recoverFunds}.
+    uint256 public immutable recoveryDelayBlocks;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
+    /// @notice reservedTokenAmountForLP this strategy holds for each registered initializer. Set when the
+    /// initializer is registered; zeroed when its reserves are consumed by {migrate} or {recoverFunds}.
+    mapping(ILBPInitializer initializer => uint256) public reserves;
+
     constructor(
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IDistributionStrategy _initializerFactory,
-        address _owner
+        IDistributorFactory _initializerFactory,
+        uint256 _recoveryDelayBlocks
     ) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        _initializeOwner(_owner);
+        recoveryDelayBlocks = _recoveryDelayBlocks;
     }
 
-    /// @inheritdoc IDistributionStrategy
-    /// @dev Permissionless by design — the factory controls what initializer is deployed, and all parameters
-    /// are validated before storage. Callers cannot overwrite existing initializer registrations.
-    /// The initializer factory MUST include the supplied salt in deterministic address calculations; this strategy
-    /// derives that salt from the caller-provided salt and MigratorParameters to bind the initializer address to both.
+    /// @notice Modifier requiring the initializer to be in a pending migration state
+    /// @dev An initializer is pending migration if it is registered and has a non zero reserve amount
+    modifier onlyPendingMigrate(ILBPInitializer initializer) {
+        if (_initializers[initializer].migrationBlock == 0) revert InitializerNotRegistered(initializer);
+        if (reserves[initializer] == 0) revert InsufficientReserves(initializer);
+        _;
+    }
+
+    /// @notice Initialize an LBP distribution.
+    /// @dev Validates the params, deploys the initializer (initializer) via the factory, registers the migration
+    ///      parameters, and pulls `totalSupply` tokens from the caller — `auctionSupply` directly into the
+    ///      initializer and `reservedTokenAmountForLP` into this strategy. The caller (typically the launcher) must have
+    ///      approved this strategy for at least `totalSupply` of `token` before calling.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
         external
-        returns (IDistributionContract)
+        nonReentrant
     {
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
 
-        // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
-        if (
-            migrationParams.hook != address(0)
-                && (!ERC165Checker.supportsInterface(migrationParams.hook, type(IInitializerHook).interfaceId)
-                    || IInitializerHook(migrationParams.hook).authorized() != address(this))
-        ) {
-            revert InvalidHook(migrationParams.hook);
-        }
-
-        // Validate the migrator parameters (scalar fields, supplyForLP cap, position plan, and LP allocation schedule)
+        // Validate the migrator parameters (scalar fields, reservedTokenAmountForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
+        // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
+        migrationParams.poolParameters.hook.validateHook();
 
-        // Deploy the initializer contract via factory.
-        // Only the auction supply is passed as the amount — supplyForLP is held as CCA custody tokens (set in initializerParams).
-        // LiquidityLauncher transfers the full totalSupply to the CCA, which validates balance >= auctionSupply + custodyTokens.
+        // Calculate the salt for the initializer by hashing the caller provided salt with the MigratorParams
         bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
+        // Deploy the initializer contract via factory with only auction supply (totalSupply - reservedTokenAmountForLP) passed as the amount
+        uint256 auctionSupply = totalSupply - migrationParams.reservedTokenAmountForLP;
         ILBPInitializer initializer = ILBPInitializer(
-            address(
-                IDistributionStrategy(initializerFactory)
-                    .initializeDistribution(token, totalSupply, initializerParams, initializerSalt)
-            )
+            address(initializerFactory.create(token, auctionSupply, initializerParams, initializerSalt))
         );
 
-        // Check if the initializer was already registered to ensure parameters are not overwritten.
-        // migrationBlock is always non-zero for valid registrations (enforced by _validateInitializer's endBlock check).
-        if (_initializers[initializer].migrationBlock != 0) {
-            revert InitializerAlreadyCreated(initializer);
-        }
-
+        if (_initializers[initializer].migrationBlock != 0) revert InitializerAlreadyCreated(initializer);
         // Validate the initializer parameters are set as expected
         _validateInitializerParams(initializer, migrationParams);
 
-        // Store the parameters
+        if (migrationParams.token != token || initializer.token() != token) {
+            revert TokenMismatch(token, migrationParams.token, initializer.token());
+        }
+        if (migrationParams.currency != initializer.currency()) {
+            revert CurrencyMismatch(migrationParams.currency, initializer.currency());
+        }
+
+        // Set the migrator params in storage for future use
         _initializers[initializer] = migrationParams;
 
-        emit InitializerCreated(initializer, migrationParams);
+        // Pull tokens from the caller: auctionSupply directly into the initializer, reservedTokenAmountForLP into self.
+        IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.reservedTokenAmountForLP);
 
-        return IDistributionContract(address(initializer));
+        // Set the reserves for the initializer
+        reserves[initializer] = migrationParams.reservedTokenAmountForLP;
+        initializer.onTokensReceived();
+
+        emit InitializerCreated(initializer, migrationParams);
     }
 
     /// @inheritdoc ILBPStrategy
-    /// @dev Permissionless by design — migration is only possible after the migration block, and parameters are
-    /// immutably set during initializeDistribution. Anyone can trigger migration
-    function migrate(ILBPInitializer initializer) external {
+    function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
         // Load the stored migration parameters for the initializer
         MigratorParameters memory migrationParams = _initializers[initializer];
 
-        // Ensure the migration block is after the current block. This also reverts if the initializer is unregistered.
-        if (_getBlockNumberish() < migrationParams.migrationBlock || migrationParams.migrationBlock == 0) {
-            revert MigrationNotAllowed(migrationParams.migrationBlock, _getBlockNumberish());
+        if (_getBlockNumberish() < migrationParams.migrationBlock) {
+            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
         }
 
-        // Get the LBP initialization parameters. Trust the initializer to return the correct parameters.
-        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+        reserves[initializer] = 0;
 
-        // Sweep the currency and tokens into the LBP strategy
+        // Use the (token, currency) snapshot captured into MigratorParameters at registration.
+        Currency currency = Currency.wrap(migrationParams.currency);
+        Currency token = Currency.wrap(migrationParams.token);
+
+        uint256 balanceOfBeforeInit = currency.balanceOfSelf();
         initializer.sweepCurrency();
-        initializer.sweepUnsoldTokens();
 
-        // Token and currency addresses are read directly from the initializer rather than from the migration parameters.
-        // This requires trusting the initializer to return correct and immutable addresses.
-        Currency currency = Currency.wrap(initializer.currency());
-        Currency token = Currency.wrap(initializer.token());
-
-        // Apply the bracket schedule to derive the LP amount.
-        uint256 currencyAmountForLp =
-            _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
-
-        // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
-        uint160 sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
+        uint160 sqrtPriceX96;
+        uint256 currencyAmountForLp;
+        uint256 currencyFromInitializer;
+        {
+            // Retrieves the LBP initialization parameters from the initializer. Must revert if the initializer is not graduated.
+            LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+            // amount actually swept must match the currencyRaised the initializer reports.
+            currencyFromInitializer = currency.balanceOfSelf() - balanceOfBeforeInit;
+            if (currencyFromInitializer != lbpParams.currencyRaised) {
+                revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
+            }
+            // Apply the bracket schedule to derive the LP currency budget.
+            // Any excess (above the int128 cap or beyond bracket allocation) is swept to recipient.
+            currencyAmountForLp =
+                _calculateCurrencyAmountForLp(lbpParams.currencyRaised, migrationParams.lpAllocationSchedule);
+            // Derive the sqrt price for the new pool from the auction's final price, accounting for currency ordering.
+            sqrtPriceX96 = _computeSqrtPriceX96(currency, token, lbpParams.initialPriceX96);
+        }
 
         PoolKey memory key = _initializePool(
             currency,
             token,
             sqrtPriceX96,
-            migrationParams.poolLPFee,
-            migrationParams.poolTickSpacing,
-            migrationParams.hook
+            migrationParams.poolParameters.fee,
+            migrationParams.poolParameters.tickSpacing,
+            migrationParams.poolParameters.hook
         );
 
-        // v4 PoolManager accounts liquidity and token deltas as int128, so cap budgets before planning.
+        // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
+        // reservedTokenAmountForLP is already enforced <= int128.max in MigratorParams.validate.
         (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) = _createPositionPlan(
             key,
             currency,
             sqrtPriceX96,
             uint128(FixedPointMathLib.min(currencyAmountForLp, uint128(type(int128).max))),
-            uint128(FixedPointMathLib.min(migrationParams.supplyForLP, uint128(type(int128).max))),
             migrationParams
         );
 
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
-        // Transfer all leftover currency and tokens to the funds recipient (non LP currency and tokens, unsold & custody tokens and dust)
-        uint256 remainingCurrency = currency.balanceOfSelf();
+        // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
+        // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
+        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
         if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.fundsRecipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.fundsRecipient, remainingCurrency);
+            currency.transfer(migrationParams.recipient, remainingCurrency);
+            emit CurrencySwept(migrationParams.recipient, remainingCurrency);
         }
-        uint256 remainingToken = token.balanceOfSelf();
+        uint256 remainingToken = migrationParams.reservedTokenAmountForLP - tokenTransferAmount;
         if (remainingToken > 0) {
-            token.transfer(migrationParams.fundsRecipient, remainingToken);
-            emit TokensSwept(migrationParams.fundsRecipient, remainingToken);
+            token.transfer(migrationParams.recipient, remainingToken);
+            emit TokensSwept(migrationParams.recipient, remainingToken);
         }
 
         emit Migrated(initializer, key, sqrtPriceX96);
+    }
+
+    /// @inheritdoc ILBPStrategy
+    /// @dev Recovery path for an initializer whose migrate failed. After `recoveryDelayBlocks` blocks past
+    ///      `migrationBlock`, the initializer's recipient can pull both the held `reservedTokenAmountForLP` and any
+    ///      raised currency still held in the initializer back out.
+    function recoverFunds(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
+        MigratorParameters memory mp = _initializers[initializer];
+
+        if (msg.sender != mp.recipient) {
+            revert UnauthorizedRecovery(msg.sender, mp.recipient);
+        }
+        if (_getBlockNumberish() < mp.migrationBlock + recoveryDelayBlocks) {
+            revert RecoveryNotYetAllowed(mp.migrationBlock + recoveryDelayBlocks);
+        }
+
+        uint256 amount = reserves[initializer];
+        // Set the reserves to zero
+        reserves[initializer] = 0;
+
+        // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
+        // so sweepCurrency moves it here; we then forward strictly the delta to recipient. For
+        // non-graduated auctions, the initializer must complete this call as a zero-amount sweep rather than
+        // reverting, which lets this function still recover the strategy-held reservedTokenAmountForLP.
+        Currency currency = Currency.wrap(mp.currency);
+        uint256 currencyBefore = currency.balanceOfSelf();
+        // Sweep the currency from the initializer
+        initializer.sweepCurrency();
+        // Transfer what was received to the recipient
+        _transferCurrency(currency, mp.recipient, currency.balanceOfSelf() - currencyBefore);
+
+        IERC20(mp.token).safeTransfer(mp.recipient, amount);
+        emit FundsRecovered(initializer, mp.recipient, amount);
     }
 
     /// @inheritdoc ILBPStrategy
@@ -187,17 +242,13 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         return _initializers[initializer];
     }
 
-    /// @notice Receive native currency
-    receive() external payable {}
-
     /// @notice Builds the weighted-position plan to be executed against the PositionManager
     /// @dev Returned transfer amounts are the amounts CONSUMED (not remaining), in (currency, token) order
     /// @param key The initialized pool key
     /// @param currency The raised currency
     /// @param sqrtPriceX96 The initialized pool price
     /// @param currencyAmountForLp The currency budget for LP positions
-    /// @param tokenAmountForLp The token budget for LP positions
-    /// @param mp The stored migration parameters
+    /// @param mp The stored migration parameters (mp.reservedTokenAmountForLP is used as the token budget for LP positions)
     /// @return plan The encoded PositionManager plan
     /// @return currencyTransferAmount The currency amount consumed by the plan
     /// @return tokenTransferAmount The token amount consumed by the plan
@@ -206,21 +257,20 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         Currency currency,
         uint160 sqrtPriceX96,
         uint128 currencyAmountForLp,
-        uint128 tokenAmountForLp,
         MigratorParameters memory mp
     ) internal virtual returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
         bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
 
         Position[] memory positions;
         {
-            uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : tokenAmountForLp;
-            uint128 amount1In = currencyIsCurrency0 ? tokenAmountForLp : currencyAmountForLp;
+            uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : mp.reservedTokenAmountForLP;
+            uint128 amount1In = currencyIsCurrency0 ? mp.reservedTokenAmountForLP : currencyAmountForLp;
             uint128 remaining0;
             uint128 remaining1;
             (positions, remaining0, remaining1) = PositionPlanner.resolve(
                 abi.decode(mp.positionDefinitions, (PositionDefinition[])),
                 sqrtPriceX96,
-                mp.poolTickSpacing,
+                mp.poolParameters.tickSpacing,
                 amount0In,
                 amount1In
             );
@@ -228,34 +278,35 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
             tokenTransferAmount = currencyIsCurrency0 ? amount1In - remaining1 : amount0In - remaining0;
         }
 
-        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.lpPositionRecipient);
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.positionRecipient);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
     /// @notice Initializes the pool with the calculated price
     /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for
     ///      IInitializerHook ERC165 support during initializeDistribution. If hook is address(0), initializes the
-    ///      hookless pool unless it already exists, then falls back to this strategy as the hook.
+    ///      hookless pool unless it already exists, then falls back to this strategy as the hook. address(0) is
+    ///      only valid for static-fee pools.
     /// @param currency The currency paired with the launched token
     /// @param token The launched token
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
-    /// @param poolLPFee The LP fee for the pool
+    /// @param lpFee The LP fee for the pool
     /// @param poolTickSpacing The tick spacing for the pool
     /// @param hook The hook address for the pool. Any nonzero hook MUST inherit InitializerHook. address(0) targets
-    ///        the hookless pool unless it already exists.
+    ///        the hookless pool unless it already exists, and is only valid for static-fee pools.
     /// @return key The pool key for the initialized pool
     function _initializePool(
         Currency currency,
         Currency token,
         uint160 initialSqrtPriceX96,
-        uint24 poolLPFee,
+        uint24 lpFee,
         int24 poolTickSpacing,
         address hook
     ) private returns (PoolKey memory key) {
         key = PoolKey({
             currency0: currency < token ? currency : token,
             currency1: currency < token ? token : currency,
-            fee: poolLPFee,
+            fee: lpFee,
             tickSpacing: poolTickSpacing,
             hooks: IHooks(hook)
         });
@@ -315,9 +366,16 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         private
         view
     {
-        // Ensure the funds recipient is indeed this contract
-        if (initializer.fundsRecipient() != address(this) || initializer.tokensRecipient() != address(this)) {
-            revert InvalidRecipient(address(this));
+        // The strategy must be the fundsRecipient (it sweeps currency during migration), but must NOT be the
+        // tokensRecipient — unsold auction tokens are claimed directly by the configured tokensRecipient via
+        // the initializer's sweepUnsoldTokens.
+        address fundsRecipient = initializer.fundsRecipient();
+        if (fundsRecipient != address(this)) {
+            revert InvalidFundsRecipient(fundsRecipient, address(this));
+        }
+        address tokensRecipient = initializer.tokensRecipient();
+        if (tokensRecipient == address(this)) {
+            revert InvalidTokensRecipient(tokensRecipient);
         }
         // Ensure the migration block is actually after the end block to ensure a successful migration
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
@@ -377,4 +435,14 @@ contract LBPStrategy is BlockNumberish, Ownable, SelfInitializerMixin, ILBPStrat
         uint256 priceX192 = TokenPricing.convertToPriceX192(initialPriceX96, currency < token);
         sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(priceX192);
     }
+
+    /// @notice Low level function to transfer currency to a recipient
+    function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
+        if (amount == 0) return;
+        currency.transfer(recipient, amount);
+        emit CurrencySwept(recipient, amount);
+    }
+
+    /// @notice Receive native currency
+    receive() external payable {}
 }

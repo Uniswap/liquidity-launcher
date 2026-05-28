@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {LBPStrategy} from "src/strategies/lbp/LBPStrategy.sol";
 import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
 import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IDistributionStrategy} from "src/interfaces/IDistributionStrategy.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -14,7 +14,12 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {
+    MigratorParams,
+    MigratorParameters,
+    PoolParameters,
+    LiquidityAllocationBracket
+} from "src/libraries/MigratorParams.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -23,18 +28,22 @@ import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
-/// Uses mock CCA (MockInitializerFactory + MockLBPInitializer) for auction simulation.
+/// Uses mock initializer (MockInitializerFactory + MockLBPInitializer) for auction simulation.
 abstract contract LBPStrategyTestBase is Test {
     // Canonical v4 deployment addresses
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
+    // ~1 day on a 12s chain. Passed to the strategy constructor in setUp so tests share a single value.
+    uint256 constant RECOVERY_DELAY_BLOCKS = 7_200;
+
     LBPStrategy strategy;
     MockInitializerFactory factory;
 
     address owner;
-    address fundsRecipient = makeAddr("fundsRecipient");
-    address lpPositionRecipient = makeAddr("lpPositionRecipient");
+    address recipient = makeAddr("recipient");
+    address tokensRecipient = makeAddr("tokensRecipient");
+    address positionRecipient = makeAddr("positionRecipient");
 
     /// @notice Raw fuzz inputs for LP allocation bracket generation — pass this as a fuzz parameter
     struct BracketFuzzParams {
@@ -51,9 +60,8 @@ abstract contract LBPStrategyTestBase is Test {
     struct MigrationFuzzParams {
         uint64 endBlock;
         uint64 migrationBlock;
-        uint24 poolLPFee;
-        int24 poolTickSpacing;
-        uint128 supplyForLP;
+        PoolParameters poolParameters;
+        uint128 reservedTokenAmountForLP;
         uint128 auctionSupply;
         BracketFuzzParams bpParams;
         uint256 currencyRaised;
@@ -77,17 +85,19 @@ abstract contract LBPStrategyTestBase is Test {
         factory = new MockInitializerFactory(address(0));
 
         bytes memory constructorArgs =
-            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner);
+            abi.encode(POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)), RECOVERY_DELAY_BLOCKS);
         (address strategyAddress, bytes32 salt) =
             HookMiner.find(address(this), Hooks.BEFORE_INITIALIZE_FLAG, type(LBPStrategy).creationCode, constructorArgs);
 
-        strategy =
-            new LBPStrategy{salt: salt}(POSITION_MANAGER, POOL_MANAGER, IDistributionStrategy(address(factory)), owner);
+        strategy = new LBPStrategy{salt: salt}(
+            POSITION_MANAGER, POOL_MANAGER, IDistributorFactory(address(factory)), RECOVERY_DELAY_BLOCKS
+        );
 
         assertEq(address(strategy), strategyAddress);
         assertEq(uint160(address(strategy)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_INITIALIZE_FLAG);
 
         factory.setStrategyAddress(address(strategy));
+        factory.setTokensRecipient(tokensRecipient);
     }
 
     /// @notice One-liner for a happy-path migration setup: bounds all fuzz params, deploys and funds
@@ -115,29 +125,55 @@ abstract contract LBPStrategyTestBase is Test {
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
-        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, brackets);
-        initializer.setLbpInitializationParams(
-            LBPInitializationParams({
-                initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: currencyRaised
-            })
-        );
-        vm.deal(address(initializer), currencyRaised);
-        token.transfer(address(initializer), totalSupply);
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: currencyRaised
+        });
+        (initializer, token) = _initializeWith(mp, totalSupply, endBlock, brackets, address(0), lbpParams);
+        if (currencyRaised > 0) {
+            vm.deal(address(initializer), currencyRaised);
+        }
+        // `_initializeWith` already pulled both portions: reservedTokenAmountForLP into the strategy and auctionSupply
+        // into the initializer. Nothing else to fund. The `auctionSupply` local is unused here.
+        auctionSupply;
         vm.roll(mp.migrationBlock);
     }
 
     /// @notice Deploys an initializer with the given (already-bounded) MigratorParameters and bracket schedule.
-    /// Use when you need valid migrator params but want to control currencyRaised/price/tokensSold yourself
-    /// (e.g., wiring up an ERC20 currency).
+    /// Use for tests that don't need to migrate (e.g., initializeDistribution-only tests) — lbpParams
+    /// default to zero. For migration tests, use the 6-arg overload to bake the auction outputs in at deploy.
     function _initializeWith(
         MigratorParameters memory mp,
         uint128 totalSupply,
         uint64 endBlock,
         LiquidityAllocationBracket[] memory brackets
     ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
+        return _initializeWith(
+            mp,
+            totalSupply,
+            endBlock,
+            brackets,
+            address(0),
+            LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+    }
+
+    /// @notice Overload that takes auction currency
+    function _initializeWith(
+        MigratorParameters memory mp,
+        uint128 totalSupply,
+        uint64 endBlock,
+        LiquidityAllocationBracket[] memory brackets,
+        address currency,
+        LBPInitializationParams memory lbpParams
+    ) internal returns (MockLBPInitializer initializer, MockERC20 token) {
         token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.supplyForLP, endBlock);
-        bytes memory configData = _encodeConfigData(mp, brackets, initializerParams);
+        mp.token = address(token);
+        mp.currency = currency;
+        bytes memory configData =
+            _encodeConfigData(mp, brackets, _encodeMockInitializerParams(endBlock, currency, lbpParams));
+        // Mirror the production launcher flow: approve the strategy, then call initializeDistribution.
+        // The strategy pulls auctionSupply into the initializer and reservedTokenAmountForLP into itself.
+        token.approve(address(strategy), totalSupply);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
         initializer = factory.deployedInitializer();
     }
@@ -150,26 +186,30 @@ abstract contract LBPStrategyTestBase is Test {
         view
         returns (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply)
     {
-        p.poolLPFee = uint24(bound(p.poolLPFee, 0, LPFeeLibrary.MAX_LP_FEE));
-        p.poolTickSpacing = int24(bound(p.poolTickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
-        // CCA's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
+        p.poolParameters.fee = uint24(bound(p.poolParameters.fee, 0, LPFeeLibrary.MAX_LP_FEE));
+        p.poolParameters.tickSpacing =
+            int24(bound(p.poolParameters.tickSpacing, TickMath.MIN_TICK_SPACING, TickMath.MAX_TICK_SPACING));
+        // initializer's MAX_TOTAL_SUPPLY is 1 << 100, which bounds auctionSupply
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
-        // supplyForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
-        p.supplyForLP = uint128(bound(p.supplyForLP, 1, uint128(type(int128).max) - auctionSupply));
-        totalSupply = p.supplyForLP + auctionSupply;
+        // reservedTokenAmountForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
+        p.reservedTokenAmountForLP =
+            uint128(bound(p.reservedTokenAmountForLP, 1, uint128(type(int128).max) - auctionSupply));
+        totalSupply = p.reservedTokenAmountForLP + auctionSupply;
         // endBlock must be < migrationBlock (validated by _validateInitializer)
         p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));
         p.migrationBlock = uint64(bound(p.migrationBlock, p.endBlock + 1, type(uint64).max));
         endBlock = p.endBlock;
 
         mp = MigratorParameters({
+            token: address(0),
+            currency: address(0),
             migrationBlock: p.migrationBlock,
-            poolLPFee: p.poolLPFee,
-            poolTickSpacing: p.poolTickSpacing,
-            supplyForLP: p.supplyForLP,
-            fundsRecipient: fundsRecipient,
-            lpPositionRecipient: lpPositionRecipient,
-            hook: address(0),
+            reservedTokenAmountForLP: p.reservedTokenAmountForLP,
+            recipient: recipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({
+                fee: p.poolParameters.fee, tickSpacing: p.poolParameters.tickSpacing, hook: address(0)
+            }),
             positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
             lpAllocationSchedule: new bytes(0)
         });
@@ -225,7 +265,19 @@ abstract contract LBPStrategyTestBase is Test {
         return abi.encode(defs);
     }
 
-    /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData
+    /// @notice Builds the initializerParams bytes the mock factory consumes
+    function _encodeMockInitializerParams(uint64 endBlock, address currency, LBPInitializationParams memory lbpParams)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return abi.encode(endBlock, currency, lbpParams);
+    }
+
+    /// @notice Encodes MigratorParameters (with embedded abi-encoded schedule) + initializerParams into configData.
+    /// @dev Populates mp.lpAllocationSchedule from the supplied brackets. The caller is responsible
+    /// for setting mp.token and mp.currency — the strategy validates them at registration against
+    /// the function-param token and the freshly deployed initializer's getters.
     function _encodeConfigData(
         MigratorParameters memory mp,
         LiquidityAllocationBracket[] memory brackets,
@@ -237,7 +289,7 @@ abstract contract LBPStrategyTestBase is Test {
 
     /// @notice Bounds currencyRaised into a range that produces non-zero LP and migrates cleanly.
     /// Lower bound: minimum currencyRaised that yields >= 1 LP (some brackets may round to 0).
-    /// Upper bound: int128.max — v4's PoolManager._accountDelta uses int128 for currency deltas
+    /// Upper bound: int128.max — v4's PoolManager._accountDelta uses int128 for currency deltas.
     /// The cap-and-sweep path for currencyRaised > int128.max is covered by test_currencyAmountCappedAtInt128Max.
     function _boundCurrencyRaised(uint256 _currencyRaised, LiquidityAllocationBracket[] memory _brackets)
         internal

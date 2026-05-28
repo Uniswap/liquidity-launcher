@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
+import {IDistributor} from "./IDistributor.sol";
 
 /// @dev The interface id of the ILBPInitializer interface
 /// @dev Per ERC165, the interface selector is the XOR of the selectors of the interfaces implemented by the contract
@@ -17,7 +17,7 @@ struct LBPInitializationParams {
 
 /// @title ILBPInitializer
 /// @notice Generic interface for contracts used for initializing an LBP strategy
-interface ILBPInitializer is IDistributionContract, IERC165 {
+interface ILBPInitializer is IDistributor, IERC165 {
     /// @notice Returns the LBP initialization parameters as determined by the implementing contract
     /// @dev The implementing contract MUST ensure that these values are correct at the time of calling
     function lbpInitializationParams() external view returns (LBPInitializationParams memory);
@@ -26,7 +26,7 @@ interface ILBPInitializer is IDistributionContract, IERC165 {
     /// @dev The initializer must ensure this can only be called by the currency recipient directly
     function sweepCurrency() external;
 
-    /// @notice Sweeps the unsold and custody tokens from the initializer
+    /// @notice Sweeps the unsold tokens from the initializer
     /// @dev The initializer must ensure this can only be called by the tokens recipient directly
     function sweepUnsoldTokens() external;
 
