@@ -56,8 +56,14 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when reservedTokenAmountForLP is zero
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when reservedTokenAmountForLP equals totalSupply
+/// │   └── it reverts with InvalidReservedTokenAmountForLP
 /// ├── when token and currency are the same
 /// │   └── it reverts with InvalidTokenCurrencyPair
+/// ├── when position definitions are empty
+/// │   └── it stores the migration parameters
+/// ├── when position definitions weights exceed 1e7
+/// │   └── it reverts with InvalidAllocationWeights
 /// ├── when position definitions contain invalid tick bounds
 /// │   └── it reverts with InvalidTickBounds
 /// ├── when position definitions exceed the max position count
@@ -125,6 +131,17 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate});
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, _rate));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenBracketRateIsZero(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
@@ -386,6 +403,24 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
+    function test_WhenReservetokenAmountForLPEqualsTotalSupply(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // it reverts with {InvalidReservedTokenAmountForLP}
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.reservedTokenAmountForLP = totalSupply;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(ILBPStrategy.InvalidReservedTokenAmountForLP.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
     modifier whenReservetokenAmountForLPIsValid() {
         _;
     }
@@ -415,7 +450,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
-    function test_WhenPositionDefinitionsIsEmpty(MigrationFuzzParams memory p)
+    function test_WhenPositionDefinitionsAreEmpty(MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
         whenTickSpacingIsValid
@@ -423,18 +458,17 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         whenPositionRecipientIsValid
         whenReservetokenAmountForLPIsValid
     {
-        // it reverts with {EmptyPositionPlan}
-        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        // it stores the migration parameters
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
 
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
-        vm.expectRevert(PositionPlanner.EmptyPositionPlan.selector);
-        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
     }
 
-    function test_WhenAllocationWeightsDontSumToMPS(uint24 _weight, MigrationFuzzParams memory p)
+    function test_WhenAllocationWeightsExceedMPS(uint24 _weight, MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
         whenTickSpacingIsValid
@@ -443,8 +477,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         whenReservetokenAmountForLPIsValid
     {
         // it reverts with {InvalidAllocationWeights}
-        _weight = uint24(bound(_weight, 0, type(uint24).max));
-        vm.assume(_weight != 1e7);
+        _weight = uint24(bound(_weight, 1e7 + 1, type(uint24).max));
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](1);
@@ -460,6 +493,29 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
         vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionWeightIsZero(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 0, recipient: positionRecipient
+        });
+        defs[1] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: 1e7, recipient: positionRecipient});
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.ZeroPositionWeight.selector, 0));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
@@ -503,9 +559,11 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     {
         // it reverts with {TooManyPositions}
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
-        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_POSITIONS_PER_PLAN + 1);
+        PositionDefinition[] memory defs =
+            new PositionDefinition[](PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN + 1);
         for (uint256 i; i < defs.length; i++) {
-            uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_POSITIONS_PER_PLAN) : uint24(1);
+            uint24 weight =
+                i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN) : uint24(1);
             defs[i] =
                 PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight, recipient: positionRecipient});
         }
@@ -517,8 +575,8 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(
                 PositionPlanner.TooManyPositions.selector,
-                PositionPlanner.MAX_POSITIONS_PER_PLAN + 1,
-                PositionPlanner.MAX_POSITIONS_PER_PLAN
+                PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN + 1,
+                PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN
             )
         );
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));

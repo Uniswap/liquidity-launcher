@@ -21,7 +21,8 @@ interface ILBPStrategy is IStrategy {
     /// @param initializer The initializer that was migrated
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
-    event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96);
+    /// @param plan The PositionManager plan executed to mint the final positions
+    event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96, bytes plan);
 
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);
@@ -35,6 +36,11 @@ interface ILBPStrategy is IStrategy {
     /// @param recipient The recipient that received the swept tokens
     /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
     event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
+
+    /// @notice Emitted when a migration fails
+    /// @param initializer The initializer that failed to migrate
+    /// @param reason The reason the migration failed
+    event MigrationFailed(ILBPInitializer indexed initializer, bytes reason);
 
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
@@ -62,6 +68,9 @@ interface ILBPStrategy is IStrategy {
     /// @param recipient The invalid position recipient
     error InvalidPositionRecipient(address recipient);
 
+    /// @notice Error thrown when the recipient of unallocated currency is the zero address
+    error InvalidRecipient();
+
     /// @notice Error thrown when the initializer's fundsRecipient is not the strategy
     /// @param actual The fundsRecipient configured on the initializer
     /// @param expected The required fundsRecipient (the strategy address)
@@ -82,6 +91,9 @@ interface ILBPStrategy is IStrategy {
     /// @param claimed The currencyRaised value reported by the initializer
     error CurrencyRaisedMismatch(uint256 swept, uint256 claimed);
 
+    /// @notice Error thrown when the token is the zero address
+    error ZeroAddressToken();
+
     /// @notice Error thrown when the three token sources disagree at registration.
     /// @param fromParam The function-param `token` (what the launcher is pulling)
     /// @param declared The user-declared MigratorParameters.token
@@ -94,37 +106,29 @@ interface ILBPStrategy is IStrategy {
     /// @param fromInitializer The currency() value returned by the freshly deployed initializer
     error CurrencyMismatch(address declared, address fromInitializer);
 
+    /// @notice Error thrown when the token amount mismatch after distribution
+    /// @param actual The actual amount of token available after distribution
+    /// @param expected The expected amount of token
+    error TokenAmountMismatch(uint256 actual, uint256 expected);
+
     /// @notice Error thrown when an initializer was never registered with the strategy
     /// @param initializer The initializer being acted on
     error InitializerNotRegistered(ILBPInitializer initializer);
 
     /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
-    /// or `recoverFunds`.
     /// @param initializer The initializer being acted on
     error InsufficientReserves(ILBPInitializer initializer);
 
-    /// @notice Error thrown when recoverFunds is called before its unlock block
-    /// @param unlockBlock The earliest block at which recoverFunds is allowed
-    error RecoveryNotYetAllowed(uint256 unlockBlock);
+    /// @notice Error thrown when the function is called by an address other than the strategy
+    error OnlySelfCall();
 
-    /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
-    /// recipient.
-    /// @param caller The caller of recoverFunds
-    /// @param recipient The configured recipient for the initializer
-    error UnauthorizedRecovery(address caller, address recipient);
+    /// @notice Error thrown when no positions are created during migration
+    error NoPositionsCreated();
 
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
-    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
-    ///      to recover the reserved tokens and the currency raised by the initializer.
     /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
-
-    /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
-    /// recovery delay past `migrationBlock`, the initializer's `recipient` may sweep both
-    /// the held `reservedTokenAmountForLP` and any raised currency still held in the initializer out of the strategy.
-    /// @param initializer The initializer whose funds to recover
-    function recoverFunds(ILBPInitializer initializer) external;
 
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up

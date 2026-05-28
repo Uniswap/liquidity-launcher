@@ -19,6 +19,8 @@ InitializeDistributionTest
             ├── when position definition recipient is reserved
             │   └── it reverts with {InvalidPositionRecipient}
             └── when position definition recipient is valid
+                ├── when reservedTokenAmountForLP equals totalSupply
+                │   └── it reverts with {InvalidReservedTokenAmountForLP}
                 ├── when token and currency are the same
                 │   └── it reverts with {InvalidTokenCurrencyPair}
                 ├── when position definition tick bounds are invalid
