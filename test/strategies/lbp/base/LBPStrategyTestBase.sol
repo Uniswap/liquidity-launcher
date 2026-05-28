@@ -14,6 +14,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlannerFuzzHelpers} from "test/shared/PositionPlannerFuzzHelpers.sol";
 import {
     MigratorParams,
     MigratorParameters,
@@ -25,6 +26,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
+import {TokenPricing} from "src/libraries/TokenPricing.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
@@ -67,9 +69,7 @@ abstract contract LBPStrategyTestBase is Test {
         uint256 currencyRaised;
         uint160 initialPriceX96;
         uint128 tokensSold;
-        int24 offsetLower;
-        int24 offsetUpper;
-        uint24 fullRangeWeight;
+        PositionDefinition[] positionDefinitions;
     }
 
     function setUp() public virtual {
@@ -193,7 +193,7 @@ abstract contract LBPStrategyTestBase is Test {
         auctionSupply = uint128(bound(p.auctionSupply, 1, uint128(1 << 100)));
         // reservedTokenAmountForLP must fit in int128 (v4 delta limit, enforced by MigratorParams.validate)
         p.reservedTokenAmountForLP =
-            uint128(bound(p.reservedTokenAmountForLP, 1, uint128(type(int128).max) - auctionSupply));
+            uint128(bound(p.reservedTokenAmountForLP, 1 ether, uint128(type(int128).max) - auctionSupply));
         totalSupply = p.reservedTokenAmountForLP + auctionSupply;
         // endBlock must be < migrationBlock (validated by _validateInitializer)
         p.endBlock = uint64(bound(p.endBlock, uint64(block.number), type(uint64).max - 1));
@@ -210,9 +210,25 @@ abstract contract LBPStrategyTestBase is Test {
             poolParameters: PoolParameters({
                 fee: p.poolParameters.fee, tickSpacing: p.poolParameters.tickSpacing, hook: address(0)
             }),
-            positionDefinitions: _boundPositionDefinitions(p.offsetLower, p.offsetUpper, p.fullRangeWeight),
+            positionDefinitions: _boundPositionDefinitions(
+                p.positionDefinitions, _boundInitialPriceX96(p.initialPriceX96), p.poolParameters.tickSpacing
+            ),
             lpAllocationSchedule: new bytes(0)
         });
+    }
+
+    /// @notice Bounds fuzzed position inputs into a valid migration-safe position plan.
+    function _boundPositionDefinitions(
+        PositionDefinition[] memory definitions,
+        uint160 initialPriceX96,
+        int24 tickSpacing
+    ) internal pure returns (bytes memory) {
+        uint160 initialSqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(
+            TokenPricing.convertToPriceX192(initialPriceX96, true)
+        );
+        int24 currentTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
+
+        return abi.encode(PositionPlannerFuzzHelpers.boundPositionDefinitions(definitions, currentTick, tickSpacing));
     }
 
     /// @notice Bounds raw fuzz inputs into a valid LP allocation bracket array (1-3 brackets)
@@ -243,26 +259,6 @@ abstract contract LBPStrategyTestBase is Test {
             brackets[1] = LiquidityAllocationBracket({lowerThreshold: t1, rate: r1});
             brackets[2] = LiquidityAllocationBracket({lowerThreshold: t2, rate: r2});
         }
-    }
-
-    /// @notice Bounds fuzzed position inputs into a valid two-position plan.
-    function _boundPositionDefinitions(int24 _offsetLower, int24 _offsetUpper, uint24 _fullRangeWeight)
-        internal
-        pure
-        returns (bytes memory)
-    {
-        _offsetLower = int24(bound(_offsetLower, -10000, -1));
-        _offsetUpper = int24(bound(_offsetUpper, 1, 10000));
-        _fullRangeWeight = uint24(bound(_fullRangeWeight, 1, 1e7 - 1));
-
-        PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _fullRangeWeight
-        });
-        defs[1] = PositionDefinition({
-            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: uint24(1e7) - _fullRangeWeight
-        });
-        return abi.encode(defs);
     }
 
     /// @notice Builds the initializerParams bytes the mock factory consumes
@@ -297,6 +293,7 @@ abstract contract LBPStrategyTestBase is Test {
         returns (uint256)
     {
         uint256 minCurrency = _minCurrencyForNonZeroLp(_brackets);
+        if (minCurrency < 1 ether) minCurrency = 1 ether;
         return bound(_currencyRaised, minCurrency, uint256(uint128(type(int128).max)));
     }
 

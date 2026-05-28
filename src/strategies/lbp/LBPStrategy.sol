@@ -290,6 +290,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 amount0In,
                 amount1In
             );
+            if (positions.length == 0) revert NoPositionsCreated();
             currencyTransferAmount = currencyIsCurrency0
                 ? amount0In - SafeCastLib.toUint128(remaining0)
                 : amount1In - SafeCastLib.toUint128(remaining1);

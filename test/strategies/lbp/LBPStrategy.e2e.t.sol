@@ -540,8 +540,9 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.currencyRaised = 100 ether;
         p.initialPriceX96 = uint160(1 << 96);
         p.tokensSold = 1 ether;
-        p.offsetLower = -600;
-        p.offsetUpper = 600;
-        p.fullRangeWeight = 5e6;
+        p.positionDefinitions = new PositionDefinition[](2);
+        p.positionDefinitions[0] =
+            PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
+        p.positionDefinitions[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
     }
 }

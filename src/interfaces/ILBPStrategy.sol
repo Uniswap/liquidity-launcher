@@ -128,6 +128,9 @@ interface ILBPStrategy is IStrategy {
     /// @notice Error thrown when the function is called by an address other than the strategy
     error OnlySelfCall();
 
+    /// @notice Error thrown when no positions are created during migration
+    error NoPositionsCreated();
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
     /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`

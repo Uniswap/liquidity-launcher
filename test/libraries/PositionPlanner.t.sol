@@ -9,12 +9,11 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {Plan, Position, PositionDefinition} from "src/types/PositionPlannerTypes.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {TickCalculations} from "src/libraries/TickCalculations.sol";
-import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {PositionPlannerFuzzHelpers} from "test/shared/PositionPlannerFuzzHelpers.sol";
 
 contract MockPositionPlanner {
     function validate(PositionDefinition[] memory definitions) external pure {
@@ -449,13 +448,15 @@ contract PositionPlannerTest is Test {
         int24 currentTick = TickCalculations.tickFloor(TickMath.getTickAtSqrtPrice(sqrtPriceX96), tickSpacing);
         vm.assume(currentTick != TickMath.MIN_TICK && currentTick != TickMath.MAX_TICK);
 
-        (amount0, amount1) =
-            _fuzzAmountsForLiquidity(seed, currentTick, TickMath.MIN_TICK, TickMath.MAX_TICK, tickSpacing);
+        (amount0, amount1) = PositionPlannerFuzzHelpers.fuzzValidAmounts(
+            seed, currentTick, TickMath.MIN_TICK, TickMath.MAX_TICK, tickSpacing
+        );
 
         PositionDefinition[] memory defs = new PositionDefinition[](cnt);
         uint24 weight = uint24(uint256(1e7) / cnt);
         for (uint256 i; i < defs.length; i++) {
-            (int24 offsetLower, int24 offsetUpper) = _fuzzTickOffsets(seed, currentTick, tickSpacing);
+            (int24 offsetLower, int24 offsetUpper) =
+                PositionPlannerFuzzHelpers.fuzzTickOffsets(seed, currentTick, tickSpacing);
             defs[i] = PositionDefinition({offsetLower: offsetLower, offsetUpper: offsetUpper, weight: weight});
         }
         // Validate the position defs
@@ -636,97 +637,5 @@ contract PositionPlannerTest is Test {
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
         });
-    }
-
-    /// @notice Fuzz the amount0/1 for a given seed, tick lower, tick upper, and tick spacing
-    /// @dev Returns amounts which will not overflow max liquidity per tick, and will result in non zero liquidity positions
-    function _fuzzAmountsForLiquidity(
-        uint256 seed,
-        int24 currentTick,
-        int24 tickLower,
-        int24 tickUpper,
-        int24 tickSpacing
-    ) private pure returns (uint128 amount0, uint128 amount1) {
-        uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing);
-        // Generate amounts that will not exceed the max liquidity per tick
-        amount0 = uint128(
-            bound(
-                uint128(uint256(keccak256(abi.encode(seed, 0))) % type(uint128).max),
-                SqrtPriceMath.getAmount0Delta(
-                    TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(currentTick), 1, false
-                ),
-                SqrtPriceMath.getAmount0Delta(
-                    TickMath.getSqrtPriceAtTick(tickLower),
-                    TickMath.getSqrtPriceAtTick(currentTick),
-                    maxLiquidity,
-                    false
-                )
-            )
-        );
-        amount1 = uint128(
-            bound(
-                uint128(uint256(keccak256(abi.encode(seed, 1))) % type(uint128).max),
-                SqrtPriceMath.getAmount1Delta(
-                    TickMath.getSqrtPriceAtTick(tickUpper), TickMath.getSqrtPriceAtTick(currentTick), 1, false
-                ),
-                SqrtPriceMath.getAmount1Delta(
-                    TickMath.getSqrtPriceAtTick(tickUpper),
-                    TickMath.getSqrtPriceAtTick(currentTick),
-                    maxLiquidity,
-                    false
-                )
-            )
-        );
-        // Back out the liquidity from the amounts
-        uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(
-            TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(currentTick), amount0
-        );
-        uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmount1(
-            TickMath.getSqrtPriceAtTick(currentTick), TickMath.getSqrtPriceAtTick(tickUpper), amount1
-        );
-        // Take the larger non zero liquidity
-        uint128 liquidity = liquidity0 > 0 && liquidity0 < liquidity1 ? liquidity0 : (liquidity1 > 0 ? liquidity1 : 0);
-        vm.assume(liquidity > 0);
-
-        // Find the amounts that will result in the given liquidity
-        amount0 = SafeCast.toUint128(
-            SqrtPriceMath.getAmount0Delta(
-                TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(currentTick), liquidity, false
-            )
-        );
-        amount1 = SafeCast.toUint128(
-            SqrtPriceMath.getAmount1Delta(
-                TickMath.getSqrtPriceAtTick(currentTick), TickMath.getSqrtPriceAtTick(tickUpper), liquidity, false
-            )
-        );
-        return (amount0, amount1);
-    }
-
-    /// @notice Fuzz the tick offsets for a given seed, current tick, and tick spacing
-    function _fuzzTickOffsets(uint256 seed, int24 currentTick, int24 tickSpacing) private pure returns (int24, int24) {
-        int24 minUsableTick = TickMath.minUsableTick(tickSpacing);
-        int24 maxUsableTick = TickMath.maxUsableTick(tickSpacing);
-        // minOffset is the signed offset between currentTick and minUsableTick
-        int24 minOffset = minUsableTick - currentTick;
-        // maxOffset is the signed offset between currentTick and maxUsableTick
-        int24 maxOffset = maxUsableTick - currentTick;
-
-        uint256 absRange = uint256(int256(maxOffset) - int256(minOffset) + 1);
-
-        int24 offsetLower = int24(
-            _bound(int256(uint256(keccak256(abi.encode(seed, 0))) % absRange), int256(minOffset), int256(maxOffset))
-        );
-        int24 offsetUpper = int24(
-            _bound(int256(uint256(keccak256(abi.encode(seed, 1))) % absRange), int256(minOffset), int256(maxOffset))
-        );
-        if (offsetLower == offsetUpper) {
-            if (offsetUpper < maxOffset) offsetUpper++;
-            else offsetLower--;
-        }
-        // Ensure ordering is right
-        if (offsetLower > offsetUpper) {
-            (offsetLower, offsetUpper) = (offsetUpper, offsetLower);
-        }
-        return (offsetLower, offsetUpper);
     }
 }
