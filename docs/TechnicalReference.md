@@ -126,7 +126,7 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 - Validate the initializer is registered, still has reserved LP tokens, and is past `migrationBlock`
 - Initialize the Uniswap V4 pool at the discovered price
 - Deploy liquidity according to the configured position definitions, plus an implicit full-range position minted from any leftover budget
-- Transfer each explicit position's LP NFT to the recipient configured on its `PositionDefinition`, and the full-range fallback position to `MigratorParameters.recipient`
+- Transfer each LP NFT to its `PositionDefinition.overridePositionRecipient` when set, otherwise to `MigratorParameters.positionRecipient`. The full-range fallback position is always minted to `MigratorParameters.positionRecipient`
 
 `migrate()` attempts the actual pool initialization and liquidity creation through an internal self-call. A successful migration consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` call for the same initializer.
 

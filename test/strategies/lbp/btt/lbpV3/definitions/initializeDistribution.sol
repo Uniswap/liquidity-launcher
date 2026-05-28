@@ -343,22 +343,24 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         whenFeeIsValid
     {
         // it reverts with {InvalidPositionRecipient}
+        // A non-zero overridePositionRecipient cannot be a reserved sentinel (address(1) or address(2)).
+        // address(0) is valid and means "default to positionRecipient", so it is not tested here.
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = abi.decode(mp.positionDefinitions, (PositionDefinition[]));
 
-        if (_seed % 3 == 0) {
-            defs[0].recipient = address(0);
-        } else if (_seed % 3 == 1) {
-            defs[0].recipient = ActionConstants.MSG_SENDER;
+        if (_seed % 2 == 0) {
+            defs[0].overridePositionRecipient = ActionConstants.MSG_SENDER;
         } else {
-            defs[0].recipient = ActionConstants.ADDRESS_THIS;
+            defs[0].overridePositionRecipient = ActionConstants.ADDRESS_THIS;
         }
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidPositionRecipient.selector, defs[0].recipient));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InvalidPositionRecipient.selector, defs[0].overridePositionRecipient)
+        );
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
@@ -485,7 +487,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
             offsetLower: TickMath.MIN_TICK,
             offsetUpper: TickMath.MAX_TICK,
             weight: _weight,
-            recipient: positionRecipient
+            overridePositionRecipient: positionRecipient
         });
         mp.positionDefinitions = abi.encode(defs);
 
@@ -507,9 +509,14 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         defs[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 0, recipient: positionRecipient
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 0,
+            overridePositionRecipient: positionRecipient
         });
-        defs[1] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: 1e7, recipient: positionRecipient});
+        defs[1] = PositionDefinition({
+            offsetLower: -100, offsetUpper: 100, weight: 1e7, overridePositionRecipient: positionRecipient
+        });
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -538,7 +545,10 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({
-            offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: 1e7, recipient: positionRecipient
+            offsetLower: _offsetLower,
+            offsetUpper: _offsetUpper,
+            weight: 1e7,
+            overridePositionRecipient: positionRecipient
         });
         mp.positionDefinitions = abi.encode(defs);
 
@@ -564,8 +574,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         for (uint256 i; i < defs.length; i++) {
             uint24 weight =
                 i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN) : uint24(1);
-            defs[i] =
-                PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight, recipient: positionRecipient});
+            defs[i] = PositionDefinition({
+                offsetLower: -100, offsetUpper: 100, weight: weight, overridePositionRecipient: positionRecipient
+            });
         }
         mp.positionDefinitions = abi.encode(defs);
 

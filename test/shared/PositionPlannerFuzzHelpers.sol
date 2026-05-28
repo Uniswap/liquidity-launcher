@@ -12,12 +12,11 @@ import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 library PositionPlannerFuzzHelpers {
     uint24 internal constant MPS = 1e7;
 
-    function boundPositionDefinitions(
-        PositionDefinition[] memory rawDefinitions,
-        int24 currentTick,
-        int24 tickSpacing,
-        address recipient
-    ) internal pure returns (PositionDefinition[] memory definitions) {
+    function boundPositionDefinitions(PositionDefinition[] memory rawDefinitions, int24 currentTick, int24 tickSpacing)
+        internal
+        pure
+        returns (PositionDefinition[] memory definitions)
+    {
         uint256 count = rawDefinitions.length == 0
             ? 1
             : _bound(rawDefinitions.length, 1, PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN);
@@ -27,7 +26,10 @@ library PositionPlannerFuzzHelpers {
         for (uint256 i; i < count; i++) {
             PositionDefinition memory raw = rawDefinitions.length == 0
                 ? PositionDefinition({
-                    offsetLower: int24(0), offsetUpper: int24(0), weight: uint24(0), recipient: recipient
+                    offsetLower: int24(0),
+                    offsetUpper: int24(0),
+                    weight: uint24(0),
+                    overridePositionRecipient: address(0)
                 })
                 : rawDefinitions[i];
 
@@ -42,8 +44,12 @@ library PositionPlannerFuzzHelpers {
 
             (int24 offsetLower, int24 offsetUpper) =
                 boundTickOffsets(raw.offsetLower, raw.offsetUpper, currentTick, tickSpacing);
+            // override is left as address(0) so resolved positions default to MigratorParameters.positionRecipient.
             definitions[i] = PositionDefinition({
-                offsetLower: offsetLower, offsetUpper: offsetUpper, weight: weight, recipient: recipient
+                offsetLower: offsetLower,
+                offsetUpper: offsetUpper,
+                weight: weight,
+                overridePositionRecipient: address(0)
             });
         }
     }

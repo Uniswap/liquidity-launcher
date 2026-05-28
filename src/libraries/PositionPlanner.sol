@@ -17,8 +17,7 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
     using TickCalculations for int24;
-    using PositionPlanner for TickBounds;
-    using PositionPlanner for Position;
+    using PositionPlanner for *;
 
     /// @notice Absolute tick boundaries for a resolved position
     struct TickBounds {
@@ -41,7 +40,7 @@ library PositionPlanner {
     /// @param offsetLower The invalid lower tick bound
     /// @param offsetUpper The invalid upper tick bound
     error InvalidTickBounds(int24 offsetLower, int24 offsetUpper);
-    /// @notice Thrown when a position recipient is the zero address, address(1), or address(2)
+    /// @notice Thrown when a position's overridePositionRecipient is a reserved address (address(1) or address(2))
     /// @param recipient The invalid position recipient
     error InvalidPositionRecipient(address recipient);
     /// @notice Thrown when the number of positions exceeds the maximum allowed
@@ -64,9 +63,12 @@ library PositionPlanner {
                 revert InvalidTickBounds(definition.offsetLower, definition.offsetUpper);
             }
             if (definition.weight == 0) revert ZeroPositionWeight(i);
-            // Reject address(0) and PositionManager's reserved recipient sentinels address(1) and address(2).
-            if (uint160(definition.recipient) <= uint160(ActionConstants.ADDRESS_THIS)) {
-                revert InvalidPositionRecipient(definition.recipient);
+            // overridePositionRecipient is optional: address(0) means "use the default positionRecipient".
+            // When specified, it cannot be a PositionManager reserved sentinel (address(1) or address(2)).
+            address overrideRecipient = definition.overridePositionRecipient;
+            if (overrideRecipient != address(0) && uint160(overrideRecipient) <= uint160(ActionConstants.ADDRESS_THIS))
+            {
+                revert InvalidPositionRecipient(overrideRecipient);
             }
             totalWeight += definition.weight;
         }
@@ -116,7 +118,8 @@ library PositionPlanner {
     /// @param _tickSpacing The pool tick spacing
     /// @param _currency0Amount The available currency0 budget
     /// @param _currency1Amount The available currency1 budget
-    /// @param _fallbackRecipient The recipient of the implicit full-range fallback position minted from leftover budget
+    /// @param _positionRecipient The default recipient for minted positions; used for the implicit full-range
+    ///        fallback position and for any definition without an overridePositionRecipient
     /// @return positions The resolved positions that fit within the supplied budgets
     /// @return remaining0 The unconsumed currency0 budget
     /// @return remaining1 The unconsumed currency1 budget
@@ -126,7 +129,7 @@ library PositionPlanner {
         int24 _tickSpacing,
         uint256 _currency0Amount,
         uint256 _currency1Amount,
-        address _fallbackRecipient
+        address _positionRecipient
     ) internal pure returns (Position[] memory positions, uint256 remaining0, uint256 remaining1) {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
         positions = new Position[](ticks.length + 1);
@@ -141,19 +144,25 @@ library PositionPlanner {
         // budget and the remaining amounts available to the full range fallback. Reordering the same
         // definitions can therefore result in a different set of positions being created
         for (uint256 i; i < ticks.length; i++) {
-            uint24 weight = _definitions[i].weight;
             // Get the position's share of the total currency budget (defined in MPS terms)
             // resolvePosition caps liquidity to maxLiquidityPerTick internally.
-            Position memory position = ticks[i].resolvePosition(
-                _sqrtPriceX96, maxLiquidityPerTick, _currency0Amount * weight / MPS, _currency1Amount * weight / MPS
-            );
-            // Empty positions are skipped and their allocations will be used to create a full range position.
-            if (!position.isEmpty()) {
-                position.recipient = _definitions[i].recipient;
-                remaining0 -= position.amount0;
-                remaining1 -= position.amount1;
-                maxLiquidityPerTick -= uint128(position.liquidity);
-                positions[cnt++] = position;
+            {
+                Position memory position = ticks[i].resolvePosition(
+                    _sqrtPriceX96,
+                    maxLiquidityPerTick,
+                    _currency0Amount.applyWeight(_definitions[i].weight),
+                    _currency1Amount.applyWeight(_definitions[i].weight)
+                );
+                // Empty positions are skipped and their allocations will be used to create a full range position.
+                if (!position.isEmpty()) {
+                    // Use the per-position override when set, otherwise fall back to the default positionRecipient.
+                    address overrideRecipient = _definitions[i].overridePositionRecipient;
+                    position.recipient = overrideRecipient == address(0) ? _positionRecipient : overrideRecipient;
+                    remaining0 -= position.amount0;
+                    remaining1 -= position.amount1;
+                    maxLiquidityPerTick -= uint128(position.liquidity);
+                    positions[cnt++] = position;
+                }
             }
         }
 
@@ -169,7 +178,7 @@ library PositionPlanner {
                 remaining1
             );
             if (!position.isEmpty()) {
-                position.recipient = _fallbackRecipient;
+                position.recipient = _positionRecipient;
                 remaining0 -= position.amount0;
                 remaining1 -= position.amount1;
                 positions[cnt++] = position;
@@ -192,6 +201,11 @@ library PositionPlanner {
     /// @notice Returns true if a position is empty
     function isEmpty(Position memory _position) internal pure returns (bool) {
         return _position.liquidity == 0;
+    }
+
+    /// @notice Applies a weight to an amount
+    function applyWeight(uint256 _amount, uint24 _weight) internal pure returns (uint256) {
+        return _amount * _weight / MPS;
     }
 
     /// @notice Resolves tick bounds into a position, allocating up to the provided budgets

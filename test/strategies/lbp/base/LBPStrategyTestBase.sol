@@ -200,6 +200,7 @@ abstract contract LBPStrategyTestBase is Test {
             migrationBlock: p.migrationBlock,
             reservedTokenAmountForLP: p.reservedTokenAmountForLP,
             recipient: recipient,
+            positionRecipient: positionRecipient,
             poolParameters: PoolParameters({
                 fee: p.poolParameters.fee, tickSpacing: p.poolParameters.tickSpacing, hook: address(0)
             }),
@@ -215,17 +216,13 @@ abstract contract LBPStrategyTestBase is Test {
         PositionDefinition[] memory definitions,
         uint160 initialPriceX96,
         int24 tickSpacing
-    ) internal view returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         uint160 initialSqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(
             TokenPricing.convertToPriceX192(initialPriceX96, true)
         );
         int24 currentTick = TickMath.getTickAtSqrtPrice(initialSqrtPriceX96);
 
-        return abi.encode(
-            PositionPlannerFuzzHelpers.boundPositionDefinitions(
-                definitions, currentTick, tickSpacing, positionRecipient
-            )
-        );
+        return abi.encode(PositionPlannerFuzzHelpers.boundPositionDefinitions(definitions, currentTick, tickSpacing));
     }
 
     /// @notice Bounds raw fuzz inputs into a valid LP allocation bracket array (1-3 brackets)

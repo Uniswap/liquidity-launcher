@@ -78,10 +78,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         defs[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6, recipient: positionRecipient
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 5e6,
+            overridePositionRecipient: positionRecipient
         });
-        defs[1] =
-            PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6, recipient: secondPositionRecipient});
+        defs[1] = PositionDefinition({
+            offsetLower: -600, offsetUpper: 600, weight: 5e6, overridePositionRecipient: secondPositionRecipient
+        });
 
         MigratorParameters memory mp = MigratorParameters({
             token: address(0),
@@ -89,6 +93,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             migrationBlock: uint64(block.number + 1),
             reservedTokenAmountForLP: 100 ether,
             recipient: recipient,
+            positionRecipient: positionRecipient,
             poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(0)}),
             positionDefinitions: abi.encode(defs),
             lpAllocationSchedule: new bytes(0)
@@ -546,9 +551,13 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.tokensSold = 1 ether;
         p.positionDefinitions = new PositionDefinition[](2);
         p.positionDefinitions[0] = PositionDefinition({
-            offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6, recipient: positionRecipient
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 5e6,
+            overridePositionRecipient: positionRecipient
         });
-        p.positionDefinitions[1] =
-            PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6, recipient: positionRecipient});
+        p.positionDefinitions[1] = PositionDefinition({
+            offsetLower: -600, offsetUpper: 600, weight: 5e6, overridePositionRecipient: positionRecipient
+        });
     }
 }

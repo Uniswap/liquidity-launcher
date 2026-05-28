@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {ILBPStrategy} from "../interfaces/ILBPStrategy.sol";
 import {PositionPlanner} from "./PositionPlanner.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
@@ -16,6 +17,7 @@ struct MigratorParameters {
     uint64 migrationBlock; // block number when the migration can begin
     uint128 reservedTokenAmountForLP; // amount of the token reserved for LP creation
     address recipient; // the address that will receive unused currency and unused LP supply after migration
+    address positionRecipient; // default recipient of minted LP positions; used for the full-range fallback and any position without an overridePositionRecipient
     PoolParameters poolParameters;
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
@@ -97,10 +99,19 @@ library MigratorParams {
             revert InvalidDynamicFeeHook();
         }
         // recipient validation (cannot be zero address). This is the recipient of unallocated
-        // currency/token dust and the implicit full-range fallback position. Per-position
-        // recipients are validated in PositionPlanner.validate.
+        // currency/token dust after migration.
         if (p.recipient == address(0)) {
             revert ILBPStrategy.InvalidRecipient();
+        }
+        // positionRecipient is the default recipient of minted LP positions (the full-range fallback and any
+        // position without an overridePositionRecipient). It cannot be the zero address, address(1), or
+        // address(2), which are reserved addresses on the position manager. Per-position overrides are
+        // validated in PositionPlanner.validate.
+        if (
+            p.positionRecipient == address(0) || p.positionRecipient == ActionConstants.MSG_SENDER
+                || p.positionRecipient == ActionConstants.ADDRESS_THIS
+        ) {
+            revert ILBPStrategy.InvalidPositionRecipient(p.positionRecipient);
         }
         // reservedTokenAmountForLP must be greater than 0 and less than int128.max
         if (p.reservedTokenAmountForLP > uint128(type(int128).max) || p.reservedTokenAmountForLP == 0) {

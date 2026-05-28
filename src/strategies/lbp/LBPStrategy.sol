@@ -279,15 +279,15 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             // We use uint256 for remaining amounts for simplicity. They are guaranteed to fit within a uint128 since the inputs are uint128s.
             uint256 remaining0;
             uint256 remaining1;
-            // The implicit full-range fallback position is minted to mp.recipient, the same address
-            // that receives leftover currency/token dust.
+            // positionRecipient is the default recipient for minted positions: the implicit full-range
+            // fallback and any definition that does not set an overridePositionRecipient.
             (positions, remaining0, remaining1) = PositionPlanner.resolve(
                 abi.decode(mp.positionDefinitions, (PositionDefinition[])),
                 sqrtPriceX96,
                 mp.poolParameters.tickSpacing,
                 amount0In,
                 amount1In,
-                mp.recipient
+                mp.positionRecipient
             );
             if (positions.length == 0) revert NoPositionsCreated();
             currencyTransferAmount = currencyIsCurrency0

@@ -13,7 +13,7 @@ struct PositionDefinition {
     int24 offsetLower; // tick offset from the current tick for the position's lower bound
     int24 offsetUpper; // tick offset from the current tick for the position's upper bound
     uint24 weight; // allocation weight in mps (1e7 = 100%); explicit weights in a plan must sum to <= 1e7
-    address recipient; // recipient of the minted LP position
+    address overridePositionRecipient; // optional recipient for this position's LP NFT; address(0) defaults to MigratorParameters.positionRecipient
 }
 
 /// @notice Generic struct representing a liquidity position
