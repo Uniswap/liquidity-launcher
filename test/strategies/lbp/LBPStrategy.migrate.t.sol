@@ -19,6 +19,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -78,9 +79,30 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.Migrated(
             ILBPInitializer(address(initializer)),
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
-            0
+            0,
+            bytes("")
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
+    }
+
+    function test_migratedEventIncludesPositionPlan(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        bytes32 migratedTopic = keccak256("Migrated(address,(address,address,uint24,int24,address),uint160,bytes)");
+
+        vm.recordLogs();
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        bytes memory emittedPlan;
+        for (uint256 i; i < entries.length; i++) {
+            if (entries[i].emitter == address(strategy) && entries[i].topics[0] == migratedTopic) {
+                (, emittedPlan) = abi.decode(entries[i].data, (uint160, bytes));
+                break;
+            }
+        }
+
+        assertGt(emittedPlan.length, 0);
     }
 
     function test_currencyAmountCappedAtInt128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
@@ -271,7 +293,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertGt(rawSqrtPrice, 0);
 
         vm.expectEmit(false, false, false, false);
-        emit ILBPStrategy.Migrated(ILBPInitializer(address(initializer)), strategyKey, 0);
+        emit ILBPStrategy.Migrated(ILBPInitializer(address(initializer)), strategyKey, 0, bytes(""));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         (uint160 rawSqrtPriceAfter,,,) = POOL_MANAGER.getSlot0(rawKey.toId());

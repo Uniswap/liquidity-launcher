@@ -21,7 +21,8 @@ interface ILBPStrategy is IStrategy {
     /// @param initializer The initializer that was migrated
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
-    event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96);
+    /// @param plan The PositionManager plan executed to mint the final positions
+    event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96, bytes plan);
 
     /// @notice Emitted when the currency is swept
     event CurrencySwept(address indexed operator, uint256 amount);

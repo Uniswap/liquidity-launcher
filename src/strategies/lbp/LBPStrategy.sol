@@ -225,7 +225,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             emit TokensSwept(migrationParams.recipient, remainingToken);
         }
 
-        emit Migrated(initializer, key, sqrtPriceX96);
+        emit Migrated(initializer, key, sqrtPriceX96, plan);
     }
 
     /// @notice Attempts to migrate the initializer and recovers the token reserves if it fails

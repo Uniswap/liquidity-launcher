@@ -145,11 +145,15 @@ library PositionPlanner {
 
         // Create the fallback full range position with remaining budget
         {
-            TickBounds memory fullRangeBounds = TickBounds({
-                lowerTick: TickMath.minUsableTick(_tickSpacing), upperTick: TickMath.maxUsableTick(_tickSpacing)
-            });
-            Position memory position =
-                fullRangeBounds.resolvePosition(_sqrtPriceX96, maxLiquidityPerTick, remaining0, remaining1);
+            Position memory position = PositionPlanner.resolvePosition(
+                TickBounds({
+                    lowerTick: TickMath.minUsableTick(_tickSpacing), upperTick: TickMath.maxUsableTick(_tickSpacing)
+                }),
+                _sqrtPriceX96,
+                maxLiquidityPerTick,
+                remaining0,
+                remaining1
+            );
             // If the position exceeds the max liquidity per tick, adjust the amounts down
             if (!position.isEmpty()) {
                 remaining0 -= position.amount0;
@@ -177,6 +181,7 @@ library PositionPlanner {
     }
 
     /// @notice Resolves tick bounds into a position, allocating up to the provided budgets
+    ///         will return an empty position struct for zero liquidity
     /// @dev The actual amounts required for the computed liquidity will be less than or equal to the budget
     function resolvePosition(
         TickBounds memory _bounds,
