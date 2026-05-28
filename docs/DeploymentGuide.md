@@ -78,6 +78,10 @@ Do not configure third-party or custom hooks in `hook` unless they inherit `Init
 
 Passing `address(0)` keeps a static-fee launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly. Dynamic-fee launches must provide a nonzero hook with the fee logic.
 
+### LBPStrategy `recoveryDelayBlocks`
+
+`LBPStrategy`'s constructor takes an immutable `recoveryDelayBlocks` (in blocks) — the wait past `migrationBlock` before `recoverFunds` can be called. Pick a per-chain value that corresponds to roughly the wall-time you want (e.g. `7_200` for ~1 day on a 12s-block chain).
+
 ## Example
 
 ### Fresh-mint flow (mint + distribute atomically)

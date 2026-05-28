@@ -17,7 +17,7 @@ interface ILBPStrategy is IStrategy {
     ///        the LBPStrategy address as the hook. address(0) is only valid with a static pool fee.
     event InitializerCreated(ILBPInitializer indexed initializer, MigratorParameters migrationParams);
 
-    /// @notice Emitted when `tryMigrate` successfully migrates to the configured v4 pool.
+    /// @notice Emitted when a v4 pool is created and the liquidity is migrated to it
     /// @param initializer The initializer that was migrated
     /// @param key The key of the pool that was created
     /// @param initialSqrtPriceX96 The initial sqrt price of the pool
@@ -29,24 +29,11 @@ interface ILBPStrategy is IStrategy {
     /// @notice Emitted when the tokens are swept
     event TokensSwept(address indexed operator, uint256 amount);
 
-    /// @notice Emitted when `tryFallbackMigrate` successfully mints a full-range position
-    /// @param initializer The initializer that was fallback migrated
-    /// @param key The strategy-as-hook pool key that received fallback liquidity
-    /// @param initialSqrtPriceX96 The initial sqrt price of the pool
-    /// @param currencyAmount The amount of currency consumed by the fallback LP position
-    /// @param tokenAmount The amount of token consumed by the fallback LP position
-    event FallbackMigrated(
-        ILBPInitializer indexed initializer,
-        PoolKey indexed key,
-        uint160 initialSqrtPriceX96,
-        uint256 currencyAmount,
-        uint256 tokenAmount
-    );
-
-    /// @notice Emitted when `_release` releases the `reservedTokenAmountForLP` to `recipient`
-    /// @param initializer The initializer whose reserves were released
+    /// @notice Emitted when an initializer's held reservedTokenAmountForLP is swept by its recipient after the
+    /// recovery delay expires (recovery path when migrate fails).
+    /// @param initializer The initializer whose reserves were swept
     /// @param recipient The recipient that received the swept tokens
-    /// @param amount The amount of `reservedTokenAmountForLP` transferred out of the strategy
+    /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
     event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
 
     /// @notice Error thrown when the initializer was already created
@@ -111,22 +98,28 @@ interface ILBPStrategy is IStrategy {
     /// @param initializer The initializer being acted on
     error InitializerNotRegistered(ILBPInitializer initializer);
 
-    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`.
+    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
+    /// or `recoverFunds`.
     /// @param initializer The initializer being acted on
     error InsufficientReserves(ILBPInitializer initializer);
 
-    /// @notice Error thrown when an internal try-function is invoked by anyone other than the strategy itself.
+    /// @notice Error thrown when recoverFunds is called before its unlock block
+    /// @param unlockBlock The earliest block at which recoverFunds is allowed
+    error RecoveryNotYetAllowed(uint256 unlockBlock);
+
+    /// @notice Error thrown when recoverFunds is called by an address other than the initializer's
+    /// recipient.
+    /// @param caller The caller of recoverFunds
+    /// @param recipient The configured recipient for the initializer
+    error UnauthorizedRecovery(address caller, address recipient);
+
+    /// @notice Error thrown when the function is called by an address other than the strategy
     error OnlySelfCall();
 
-    /// @notice Error thrown when a position plan resolves to no mintable liquidity.
-    error NoResolvedPositions();
-
-    /// @notice Migrates the raised funds and tokens to a v4 pool. Sole public entrypoint for terminating an
-    /// initializer; internally waterfalls through three functions, each invoked via an isolated self-call:
-    ///        1. `tryMigrate` — migrate and create the LP positions according to the configured plan.
-    ///        2. `tryFallbackMigrate` — migrate and create a single full-range LP on the strategy-as-hook pool.
-    ///        3. `_release` — transfer `reservedTokenAmountForLP` and any currency from the initializer to the `recipient`
-    /// @dev The migration is atomic and must not revert or funds will be permanently locked
+    /// @notice Migrates the raised funds and tokens to a v4 pool
+    /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
+    /// @dev In the case that this function reverts, the specified recipient MUST use `recoverFunds`
+    ///      to recover the reserved tokens and the currency raised by the initializer.
     /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 
