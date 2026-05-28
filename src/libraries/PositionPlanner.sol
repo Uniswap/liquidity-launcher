@@ -28,8 +28,6 @@ library PositionPlanner {
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
-    /// @notice Reference liquidity used to quote token consumption
-    uint128 internal constant LIQUIDITY_PRECISION = 1e18;
     /// @notice The maximum number of positions that can be included in a plan to prevent OOG
     uint24 public constant MAX_POSITIONS_PER_PLAN = 10;
 
