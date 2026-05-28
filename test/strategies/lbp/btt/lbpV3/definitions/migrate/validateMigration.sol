@@ -137,6 +137,11 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         emit ILBPStrategy.FundsRecovered(
             ILBPInitializer(address(initializer)), mp.recipient, mp.reservedTokenAmountForLP
         );
+        vm.expectEmit(true, false, false, true, address(strategy));
+        emit ILBPStrategy.MigrationFailed(
+            ILBPInitializer(address(initializer)),
+            abi.encodeWithSelector(ILBPStrategy.CurrencyRaisedMismatch.selector, actualAmount, claimed)
+        );
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(mp.recipient.balance, recipientCurrencyBefore + actualAmount);

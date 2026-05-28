@@ -147,8 +147,9 @@ contract PositionPlannerTest is Test {
     function test_validate_succeedsAtMaxPositionCount() public view {
         PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN);
         for (uint256 i; i < defs.length; i++) {
-            uint24 weight =
-                i == defs.length - 1 ? uint24(1e7 - (PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN - 1)) : uint24(1);
+            uint24 weight = i == defs.length - 1
+                ? uint24(1e7 - (PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN - 1))
+                : uint24(1);
             defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
         }
 
@@ -156,9 +157,11 @@ contract PositionPlannerTest is Test {
     }
 
     function test_validate_revertsWhenPositionCountExceedsMax() public {
-        PositionDefinition[] memory defs = new PositionDefinition[](PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN + 1);
+        PositionDefinition[] memory defs =
+            new PositionDefinition[](PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN + 1);
         for (uint256 i; i < defs.length; i++) {
-            uint24 weight = i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN) : uint24(1);
+            uint24 weight =
+                i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN) : uint24(1);
             defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
         }
 

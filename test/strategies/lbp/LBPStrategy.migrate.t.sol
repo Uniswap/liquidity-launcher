@@ -156,6 +156,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.FundsRecovered(
             ILBPInitializer(address(initializer)), mp.recipient, mp.reservedTokenAmountForLP
         );
+        vm.expectEmit(true, false, false, true, address(strategy));
+        emit ILBPStrategy.MigrationFailed(ILBPInitializer(address(initializer)), bytes("POSITION_MANAGER_REVERT"));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(mp.recipient.balance, recipientCurrencyBefore + raised);
@@ -198,6 +200,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.FundsRecovered(
             ILBPInitializer(address(initializer)), mp.recipient, mp.reservedTokenAmountForLP
         );
+        vm.expectEmit(true, false, false, true, address(strategy));
+        emit ILBPStrategy.MigrationFailed(ILBPInitializer(address(initializer)), bytes("POSITION_MANAGER_REVERT"));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(currencyToken.balanceOf(mp.recipient), recipientCurrencyBefore + p.currencyRaised);

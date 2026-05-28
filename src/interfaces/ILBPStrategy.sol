@@ -37,6 +37,11 @@ interface ILBPStrategy is IStrategy {
     /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
     event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
 
+    /// @notice Emitted when a migration fails
+    /// @param initializer The initializer that failed to migrate
+    /// @param reason The reason the migration failed
+    event MigrationFailed(ILBPInitializer indexed initializer, bytes reason);
+
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);

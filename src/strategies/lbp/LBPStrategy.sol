@@ -56,11 +56,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// initializer is registered; zeroed when its reserves are consumed by {migrate}.
     mapping(ILBPInitializer initializer => uint256) public reserves;
 
-    constructor(
-        IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        IDistributorFactory _initializerFactory
-    ) {
+    constructor(IPositionManager _positionManager, IPoolManager _poolManager, IDistributorFactory _initializerFactory) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
@@ -225,7 +221,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Attempts to migrate the initializer and recovers the token reserves if it fails
     function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
         try this.tryMigrate(initializer) {}
-        catch {
+        catch (bytes memory reason) {
             MigratorParameters memory mp = _initializers[initializer];
             address recipient = mp.recipient;
             // Migration failed, recover the token reserves
@@ -248,6 +244,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
             IERC20(mp.token).safeTransfer(recipient, tokenReserves);
             emit FundsRecovered(initializer, recipient, tokenReserves);
+            emit MigrationFailed(initializer, reason);
         }
     }
 
