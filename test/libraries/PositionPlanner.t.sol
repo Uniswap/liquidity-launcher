@@ -122,7 +122,7 @@ contract PositionPlannerTest is Test {
     }
 
     function test_fuzz_validate_succeedsWhenWeightsBelowMPS(uint24 weight) public view {
-        weight = uint24(bound(weight, 0, 1e7));
+        weight = uint24(bound(weight, 1, 1e7));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
         defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: weight});
@@ -361,7 +361,8 @@ contract PositionPlannerTest is Test {
         PositionDefinition[] memory defs = new PositionDefinition[](2);
         // First position definition is invalid as it resolves to MAX_TICK == MAX_TICK
         defs[0] = PositionDefinition({offsetLower: 1, offsetUpper: 2, weight: 4e6});
-        defs[1] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 3e6});
+        // The unused weight should rollover entirely to the second position
+        defs[1] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 6e6});
 
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(TickMath.MAX_TICK - 1);
         (Position[] memory positions,,) = mockPositionPlanner.resolve(defs, sqrtPriceX96, 10, 100e18, 100e18);

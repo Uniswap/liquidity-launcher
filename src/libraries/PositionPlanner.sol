@@ -12,13 +12,13 @@ import {TickCalculations} from "./TickCalculations.sol";
 import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
     using TickCalculations for int24;
-    using PositionPlanner for *;
+    using PositionPlanner for TickBounds;
+    using PositionPlanner for Position;
 
     /// @notice Absolute tick boundaries for a resolved position
     struct TickBounds {
@@ -46,7 +46,7 @@ library PositionPlanner {
     error TooManyPositions(uint24 actual, uint24 max);
 
     /// @notice Validates that position definitions are correct
-    /// @dev Reverts if the number of definitions exceeds to the maximum allowed,
+    /// @dev Reverts if the number of definitions exceeds the maximum allowed,
     ///      if tick offsets are out of order, or if the total weight exceeds `MPS`
     /// @param _definitions the position definitions
     function validate(PositionDefinition[] memory _definitions) internal pure {
