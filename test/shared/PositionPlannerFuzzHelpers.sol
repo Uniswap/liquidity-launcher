@@ -18,7 +18,7 @@ library PositionPlannerFuzzHelpers {
         returns (PositionDefinition[] memory definitions)
     {
         uint256 count =
-            rawDefinitions.length == 0 ? 1 : _bound(rawDefinitions.length, 1, PositionPlanner.MAX_POSITIONS_PER_PLAN);
+            rawDefinitions.length == 0 ? 1 : _bound(rawDefinitions.length, 1, PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN);
 
         definitions = new PositionDefinition[](count);
         uint24 remainingWeight = MPS;

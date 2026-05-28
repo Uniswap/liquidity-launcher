@@ -28,8 +28,9 @@ library PositionPlanner {
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
-    /// @notice The maximum number of positions that can be included in a plan to prevent OOG
-    uint24 public constant MAX_POSITIONS_PER_PLAN = 10;
+    /// @notice The maximum number of explicit position definitions in a plan, in addition to the
+    ///         implicit full range fallback. Bounded to prevent OOG.
+    uint24 public constant MAX_ADDITIONAL_POSITIONS_PER_PLAN = 10;
 
     /// @notice Thrown when the weights across a plan exceed `MPS`
     error InvalidAllocationWeights(uint256 totalWeight);
@@ -50,8 +51,8 @@ library PositionPlanner {
     ///      if tick offsets are out of order, or if the total weight exceeds `MPS`
     /// @param _definitions the position definitions
     function validate(PositionDefinition[] memory _definitions) internal pure {
-        if (_definitions.length > MAX_POSITIONS_PER_PLAN) {
-            revert TooManyPositions(uint24(_definitions.length), MAX_POSITIONS_PER_PLAN);
+        if (_definitions.length > MAX_ADDITIONAL_POSITIONS_PER_PLAN) {
+            revert TooManyPositions(uint24(_definitions.length), MAX_ADDITIONAL_POSITIONS_PER_PLAN);
         }
         uint256 totalWeight;
         for (uint256 i; i < _definitions.length; i++) {
@@ -133,12 +134,12 @@ library PositionPlanner {
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
             // Get the position's share of the total currency budget (defined in MPS terms)
+            // resolvePosition caps liquidity to maxLiquidityPerTick internally.
             Position memory position = ticks[i].resolvePosition(
                 _sqrtPriceX96, maxLiquidityPerTick, _currency0Amount * weight / MPS, _currency1Amount * weight / MPS
             );
             // Empty positions are skipped and their allocations will be used to create a full range position.
-            // Positions that would exceed maxLiquidityPerTick are capped within resolvePosition()
-            if (!position.isEmpty() && position.liquidity <= maxLiquidityPerTick) {
+            if (!position.isEmpty()) {
                 remaining0 -= position.amount0;
                 remaining1 -= position.amount1;
                 maxLiquidityPerTick -= uint128(position.liquidity);
