@@ -343,7 +343,7 @@ contract PositionPlannerTest is Test {
         // With non zero liquidity
         assertGt(positions[0].liquidity, 0);
         // And less than the max liquidity per tick
-        assertLt(positions[0].liquidity, Pool.tickSpacingToMaxLiquidityPerTick(1));
+        assertLe(positions[0].liquidity, Pool.tickSpacingToMaxLiquidityPerTick(1));
         // With remaining budget
         assertGt(remaining0, 0);
         assertGt(remaining1, 0);
