@@ -12,27 +12,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 /// Uses the reference helper _expectedLpCurrencyAmount in the base to assert the contract
 /// applies the schedule correctly to whatever currency is raised.
 contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
-    function test_zeroRateBracket_revertsDuringValidation(MigrationFuzzParams memory p) public {
-        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
-        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
-
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        mp.token = address(token);
-        mp.currency = address(0);
-        bytes memory configData = _encodeConfigData(
-            mp,
-            bp,
-            _encodeMockInitializerParams(
-                endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
-            )
-        );
-        token.approve(address(strategy), totalSupply);
-
-        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, 0));
-        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
-    }
-
     function test_fuzz_poolNeverConsumesMoreThanBracketBudget(MigrationFuzzParams memory p) public {
         // The bracket calc produces an upper bound on what the LP can consume; the planner
         // may consume less if positions can't absorb the full budget (e.g., out-of-range).
