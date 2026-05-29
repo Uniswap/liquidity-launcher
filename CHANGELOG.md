@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0]
+Token Launcher v3.0.0 is a major release with breaking changes. It is not backwards compatible with v2.0.0.
+
+### Breaking changes
+- `distributeToken` now uses a pull model: removed the `payerIsUser` parameter and the `IDistributionContract` return value. Acquire tokens with `createToken` or the new `depositToken`, then batch with `distributeToken` in a single `multicall`. The launcher force-approves the strategy, which pulls the full amount via `safeTransferFrom`, and reverts with `AllowanceNotFullyConsumed` if it does not. The `TokenDistributed` event's `distributionContract` argument is renamed `strategy` [#141](https://github.com/Uniswap/token-launcher/pull/141), [#160](https://github.com/Uniswap/token-launcher/pull/160)
+- Consolidated all LBP strategy variants (`LBPStrategyBase`, `AdvancedLBPStrategy`, `FullRangeLBPStrategy`, `GovernedLBPStrategy`, `VirtualGovernedLBPStrategy`) into a single `LBPStrategy`; removed all per-variant strategy factories and the `StrategyFactory` base [#141](https://github.com/Uniswap/token-launcher/pull/141)
+- Interface renames: `IDistributionStrategy` → `IStrategy`, `IDistributionContract` → `IDistributor`, `ILBPStrategyBase` → `ILBPStrategy`. `IStrategy.initializeDistribution` no longer returns a contract; the strategy is now responsible for pulling tokens from the caller [#150](https://github.com/Uniswap/token-launcher/pull/150), [#152](https://github.com/Uniswap/token-launcher/pull/152)
+- `MigratorParameters` reworked and moved to `src/libraries/MigratorParams.sol`: replaced single full-range migration with a weighted `positionDefinitions` plan, a bracketed `lpAllocationSchedule`, and a `positionRecipient` (with optional per-position `overridePositionRecipient`) [#160](https://github.com/Uniswap/token-launcher/pull/160), [#159](https://github.com/Uniswap/token-launcher/pull/159)
+- Replaced the per-LBP `ProtocolFeeOperator` (EIP-1167 clone) with a single governance-owned `ProtocolFeeController` exposing bracketed per-currency fees via `IProtocolFeeController` [#139](https://github.com/Uniswap/token-launcher/pull/139), [#146](https://github.com/Uniswap/token-launcher/pull/146)
+
+Integrators should update to v3.0.0 as soon as possible.
+
+### Added
+- `tryMigrate(initializer)` — griefing-resistant migration that catches failures and emits `MigrationFailed` instead of reverting, alongside the strict `migrate(initializer)` entrypoint [#151](https://github.com/Uniswap/token-launcher/pull/151)
+- `PositionPlanner` library for weighted, multi-position liquidity migration with a bracketed currency-to-LP allocation schedule [#128](https://github.com/Uniswap/token-launcher/pull/128), [#160](https://github.com/Uniswap/token-launcher/pull/160)
+- Per-position LP NFT recipients via `overridePositionRecipient` [#159](https://github.com/Uniswap/token-launcher/pull/159)
+- Pluggable migration hooks: new `InitializerHook` base (gates pool initialization) and `IInitializerHook`, plus an example `GatedSwapHook`. Caller-provided hooks MUST inherit `InitializerHook`, and dynamic-fee pools now require a hook [#134](https://github.com/Uniswap/token-launcher/pull/134), [#155](https://github.com/Uniswap/token-launcher/pull/155)
+- `depositToken(token, amount)` to pull pre-existing tokens via Permit2 for batching with `distributeToken` [#160](https://github.com/Uniswap/token-launcher/pull/160)
+- `ILBPInitializer.sweepCurrency` / `sweepUnsoldTokens`; the strategy enforces that swept currency equals the initializer's reported `currencyRaised` [#160](https://github.com/Uniswap/token-launcher/pull/160)
+- `IDistributorFactory` interface for factories that deploy distributors [#150](https://github.com/Uniswap/token-launcher/pull/150)
+
+### Fixed
+- Guard `LBPStrategy` against hook reentrancy corrupting reserves [#154](https://github.com/Uniswap/token-launcher/pull/154)
+- Force-send ETH to position recipients so a reverting recipient cannot grief migration [#161](https://github.com/Uniswap/token-launcher/pull/161)
+- Reject zero-weight positions and roll skipped allocation weight into the full-range fallback [#158](https://github.com/Uniswap/token-launcher/pull/158)
+- Bind the LBP initializer deployment salt to the migrator parameters [#140](https://github.com/Uniswap/token-launcher/pull/140)
+- Reject migrations where the launched token and auction currency are the same asset
+- Revert migration when no positions are created
+
+### Removed
+- Strategy factory contracts (`StrategyFactory`, `AdvancedLBPStrategyFactory`, `FullRangeLBPStrategyFactory`, `GovernedLBPStrategyFactory`) and the per-variant LBP strategies [#141](https://github.com/Uniswap/token-launcher/pull/141)
+- `ProtocolFeeOperator` [#139](https://github.com/Uniswap/token-launcher/pull/139)
+- `IDistributionContract` and `IStrategyFactory` interfaces [#150](https://github.com/Uniswap/token-launcher/pull/150)
+- `recoverFunds` (superseded by the `tryMigrate` recovery path) [#160](https://github.com/Uniswap/token-launcher/pull/160)
+
 ## [2.0.0]
 Liquidity Launcher v2.0.0 is a major release with breaking changes. It is not backwards compatible with v1.0.0.
 
