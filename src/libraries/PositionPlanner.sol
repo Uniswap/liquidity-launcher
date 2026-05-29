@@ -167,7 +167,7 @@ library PositionPlanner {
                 _sqrtPriceX96,
                 maxLiquidityPerTick,
                 remainingAmounts,
-                _positionRecipient
+                _positionRecipient // the full range position always uses the default position recipient
             );
             if (!position.isEmpty()) {
                 remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
