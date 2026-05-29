@@ -1,0 +1,19 @@
+PositionPlannerBTTTest
+├── resolve
+│   ├── given an explicit definition with a non-zero override recipient
+│   │   └── it assigns the override recipient to the position
+│   ├── given an explicit definition with a zero override recipient
+│   │   └── it assigns the default position recipient to the position
+│   ├── given multiple definitions with mixed override recipients
+│   │   └── it assigns each position its own resolved recipient
+│   └── given the implicit full-range fallback
+│       └── it assigns the default position recipient
+└── resolvePosition
+    ├── when tick bounds are invalid
+    │   └── it returns an empty position
+    ├── when liquidity is zero
+    │   └── it returns an empty position
+    ├── when liquidity exceeds the max liquidity
+    │   └── it caps liquidity and backs out amounts from the capped liquidity
+    └── when a valid position is created
+        └── it assigns the provided recipient

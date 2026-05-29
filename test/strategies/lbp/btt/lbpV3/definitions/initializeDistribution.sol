@@ -50,7 +50,7 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidDynamicFeeHook
 /// ├── when fee is the dynamic fee flag with a hook
 /// │   └── it stores the migration parameters
-/// ├── when positionRecipient is reserved
+/// ├── when a position definition recipient is reserved
 /// │   └── it reverts with InvalidPositionRecipient
 /// ├── when reservedTokenAmountForLP > int128.max
 /// │   └── it reverts with InvalidReservedTokenAmountForLP
@@ -336,27 +336,31 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenPositionRecipientIsReserved(uint256 _seed, MigrationFuzzParams memory p)
+    function test_WhenPositionDefinitionRecipientIsReserved(uint256 _seed, MigrationFuzzParams memory p)
         public
         whenBracketScheduleIsValid
         whenTickSpacingIsValid
         whenFeeIsValid
     {
         // it reverts with {InvalidPositionRecipient}
+        // A non-zero overridePositionRecipient cannot be a reserved sentinel (address(1) or address(2)).
+        // address(0) is valid and means "default to positionRecipient", so it is not tested here.
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = abi.decode(mp.positionDefinitions, (PositionDefinition[]));
 
-        if (_seed % 3 == 0) {
-            mp.positionRecipient = address(0);
-        } else if (_seed % 3 == 1) {
-            mp.positionRecipient = ActionConstants.MSG_SENDER;
+        if (_seed % 2 == 0) {
+            defs[0].overridePositionRecipient = ActionConstants.MSG_SENDER;
         } else {
-            mp.positionRecipient = ActionConstants.ADDRESS_THIS;
+            defs[0].overridePositionRecipient = ActionConstants.ADDRESS_THIS;
         }
+        mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
 
-        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidPositionRecipient.selector, mp.positionRecipient));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InvalidPositionRecipient.selector, defs[0].overridePositionRecipient)
+        );
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
@@ -479,7 +483,12 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: _weight});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: _weight,
+            overridePositionRecipient: positionRecipient
+        });
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -499,8 +508,15 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
     {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 0});
-        defs[1] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 0,
+            overridePositionRecipient: positionRecipient
+        });
+        defs[1] = PositionDefinition({
+            offsetLower: -100, offsetUpper: 100, weight: 1e7, overridePositionRecipient: positionRecipient
+        });
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -528,7 +544,12 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
 
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: _offsetLower, offsetUpper: _offsetUpper, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: _offsetLower,
+            offsetUpper: _offsetUpper,
+            weight: 1e7,
+            overridePositionRecipient: positionRecipient
+        });
         mp.positionDefinitions = abi.encode(defs);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
@@ -553,7 +574,9 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         for (uint256 i; i < defs.length; i++) {
             uint24 weight =
                 i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN) : uint24(1);
-            defs[i] = PositionDefinition({offsetLower: -100, offsetUpper: 100, weight: weight});
+            defs[i] = PositionDefinition({
+                offsetLower: -100, offsetUpper: 100, weight: weight, overridePositionRecipient: positionRecipient
+            });
         }
         mp.positionDefinitions = abi.encode(defs);
 
@@ -676,7 +699,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedParams.poolParameters.tickSpacing, mp.poolParameters.tickSpacing);
         assertEq(storedParams.reservedTokenAmountForLP, mp.reservedTokenAmountForLP);
         assertEq(storedParams.recipient, mp.recipient);
-        assertEq(storedParams.positionRecipient, mp.positionRecipient);
         assertEq(storedParams.poolParameters.hook, mp.poolParameters.hook);
         assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
         assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));

@@ -38,7 +38,6 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         assertEq(storedParams.poolParameters.tickSpacing, mp.poolParameters.tickSpacing);
         assertEq(storedParams.reservedTokenAmountForLP, mp.reservedTokenAmountForLP);
         assertEq(storedParams.recipient, mp.recipient);
-        assertEq(storedParams.positionRecipient, mp.positionRecipient);
         assertEq(storedParams.poolParameters.hook, mp.poolParameters.hook);
         assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
         assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));

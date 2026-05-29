@@ -25,7 +25,12 @@ library PositionPlannerFuzzHelpers {
         uint24 remainingWeight = MPS;
         for (uint256 i; i < count; i++) {
             PositionDefinition memory raw = rawDefinitions.length == 0
-                ? PositionDefinition({offsetLower: int24(0), offsetUpper: int24(0), weight: uint24(0)})
+                ? PositionDefinition({
+                    offsetLower: int24(0),
+                    offsetUpper: int24(0),
+                    weight: uint24(0),
+                    overridePositionRecipient: address(0)
+                })
                 : rawDefinitions[i];
 
             uint24 weight;
@@ -39,7 +44,13 @@ library PositionPlannerFuzzHelpers {
 
             (int24 offsetLower, int24 offsetUpper) =
                 boundTickOffsets(raw.offsetLower, raw.offsetUpper, currentTick, tickSpacing);
-            definitions[i] = PositionDefinition({offsetLower: offsetLower, offsetUpper: offsetUpper, weight: weight});
+            // override is left as address(0) so resolved positions default to MigratorParameters.positionRecipient.
+            definitions[i] = PositionDefinition({
+                offsetLower: offsetLower,
+                offsetUpper: offsetUpper,
+                weight: weight,
+                overridePositionRecipient: address(0)
+            });
         }
     }
 

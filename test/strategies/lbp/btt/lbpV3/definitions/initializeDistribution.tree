@@ -16,9 +16,9 @@ InitializeDistributionTest
         ├── when poolParameters.fee is greater than MAX_LP_FEE
         │   └── it reverts with {InvalidFee}
         └── when poolParameters.fee is valid
-            ├── when positionRecipient is reserved
+            ├── when position definition recipient is reserved
             │   └── it reverts with {InvalidPositionRecipient}
-            └── when positionRecipient is valid
+            └── when position definition recipient is valid
                 ├── when reservedTokenAmountForLP equals totalSupply
                 │   └── it reverts with {InvalidReservedTokenAmountForLP}
                 ├── when token and currency are the same

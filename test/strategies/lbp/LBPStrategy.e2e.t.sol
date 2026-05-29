@@ -72,12 +72,20 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
     }
 
     function test_initAndMigrate_mintsLpPositionForStandardPlan() public {
+        address secondPositionRecipient = makeAddr("secondPositionRecipient");
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 5e6}); // 50% to LP
 
         PositionDefinition[] memory defs = new PositionDefinition[](2);
-        defs[0] = PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-        defs[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 5e6,
+            overridePositionRecipient: positionRecipient
+        });
+        defs[1] = PositionDefinition({
+            offsetLower: -600, offsetUpper: 600, weight: 5e6, overridePositionRecipient: secondPositionRecipient
+        });
 
         MigratorParameters memory mp = MigratorParameters({
             token: address(0),
@@ -107,6 +115,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore);
         assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(positionRecipient), 0);
+        assertGt(IERC721Balance(address(POSITION_MANAGER)).balanceOf(secondPositionRecipient), 0);
     }
 
     /// forge-config: default.isolate = true
@@ -541,8 +550,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         p.initialPriceX96 = uint160(1 << 96);
         p.tokensSold = 1 ether;
         p.positionDefinitions = new PositionDefinition[](2);
-        p.positionDefinitions[0] =
-            PositionDefinition({offsetLower: TickMath.MIN_TICK, offsetUpper: TickMath.MAX_TICK, weight: 5e6});
-        p.positionDefinitions[1] = PositionDefinition({offsetLower: -600, offsetUpper: 600, weight: 5e6});
+        p.positionDefinitions[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 5e6,
+            overridePositionRecipient: positionRecipient
+        });
+        p.positionDefinitions[1] = PositionDefinition({
+            offsetLower: -600, offsetUpper: 600, weight: 5e6, overridePositionRecipient: positionRecipient
+        });
     }
 }

@@ -19,7 +19,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SelfInitializerMixin} from "./SelfInitializerMixin.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
-import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
+import {PositionPlanner, CurrencyAmounts} from "../../libraries/PositionPlanner.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
@@ -262,29 +262,29 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
 
         Position[] memory positions;
+        CurrencyAmounts memory amounts;
         {
             uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : mp.reservedTokenAmountForLP;
             uint128 amount1In = currencyIsCurrency0 ? mp.reservedTokenAmountForLP : currencyAmountForLp;
-            // We use uint256 for remaining amounts for simplicity. They are guaranteed to fit within a uint128 since the inputs are uint128s.
-            uint256 remaining0;
-            uint256 remaining1;
-            (positions, remaining0, remaining1) = PositionPlanner.resolve(
+            // positionRecipient is the default recipient for minted positions: the implicit full-range
+            // fallback and any definition that does not set an overridePositionRecipient.
+            (positions, amounts) = PositionPlanner.resolve(
                 abi.decode(mp.positionDefinitions, (PositionDefinition[])),
                 sqrtPriceX96,
                 mp.poolParameters.tickSpacing,
-                amount0In,
-                amount1In
+                CurrencyAmounts({amount0: amount0In, amount1: amount1In}),
+                mp.positionRecipient
             );
             if (positions.length == 0) revert NoPositionsCreated();
             currencyTransferAmount = currencyIsCurrency0
-                ? amount0In - SafeCastLib.toUint128(remaining0)
-                : amount1In - SafeCastLib.toUint128(remaining1);
+                ? amount0In - SafeCastLib.toUint128(amounts.amount0)
+                : amount1In - SafeCastLib.toUint128(amounts.amount1);
             tokenTransferAmount = currencyIsCurrency0
-                ? amount1In - SafeCastLib.toUint128(remaining1)
-                : amount0In - SafeCastLib.toUint128(remaining0);
+                ? amount1In - SafeCastLib.toUint128(amounts.amount1)
+                : amount0In - SafeCastLib.toUint128(amounts.amount0);
         }
 
-        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.positionRecipient);
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.recipient);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
