@@ -66,11 +66,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Modifier requiring the initializer to be in a pending migration state
     /// @dev An initializer is pending migration if it is registered and has a non zero reserve amount
     modifier onlyPendingMigrate(ILBPInitializer initializer) {
-        MigratorParameters memory migrationParams = _initializers[initializer];
-        if (migrationParams.migrationBlock == 0) revert InitializerNotRegistered(initializer);
+        uint64 migrationBlock = _initializers[initializer].migrationBlock;
+        if (migrationBlock == 0) revert InitializerNotRegistered(initializer);
         if (reserves[initializer] == 0) revert InsufficientReserves(initializer);
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
-            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
+        if (_getBlockNumberish() < migrationBlock) {
+            revert MigrationNotYetAllowed(migrationBlock, _getBlockNumberish());
         }
         _;
     }
