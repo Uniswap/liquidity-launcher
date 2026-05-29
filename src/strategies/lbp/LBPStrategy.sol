@@ -32,6 +32,7 @@ import {
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -65,11 +66,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Modifier requiring the initializer to be in a pending migration state
     /// @dev An initializer is pending migration if it is registered and has a non zero reserve amount
     modifier onlyPendingMigrate(ILBPInitializer initializer) {
-        MigratorParameters memory migrationParams = _initializers[initializer];
-        if (migrationParams.migrationBlock == 0) revert InitializerNotRegistered(initializer);
+        uint64 migrationBlock = _initializers[initializer].migrationBlock;
+        if (migrationBlock == 0) revert InitializerNotRegistered(initializer);
         if (reserves[initializer] == 0) revert InsufficientReserves(initializer);
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
-            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
+        if (_getBlockNumberish() < migrationBlock) {
+            revert MigrationNotYetAllowed(migrationBlock, _getBlockNumberish());
         }
         _;
     }
@@ -204,6 +205,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
+        // _transferCurrency force-sends native currency so a recipient that rejects ETH cannot brick migration.
         _transferCurrency(currency, migrationParams.recipient, currencyFromInitializer - currencyTransferAmount);
         _transferToken(token, migrationParams.recipient, migrationParams.reservedTokenAmountForLP - tokenTransferAmount);
 
@@ -439,9 +441,16 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @notice Low level function to transfer currency to a recipient
+    /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH cannot brick migration.
+    /// @dev Does not cover the plan's TAKE_PAIR dust: the PositionManager sends that to the recipient with a plain
+    ///      transfer, so a rejecting recipient can still revert migration when PM-side native dust is nonzero.
     function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
         if (amount == 0) return;
-        currency.transfer(recipient, amount);
+        if (currency.isAddressZero()) {
+            SafeTransferLib.forceSafeTransferETH(recipient, amount);
+        } else {
+            currency.transfer(recipient, amount);
+        }
         emit CurrencySwept(recipient, amount);
     }
 
