@@ -32,6 +32,7 @@ import {
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -204,6 +205,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
+        // _transferCurrency force-sends native currency so a recipient that rejects ETH cannot brick migration.
         _transferCurrency(currency, migrationParams.recipient, currencyFromInitializer - currencyTransferAmount);
         _transferToken(token, migrationParams.recipient, migrationParams.reservedTokenAmountForLP - tokenTransferAmount);
 
@@ -439,9 +441,19 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @notice Low level function to transfer currency to a recipient
+    /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH — e.g. a
+    ///      contract without a payable receive — cannot brick migration or recovery. ERC20 transfers
+    ///      have no receiver callback and use the standard path.
+    /// @dev This only covers transfers the strategy makes directly. Native dust swept to the recipient by
+    ///      the plan's TAKE_PAIR is settled by the PositionManager with a plain transfer, NOT force-sent, so
+    ///      a recipient that rejects ETH can still revert migration when PM-side native dust is nonzero.
     function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
         if (amount == 0) return;
-        currency.transfer(recipient, amount);
+        if (currency.isAddressZero()) {
+            SafeTransferLib.forceSafeTransferETH(recipient, amount);
+        } else {
+            currency.transfer(recipient, amount);
+        }
         emit CurrencySwept(recipient, amount);
     }
 

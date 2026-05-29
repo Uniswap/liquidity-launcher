@@ -7,6 +7,7 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
 import {MockReentrantMigrateRecipient} from "test/mocks/MockReentrantMigrateRecipient.sol";
+import {MockRejectEth} from "test/mocks/MockRejectEth.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -166,6 +167,59 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(initializer).balance, 0);
+        assertEq(address(strategy).balance, 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
+    }
+
+    function test_fuzz_migrationForceSendsLeftoverToEthRejectingRecipient_nativeCurrency(MigrationFuzzParams memory p)
+        public
+    {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        // Funds recipient reverts on receiving ETH. A plain transfer of the leftover would brick tryMigrate
+        // and silently downgrade migration to a recovery; the success path must still complete via force-send.
+        vm.etch(mp.recipient, type(MockRejectEth).runtimeCode);
+        uint256 recipientBalBefore = mp.recipient.balance;
+
+        // Migration must succeed (emit Migrated), not fall back to recovery (FundsRecovered).
+        vm.expectEmit(true, false, false, false, address(strategy));
+        emit ILBPStrategy.Migrated(
+            ILBPInitializer(address(initializer)),
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
+            0,
+            bytes("")
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // The non-LP portion of the raise is force-sent to the recipient despite its reverting receive().
+        assertGt(mp.recipient.balance, recipientBalBefore);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_fuzz_recoveryForceSendsToEthRejectingRecipient_nativeCurrency(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
+
+        // Make the funds recipient a contract that reverts on receiving ETH. A plain `currency.transfer`
+        // in the recovery leg would revert and brick the whole migrate() (recovery never completes).
+        vm.etch(mp.recipient, type(MockRejectEth).runtimeCode);
+        uint256 recipientCurrencyBefore = mp.recipient.balance;
+        uint256 recipientTokenBefore = token.balanceOf(mp.recipient);
+
+        vm.mockCallRevert(
+            address(POSITION_MANAGER),
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector),
+            "POSITION_MANAGER_REVERT"
+        );
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // Force-send still delivers the recovered currency despite the recipient's reverting receive().
+        assertEq(mp.recipient.balance, recipientCurrencyBefore + raised);
+        assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
