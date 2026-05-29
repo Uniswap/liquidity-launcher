@@ -9,7 +9,7 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
-import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.sol";
+import {Plan, Position, PositionDefinition, CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
@@ -117,21 +117,18 @@ library PositionPlanner {
     /// @param _definitions The weighted position definitions to resolve
     /// @param _sqrtPriceX96 The pool price used to quote liquidity amounts
     /// @param _tickSpacing The pool tick spacing
-    /// @param _currency0Amount The available currency0 budget
-    /// @param _currency1Amount The available currency1 budget
+    /// @param _currencyAmounts The available currency0 and currency1 budgets
     /// @param _positionRecipient The default recipient for minted positions; used for the implicit full-range
     ///        fallback position and for any definition without an overridePositionRecipient
     /// @return positions The resolved positions that fit within the supplied budgets
-    /// @return remaining0 The unconsumed currency0 budget
-    /// @return remaining1 The unconsumed currency1 budget
+    /// @return remainingAmounts The unconsumed currency0 and currency1 budgets
     function resolve(
         PositionDefinition[] memory _definitions,
         uint160 _sqrtPriceX96,
         int24 _tickSpacing,
-        uint256 _currency0Amount,
-        uint256 _currency1Amount,
+        CurrencyAmounts memory _currencyAmounts,
         address _positionRecipient
-    ) internal pure returns (Position[] memory positions, uint256 remaining0, uint256 remaining1) {
+    ) internal pure returns (Position[] memory positions, CurrencyAmounts memory remainingAmounts) {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
         // Allocate space for the maximum possible number of positions (assuming all can be created)
         positions = new Position[](ticks.length + 1);
@@ -139,27 +136,23 @@ library PositionPlanner {
         // Track one global remaining cap across the whole plan, assuming all positions share a tick boundary.
         // This may skip positions V4 would accept, but guarantees planned positions cannot exceed the cap on a fresh pool.
         uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
-        remaining0 = _currency0Amount;
-        remaining1 = _currency1Amount;
+        remainingAmounts = _currencyAmounts;
         uint24 cnt = 0;
         // Definitions are processed in order: each created position consumes a portion of the budget
         // Reordering the same definitions can therefore result in a different set of positions being created
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
             // ResolvePosition caps liquidity to maxLiquidityPerTick internally.
-            Position memory position = ticks[i].resolvePosition(
-                _sqrtPriceX96,
-                maxLiquidityPerTick,
-                _currency0Amount.applyWeight(weight),
-                _currency1Amount.applyWeight(weight)
-            );
+            Position memory position =
+                ticks[i].resolvePosition(_sqrtPriceX96, maxLiquidityPerTick, _currencyAmounts.applyWeight(weight));
             // Failed positions are skipped and their allocations will be used in a full range position.
             if (!position.isEmpty()) {
                 // Use the per-position override when set, otherwise fall back to the default positionRecipient.
-                address overrideRecipient = _definitions[i].overridePositionRecipient;
-                position.recipient = overrideRecipient == address(0) ? _positionRecipient : overrideRecipient;
-                remaining0 -= position.amount0;
-                remaining1 -= position.amount1;
+                {
+                    address overrideRecipient = _definitions[i].overridePositionRecipient;
+                    position.recipient = overrideRecipient == address(0) ? _positionRecipient : overrideRecipient;
+                }
+                remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
                 maxLiquidityPerTick -= uint128(position.liquidity);
                 positions[cnt++] = position;
             }
@@ -173,13 +166,11 @@ library PositionPlanner {
                 }),
                 _sqrtPriceX96,
                 maxLiquidityPerTick,
-                remaining0,
-                remaining1
+                remainingAmounts
             );
             if (!position.isEmpty()) {
                 position.recipient = _positionRecipient;
-                remaining0 -= position.amount0;
-                remaining1 -= position.amount1;
+                remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
                 positions[cnt++] = position;
             }
         }
@@ -189,7 +180,7 @@ library PositionPlanner {
             mstore(positions, cnt)
         }
 
-        return (positions, remaining0, remaining1);
+        return (positions, remainingAmounts);
     }
 
     /// @notice Returns true if tick bounds are correctly ordered
@@ -202,20 +193,33 @@ library PositionPlanner {
         return _position.liquidity == 0;
     }
 
-    /// @notice Applies a weight to an amount
-    function applyWeight(uint256 _amount, uint24 _weight) internal pure returns (uint256) {
-        return _amount * _weight / MPS;
+    /// @notice Applies a weight to currency amounts
+    function applyWeight(CurrencyAmounts memory _amounts, uint24 _weight)
+        internal
+        pure
+        returns (CurrencyAmounts memory)
+    {
+        return CurrencyAmounts({amount0: _amounts.amount0 * _weight / MPS, amount1: _amounts.amount1 * _weight / MPS});
     }
 
-    /// @notice Resolves tick bounds into a position, allocating up to the provided budgets
-    ///         will return an empty position struct for zero liquidity
+    /// @notice Subtracts amounts from a set of amounts. Does checked subtraction.
+    function sub(CurrencyAmounts memory _amounts, uint256 _amount0, uint256 _amount1)
+        internal
+        pure
+        returns (CurrencyAmounts memory)
+    {
+        return CurrencyAmounts({amount0: _amounts.amount0 - _amount0, amount1: _amounts.amount1 - _amount1});
+    }
+
+    /// @notice Resolves tick bounds into a position, allocating up to the provided budgets.
+    ///         WILL return an empty position struct for zero liquidity.
+    /// @dev The caller MUST set the `recipient` field of the position
     /// @dev The actual amounts required for the computed liquidity will be less than or equal to the budget
     function resolvePosition(
         TickBounds memory _bounds,
         uint160 _sqrtPriceX96,
         uint128 _maxLiquidity,
-        uint256 _currency0Budget,
-        uint256 _currency1Budget
+        CurrencyAmounts memory _currencyAmounts
     ) internal pure returns (Position memory position) {
         // Skip invalid tick bounds
         if (!_bounds.isValid()) return position;
@@ -225,28 +229,19 @@ library PositionPlanner {
             _sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(_bounds.lowerTick),
             TickMath.getSqrtPriceAtTick(_bounds.upperTick),
-            _currency0Budget,
-            _currency1Budget
+            _currencyAmounts.amount0,
+            _currencyAmounts.amount1
         );
         // Skip positions that have no liquidity
         if (liquidity == 0) return position;
+        position.tickLower = _bounds.lowerTick;
+        position.tickUpper = _bounds.upperTick;
         // Cap the liquidity to the max liquidity allowable
         liquidity = liquidity > _maxLiquidity ? _maxLiquidity : liquidity;
-
+        position.liquidity = liquidity;
         // Back out the amounts from the derived liquidity. This is guaranteed to be less than or equal to the budget amounts.
-        (uint256 amount0, uint256 amount1) =
+        (position.amount0, position.amount1) =
             _getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
-
-        return Position({
-            amount0: amount0,
-            amount1: amount1,
-            tickLower: _bounds.lowerTick,
-            tickUpper: _bounds.upperTick,
-            liquidity: liquidity,
-            // recipient is assigned by the caller (`resolve`): per-position recipient for explicit
-            // definitions, or the fallback recipient for the implicit full-range position.
-            recipient: address(0)
-        });
     }
 
     /// @notice Converts concrete positions into a PositionManager plan

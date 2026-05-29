@@ -25,3 +25,9 @@ struct Position {
     uint256 liquidity;
     address recipient;
 }
+
+/// @notice A pair of currency amounts (currency0, currency1)
+struct CurrencyAmounts {
+    uint256 amount0;
+    uint256 amount1;
+}
