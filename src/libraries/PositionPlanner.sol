@@ -190,7 +190,7 @@ library PositionPlanner {
     /// @param _maxLiquidity The maximum liquidity which can be created
     /// @param _currencyAmounts The maximum currency amounts available for use
     /// @param _recipient The recipient of the position
-    /// @return The created position, or an empty struct on if the tick bounds are invalid or liquidity is zero
+    /// @return position The created position, or an empty struct if the tick bounds are invalid or liquidity is zero
     function resolvePosition(
         TickBounds memory _bounds,
         uint160 _sqrtPriceX96,
