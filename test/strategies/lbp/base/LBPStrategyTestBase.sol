@@ -132,9 +132,6 @@ abstract contract LBPStrategyTestBase is Test {
         if (currencyRaised > 0) {
             vm.deal(address(initializer), currencyRaised);
         }
-        // `_initializeWith` already pulled both portions: reservedTokenAmountForLP into the strategy and auctionSupply
-        // into the initializer. Nothing else to fund. The `auctionSupply` local is unused here.
-        auctionSupply;
         vm.roll(mp.migrationBlock);
     }
 

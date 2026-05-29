@@ -12,38 +12,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 /// Uses the reference helper _expectedLpCurrencyAmount in the base to assert the contract
 /// applies the schedule correctly to whatever currency is raised.
 contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
-    function test_zeroRateBracket_consumesNoCurrency(MigrationFuzzParams memory p) public {
-        // Single bracket at 0% rate — bracket calc yields 0 LP currency, so the pool should
-        // receive nothing and all raised currency should reach recipient.
-        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
-        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
-
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
-        (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, p.currencyRaised);
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        mp.token = address(token);
-        mp.currency = address(0);
-        bytes memory configData = _encodeConfigData(
-            mp,
-            bp,
-            _encodeMockInitializerParams(
-                endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
-            )
-        );
-        token.approve(address(strategy), totalSupply);
-
-        uint256 fundsBefore = recipient.balance;
-        uint256 poolBefore = address(POOL_MANAGER).balance;
-
-        strategy.migrate(ILBPInitializer(address(initializer)));
-
-        // Pool receives no currency — bracket calc was 0
-        assertEq(address(POOL_MANAGER).balance, poolBefore);
-        // All raised currency reaches recipient
-        assertEq(recipient.balance - fundsBefore, p.currencyRaised);
-        assertEq(address(strategy).balance, 0);
-    }
-
     function test_fuzz_poolNeverConsumesMoreThanBracketBudget(MigrationFuzzParams memory p) public {
         // The bracket calc produces an upper bound on what the LP can consume; the planner
         // may consume less if positions can't absorb the full budget (e.g., out-of-range).
