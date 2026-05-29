@@ -27,8 +27,8 @@ library PositionPlanner {
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
-    /// @notice The maximum number of explicit position definitions in a plan, in addition to the
-    ///         implicit full range fallback. Bounded to prevent OOG.
+    /// @notice The maximum number of additional positions which can be defined in addition
+    ///         to the implicit full range fallback (10 + 1 = 11 maximum positions possible)
     uint24 public constant MAX_ADDITIONAL_POSITIONS_PER_PLAN = 10;
 
     /// @notice Thrown when the weights across a plan exceed `MPS`
@@ -132,6 +132,7 @@ library PositionPlanner {
         address _positionRecipient
     ) internal pure returns (Position[] memory positions, uint256 remaining0, uint256 remaining1) {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
+        // Allocate space for the maximum possible number of positions (assuming all can be created)
         positions = new Position[](ticks.length + 1);
 
         // Track one global remaining cap across the whole plan, conservatively assuming all positions share a tick.
@@ -146,23 +147,22 @@ library PositionPlanner {
         for (uint256 i; i < ticks.length; i++) {
             // Get the position's share of the total currency budget (defined in MPS terms)
             // resolvePosition caps liquidity to maxLiquidityPerTick internally.
-            {
-                Position memory position = ticks[i].resolvePosition(
-                    _sqrtPriceX96,
-                    maxLiquidityPerTick,
-                    _currency0Amount.applyWeight(_definitions[i].weight),
-                    _currency1Amount.applyWeight(_definitions[i].weight)
-                );
-                // Empty positions are skipped and their allocations will be used to create a full range position.
-                if (!position.isEmpty()) {
-                    // Use the per-position override when set, otherwise fall back to the default positionRecipient.
-                    address overrideRecipient = _definitions[i].overridePositionRecipient;
-                    position.recipient = overrideRecipient == address(0) ? _positionRecipient : overrideRecipient;
-                    remaining0 -= position.amount0;
-                    remaining1 -= position.amount1;
-                    maxLiquidityPerTick -= uint128(position.liquidity);
-                    positions[cnt++] = position;
-                }
+            uint24 weight = _definitions[i].weight;
+            Position memory position = ticks[i].resolvePosition(
+                _sqrtPriceX96,
+                maxLiquidityPerTick,
+                _currency0Amount.applyWeight(weight),
+                _currency1Amount.applyWeight(weight)
+            );
+            // Empty positions are skipped and their allocations will be used to create a full range position.
+            if (!position.isEmpty()) {
+                // Use the per-position override when set, otherwise fall back to the default positionRecipient.
+                address overrideRecipient = _definitions[i].overridePositionRecipient;
+                position.recipient = overrideRecipient == address(0) ? _positionRecipient : overrideRecipient;
+                remaining0 -= position.amount0;
+                remaining1 -= position.amount1;
+                maxLiquidityPerTick -= uint128(position.liquidity);
+                positions[cnt++] = position;
             }
         }
 

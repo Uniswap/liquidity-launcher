@@ -204,16 +204,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
-        if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.recipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.recipient, remainingCurrency);
-        }
-        uint256 remainingToken = migrationParams.reservedTokenAmountForLP - tokenTransferAmount;
-        if (remainingToken > 0) {
-            token.transfer(migrationParams.recipient, remainingToken);
-            emit TokensSwept(migrationParams.recipient, remainingToken);
-        }
+        _transferCurrency(currency, migrationParams.recipient, currencyFromInitializer - currencyTransferAmount);
+        _transferToken(token, migrationParams.recipient, migrationParams.reservedTokenAmountForLP - tokenTransferAmount);
 
         emit Migrated(initializer, key, sqrtPriceX96, plan);
     }
@@ -236,13 +228,10 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             // Sweep the currency from the initializer
             initializer.sweepCurrency();
             // Transfer what was received to the recipient
-            uint256 amount = currency.balanceOfSelf() - currencyBefore;
-            if (amount > 0) {
-                currency.transfer(recipient, amount);
-                emit CurrencySwept(recipient, amount);
-            }
+            _transferCurrency(currency, recipient, currency.balanceOfSelf() - currencyBefore);
+            // Transfer the token reserves to the recipient
+            _transferToken(Currency.wrap(mp.token), recipient, tokenReserves);
 
-            IERC20(mp.token).safeTransfer(recipient, tokenReserves);
             emit FundsRecovered(initializer, recipient, tokenReserves);
             emit MigrationFailed(initializer, reason);
         }
@@ -457,6 +446,13 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         if (amount == 0) return;
         currency.transfer(recipient, amount);
         emit CurrencySwept(recipient, amount);
+    }
+
+    /// @notice Low level function to transfer tokens to a recipient
+    function _transferToken(Currency token, address recipient, uint256 amount) private {
+        if (amount == 0) return;
+        token.transfer(recipient, amount);
+        emit TokensSwept(recipient, amount);
     }
 
     /// @notice Receive native currency
