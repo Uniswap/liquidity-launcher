@@ -143,15 +143,15 @@ library PositionPlanner {
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
             // ResolvePosition caps liquidity to maxLiquidityPerTick internally.
-            Position memory position =
-                ticks[i].resolvePosition(_sqrtPriceX96, maxLiquidityPerTick, _currencyAmounts.applyWeight(weight));
+            address overrideRecipient = _definitions[i].overridePositionRecipient;
+            Position memory position = ticks[i].resolvePosition(
+                _sqrtPriceX96,
+                maxLiquidityPerTick,
+                _currencyAmounts.applyWeight(weight),
+                overrideRecipient == address(0) ? _positionRecipient : overrideRecipient
+            );
             // Failed positions are skipped and their allocations will be used in a full range position.
             if (!position.isEmpty()) {
-                // Use the per-position override when set, otherwise fall back to the default positionRecipient.
-                {
-                    address overrideRecipient = _definitions[i].overridePositionRecipient;
-                    position.recipient = overrideRecipient == address(0) ? _positionRecipient : overrideRecipient;
-                }
                 remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
                 maxLiquidityPerTick -= uint128(position.liquidity);
                 positions[cnt++] = position;
@@ -166,10 +166,10 @@ library PositionPlanner {
                 }),
                 _sqrtPriceX96,
                 maxLiquidityPerTick,
-                remainingAmounts
+                remainingAmounts,
+                _positionRecipient
             );
             if (!position.isEmpty()) {
-                position.recipient = _positionRecipient;
                 remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
                 positions[cnt++] = position;
             }
@@ -183,43 +183,20 @@ library PositionPlanner {
         return (positions, remainingAmounts);
     }
 
-    /// @notice Returns true if tick bounds are correctly ordered
-    function isValid(TickBounds memory _bounds) internal pure returns (bool) {
-        return _bounds.lowerTick < _bounds.upperTick;
-    }
-
-    /// @notice Returns true if a position is empty
-    function isEmpty(Position memory _position) internal pure returns (bool) {
-        return _position.liquidity == 0;
-    }
-
-    /// @notice Applies a weight to currency amounts
-    function applyWeight(CurrencyAmounts memory _amounts, uint24 _weight)
-        internal
-        pure
-        returns (CurrencyAmounts memory)
-    {
-        return CurrencyAmounts({amount0: _amounts.amount0 * _weight / MPS, amount1: _amounts.amount1 * _weight / MPS});
-    }
-
-    /// @notice Subtracts amounts from a set of amounts. Does checked subtraction.
-    function sub(CurrencyAmounts memory _amounts, uint256 _amount0, uint256 _amount1)
-        internal
-        pure
-        returns (CurrencyAmounts memory)
-    {
-        return CurrencyAmounts({amount0: _amounts.amount0 - _amount0, amount1: _amounts.amount1 - _amount1});
-    }
-
-    /// @notice Resolves tick bounds into a position, allocating up to the provided budgets.
-    ///         WILL return an empty position struct for zero liquidity.
-    /// @dev The caller MUST set the `recipient` field of the position
-    /// @dev The actual amounts required for the computed liquidity will be less than or equal to the budget
+    /// @notice Creates a position based on the parameters. Prevents zero liquidity and otherwise invalid positions.
+    /// @dev The actual amounts required for the computed liquidity will be less than or equal to the initial amounts
+    /// @param _bounds The TickBounds to resolve
+    /// @param _sqrtPriceX96 The initial sqrt price of the pool
+    /// @param _maxLiquidity The maximum liquidity which can be created
+    /// @param _currencyAmounts The maximum currency amounts available for use
+    /// @param _recipient The recipient of the position
+    /// @return The created position, or an empty struct on if the tick bounds are invalid or liquidity is zero
     function resolvePosition(
         TickBounds memory _bounds,
         uint160 _sqrtPriceX96,
         uint128 _maxLiquidity,
-        CurrencyAmounts memory _currencyAmounts
+        CurrencyAmounts memory _currencyAmounts,
+        address _recipient
     ) internal pure returns (Position memory position) {
         // Skip invalid tick bounds
         if (!_bounds.isValid()) return position;
@@ -234,14 +211,20 @@ library PositionPlanner {
         );
         // Skip positions that have no liquidity
         if (liquidity == 0) return position;
-        position.tickLower = _bounds.lowerTick;
-        position.tickUpper = _bounds.upperTick;
         // Cap the liquidity to the max liquidity allowable
         liquidity = liquidity > _maxLiquidity ? _maxLiquidity : liquidity;
-        position.liquidity = liquidity;
         // Back out the amounts from the derived liquidity. This is guaranteed to be less than or equal to the budget amounts.
-        (position.amount0, position.amount1) =
+        (uint256 amount0, uint256 amount1) =
             _getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
+
+        return Position({
+            amount0: amount0,
+            amount1: amount1,
+            tickLower: _bounds.lowerTick,
+            tickUpper: _bounds.upperTick,
+            liquidity: liquidity,
+            recipient: _recipient
+        });
     }
 
     /// @notice Converts concrete positions into a PositionManager plan
@@ -279,6 +262,36 @@ library PositionPlanner {
         params[offset + 1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[offset + 2] = abi.encode(poolKey.currency0, poolKey.currency1, recipient);
         return Plan({actions: actions, params: params});
+    }
+
+    /// @notice Returns true if TickBounds are correctly ordered
+    function isValid(TickBounds memory _bounds) internal pure returns (bool) {
+        return _bounds.lowerTick < _bounds.upperTick;
+    }
+
+    /// @notice Returns true if a Position is empty
+    function isEmpty(Position memory _position) internal pure returns (bool) {
+        return _position.liquidity == 0;
+    }
+
+    /// @notice Applies a weight to a CurrencyAmounts struct
+    /// @return the result in CurrencyAmounts
+    function applyWeight(CurrencyAmounts memory _amounts, uint24 _weight)
+        internal
+        pure
+        returns (CurrencyAmounts memory)
+    {
+        return CurrencyAmounts({amount0: _amounts.amount0 * _weight / MPS, amount1: _amounts.amount1 * _weight / MPS});
+    }
+
+    /// @notice Checked subtraction of amounts from a CurrencyAmounts struct
+    /// @return the result in CurrencyAmounts
+    function sub(CurrencyAmounts memory _amounts, uint256 _amount0, uint256 _amount1)
+        internal
+        pure
+        returns (CurrencyAmounts memory)
+    {
+        return CurrencyAmounts({amount0: _amounts.amount0 - _amount0, amount1: _amounts.amount1 - _amount1});
     }
 
     /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmount0` without the downcast to uint128
