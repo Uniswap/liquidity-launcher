@@ -123,6 +123,12 @@ interface ILBPStrategy is IStrategy {
     /// @param initializer The initializer contract to seed the migration
     function migrate(ILBPInitializer initializer) external;
 
+    /// @notice Recovery path for an initializer whose `migrate` failed. After the configured
+    /// recovery delay past `migrationBlock`, the initializer's `recipient` may sweep both
+    /// the held `reservedTokenAmountForLP` and any raised currency still held in the initializer out of the strategy.
+    /// @param initializer The initializer whose funds to recover
+    function recoverFunds(ILBPInitializer initializer) external;
+
     /// @notice Returns the stored migration parameters for an initializer
     /// @param initializer The initializer to look up
     /// @return The stored MigratorParameters

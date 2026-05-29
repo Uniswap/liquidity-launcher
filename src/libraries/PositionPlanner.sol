@@ -35,6 +35,9 @@ library PositionPlanner {
     error EmptyPositionPlan();
     /// @notice Thrown when the weights across a plan do not sum to `MPS`
     error InvalidAllocationWeights(uint256 totalWeight);
+    /// @notice Thrown when an individual position definition has zero allocation weight
+    /// @param index The index of the invalid position definition
+    error ZeroPositionWeight(uint256 index);
     /// @notice Thrown when the tick bounds are invalid
     /// @param offsetLower The invalid lower tick bound
     /// @param offsetUpper The invalid upper tick bound
@@ -56,6 +59,7 @@ library PositionPlanner {
             if (_definitions[i].offsetLower >= _definitions[i].offsetUpper) {
                 revert InvalidTickBounds(_definitions[i].offsetLower, _definitions[i].offsetUpper);
             }
+            if (_definitions[i].weight == 0) revert ZeroPositionWeight(i);
             totalWeight += _definitions[i].weight;
         }
         if (totalWeight != MPS) {

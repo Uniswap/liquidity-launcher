@@ -130,6 +130,8 @@ After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
 
 `migrate()` attempts the actual pool initialization and liquidity creation through an internal self-call. A successful migration consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` call for the same initializer.
 
+A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` or `recoverFunds` call for the same initializer.
+
 **Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
 
 #### 5. Migration Failure and Recovery

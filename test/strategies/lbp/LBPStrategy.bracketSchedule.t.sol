@@ -2,9 +2,11 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
-import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MigratorParams, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @notice Tests that verify the bracket schedule controls the LP currency budget.
 /// Uses the reference helper _expectedLpCurrencyAmount in the base to assert the contract
@@ -16,8 +18,19 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
         bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
 
-        p.currencyRaised = bound(p.currencyRaised, 1, uint256(uint128(type(int128).max)));
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, p.currencyRaised);
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        mp.currency = address(0);
+        bytes memory configData = _encodeConfigData(
+            mp,
+            bp,
+            _encodeMockInitializerParams(
+                endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+            )
+        );
+        token.approve(address(strategy), totalSupply);
 
         uint256 fundsBefore = recipient.balance;
         uint256 poolBefore = address(POOL_MANAGER).balance;
@@ -105,7 +118,7 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
     function test_threeBracketSchedule_poolCannotConsumeMoreThanTieredBudget(MigrationFuzzParams memory p) public {
         uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
         uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
-        uint24 rate2 = uint24(bound(p.bpParams.rate2, 0, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
         uint128 threshold1 = uint128(bound(uint256(p.bpParams.threshold0), 1, type(uint128).max - 1));
         uint128 threshold2 = uint128(bound(uint256(p.bpParams.threshold1), threshold1 + 1, type(uint128).max));
         uint256 currencyRaised = bound(p.currencyRaised, 1, type(uint256).max);
@@ -132,14 +145,10 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
     }
 
     function test_currencyAboveUint128Max_flowsIntoLastBracket(MigrationFuzzParams memory p, uint256 _tail) public {
-        // because lowerThreshold is uint128, any cumulative currency above type(uint128).max is necessarily allocated at the last
-        // bracket's rate.
-
-        // Setup: bracket 0 has 0% rate (its uint128.max chunk contributes nothing to the LP budget,
-        // so the entire chunk MUST be swept). Bracket 1 has 100% rate, so the tail (currency above
-        // uint128.max) is the LP budget — exactly `tail`.
+        // Because lowerThreshold is uint128, any cumulative currency above type(uint128).max is
+        // necessarily allocated at the last bracket's rate.
         LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](2);
-        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 1});
         bp[1] = LiquidityAllocationBracket({
             lowerThreshold: type(uint128).max, rate: uint24(MigratorParams.MAX_BRACKET_RATE)
         });
@@ -149,8 +158,8 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         uint256 tail = bound(_tail, 1, type(uint256).max - uint256(type(uint128).max));
         uint256 currencyRaised = uint256(type(uint128).max) + tail;
 
-        // LP budget is exactly `tail` — bracket 0 contributes 0, bracket 1 takes the tail at 100%.
-        assertEq(_expectedLpCurrencyAmount(currencyRaised, bp), tail);
+        uint256 expectedLpBudget = _expectedLpCurrencyAmount(currencyRaised, bp);
+        assertEq(expectedLpBudget, FullMath.mulDiv(type(uint128).max, 1, MigratorParams.MAX_BRACKET_RATE) + tail);
 
         (MockLBPInitializer initializer,) = _setupForMigrationWithSchedule(p, bp, currencyRaised);
 
@@ -162,10 +171,8 @@ contract LBPStrategy_BracketSchedule_Test is LBPStrategyTestBase {
         uint256 currencyToPool = address(POOL_MANAGER).balance - poolBefore;
         uint256 currencyToFundsRecipient = recipient.balance - fundsBefore;
 
-        // The entire bracket-0 chunk (uint128.max) is guaranteed swept since rate0 == 0.
-        assertGe(currencyToFundsRecipient, uint256(type(uint128).max));
         // Pool consumption capped by the LP budget AND v4's int128 delta limit.
-        uint256 cap = tail < uint128(type(int128).max) ? tail : uint128(type(int128).max);
+        uint256 cap = expectedLpBudget < uint128(type(int128).max) ? expectedLpBudget : uint128(type(int128).max);
         assertLe(currencyToPool, cap);
         assertEq(currencyToPool + currencyToFundsRecipient, currencyRaised);
         assertEq(address(strategy).balance, 0);

@@ -119,6 +119,19 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         vm.snapshotGasLastCall("LBP migrate: standard parameters with native currency");
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_recoverFunds_gas() public {
+        MigrationFuzzParams memory p = _standardMigrationParams();
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        vm.roll(p.migrationBlock + strategy.recoveryDelayBlocks());
+
+        vm.prank(recipient);
+        strategy.recoverFunds(ILBPInitializer(address(initializer)));
+        vm.snapshotGasLastCall("LBP recoverFunds: standard parameters with native currency");
+    }
+
     /// @notice Two independent distributions store separate migration parameters
     function test_fuzz_twoDistributionsStoreSeparateParams(MigrationFuzzParams memory p1, MigrationFuzzParams memory p2)
         public

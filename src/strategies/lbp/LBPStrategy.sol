@@ -234,6 +234,39 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @inheritdoc ILBPStrategy
+    /// @dev Recovery path for an initializer whose migrate failed. After `recoveryDelayBlocks` blocks past
+    ///      `migrationBlock`, the initializer's recipient can pull both the held `reservedTokenAmountForLP` and any
+    ///      raised currency still held in the initializer back out.
+    function recoverFunds(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
+        MigratorParameters memory mp = _initializers[initializer];
+
+        if (msg.sender != mp.recipient) {
+            revert UnauthorizedRecovery(msg.sender, mp.recipient);
+        }
+        if (_getBlockNumberish() < mp.migrationBlock + recoveryDelayBlocks) {
+            revert RecoveryNotYetAllowed(mp.migrationBlock + recoveryDelayBlocks);
+        }
+
+        uint256 amount = reserves[initializer];
+        // Set the reserves to zero
+        reserves[initializer] = 0;
+
+        // Sweep any raised currency still held on the initializer. The initializer's fundsRecipient is this strategy,
+        // so sweepCurrency moves it here; we then forward strictly the delta to recipient. For
+        // non-graduated auctions, the initializer must complete this call as a zero-amount sweep rather than
+        // reverting, which lets this function still recover the strategy-held reservedTokenAmountForLP.
+        Currency currency = Currency.wrap(mp.currency);
+        uint256 currencyBefore = currency.balanceOfSelf();
+        // Sweep the currency from the initializer
+        initializer.sweepCurrency();
+        // Transfer what was received to the recipient
+        _transferCurrency(currency, mp.recipient, currency.balanceOfSelf() - currencyBefore);
+
+        IERC20(mp.token).safeTransfer(mp.recipient, amount);
+        emit FundsRecovered(initializer, mp.recipient, amount);
+    }
+
+    /// @inheritdoc ILBPStrategy
     function initializers(ILBPInitializer initializer) external view returns (MigratorParameters memory) {
         return _initializers[initializer];
     }
