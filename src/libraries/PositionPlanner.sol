@@ -101,12 +101,13 @@ library PositionPlanner {
                 tickLower = minUsable;
                 tickUpper = maxUsable;
             } else {
-                // Widen to int256 to avoid int24 overflow, clamp into the usable range, then snap
-                // to tick spacing. `minUsable`/`maxUsable` are spacing-aligned, so floor/ceil stay in range.
-                int256 lowerRaw = int256(_currentTick) + int256(offsetLower);
-                int256 upperRaw = int256(_currentTick) + int256(offsetUpper);
-                tickLower = int24(FixedPointMathLib.clamp(lowerRaw, minUsable, maxUsable)).tickFloor(_tickSpacing);
-                tickUpper = int24(FixedPointMathLib.clamp(upperRaw, minUsable, maxUsable)).tickCeil(_tickSpacing);
+                // Add offsets, clamp to the valid min/max range, then snap to tick spacing.
+                tickLower = int24(
+                        FixedPointMathLib.clamp(int256(_currentTick) + int256(offsetLower), minUsable, maxUsable)
+                    ).tickFloor(_tickSpacing);
+                tickUpper = int24(
+                        FixedPointMathLib.clamp(int256(_currentTick) + int256(offsetUpper), minUsable, maxUsable)
+                    ).tickCeil(_tickSpacing);
             }
             ticks[i] = TickBounds({lowerTick: tickLower, upperTick: tickUpper});
         }
@@ -135,26 +136,24 @@ library PositionPlanner {
         // Allocate space for the maximum possible number of positions (assuming all can be created)
         positions = new Position[](ticks.length + 1);
 
-        // Track one global remaining cap across the whole plan, conservatively assuming all positions share a tick.
+        // Track one global remaining cap across the whole plan, assuming all positions share a tick boundary.
         // This may skip positions V4 would accept, but guarantees planned positions cannot exceed the cap on a fresh pool.
         uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
         remaining0 = _currency0Amount;
         remaining1 = _currency1Amount;
         uint24 cnt = 0;
-        // Definitions are processed in order: each accepted position decrements the shared maxLiquidityPerTick
-        // budget and the remaining amounts available to the full range fallback. Reordering the same
-        // definitions can therefore result in a different set of positions being created
+        // Definitions are processed in order: each created position consumes a portion of the budget
+        // Reordering the same definitions can therefore result in a different set of positions being created
         for (uint256 i; i < ticks.length; i++) {
-            // Get the position's share of the total currency budget (defined in MPS terms)
-            // resolvePosition caps liquidity to maxLiquidityPerTick internally.
             uint24 weight = _definitions[i].weight;
+            // ResolvePosition caps liquidity to maxLiquidityPerTick internally.
             Position memory position = ticks[i].resolvePosition(
                 _sqrtPriceX96,
                 maxLiquidityPerTick,
                 _currency0Amount.applyWeight(weight),
                 _currency1Amount.applyWeight(weight)
             );
-            // Empty positions are skipped and their allocations will be used to create a full range position.
+            // Failed positions are skipped and their allocations will be used in a full range position.
             if (!position.isEmpty()) {
                 // Use the per-position override when set, otherwise fall back to the default positionRecipient.
                 address overrideRecipient = _definitions[i].overridePositionRecipient;
@@ -166,7 +165,7 @@ library PositionPlanner {
             }
         }
 
-        // Create the fallback full range position with remaining budget
+        // Create a full range position with all remaining budget
         {
             Position memory position = PositionPlanner.resolvePosition(
                 TickBounds({
@@ -194,7 +193,7 @@ library PositionPlanner {
     }
 
     /// @notice Returns true if tick bounds are correctly ordered
-    function areValid(TickBounds memory _bounds) internal pure returns (bool) {
+    function isValid(TickBounds memory _bounds) internal pure returns (bool) {
         return _bounds.lowerTick < _bounds.upperTick;
     }
 
@@ -219,8 +218,9 @@ library PositionPlanner {
         uint256 _currency1Budget
     ) internal pure returns (Position memory position) {
         // Skip invalid tick bounds
-        if (!_bounds.areValid()) return position;
+        if (!_bounds.isValid()) return position;
 
+        // Get the maximum liquidity which can be created from the budgeted amounts
         uint256 liquidity = _getLiquidityForAmounts(
             _sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(_bounds.lowerTick),
@@ -233,7 +233,7 @@ library PositionPlanner {
         // Cap the liquidity to the max liquidity allowable
         liquidity = liquidity > _maxLiquidity ? _maxLiquidity : liquidity;
 
-        // amounts will be less than or equal to the budget amounts
+        // Back out the amounts from the derived liquidity. This is guaranteed to be less than or equal to the budget amounts.
         (uint256 amount0, uint256 amount1) =
             _getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
 
