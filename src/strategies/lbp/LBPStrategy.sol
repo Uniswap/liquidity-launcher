@@ -441,12 +441,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @notice Low level function to transfer currency to a recipient
-    /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH — e.g. a
-    ///      contract without a payable receive — cannot brick migration or recovery. ERC20 transfers
-    ///      have no receiver callback and use the standard path.
-    /// @dev This only covers transfers the strategy makes directly. Native dust swept to the recipient by
-    ///      the plan's TAKE_PAIR is settled by the PositionManager with a plain transfer, NOT force-sent, so
-    ///      a recipient that rejects ETH can still revert migration when PM-side native dust is nonzero.
+    /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH cannot brick migration.
+    /// @dev Does not cover the plan's TAKE_PAIR dust: the PositionManager sends that to the recipient with a plain
+    ///      transfer, so a rejecting recipient can still revert migration when PM-side native dust is nonzero.
     function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
         if (amount == 0) return;
         if (currency.isAddressZero()) {

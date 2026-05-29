@@ -24,10 +24,9 @@ interface ILBPInitializer is IDistributor, IERC165 {
 
     /// @notice Sweeps the raised currency from the initializer. Must NOT revert.
     /// @dev The initializer must ensure this can only be called by the currency recipient directly.
-    /// @dev MUST transfer exactly `currencyRaised` (from {lbpInitializationParams}) to the funds recipient — no
-    ///      more, no less. LBPStrategy.tryMigrate enforces `received == currencyRaised` and aborts to recovery on
-    ///      any mismatch, so sweeping a different amount (e.g. the full balance including donations, or a rounded
-    ///      value) prevents migration. Any surplus held by the initializer must be left behind, not swept here.
+    /// @dev MUST transfer exactly `currencyRaised` (from {lbpInitializationParams}) to the funds recipient.
+    ///      `tryMigrate` enforces `received == currencyRaised` and reverts if unequal. Any surplus held by the
+    ///      initializer must be left behind, not swept here.
     function sweepCurrency() external;
 
     /// @notice Sweeps the unsold tokens from the initializer. Must NOT revert.
