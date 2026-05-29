@@ -17,7 +17,7 @@ struct MigratorParameters {
     uint64 migrationBlock; // block number when the migration can begin
     uint128 reservedTokenAmountForLP; // amount of the token reserved for LP creation
     address recipient; // the address that will receive unused currency and unused LP supply after migration
-    address positionRecipient; // the address that will receive the created LP position
+    address positionRecipient; // default recipient of minted LP positions; used for the full-range fallback and any position without an overridePositionRecipient
     PoolParameters poolParameters;
     bytes positionDefinitions; // abi-encoded PositionDefinition[] describing the weighted LP plan
     bytes lpAllocationSchedule; // abi-encoded LiquidityAllocationBracket[]
@@ -98,7 +98,15 @@ library MigratorParams {
         if (p.poolParameters.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG && p.poolParameters.hook == address(0)) {
             revert InvalidDynamicFeeHook();
         }
-        // position recipient validation (cannot be zero address, address(1), or address(2) which are reserved addresses on the position manager)
+        // recipient validation (cannot be zero address). This is the recipient of unallocated
+        // currency/token dust after migration.
+        if (p.recipient == address(0)) {
+            revert ILBPStrategy.InvalidRecipient();
+        }
+        // positionRecipient is the default recipient of minted LP positions (the full-range fallback and any
+        // position without an overridePositionRecipient). It cannot be the zero address, address(1), or
+        // address(2), which are reserved addresses on the position manager. Per-position overrides are
+        // validated in PositionPlanner.validate.
         if (
             p.positionRecipient == address(0) || p.positionRecipient == ActionConstants.MSG_SENDER
                 || p.positionRecipient == ActionConstants.ADDRESS_THIS
@@ -109,9 +117,8 @@ library MigratorParams {
         if (p.reservedTokenAmountForLP > uint128(type(int128).max) || p.reservedTokenAmountForLP == 0) {
             revert ILBPStrategy.InvalidReservedTokenAmountForLP();
         }
-        // Position plan validation (non-empty, weights sum to MPS)
+
         PositionPlanner.validate(abi.decode(p.positionDefinitions, (PositionDefinition[])));
-        // LP allocation schedule validation (1..MAX_BRACKETS brackets, ascending, rates in (0, MAX_BRACKET_RATE])
         _validateLpAllocationSchedule(p.lpAllocationSchedule);
     }
 

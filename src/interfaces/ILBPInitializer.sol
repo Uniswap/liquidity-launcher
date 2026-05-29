@@ -23,7 +23,10 @@ interface ILBPInitializer is IDistributor, IERC165 {
     function lbpInitializationParams() external view returns (LBPInitializationParams memory);
 
     /// @notice Sweeps the raised currency from the initializer. Must NOT revert.
-    /// @dev The initializer must ensure this can only be called by the currency recipient directly
+    /// @dev The initializer must ensure this can only be called by the currency recipient directly.
+    /// @dev MUST transfer exactly `currencyRaised` (from {lbpInitializationParams}) to the funds recipient.
+    ///      `tryMigrate` enforces `received == currencyRaised` and reverts if unequal. Any surplus held by the
+    ///      initializer must be left behind, not swept here.
     function sweepCurrency() external;
 
     /// @notice Sweeps the unsold tokens from the initializer. Must NOT revert.

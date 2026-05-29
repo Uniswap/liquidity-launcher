@@ -9,14 +9,15 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TickCalculations} from "./TickCalculations.sol";
-import {Plan, Position, PositionDefinition} from "../types/PositionPlannerTypes.sol";
-import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {Plan, Position, PositionDefinition, CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 
 /// @title PositionPlanner
 /// @notice Converts weighted position configurations into a deterministic PositionManager plan.
 library PositionPlanner {
     using TickCalculations for int24;
+    using PositionPlanner for *;
 
     /// @notice Absolute tick boundaries for a resolved position
     struct TickBounds {
@@ -26,14 +27,11 @@ library PositionPlanner {
 
     /// @notice Position allocations are expressed in millionths (1e7 = 100%)
     uint24 internal constant MPS = 1e7;
-    /// @notice Reference liquidity used to quote weighted token consumption
-    uint128 internal constant LIQUIDITY_PRECISION = 1e18;
-    /// @notice The maximum number of positions that can be included in a plan to prevent OOG
-    uint24 public constant MAX_POSITIONS_PER_PLAN = 10;
+    /// @notice The maximum number of additional positions which can be defined in addition
+    ///         to the implicit full range fallback (10 + 1 = 11 maximum positions possible)
+    uint24 public constant MAX_ADDITIONAL_POSITIONS_PER_PLAN = 10;
 
-    /// @notice Thrown when the position plan contains no definitions
-    error EmptyPositionPlan();
-    /// @notice Thrown when the weights across a plan do not sum to `MPS`
+    /// @notice Thrown when the weights across a plan exceed `MPS`
     error InvalidAllocationWeights(uint256 totalWeight);
     /// @notice Thrown when an individual position definition has zero allocation weight
     /// @param index The index of the invalid position definition
@@ -42,64 +40,51 @@ library PositionPlanner {
     /// @param offsetLower The invalid lower tick bound
     /// @param offsetUpper The invalid upper tick bound
     error InvalidTickBounds(int24 offsetLower, int24 offsetUpper);
+    /// @notice Thrown when a position's overridePositionRecipient is a reserved address (address(1) or address(2))
+    /// @param recipient The invalid position recipient
+    error InvalidPositionRecipient(address recipient);
     /// @notice Thrown when the number of positions exceeds the maximum allowed
     /// @param actual The actual number of positions
     /// @param max The maximum allowed number of positions
     error TooManyPositions(uint24 actual, uint24 max);
 
-    /// @notice Validates that a position plan is non-empty and its weights sum to `MPS`
-    /// @param _definitions The weighted position definitions to validate
+    /// @notice Validates that position definitions are correct
+    /// @dev Reverts if the number of definitions exceeds the maximum allowed,
+    ///      if tick offsets are out of order, or if the total weight exceeds `MPS`
+    /// @param _definitions the position definitions
     function validate(PositionDefinition[] memory _definitions) internal pure {
-        if (_definitions.length == 0) revert EmptyPositionPlan();
-        if (_definitions.length > MAX_POSITIONS_PER_PLAN) {
-            revert TooManyPositions(uint24(_definitions.length), MAX_POSITIONS_PER_PLAN);
+        if (_definitions.length > MAX_ADDITIONAL_POSITIONS_PER_PLAN) {
+            revert TooManyPositions(uint24(_definitions.length), MAX_ADDITIONAL_POSITIONS_PER_PLAN);
         }
         uint256 totalWeight;
         for (uint256 i; i < _definitions.length; i++) {
-            if (_definitions[i].offsetLower >= _definitions[i].offsetUpper) {
-                revert InvalidTickBounds(_definitions[i].offsetLower, _definitions[i].offsetUpper);
+            PositionDefinition memory definition = _definitions[i];
+            if (definition.offsetLower >= definition.offsetUpper) {
+                revert InvalidTickBounds(definition.offsetLower, definition.offsetUpper);
             }
-            if (_definitions[i].weight == 0) revert ZeroPositionWeight(i);
-            totalWeight += _definitions[i].weight;
+            if (definition.weight == 0) revert ZeroPositionWeight(i);
+            // overridePositionRecipient is optional: address(0) means "use the default positionRecipient".
+            // When specified, it cannot be a PositionManager reserved sentinel (address(1) or address(2)).
+            address overrideRecipient = definition.overridePositionRecipient;
+            if (overrideRecipient != address(0) && uint160(overrideRecipient) <= uint160(ActionConstants.ADDRESS_THIS))
+            {
+                revert InvalidPositionRecipient(overrideRecipient);
+            }
+            totalWeight += definition.weight;
         }
-        if (totalWeight != MPS) {
+        if (totalWeight > MPS) {
             revert InvalidAllocationWeights(totalWeight);
         }
     }
 
-    /// @notice Solves for the maximum liquidity-per-allocation that fits within both currency budgets
-    /// @dev Uses uint256 to avoid overflow; callers must downcast to uint128 before use
-    /// @param _currency0Amount The available currency0 budget
-    /// @param _currency1Amount The available currency1 budget
-    /// @param _weightedAmount0 The weighted currency0 amount for the plan at reference liquidity
-    /// @param _weightedAmount1 The weighted currency1 amount for the plan at reference liquidity
-    /// @return The maximum liquidity-per-allocation that fits both budgets
-    function getLiquidityPerAllocation(
-        uint128 _currency0Amount,
-        uint128 _currency1Amount,
-        uint256 _weightedAmount0,
-        uint256 _weightedAmount1
-    ) internal pure returns (uint256) {
-        if (_weightedAmount0 == 0) {
-            return FullMath.mulDiv(_currency1Amount, LIQUIDITY_PRECISION, _weightedAmount1);
-        } else if (_weightedAmount1 == 0) {
-            return FullMath.mulDiv(_currency0Amount, LIQUIDITY_PRECISION, _weightedAmount0);
-        } else {
-            return FixedPointMathLib.min(
-                FullMath.mulDiv(_currency0Amount, LIQUIDITY_PRECISION, _weightedAmount0),
-                FullMath.mulDiv(_currency1Amount, LIQUIDITY_PRECISION, _weightedAmount1)
-            );
-        }
-    }
-
     /// @notice Converts each definition's relative offsets into absolute tick bounds snapped to `_tickSpacing`
-    /// @dev Will clamp to the usable range if the offset exceeds it
+    /// @notice MAY return invalid tick ranges which MUST be checked by the caller
     /// @param _definitions The weighted position definitions to resolve
     /// @param _currentTick The current pool tick
     /// @param _tickSpacing The pool tick spacing
     /// @return ticks The absolute tick bounds for each definition
-    function _resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
-        private
+    function resolveTicks(PositionDefinition[] memory _definitions, int24 _currentTick, int24 _tickSpacing)
+        internal
         pure
         returns (TickBounds[] memory ticks)
     {
@@ -116,112 +101,139 @@ library PositionPlanner {
                 tickLower = minUsable;
                 tickUpper = maxUsable;
             } else {
-                // Widen to int256 to avoid int24 overflow, clamp into the usable range, then snap
-                // to tick spacing. `minUsable`/`maxUsable` are spacing-aligned, so floor/ceil stay in range.
-                int256 lowerRaw = int256(_currentTick) + int256(offsetLower);
-                int256 upperRaw = int256(_currentTick) + int256(offsetUpper);
-                tickLower = int24(FixedPointMathLib.clamp(lowerRaw, minUsable, maxUsable)).tickFloor(_tickSpacing);
-                tickUpper = int24(FixedPointMathLib.clamp(upperRaw, minUsable, maxUsable)).tickCeil(_tickSpacing);
+                // Add offsets, clamp to the valid min/max range, then snap to tick spacing.
+                tickLower = int24(
+                        FixedPointMathLib.clamp(int256(_currentTick) + int256(offsetLower), minUsable, maxUsable)
+                    ).tickFloor(_tickSpacing);
+                tickUpper = int24(
+                        FixedPointMathLib.clamp(int256(_currentTick) + int256(offsetUpper), minUsable, maxUsable)
+                    ).tickCeil(_tickSpacing);
             }
             ticks[i] = TickBounds({lowerTick: tickLower, upperTick: tickUpper});
         }
     }
 
     /// @notice Resolves a weighted position plan into concrete positions constrained by the supplied budgets
-    /// @dev Callers should invoke `validate` beforehand to ensure weights sum to `MPS`
-    ///      and ensure that amounts do not exceed type(int128).max. Invalid or oversized positions are skipped,
-    ///      and skipped weights are not redistributed.
     /// @param _definitions The weighted position definitions to resolve
     /// @param _sqrtPriceX96 The pool price used to quote liquidity amounts
     /// @param _tickSpacing The pool tick spacing
-    /// @param _currency0Amount The available currency0 budget
-    /// @param _currency1Amount The available currency1 budget
+    /// @param _currencyAmounts The available currency0 and currency1 budgets
+    /// @param _positionRecipient The default recipient for minted positions; used for the implicit full-range
+    ///        fallback position and for any definition without an overridePositionRecipient
     /// @return positions The resolved positions that fit within the supplied budgets
-    /// @return remaining0 The unconsumed currency0 budget
-    /// @return remaining1 The unconsumed currency1 budget
+    /// @return remainingAmounts The unconsumed currency0 and currency1 budgets
     function resolve(
         PositionDefinition[] memory _definitions,
         uint160 _sqrtPriceX96,
         int24 _tickSpacing,
-        uint128 _currency0Amount,
-        uint128 _currency1Amount
-    ) internal pure returns (Position[] memory positions, uint128 remaining0, uint128 remaining1) {
-        TickBounds[] memory ticks =
-            _resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
+        CurrencyAmounts memory _currencyAmounts,
+        address _positionRecipient
+    ) internal pure returns (Position[] memory positions, CurrencyAmounts memory remainingAmounts) {
+        TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
+        // Allocate space for the maximum possible number of positions (assuming all can be created)
+        positions = new Position[](ticks.length + 1);
 
-        uint256 liquidityPerAllocation;
-        {
-            (uint256 weightedAmount0, uint256 weightedAmount1) = _getWeightedAmounts(_definitions, ticks, _sqrtPriceX96);
-            if (weightedAmount0 == 0 && weightedAmount1 == 0) {
-                return (new Position[](0), _currency0Amount, _currency1Amount);
-            }
-            liquidityPerAllocation =
-                getLiquidityPerAllocation(_currency0Amount, _currency1Amount, weightedAmount0, weightedAmount1);
-        }
-
-        positions = new Position[](ticks.length);
-        uint256 cnt;
+        // Track one global remaining cap across the whole plan, assuming all positions share a tick boundary.
+        // This may skip positions V4 would accept, but guarantees planned positions cannot exceed the cap on a fresh pool.
+        uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
+        remainingAmounts = _currencyAmounts;
+        uint24 cnt = 0;
+        // Definitions are processed in order: each created position consumes a portion of the budget
+        // Reordering the same definitions can therefore result in a different set of positions being created
         for (uint256 i; i < ticks.length; i++) {
-            TickBounds memory bounds = ticks[i];
-            if (bounds.lowerTick >= bounds.upperTick) continue;
-            uint256 liquidity = liquidityPerAllocation * _definitions[i].weight;
-            if (liquidity == 0 || liquidity > Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing)) {
-                continue;
-            }
-
-            (uint256 amount0, uint256 amount1) = getAmountsForLiquidity(
-                _sqrtPriceX96, bounds.lowerTick, bounds.upperTick, SafeCastLib.toUint128(liquidity)
+            uint24 weight = _definitions[i].weight;
+            // ResolvePosition caps liquidity to maxLiquidityPerTick internally.
+            address overrideRecipient = _definitions[i].overridePositionRecipient;
+            Position memory position = ticks[i].resolvePosition(
+                _sqrtPriceX96,
+                maxLiquidityPerTick,
+                _currencyAmounts.applyWeight(weight),
+                overrideRecipient == address(0) ? _positionRecipient : overrideRecipient
             );
-
-            if (amount0 > _currency0Amount || amount1 > _currency1Amount) continue;
-
-            _currency0Amount -= uint128(amount0);
-            _currency1Amount -= uint128(amount1);
-
-            positions[cnt++] = Position({
-                amount0: SafeCastLib.toUint128(amount0),
-                amount1: SafeCastLib.toUint128(amount1),
-                tickLower: bounds.lowerTick,
-                tickUpper: bounds.upperTick,
-                liquidity: SafeCastLib.toUint128(liquidity)
-            });
+            // Failed positions are skipped and their allocations will be used in a full range position.
+            if (!position.isEmpty()) {
+                remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
+                maxLiquidityPerTick -= uint128(position.liquidity);
+                positions[cnt++] = position;
+            }
         }
 
+        // Create a full range position with all remaining budget
+        {
+            Position memory position = PositionPlanner.resolvePosition(
+                TickBounds({
+                    lowerTick: TickMath.minUsableTick(_tickSpacing), upperTick: TickMath.maxUsableTick(_tickSpacing)
+                }),
+                _sqrtPriceX96,
+                maxLiquidityPerTick,
+                remainingAmounts,
+                _positionRecipient // the full range position always uses the default position recipient
+            );
+            if (!position.isEmpty()) {
+                remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
+                positions[cnt++] = position;
+            }
+        }
+
+        // truncate the positions array to the actual created number of positions
         assembly {
             mstore(positions, cnt)
         }
 
-        return (positions, _currency0Amount, _currency1Amount);
+        return (positions, remainingAmounts);
     }
 
-    /// @notice Quotes the weighted currency amounts for all valid tick ranges at reference liquidity
-    /// @param _definitions The weighted position definitions
-    /// @param _ticks The resolved tick bounds for each definition
-    /// @param _sqrtPriceX96 The pool price used to quote liquidity amounts
-    /// @return weightedAmount0 The total weighted currency0 amount
-    /// @return weightedAmount1 The total weighted currency1 amount
-    function _getWeightedAmounts(
-        PositionDefinition[] memory _definitions,
-        TickBounds[] memory _ticks,
-        uint160 _sqrtPriceX96
-    ) private pure returns (uint256 weightedAmount0, uint256 weightedAmount1) {
-        for (uint256 i; i < _ticks.length; i++) {
-            TickBounds memory bounds = _ticks[i];
-            if (bounds.lowerTick >= bounds.upperTick) continue;
-            (uint256 amount0, uint256 amount1) =
-                getAmountsForLiquidity(_sqrtPriceX96, bounds.lowerTick, bounds.upperTick, LIQUIDITY_PRECISION);
-            weightedAmount0 += amount0 * _definitions[i].weight;
-            weightedAmount1 += amount1 * _definitions[i].weight;
-        }
+    /// @notice Creates a position based on the parameters. Prevents zero liquidity and otherwise invalid positions.
+    /// @dev The actual amounts required for the computed liquidity will be less than or equal to the initial amounts
+    /// @param _bounds The TickBounds to resolve
+    /// @param _sqrtPriceX96 The initial sqrt price of the pool
+    /// @param _maxLiquidity The maximum liquidity which can be created
+    /// @param _currencyAmounts The maximum currency amounts available for use
+    /// @param _recipient The recipient of the position
+    /// @return position The created position, or an empty struct if the tick bounds are invalid or liquidity is zero
+    function resolvePosition(
+        TickBounds memory _bounds,
+        uint160 _sqrtPriceX96,
+        uint128 _maxLiquidity,
+        CurrencyAmounts memory _currencyAmounts,
+        address _recipient
+    ) internal pure returns (Position memory position) {
+        // Skip invalid tick bounds
+        if (!_bounds.isValid()) return position;
+
+        // Get the maximum liquidity which can be created from the budgeted amounts
+        uint256 liquidity = _getLiquidityForAmounts(
+            _sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(_bounds.lowerTick),
+            TickMath.getSqrtPriceAtTick(_bounds.upperTick),
+            _currencyAmounts.amount0,
+            _currencyAmounts.amount1
+        );
+        // Skip positions that have no liquidity
+        if (liquidity == 0) return position;
+        // Cap the liquidity to the max liquidity allowable
+        liquidity = liquidity > _maxLiquidity ? _maxLiquidity : liquidity;
+        // Back out the amounts from the derived liquidity. This is guaranteed to be less than or equal to the budget amounts.
+        (uint256 amount0, uint256 amount1) =
+            _getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
+
+        return Position({
+            amount0: amount0,
+            amount1: amount1,
+            tickLower: _bounds.lowerTick,
+            tickUpper: _bounds.upperTick,
+            liquidity: liquidity,
+            recipient: _recipient
+        });
     }
 
     /// @notice Converts concrete positions into a PositionManager plan
-    /// @dev Dust left over after minting is returned to `positionRecipient`
+    /// @dev Dust left over after minting is returned to `recipient`
     /// @param positions The positions to mint
     /// @param poolKey The pool key for the positions
-    /// @param positionRecipient The recipient of minted positions and leftover dust
+    /// @param recipient The recipient of leftover dust
     /// @return The encoded action and parameter plan
-    function toPlan(Position[] memory positions, PoolKey memory poolKey, address positionRecipient)
+    function toPlan(Position[] memory positions, PoolKey memory poolKey, address recipient)
         internal
         pure
         returns (Plan memory)
@@ -238,7 +250,7 @@ library PositionPlanner {
                 position.liquidity,
                 position.amount0,
                 position.amount1,
-                positionRecipient,
+                position.recipient,
                 bytes("")
             );
         }
@@ -248,8 +260,87 @@ library PositionPlanner {
         actions[offset + 2] = bytes1(uint8(Actions.TAKE_PAIR));
         params[offset] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
         params[offset + 1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[offset + 2] = abi.encode(poolKey.currency0, poolKey.currency1, positionRecipient);
+        params[offset + 2] = abi.encode(poolKey.currency0, poolKey.currency1, recipient);
         return Plan({actions: actions, params: params});
+    }
+
+    /// @notice Returns true if TickBounds are correctly ordered
+    function isValid(TickBounds memory _bounds) internal pure returns (bool) {
+        return _bounds.lowerTick < _bounds.upperTick;
+    }
+
+    /// @notice Returns true if a Position is empty
+    function isEmpty(Position memory _position) internal pure returns (bool) {
+        return _position.liquidity == 0;
+    }
+
+    /// @notice Applies a weight to a CurrencyAmounts struct
+    /// @return the result in CurrencyAmounts
+    function applyWeight(CurrencyAmounts memory _amounts, uint24 _weight)
+        internal
+        pure
+        returns (CurrencyAmounts memory)
+    {
+        return CurrencyAmounts({amount0: _amounts.amount0 * _weight / MPS, amount1: _amounts.amount1 * _weight / MPS});
+    }
+
+    /// @notice Checked subtraction of amounts from a CurrencyAmounts struct
+    /// @return the result in CurrencyAmounts
+    function sub(CurrencyAmounts memory _amounts, uint256 _amount0, uint256 _amount1)
+        internal
+        pure
+        returns (CurrencyAmounts memory)
+    {
+        return CurrencyAmounts({amount0: _amounts.amount0 - _amount0, amount1: _amounts.amount1 - _amount1});
+    }
+
+    /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmount0` without the downcast to uint128
+    function _getLiquidityForAmount0(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount0)
+        private
+        pure
+        returns (uint256 liquidity)
+    {
+        unchecked {
+            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+            uint256 intermediate = FullMath.mulDiv(sqrtPriceAX96, sqrtPriceBX96, FixedPoint96.Q96);
+            return FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96);
+        }
+    }
+
+    /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmount1` without the downcast to uint128
+    function _getLiquidityForAmount1(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount1)
+        private
+        pure
+        returns (uint256 liquidity)
+    {
+        unchecked {
+            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+            return FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96);
+        }
+    }
+
+    /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmounts` without the downcast to uint128
+    function _getLiquidityForAmounts(
+        uint160 sqrtPriceX96,
+        uint160 sqrtPriceAX96,
+        uint160 sqrtPriceBX96,
+        uint256 amount0,
+        uint256 amount1
+    ) private pure returns (uint256 liquidity) {
+        if (sqrtPriceAX96 > sqrtPriceBX96) {
+            (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        }
+
+        if (sqrtPriceX96 <= sqrtPriceAX96) {
+            liquidity = _getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
+        } else if (sqrtPriceX96 < sqrtPriceBX96) {
+            uint256 liquidity0 = _getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
+            uint256 liquidity1 = _getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
+
+            liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
+        } else {
+            liquidity = _getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
+        }
     }
 
     /// @notice Quotes token amounts for a liquidity position using v4 core mint math.
@@ -259,8 +350,8 @@ library PositionPlanner {
     /// @param _tickUpper The upper tick of the position
     /// @param _liquidity The liquidity amount to quote
     /// @return The quoted amount0 and amount1
-    function getAmountsForLiquidity(uint160 _sqrtPriceX96, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
-        internal
+    function _getAmountsForLiquidity(uint160 _sqrtPriceX96, int24 _tickLower, int24 _tickUpper, uint128 _liquidity)
+        private
         pure
         returns (uint256, uint256)
     {

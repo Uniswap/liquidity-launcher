@@ -19,7 +19,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SelfInitializerMixin} from "./SelfInitializerMixin.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
-import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
+import {PositionPlanner, CurrencyAmounts} from "../../libraries/PositionPlanner.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "../../libraries/MigratorParams.sol";
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
@@ -31,6 +31,8 @@ import {
 } from "../../interfaces/ILBPInitializer.sol";
 import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
@@ -47,37 +49,28 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
     IDistributorFactory public immutable initializerFactory;
-    /// @notice Number of blocks past `migrationBlock` after which an initializer's `recipient` may
-    /// recover the held `reservedTokenAmountForLP` via {recoverFunds}.
-    uint256 public immutable recoveryDelayBlocks;
 
     /// @notice The mapping of initializers to their stored migration parameters
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     /// @notice reservedTokenAmountForLP this strategy holds for each registered initializer. Set when the
-    /// initializer is registered; zeroed when its reserves are consumed by {migrate} or {recoverFunds}.
+    /// initializer is registered; zeroed when its reserves are consumed by {migrate}.
     mapping(ILBPInitializer initializer => uint256) public reserves;
 
-    constructor(
-        IPositionManager _positionManager,
-        IPoolManager _poolManager,
-        IDistributorFactory _initializerFactory,
-        uint256 _recoveryDelayBlocks
-    ) {
+    constructor(IPositionManager _positionManager, IPoolManager _poolManager, IDistributorFactory _initializerFactory) {
         positionManager = _positionManager;
         poolManager = _poolManager;
         initializerFactory = _initializerFactory;
-        recoveryDelayBlocks = _recoveryDelayBlocks;
     }
 
     /// @notice Modifier requiring the initializer to be in a pending migration state
     /// @dev An initializer is pending migration if it is registered and has a non zero reserve amount
     modifier onlyPendingMigrate(ILBPInitializer initializer) {
-        MigratorParameters memory migrationParams = _initializers[initializer];
-        if (migrationParams.migrationBlock == 0) revert InitializerNotRegistered(initializer);
+        uint64 migrationBlock = _initializers[initializer].migrationBlock;
+        if (migrationBlock == 0) revert InitializerNotRegistered(initializer);
         if (reserves[initializer] == 0) revert InsufficientReserves(initializer);
-        if (_getBlockNumberish() < migrationParams.migrationBlock) {
-            revert MigrationNotYetAllowed(migrationParams.migrationBlock, _getBlockNumberish());
+        if (_getBlockNumberish() < migrationBlock) {
+            revert MigrationNotYetAllowed(migrationBlock, _getBlockNumberish());
         }
         _;
     }
@@ -91,6 +84,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         external
         nonReentrant
     {
+        // Native only supported for currency, never as token
+        if (token == address(0)) revert ZeroAddressToken();
+
         // Decode the migration parameters (with embedded LP allocation schedule) and auction parameters
         (MigratorParameters memory migrationParams, bytes memory initializerParams) =
             abi.decode(configData, (MigratorParameters, bytes));
@@ -103,12 +99,18 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Calculate the salt for the initializer by hashing the caller provided salt with the MigratorParams
         bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));
         // Deploy the initializer contract via factory with only auction supply (totalSupply - reservedTokenAmountForLP) passed as the amount
-        uint256 auctionSupply = totalSupply - migrationParams.reservedTokenAmountForLP;
+        uint128 reservedTokenAmountForLP = migrationParams.reservedTokenAmountForLP;
+        if (reservedTokenAmountForLP >= totalSupply) {
+            revert InvalidReservedTokenAmountForLP();
+        }
+        uint256 auctionSupply = totalSupply - reservedTokenAmountForLP;
         ILBPInitializer initializer = ILBPInitializer(
             address(initializerFactory.create(token, auctionSupply, initializerParams, initializerSalt))
         );
 
-        if (_initializers[initializer].migrationBlock != 0) revert InitializerAlreadyCreated(initializer);
+        if (address(initializer) == address(0) || _initializers[initializer].migrationBlock != 0) {
+            revert InitializerAlreadyCreated(initializer);
+        }
         // Validate the initializer parameters are set as expected
         _validateInitializerParams(initializer, migrationParams);
 
@@ -122,12 +124,21 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Set the migrator params in storage for future use
         _initializers[initializer] = migrationParams;
 
+        // Record balances before token distribution to ensure the expected funds are received. Fee on transfer tokens are not supported.
+        uint256 tokenLBPStrategyBefore = Currency.wrap(token).balanceOfSelf();
+
         // Pull tokens from the caller: auctionSupply directly into the initializer, reservedTokenAmountForLP into self.
         IERC20(token).safeTransferFrom(msg.sender, address(initializer), auctionSupply);
-        IERC20(token).safeTransferFrom(msg.sender, address(this), migrationParams.reservedTokenAmountForLP);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), reservedTokenAmountForLP);
+
+        // Compare balances after token distribution to ensure the expected funds are received.
+        uint256 tokenLBPStrategyAfter = Currency.wrap(token).balanceOfSelf();
+        if (tokenLBPStrategyAfter - tokenLBPStrategyBefore != reservedTokenAmountForLP) {
+            revert TokenAmountMismatch(tokenLBPStrategyAfter - tokenLBPStrategyBefore, reservedTokenAmountForLP);
+        }
 
         // Set the reserves for the initializer
-        reserves[initializer] = migrationParams.reservedTokenAmountForLP;
+        reserves[initializer] = reservedTokenAmountForLP;
         initializer.onTokensReceived();
 
         emit InitializerCreated(initializer, migrationParams);
@@ -194,24 +205,17 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        uint256 remainingCurrency = currencyFromInitializer - currencyTransferAmount;
-        if (remainingCurrency > 0) {
-            currency.transfer(migrationParams.recipient, remainingCurrency);
-            emit CurrencySwept(migrationParams.recipient, remainingCurrency);
-        }
-        uint256 remainingToken = migrationParams.reservedTokenAmountForLP - tokenTransferAmount;
-        if (remainingToken > 0) {
-            token.transfer(migrationParams.recipient, remainingToken);
-            emit TokensSwept(migrationParams.recipient, remainingToken);
-        }
+        // _transferCurrency force-sends native currency so a recipient that rejects ETH cannot brick migration.
+        _transferCurrency(currency, migrationParams.recipient, currencyFromInitializer - currencyTransferAmount);
+        _transferToken(token, migrationParams.recipient, migrationParams.reservedTokenAmountForLP - tokenTransferAmount);
 
-        emit Migrated(initializer, key, sqrtPriceX96);
+        emit Migrated(initializer, key, sqrtPriceX96, plan);
     }
 
     /// @notice Attempts to migrate the initializer and recovers the token reserves if it fails
     function migrate(ILBPInitializer initializer) external nonReentrant onlyPendingMigrate(initializer) {
         try this.tryMigrate(initializer) {}
-        catch {
+        catch (bytes memory reason) {
             MigratorParameters memory mp = _initializers[initializer];
             address recipient = mp.recipient;
             // Migration failed, recover the token reserves
@@ -227,9 +231,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             initializer.sweepCurrency();
             // Transfer what was received to the recipient
             _transferCurrency(currency, recipient, currency.balanceOfSelf() - currencyBefore);
+            // Transfer the token reserves to the recipient
+            _transferToken(Currency.wrap(mp.token), recipient, tokenReserves);
 
-            IERC20(mp.token).safeTransfer(recipient, tokenReserves);
             emit FundsRecovered(initializer, recipient, tokenReserves);
+            emit MigrationFailed(initializer, reason);
         }
     }
 
@@ -258,23 +264,29 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
 
         Position[] memory positions;
+        CurrencyAmounts memory amounts;
         {
             uint128 amount0In = currencyIsCurrency0 ? currencyAmountForLp : mp.reservedTokenAmountForLP;
             uint128 amount1In = currencyIsCurrency0 ? mp.reservedTokenAmountForLP : currencyAmountForLp;
-            uint128 remaining0;
-            uint128 remaining1;
-            (positions, remaining0, remaining1) = PositionPlanner.resolve(
+            // positionRecipient is the default recipient for minted positions: the implicit full-range
+            // fallback and any definition that does not set an overridePositionRecipient.
+            (positions, amounts) = PositionPlanner.resolve(
                 abi.decode(mp.positionDefinitions, (PositionDefinition[])),
                 sqrtPriceX96,
                 mp.poolParameters.tickSpacing,
-                amount0In,
-                amount1In
+                CurrencyAmounts({amount0: amount0In, amount1: amount1In}),
+                mp.positionRecipient
             );
-            currencyTransferAmount = currencyIsCurrency0 ? amount0In - remaining0 : amount1In - remaining1;
-            tokenTransferAmount = currencyIsCurrency0 ? amount1In - remaining1 : amount0In - remaining0;
+            if (positions.length == 0) revert NoPositionsCreated();
+            currencyTransferAmount = currencyIsCurrency0
+                ? amount0In - SafeCastLib.toUint128(amounts.amount0)
+                : amount1In - SafeCastLib.toUint128(amounts.amount1);
+            tokenTransferAmount = currencyIsCurrency0
+                ? amount1In - SafeCastLib.toUint128(amounts.amount1)
+                : amount0In - SafeCastLib.toUint128(amounts.amount0);
         }
 
-        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.positionRecipient);
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.recipient);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
@@ -343,12 +355,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             // Currency is native
             token.transfer(address(positionManager), tokenTransferAmount);
             positionManager.modifyLiquidities{value: currencyTransferAmount}(_plan, block.timestamp);
-        } else if (token.isAddressZero()) {
-            // Token is native
-            currency.transfer(address(positionManager), currencyTransferAmount);
-            positionManager.modifyLiquidities{value: tokenTransferAmount}(_plan, block.timestamp);
         } else {
-            // Both are ERC20 tokens
+            // Both are ERC20 tokens (token can never be native, only currency can be native)
             token.transfer(address(positionManager), tokenTransferAmount);
             currency.transfer(address(positionManager), currencyTransferAmount);
             positionManager.modifyLiquidities(_plan, block.timestamp);
@@ -433,10 +441,24 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @notice Low level function to transfer currency to a recipient
+    /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH cannot brick migration.
+    /// @dev Does not cover the plan's TAKE_PAIR dust: the PositionManager sends that to the recipient with a plain
+    ///      transfer, so a rejecting recipient can still revert migration when PM-side native dust is nonzero.
     function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
         if (amount == 0) return;
-        currency.transfer(recipient, amount);
+        if (currency.isAddressZero()) {
+            SafeTransferLib.forceSafeTransferETH(recipient, amount);
+        } else {
+            currency.transfer(recipient, amount);
+        }
         emit CurrencySwept(recipient, amount);
+    }
+
+    /// @notice Low level function to transfer tokens to a recipient
+    function _transferToken(Currency token, address recipient, uint256 amount) private {
+        if (amount == 0) return;
+        token.transfer(recipient, amount);
+        emit TokensSwept(recipient, amount);
     }
 
     /// @notice Receive native currency

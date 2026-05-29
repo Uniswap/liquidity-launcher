@@ -7,6 +7,7 @@ import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPIniti
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
 import {MockReentrantMigrateRecipient} from "test/mocks/MockReentrantMigrateRecipient.sol";
+import {MockRejectEth} from "test/mocks/MockRejectEth.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -19,6 +20,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
 import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -53,7 +55,9 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: -1, offsetUpper: 1, weight: 1e7, overridePositionRecipient: positionRecipient
+        });
         mp.positionDefinitions = abi.encode(defs);
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
@@ -78,9 +82,30 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.Migrated(
             ILBPInitializer(address(initializer)),
             PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
-            0
+            0,
+            bytes("")
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
+    }
+
+    function test_migratedEventIncludesPositionPlan(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        bytes32 migratedTopic = keccak256("Migrated(address,(address,address,uint24,int24,address),uint160,bytes)");
+
+        vm.recordLogs();
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        bytes memory emittedPlan;
+        for (uint256 i; i < entries.length; i++) {
+            if (entries[i].emitter == address(strategy) && entries[i].topics[0] == migratedTopic) {
+                (, emittedPlan) = abi.decode(entries[i].data, (uint160, bytes));
+                break;
+            }
+        }
+
+        assertGt(emittedPlan.length, 0);
     }
 
     function test_currencyAmountCappedAtInt128Max(MigrationFuzzParams memory p, uint256 _hugeRaise) public {
@@ -134,12 +159,67 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.FundsRecovered(
             ILBPInitializer(address(initializer)), mp.recipient, mp.reservedTokenAmountForLP
         );
+        vm.expectEmit(true, false, false, true, address(strategy));
+        emit ILBPStrategy.MigrationFailed(ILBPInitializer(address(initializer)), bytes("POSITION_MANAGER_REVERT"));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(mp.recipient.balance, recipientCurrencyBefore + raised);
         assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
         assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(initializer).balance, 0);
+        assertEq(address(strategy).balance, 0);
+        assertEq(token.balanceOf(address(strategy)), 0);
+    }
+
+    function test_fuzz_migrationForceSendsLeftoverToEthRejectingRecipient_nativeCurrency(MigrationFuzzParams memory p)
+        public
+    {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        // Funds recipient reverts on receiving ETH. A plain transfer of the leftover would brick tryMigrate
+        // and silently downgrade migration to a recovery; the success path must still complete via force-send.
+        vm.etch(mp.recipient, type(MockRejectEth).runtimeCode);
+        uint256 recipientBalBefore = mp.recipient.balance;
+
+        // Migration must succeed (emit Migrated), not fall back to recovery (FundsRecovered).
+        vm.expectEmit(true, false, false, false, address(strategy));
+        emit ILBPStrategy.Migrated(
+            ILBPInitializer(address(initializer)),
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
+            0,
+            bytes("")
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // The non-LP portion of the raise is force-sent to the recipient despite its reverting receive().
+        assertGt(mp.recipient.balance, recipientBalBefore);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    function test_fuzz_recoveryForceSendsToEthRejectingRecipient_nativeCurrency(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer, MockERC20 token) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+        uint256 raised = initializer.lbpInitializationParams().currencyRaised;
+
+        // Make the funds recipient a contract that reverts on receiving ETH. A plain `currency.transfer`
+        // in the recovery leg would revert and brick the whole migrate() (recovery never completes).
+        vm.etch(mp.recipient, type(MockRejectEth).runtimeCode);
+        uint256 recipientCurrencyBefore = mp.recipient.balance;
+        uint256 recipientTokenBefore = token.balanceOf(mp.recipient);
+
+        vm.mockCallRevert(
+            address(POSITION_MANAGER),
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector),
+            "POSITION_MANAGER_REVERT"
+        );
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        // Force-send still delivers the recovered currency despite the recipient's reverting receive().
+        assertEq(mp.recipient.balance, recipientCurrencyBefore + raised);
+        assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
+        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
@@ -176,6 +256,8 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         emit ILBPStrategy.FundsRecovered(
             ILBPInitializer(address(initializer)), mp.recipient, mp.reservedTokenAmountForLP
         );
+        vm.expectEmit(true, false, false, true, address(strategy));
+        emit ILBPStrategy.MigrationFailed(ILBPInitializer(address(initializer)), bytes("POSITION_MANAGER_REVERT"));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         assertEq(currencyToken.balanceOf(mp.recipient), recipientCurrencyBefore + p.currencyRaised);
@@ -204,7 +286,9 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         PositionDefinition[] memory defs = new PositionDefinition[](1);
-        defs[0] = PositionDefinition({offsetLower: -1, offsetUpper: 1, weight: 1e7});
+        defs[0] = PositionDefinition({
+            offsetLower: -1, offsetUpper: 1, weight: 1e7, overridePositionRecipient: positionRecipient
+        });
         mp.positionDefinitions = abi.encode(defs);
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
@@ -271,7 +355,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertGt(rawSqrtPrice, 0);
 
         vm.expectEmit(false, false, false, false);
-        emit ILBPStrategy.Migrated(ILBPInitializer(address(initializer)), strategyKey, 0);
+        emit ILBPStrategy.Migrated(ILBPInitializer(address(initializer)), strategyKey, 0, bytes(""));
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         (uint160 rawSqrtPriceAfter,,,) = POOL_MANAGER.getSlot0(rawKey.toId());
