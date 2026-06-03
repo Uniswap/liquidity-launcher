@@ -21,8 +21,9 @@ interface IDistributorFactory {
     /// @param totalSupply The supply of the token that will be distributed.
     /// @param configData Arbitrary, factory-specific parameters.
     /// @param salt The salt for deterministic deployment, if used by the factory.
+    /// @param sender The address that would call {create}.
     /// @return distributor The contract that will handle or manage the distribution.
-    function getAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt)
+    function getAddress(address token, uint256 totalSupply, bytes calldata configData, bytes32 salt, address sender)
         external
         view
         returns (IDistributor distributor);
