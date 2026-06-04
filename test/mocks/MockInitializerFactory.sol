@@ -54,7 +54,12 @@ contract MockInitializerFactory is IDistributorFactory {
         return IDistributor(address(initializer));
     }
 
-    function getAddress(address, uint256, bytes calldata, bytes32) external view override returns (IDistributor) {
+    function getAddress(address, uint256, bytes calldata, bytes32, address)
+        external
+        view
+        override
+        returns (IDistributor)
+    {
         return IDistributor(address(deployedInitializer));
     }
 }
