@@ -6,6 +6,7 @@ import {IStrategy} from "./IStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
 import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 /// @title ILBPStrategy
 /// @notice Interface for the LBPStrategy contract
@@ -45,6 +46,15 @@ interface ILBPStrategy is IStrategy {
     /// @notice Error thrown when the initializer was already created
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);
+
+    /// @notice Error thrown when the target poolId is already occupied or initialized
+    /// @param poolId The pool id that is already occupied.
+    /// @param initializer The initializer registered to the id. Returns address(0) if the pool is already initialized.
+    error PoolIdOccupied(PoolId poolId, address initializer);
+
+    /// @notice Error thrown when the pool id is not registered
+    /// @param poolId The pool id that is not registered
+    error PoolIdNotRegistered(PoolId poolId);
 
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
@@ -114,10 +124,6 @@ interface ILBPStrategy is IStrategy {
     /// @notice Error thrown when an initializer was never registered with the strategy
     /// @param initializer The initializer being acted on
     error InitializerNotRegistered(ILBPInitializer initializer);
-
-    /// @notice Error thrown when an initializer's reserves were already consumed by a prior `migrate`
-    /// @param initializer The initializer being acted on
-    error InsufficientReserves(ILBPInitializer initializer);
 
     /// @notice Error thrown when the function is called by an address other than the strategy
     error OnlySelfCall();

@@ -9,6 +9,11 @@ import {PositionPlanner} from "./PositionPlanner.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
 import {IInitializerHook} from "../interfaces/IInitializerHook.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+
+using StateLibrary for IPoolManager;
 
 /// @notice Migration parameters for an initializer
 struct MigratorParameters {
@@ -124,12 +129,18 @@ library MigratorParams {
 
     /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook
     /// @dev Reverts if the hook does not implement IInitializerHook or is not authorized to initialize the pool
-    function validateHook(address hook) internal view {
-        if (
-            hook != address(0)
-                && (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
-                    || IInitializerHook(hook).authorized() != address(this))
-        ) {
+    function validateHook(address hook, PoolId poolId, IPoolManager poolManager) internal view {
+        if (hook != address(0)) {
+            if (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)) {
+                revert InvalidHook(hook);
+            }
+            if (IInitializerHook(hook).authorized() != address(this)) {
+                revert InvalidHook(hook);
+            }
+        }
+        // See if the pool is already initialized.
+        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        if (existingSqrtPriceX96 != 0) {
             revert InvalidHook(hook);
         }
     }
