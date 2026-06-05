@@ -455,17 +455,50 @@ contract PositionPlannerTest is Test {
             defs, TickMath.getSqrtPriceAtTick(0), 1, CurrencyAmounts({amount0: amount, amount1: amount})
         );
 
-        assertEq(positions.length, 1);
-        // Should be the position as defined
+        // The explicit position is clamped to the per-tick cap. Its leftover currency budget flows into the
+        // full-range fallback, which sits on distinct boundary ticks and so gets its own per-tick headroom
+        // instead of being squeezed out (the cap is applied per boundary, not as a single plan-wide budget).
+        assertEq(positions.length, 2);
+        // Explicit position as defined, clamped to the per-tick max liquidity.
         assertEq(positions[0].tickLower, -1);
         assertEq(positions[0].tickUpper, 1);
-        // With non zero liquidity
         assertGt(positions[0].liquidity, 0);
-        // And less than the max liquidity per tick
         assertLe(positions[0].liquidity, Pool.tickSpacingToMaxLiquidityPerTick(1));
-        // With remaining budget
+        // Full-range fallback created from the leftover budget, also within the per-tick cap.
+        assertEq(positions[1].tickLower, TickMath.minUsableTick(1));
+        assertEq(positions[1].tickUpper, TickMath.maxUsableTick(1));
+        assertGt(positions[1].liquidity, 0);
+        assertLe(positions[1].liquidity, Pool.tickSpacingToMaxLiquidityPerTick(1));
+        // With remaining budget left after both positions.
         assertGt(remaining.amount0, 0);
         assertGt(remaining.amount1, 0);
+        // Every boundary tick's aggregate gross stays within the cap.
+        assertMaxLiquidityPerTick(positions, 1);
+    }
+
+    function test_resolve_perTickHeadroom_independentBoundariesEachGetFullCap() public view {
+        // Two one-sided positions on disjoint, non-adjacent tick ranges that share no boundary tick. Each alone
+        // demands more than a single tick's max liquidity, so each is clamped to the per-tick cap. Because their
+        // boundaries are independent, they must NOT compete for one plan-wide budget: both are created at the cap.
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] =
+            PositionDefinition({offsetLower: -10, offsetUpper: -5, weight: 5e6, overridePositionRecipient: address(3)});
+        defs[1] =
+            PositionDefinition({offsetLower: 5, offsetUpper: 10, weight: 5e6, overridePositionRecipient: address(3)});
+
+        uint128 amount = uint128(type(int128).max);
+        (Position[] memory positions,) = mockPositionPlanner.resolve(
+            defs, TickMath.getSqrtPriceAtTick(0), 1, CurrencyAmounts({amount0: amount, amount1: amount})
+        );
+
+        uint128 cap = Pool.tickSpacingToMaxLiquidityPerTick(1);
+        (bool foundBelow, uint256 liqBelow) = _findPosition(positions, -10, -5);
+        (bool foundAbove, uint256 liqAbove) = _findPosition(positions, 5, 10);
+        assertTrue(foundBelow, "below-range position should be created");
+        assertTrue(foundAbove, "above-range position should be created");
+        assertEq(liqBelow, cap);
+        assertEq(liqAbove, cap);
+        assertMaxLiquidityPerTick(positions, 1);
     }
 
     function test_resolve_partialExplicitWeightsLeaveFullRangeFallback() public view {
@@ -791,6 +824,19 @@ contract PositionPlannerTest is Test {
             assertLe(lowerLiquidity, maxLiquidityPerTick);
             assertLe(upperLiquidity, maxLiquidityPerTick);
         }
+    }
+
+    function _findPosition(Position[] memory positions, int24 tickLower, int24 tickUpper)
+        private
+        pure
+        returns (bool found, uint256 liquidity)
+    {
+        for (uint256 i; i < positions.length; i++) {
+            if (positions[i].tickLower == tickLower && positions[i].tickUpper == tickUpper) {
+                return (true, positions[i].liquidity);
+            }
+        }
+        return (false, 0);
     }
 
     function _poolKey(int24 tickSpacing) private pure returns (PoolKey memory) {

@@ -133,8 +133,10 @@ library PositionPlanner {
         // Allocate space for the maximum possible number of positions (assuming all can be created)
         positions = new Position[](ticks.length + 1);
 
-        // Track one global remaining cap across the whole plan, assuming all positions share a tick boundary.
-        // This may skip positions V4 would accept, but guarantees planned positions cannot exceed the cap on a fresh pool.
+        // V4 enforces maxLiquidityPerTick against that tick's liquidityGross, which only accumulates at a
+        // position's two boundary ticks. Each candidate is therefore capped by the headroom remaining at its tighter
+        // boundary given the positions already created (see _headroom). On a fresh pool this keeps every tick's gross
+        // within the cap while letting positions that share no boundary each use their full per-tick headroom.
         uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(_tickSpacing);
         remainingAmounts = _currencyAmounts;
         uint24 cnt = 0;
@@ -142,30 +144,29 @@ library PositionPlanner {
         // Reordering the same definitions can therefore result in a different set of positions being created
         for (uint256 i; i < ticks.length; i++) {
             uint24 weight = _definitions[i].weight;
-            // ResolvePosition caps liquidity to maxLiquidityPerTick internally.
             address overrideRecipient = _definitions[i].overridePositionRecipient;
+            // Cap to the per-tick headroom left at this candidate's boundaries by the positions already created.
             Position memory position = ticks[i].resolvePosition(
                 _sqrtPriceX96,
-                maxLiquidityPerTick,
+                _headroom(positions, cnt, maxLiquidityPerTick, ticks[i].lowerTick, ticks[i].upperTick),
                 _currencyAmounts.applyWeight(weight),
                 overrideRecipient == address(0) ? _positionRecipient : overrideRecipient
             );
             // Failed positions are skipped and their allocations will be used in a full range position.
             if (!position.isEmpty()) {
                 remainingAmounts = remainingAmounts.sub(position.amount0, position.amount1);
-                maxLiquidityPerTick -= uint128(position.liquidity);
                 positions[cnt++] = position;
             }
         }
 
         // Create a full range position with all remaining budget
         {
+            int24 fullLower = TickMath.minUsableTick(_tickSpacing);
+            int24 fullUpper = TickMath.maxUsableTick(_tickSpacing);
             Position memory position = PositionPlanner.resolvePosition(
-                TickBounds({
-                    lowerTick: TickMath.minUsableTick(_tickSpacing), upperTick: TickMath.maxUsableTick(_tickSpacing)
-                }),
+                TickBounds({lowerTick: fullLower, upperTick: fullUpper}),
                 _sqrtPriceX96,
-                maxLiquidityPerTick,
+                _headroom(positions, cnt, maxLiquidityPerTick, fullLower, fullUpper),
                 remainingAmounts,
                 _positionRecipient // the full range position always uses the default position recipient
             );
@@ -292,6 +293,39 @@ library PositionPlanner {
         returns (CurrencyAmounts memory)
     {
         return CurrencyAmounts({amount0: _amounts.amount0 - _amount0, amount1: _amounts.amount1 - _amount1});
+    }
+
+    /// @notice Remaining per-tick liquidity headroom for a candidate position's boundaries
+    /// @dev liquidityGross is contributed by a position only at its tickLower and tickUpper, so two positions only
+    ///      compete for the cap when they share an exact boundary. This sums the gross already contributed by created
+    ///      positions at each of the candidate's boundary ticks and returns the cap minus the larger of the two.
+    ///      Capping the candidate to this value keeps both of its boundary ticks within `_maxLiquidityPerTick`. By
+    ///      induction every created position keeps its boundaries within the cap, so `maxGross <= _maxLiquidityPerTick`
+    ///      always holds and the subtraction cannot underflow. O(n) per call, O(n^2) over the at most 11 positions.
+    /// @param _positions The positions created so far
+    /// @param _count The number of created positions in `_positions`
+    /// @param _maxLiquidityPerTick The per-tick max liquidity for the pool's tick spacing
+    /// @param _lowerTick The candidate's lower boundary tick
+    /// @param _upperTick The candidate's upper boundary tick
+    /// @return The liquidity headroom available to the candidate
+    function _headroom(
+        Position[] memory _positions,
+        uint24 _count,
+        uint128 _maxLiquidityPerTick,
+        int24 _lowerTick,
+        int24 _upperTick
+    ) private pure returns (uint128) {
+        uint128 grossLower;
+        uint128 grossUpper;
+        for (uint256 j; j < _count; j++) {
+            uint128 liq = uint128(_positions[j].liquidity);
+            int24 lower = _positions[j].tickLower;
+            int24 upper = _positions[j].tickUpper;
+            if (lower == _lowerTick || upper == _lowerTick) grossLower += liq;
+            if (lower == _upperTick || upper == _upperTick) grossUpper += liq;
+        }
+        uint128 maxGross = grossLower > grossUpper ? grossLower : grossUpper;
+        return _maxLiquidityPerTick - maxGross;
     }
 
     /// @notice Implementation of `LiquidityAmounts.getLiquidityForAmount0` without the downcast to uint128
