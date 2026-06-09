@@ -165,7 +165,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         assertEq(mp.recipient.balance, recipientCurrencyBefore + raised);
         assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
         assertEq(address(initializer).balance, 0);
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
@@ -219,7 +219,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         // Force-send still delivers the recovered currency despite the recipient's reverting receive().
         assertEq(mp.recipient.balance, recipientCurrencyBefore + raised);
         assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
     }
@@ -262,7 +262,7 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         assertEq(currencyToken.balanceOf(mp.recipient), recipientCurrencyBefore + p.currencyRaised);
         assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
         assertEq(currencyToken.balanceOf(address(initializer)), 0);
         assertEq(currencyToken.balanceOf(address(strategy)), 0);
         assertEq(token.balanceOf(address(strategy)), 0);
@@ -363,6 +363,30 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(rawSqrtPriceAfter, rawSqrtPrice);
         assertGt(strategySqrtPrice, 0);
         assertEq(address(strategyKey.hooks), address(strategy));
+        // The reservation on the registered (raw) key is cleared after the fallback migration.
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
+    }
+
+    /// @notice After a failed migration recovers funds, the reservation is cleared, so the initializer
+    /// cannot be re-migrated (replay protection on the recovery path).
+    function test_fuzz_cannotReMigrateAfterRecovery(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        vm.mockCallRevert(
+            address(POSITION_MANAGER),
+            abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector),
+            "POSITION_MANAGER_REVERT"
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
+
+        // Reservation cleared on the registered key → a second migrate reverts InitializerNotRegistered.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategy.InitializerNotRegistered.selector, ILBPInitializer(address(initializer))
+            )
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
     /// @notice An initializer that reenters migrate from inside sweepCurrency is blocked by the

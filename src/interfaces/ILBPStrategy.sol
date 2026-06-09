@@ -55,10 +55,6 @@ interface ILBPStrategy is IStrategy {
     /// @param initializer The initializer registered to the id. Returns address(0) if the pool is already initialized.
     error PoolIdOccupied(PoolId poolId, address initializer);
 
-    /// @notice Error thrown when the pool id is not registered
-    /// @param poolId The pool id that is not registered
-    error PoolIdNotRegistered(PoolId poolId);
-
     /// @notice Error thrown when migration to a v4 pool is not allowed yet
     /// @param migrationBlock The block number at which migration is allowed
     /// @param currentBlock The current block number

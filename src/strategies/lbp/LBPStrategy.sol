@@ -141,9 +141,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 ).toId();
             migrationParams.poolParameters.hook.validateHook(poolId, poolManager);
             if (registeredInitializers[poolId] != address(0)) {
-                // The pool id is already occupied by another initializer.
-                // Switch to another hook or try again with either address(0) or the address of this strategy.
-                // If both addresses are occupied, deploy a new hook unique pool within the same transaction to dodge front-running attacks.
+                // The pool id is already reserved by another initializer. Re-launch with different pool
+                // parameters (fee/tickSpacing) or a unique InitializerHook to obtain a distinct pool id.
                 revert PoolIdOccupied(poolId, registeredInitializers[poolId]);
             }
 
@@ -236,7 +235,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             migrationParams.poolParameters.tickSpacing,
             migrationParams.poolParameters.hook
         );
-        
+
         {
             PoolId poolId = key.toId();
 
@@ -254,7 +253,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                     // If the hookless pool exists, fall back to the strategy hook to ensure the pool is initialized.
                     key.hooks = IHooks(address(this));
                     migrationParams.poolParameters.hook = address(this);
-                    // NOT updating the pool id, since its not used after this point 
+                    // NOT updating the pool id, since its not used after this point
                 }
             }
         }
@@ -331,10 +330,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     }
 
     /// @notice Initializes the pool with the calculated price
-    /// @dev Uses the provided hook directly. Any nonzero hook MUST inherit InitializerHook, and is checked for
-    ///      IInitializerHook ERC165 support during initializeDistribution. If hook is address(0), initializes the
-    ///      hookless pool unless it already exists, then falls back to this strategy as the hook. address(0) is
-    ///      only valid for static-fee pools.
+    /// @dev Initializes exactly the provided key; the hookless→strategy-hook fallback is resolved by the caller
+    ///      (`migrate`) before this is called. Reverts if the pool is already initialized.
     /// @param key The pool key for the initialized pool
     /// @param initialSqrtPriceX96 The sqrt price used to initialize the pool
     function _initializePool(PoolKey memory key, uint160 initialSqrtPriceX96) private {
