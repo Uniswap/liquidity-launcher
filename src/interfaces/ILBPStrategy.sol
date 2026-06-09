@@ -47,6 +47,9 @@ interface ILBPStrategy is IStrategy {
     /// @param initializer The initializer that has already been registered
     error InitializerAlreadyCreated(ILBPInitializer initializer);
 
+    /// @notice Error thrown when the hook is the strategy itself
+    error HookIsStrategy();
+
     /// @notice Error thrown when the target poolId is already occupied or initialized
     /// @param poolId The pool id that is already occupied.
     /// @param initializer The initializer registered to the id. Returns address(0) if the pool is already initialized.

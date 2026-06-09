@@ -81,6 +81,11 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Validate the migrator parameters (scalar fields, reservedTokenAmountForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
 
+        // Validate the hook is not the strategy itself.  The strategy hook is a fallback for hookless pools that fail to initialize.
+        if (migrationParams.poolParameters.hook == address(this)) {
+            revert HookIsStrategy();
+        }
+
         // Deploy the initializer contract via factory with only auction supply (totalSupply - reservedTokenAmountForLP) passed as the amount
         uint128 reservedTokenAmountForLP = migrationParams.reservedTokenAmountForLP;
         if (reservedTokenAmountForLP >= totalSupply) {
@@ -231,13 +236,28 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             migrationParams.poolParameters.tickSpacing,
             migrationParams.poolParameters.hook
         );
-        PoolId poolId = key.toId();
+        
+        {
+            PoolId poolId = key.toId();
 
-        // Ensure the pool id is still registered, to prevent replay attacks
-        if (registeredInitializers[poolId] != address(initializer)) revert InitializerNotRegistered(initializer);
+            // Ensure the pool id is still registered, to prevent replay attacks
+            if (registeredInitializers[poolId] != address(initializer)) revert InitializerNotRegistered(initializer);
 
-        // Zero out the initializer for the pool id for replay protection
-        registeredInitializers[poolId] = address(0);
+            // Zero out the initializer for the pool id for replay protection
+            registeredInitializers[poolId] = address(0);
+
+            // If no hook is provided, check availability of the hookless pool
+            if (migrationParams.poolParameters.hook == address(0)) {
+                // See if the hookless pool is already initialized.
+                (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+                if (existingSqrtPriceX96 != 0) {
+                    // If the hookless pool exists, fall back to the strategy hook to ensure the pool is initialized.
+                    key.hooks = IHooks(address(this));
+                    migrationParams.poolParameters.hook = address(this);
+                    // NOT updating the pool id, since its not used after this point 
+                }
+            }
+        }
 
         try this.tryMigrate(initializer, migrationParams, key) {}
         catch (bytes memory reason) {
