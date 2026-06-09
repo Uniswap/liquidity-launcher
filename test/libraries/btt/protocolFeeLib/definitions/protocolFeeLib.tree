@@ -3,7 +3,10 @@ ProtocolFeeLibTest
 │   ├── when protocol fee controller is unset
 │   │   └── it returns zero
 │   └── when protocol fee controller is set
-│       └── it returns the controller fee amount
+│       ├── when the controller call reverts
+│       │   └── it returns zero
+│       └── when the controller call succeeds
+│           └── it returns the controller fee amount
 └── transferProtocolFee
     ├── when currency is native
     │   ├── it transfers native currency to the protocol fee recipient

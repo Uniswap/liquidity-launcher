@@ -56,6 +56,26 @@ contract MockProtocolFeeController is IProtocolFeeController {
     }
 }
 
+contract RevertingProtocolFeeController is IProtocolFeeController {
+    function protocolFeeRecipient() external pure returns (address) {
+        return address(0);
+    }
+
+    function setProtocolFeeRecipient(address) external {}
+
+    function setGlobalProtocolFeePips(uint24) external {}
+
+    function setProtocolFeeBracketsForCurrency(address, ProtocolFeeBracket[] calldata) external {}
+
+    function getProtocolFeeBracketsForCurrency(address) external pure returns (ProtocolFeeBracket[] memory fees) {
+        return fees;
+    }
+
+    function getProtocolFeeAmount(address, uint256) external pure returns (uint256) {
+        revert("controller reverted");
+    }
+}
+
 /// @title ProtocolFeeLibTest
 /// @notice BTT tests for ProtocolFeeLib
 ///
@@ -63,7 +83,10 @@ contract MockProtocolFeeController is IProtocolFeeController {
 /// ├── when protocol fee controller is unset
 /// │   └── it returns zero
 /// └── when protocol fee controller is set
-///     └── it returns the controller fee amount
+///     ├── when the controller call reverts
+///     │   └── it returns zero
+///     └── when the controller call succeeds
+///         └── it returns the controller fee amount
 ///
 /// transferProtocolFee
 /// ├── when currency is native
@@ -96,7 +119,18 @@ contract ProtocolFeeLibTest is Test {
         assertEq(feeAmount, 0);
     }
 
-    function test_GetProtocolFeeAmount_WhenProtocolFeeControllerIsSet_ReturnsControllerFeeAmount(
+    function test_GetProtocolFeeAmount_WhenTheControllerCallReverts_ReturnsZero(address _currency, uint256 _amount)
+        public
+    {
+        // it returns zero
+        RevertingProtocolFeeController revertingController = new RevertingProtocolFeeController();
+
+        uint256 feeAmount = harness.getProtocolFeeAmount(revertingController, _currency, _amount);
+
+        assertEq(feeAmount, 0);
+    }
+
+    function test_GetProtocolFeeAmount_WhenTheControllerCallSucceeds_ReturnsControllerFeeAmount(
         address _currency,
         uint256 _amount,
         uint256 _feeAmount
