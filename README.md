@@ -76,35 +76,7 @@ The LiquidityLauncher contract can be deployed to the same address on all networ
 
 > No changes have been made to the LiquidityLauncher contract since v1.0.0.
 
-### FullRangeLBPStrategyFactory
-The FullRangeLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
-
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Mainnet | 0x65aF3B62EE79763c704f04238080fBADD005B332 | 610603eed7c35ff504e23ec87cd18ec3f701e746  |
-| v2.0.0 | Unichain | 0xAa56d4d68646B4858A5A3a99058169D0100b38e2 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Sepolia | 0x89Dd5691e53Ea95d19ED2AbdEdCf4cBbE50da1ff | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0xa3A236647c80BCD69CAD561ACf863c29981b6fbC | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-
-### AdvancedLBPStrategyFactory
-The AdvancedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
-
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Mainnet | 0x982DC187cbeB4E21431C735B01Ecbd8A606129C5 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Unichain | 0xeB44195e1847F23D4ff411B7d501b726C7620529 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Sepolia | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-
-### GovernedLBPStrategyFactory
-The GovernedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
-
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Base | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+> The v2.0.0 LBP strategy factories (`FullRangeLBPStrategyFactory`, `AdvancedLBPStrategyFactory`, `GovernedLBPStrategyFactory`) were removed in v3.0.0 and consolidated into a single `LBPStrategy`. Their prior deployment addresses are retained for reference, marked deprecated, in the [Deployment Guide](./docs/DeploymentGuide.md#legacy-deployments-deprecated).
 
 ## Audits
 - 1/23/2026 [OpenZeppelin](./docs/audit/OpenZeppelin_v2.0.0.pdf)

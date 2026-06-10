@@ -7,6 +7,7 @@
 - [Token distribution](#token-distribution)
 - [Example](#example)
 - [Contract verification](#contract-verification)
+- [Legacy deployments (deprecated)](#legacy-deployments-deprecated)
 
 ## Deployment Process
 Most deployments will be initiated through the `LiquidityLauncher` contract. If you are also creating a new token, see [Creating a new token](#creating-a-new-token).
@@ -78,9 +79,9 @@ Do not configure third-party or custom hooks in `hook` unless they inherit `Init
 
 Passing `address(0)` keeps a static-fee launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly. Dynamic-fee launches must provide a nonzero hook with the fee logic.
 
-### LBPStrategy `recoveryDelayBlocks`
+### LBPStrategy fund recovery
 
-`LBPStrategy`'s constructor takes an immutable `recoveryDelayBlocks` (in blocks) — the wait past `migrationBlock` before `recoverFunds` can be called. Pick a per-chain value that corresponds to roughly the wall-time you want (e.g. `7_200` for ~1 day on a 12s-block chain).
+There is no separate recovery step to configure. When `migrate()` fails, `LBPStrategy` recovers the reserved tokens and any raised currency inline in the same call's failure branch, transferring them to the configured `recipient` and emitting `FundsRecovered`. `tryMigrate()` exposes the same recovery without reverting. No `recoveryDelayBlocks` constructor argument or `recoverFunds` entrypoint exists.
 
 ## Example
 
@@ -148,3 +149,34 @@ If the user already has an active Permit2 allowance for the launcher, the `permi
 
 ### Contract verification
 Because multiple contracts may be created as part of the initial call to `LiquidityLauncher.distributeToken`, you may need to manually verify the contracts after the deployment with `forge verify-contract`.
+
+## Legacy deployments (deprecated)
+
+> **Deprecated.** The per-variant LBP strategy factories below were removed in v3.0.0 and consolidated into a single `LBPStrategy` (see the [v3.0.0 changelog](../CHANGELOG.md)). These addresses point to v2.0.0 contracts that are no longer part of the current codebase and are retained for historical reference only. Do not integrate against them for new launches.
+
+### FullRangeLBPStrategyFactory (v2.0.0, deprecated)
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Mainnet | 0x65aF3B62EE79763c704f04238080fBADD005B332 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Unichain | 0xAa56d4d68646B4858A5A3a99058169D0100b38e2 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Sepolia | 0x89Dd5691e53Ea95d19ED2AbdEdCf4cBbE50da1ff | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0xa3A236647c80BCD69CAD561ACf863c29981b6fbC | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+
+### AdvancedLBPStrategyFactory (v2.0.0, deprecated)
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Mainnet | 0x982DC187cbeB4E21431C735B01Ecbd8A606129C5 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Unichain | 0xeB44195e1847F23D4ff411B7d501b726C7620529 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Sepolia | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+
+### GovernedLBPStrategyFactory (v2.0.0, deprecated)
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Base | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
