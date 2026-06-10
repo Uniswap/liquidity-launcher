@@ -129,9 +129,7 @@ library MigratorParams {
     /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook and is a
     /// valid v4 hook for the configured fee that will actually receive the beforeInitialize callback
     /// @dev Reverts if the hook does not implement IInitializerHook, is not authorized to initialize the pool, is not a
-    /// valid v4 hook address for `fee`, or lacks the BEFORE_INITIALIZE_FLAG permission bit. The interface check alone is
-    /// insufficient: v4 derives hook permissions from the low bits of the hook address, so a hook can pass the interface
-    /// check while still being rejected by PoolManager.initialize() or never having beforeInitialize() called.
+    /// valid v4 hook address for `fee`, or lacks the BEFORE_INITIALIZE_FLAG permission bit
     /// @param hook The hook address to validate
     /// @param fee The LP fee configured for the pool the hook will be used with
     function validateHook(address hook, uint24 fee) internal view {
