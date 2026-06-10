@@ -313,10 +313,14 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         });
 
         if (hook == address(0)) {
-            // See if the hookless pool is already initialized.
+            // hook == address(0) means "prefer the hookless pool, but fall back to the strategy-hooked pool if the
+            // hookless pool already exists" — so the destination is state-dependent at migration time. The hookless
+            // pool is preferred for simpler routing; the strategy-hooked fallback only preserves a migration path when
+            // the hookless key has already been consumed. This is an accepted operating mode (see docs/DeploymentGuide).
             (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
             if (existingSqrtPriceX96 != 0) {
-                // If the hookless pool exists, initialize a strategy-hooked pool instead.
+                // The hookless pool already exists, so initialize the strategy-hooked pool instead. This relies on the
+                // strategy being deployed at a valid BEFORE_INITIALIZE hook address and self-gating beforeInitialize.
                 key.hooks = IHooks(address(this));
             }
         }

@@ -77,11 +77,25 @@ When configuring an LBP distribution, the `MigratorParameters.poolParameters.hoo
 
 Do not configure third-party or custom hooks in `hook` unless they inherit `InitializerHook` and are deployed at an address with the correct v4 hook permission bits, including `BEFORE_INITIALIZE`.
 
-Passing `address(0)` keeps a static-fee launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly. Dynamic-fee launches must provide a nonzero hook with the fee logic.
+Dynamic-fee launches must provide a nonzero hook with the fee logic.
+
+#### Static-fee launches with `hook = address(0)`: hookless pool with strategy-hooked fallback
+
+For static-fee launches with `hook = address(0)`, the migration destination is **state-dependent and chosen at migration time**. `hook = address(0)` does not guarantee the final pool is hookless — it means "prefer the hookless pool, but fall back to the strategy-hooked pool if the hookless pool already exists." A launch configured this way migrates into exactly one of:
+
+- `(currency0, currency1, fee, tickSpacing, address(0))` — the canonical hookless pool, when that pool is still uninitialized at migration time; or
+- `(currency0, currency1, fee, tickSpacing, address(strategy))` — the strategy-hooked fallback pool, when the hookless pool has already been initialized.
+
+This fallback is intentional and an accepted operating mode. Hookless pools are preferred because they are simpler and easier to route through, so the strategy targets the canonical hookless pool whenever it is available. The strategy-hooked pool only exists to preserve a migration path when the hookless key has already been consumed; it relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address (deployment scripts and tests must mine the strategy address accordingly) and self-gating `beforeInitialize`, so no separate `InitializerHook` deployment is required. Integrators routing to a hookless launch's pool should resolve the actual pool key from the `Migrated` event rather than assuming `address(0)`.
 
 ### LBPStrategy fund recovery
 
-There is no separate recovery step to configure. When `migrate()` fails, `LBPStrategy` recovers the reserved tokens and any raised currency inline in the same call's failure branch, transferring them to the configured `recipient` and emitting `FundsRecovered`. `tryMigrate()` exposes the same recovery without reverting. No `recoveryDelayBlocks` constructor argument or `recoverFunds` entrypoint exists.
+`migrate()` attempts pool initialization and liquidity creation through an internal self-call. There is no separate recovery step to configure — recovery is automatic and inline. Launch creators, recipients, and integrators should understand the recovery path:
+
+- **If automated migration fails, `migrate()` enters recovery** in the same call's failure branch (`tryMigrate()` exposes the same recovery without reverting). No `recoveryDelayBlocks` constructor argument or `recoverFunds` entrypoint exists.
+- **Recovery returns funds to the configured `recipient`**: it sweeps any raised currency from the initializer and transfers that currency plus the reserved LP tokens (`reservedTokenAmountForLP`) to `recipient`, then emits `FundsRecovered`.
+- **The initializer reserve is consumed.** Recovery zeroes `reserves[initializer]`, so the same initializer **cannot be retried** through `LBPStrategy.migrate()` afterward.
+- **Post-recovery liquidity is manual.** Recovery only returns the assets; it does not create a v4 position. Any desired liquidity must be created manually by the token creator, recipient, or another operator outside the strategy migration flow, subject to the selected pool and hook permissions.
 
 ## Example
 
