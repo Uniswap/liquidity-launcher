@@ -164,14 +164,12 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
-        uint256 currencyFromInitializer;
         {
             // Retrieves the LBP initialization parameters from the initializer. Must revert if the initializer is not graduated.
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
-            currencyFromInitializer = currency.balanceOfSelf() - balanceOfBeforeInit;
-            if (currencyFromInitializer != lbpParams.currencyRaised) {
-                revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
+            if (currency.balanceOfSelf() - balanceOfBeforeInit != lbpParams.currencyRaised) {
+                revert CurrencyRaisedMismatch(currency.balanceOfSelf() - balanceOfBeforeInit, lbpParams.currencyRaised);
             }
             // Apply the bracket schedule to derive the LP currency budget.
             // Any excess (above the int128 cap or beyond bracket allocation) is swept to recipient.
@@ -200,14 +198,22 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             migrationParams
         );
 
+        // Snapshot the token balance before the plan executes. The strategy also custodies other initializers'
+        // reserves, so only the delta around plan execution is attributable to this migration.
+        uint256 tokenBalanceBeforePlan = token.balanceOfSelf();
+
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        // _transferCurrency force-sends native currency so a recipient that rejects ETH cannot brick migration.
-        _transferCurrency(currency, migrationParams.recipient, currencyFromInitializer - currencyTransferAmount);
-        _transferToken(token, migrationParams.recipient, migrationParams.reservedTokenAmountForLP - tokenTransferAmount);
+        // Any leftover dust from the position creation is returned to this contract, and is sent to the recipient.
+        _transferCurrency(currency, migrationParams.recipient, currency.balanceOfSelf() - balanceOfBeforeInit);
+        _transferToken(
+            token,
+            migrationParams.recipient,
+            migrationParams.reservedTokenAmountForLP + token.balanceOfSelf() - tokenBalanceBeforePlan
+        );
 
         emit Migrated(initializer, key, sqrtPriceX96, plan);
     }
@@ -286,7 +292,9 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 : amount0In - SafeCastLib.toUint128(amounts.amount0);
         }
 
-        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.recipient);
+        // TAKE_PAIR dust is returned to this strategy (the modifyLiquidities caller) instead of the launch
+        // recipient, so the strategy controls the final transfer and can force-send native currency.
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, ActionConstants.MSG_SENDER);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
@@ -442,8 +450,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
     /// @notice Low level function to transfer currency to a recipient
     /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH cannot brick migration.
-    /// @dev Does not cover the plan's TAKE_PAIR dust: the PositionManager sends that to the recipient with a plain
-    ///      transfer, so a rejecting recipient can still revert migration when PM-side native dust is nonzero.
+    ///      The plan's TAKE_PAIR dust is routed back to this strategy and forwarded through here, so it is covered
+    ///      by the same force-send protection.
     function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
         if (amount == 0) return;
         if (currency.isAddressZero()) {
