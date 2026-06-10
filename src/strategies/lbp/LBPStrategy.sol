@@ -94,7 +94,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Validate the migrator parameters (scalar fields, reservedTokenAmountForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
         // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
-        migrationParams.poolParameters.hook.validateHook();
+        migrationParams.poolParameters.hook.validateHook(migrationParams.poolParameters.fee);
 
         // Calculate the salt for the initializer by hashing the caller provided salt with the MigratorParams
         bytes32 initializerSalt = keccak256(abi.encode(salt, migrationParams));

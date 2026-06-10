@@ -1,6 +1,8 @@
 InitializeDistributionTest
 ├── when hook authorized address is not strategy
 │   └── it reverts with {InvalidHook}
+├── when hook lacks the before-initialize permission bit
+│   └── it reverts with {InvalidHook}
 ├── when breakpoints array is empty
 │   └── it reverts with {InvalidBreakpointLength}
 ├── when breakpoint rate is greater than 1e7

@@ -13,6 +13,7 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
@@ -35,6 +36,8 @@ contract MockInitializerHook {
 ///
 /// initializeDistribution
 /// ├── when hook authorized address is not strategy
+/// │   └── it reverts with InvalidHook
+/// ├── when hook lacks the before-initialize permission bit
 /// │   └── it reverts with InvalidHook
 /// ├── when bracket count is invalid (empty or too many)
 /// │   └── it reverts with InvalidBracketCount
@@ -79,11 +82,36 @@ contract MockInitializerHook {
 ///         ├── it stores the migration parameters
 ///         └── it emits InitializerCreated
 contract InitializeDistributionTest is LBPStrategyTestBase {
+    /// @notice Deploys a MockInitializerHook and etches it at an address carrying `flags` in its low bits, so the
+    /// hook satisfies v4's address-derived permission rules. Immutables (authorized) are baked into runtime code and
+    /// survive the etch.
+    function _etchInitializerHook(uint160 flags, address _authorized) internal returns (address hookAddr) {
+        hookAddr = address(flags);
+        MockInitializerHook impl = new MockInitializerHook(_authorized);
+        vm.etch(hookAddr, address(impl).code);
+    }
+
     function test_WhenHookAuthorizedAddressIsNotStrategy(address _authorized, MigrationFuzzParams memory p) public {
         vm.assume(_authorized != address(strategy));
 
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         mp.poolParameters.hook = address(new MockInitializerHook(_authorized));
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory initializerParams = abi.encode(mp.reservedTokenAmountForLP, endBlock);
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenHookLacksBeforeInitializePermission(MigrationFuzzParams memory p) public {
+        // A hook authorized to the strategy that still lacks the BEFORE_INITIALIZE_FLAG permission bit is rejected:
+        // v4 derives permissions from the hook address, so without that bit beforeInitialize() is never called and the
+        // initialization gate the strategy relies on would be silently skipped.
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        // AFTER_INITIALIZE_FLAG passes the v4 address validity check but omits BEFORE_INITIALIZE_FLAG.
+        mp.poolParameters.hook = _etchInitializerHook(uint160(Hooks.AFTER_INITIALIZE_FLAG), address(strategy));
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
         bytes memory initializerParams = abi.encode(mp.reservedTokenAmountForLP, endBlock);
@@ -323,7 +351,7 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         // it stores the migration parameters
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         mp.poolParameters.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
-        mp.poolParameters.hook = address(new MockInitializerHook(address(strategy)));
+        mp.poolParameters.hook = _etchInitializerHook(uint160(Hooks.BEFORE_INITIALIZE_FLAG), address(strategy));
 
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
 
