@@ -128,17 +128,17 @@ library MigratorParams {
     }
 
     /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook
-    /// @dev Reverts if the hook does not implement IInitializerHook or is not authorized to initialize the pool
+    /// @dev Reverts if the hook does not implement IInitializerHook, is not authorized to initialize the pool,
+    ///      or the target pool is already initialized
     function validateHook(address hook, PoolId poolId, IPoolManager poolManager) internal view {
-        if (hook != address(0)) {
-            if (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)) {
-                revert InvalidHook(hook);
-            }
-            if (IInitializerHook(hook).authorized() != address(this)) {
-                revert InvalidHook(hook);
-            }
+        if (
+            hook != address(0)
+                && (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
+                    || IInitializerHook(hook).authorized() != address(this))
+        ) {
+            revert InvalidHook(hook);
         }
-        // See if the pool is already initialized.
+        // See if the pool is already initialized. Also applies to hookless pools (hook == address(0)).
         (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (existingSqrtPriceX96 != 0) {
             revert InvalidHook(hook);

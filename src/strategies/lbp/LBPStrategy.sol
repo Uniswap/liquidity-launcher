@@ -133,8 +133,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Validate the hook, check if the pool is already initialized and register the initializer for the pool id
         {
             PoolId poolId = _createPoolKey(
-                    migrationParams.currency,
-                    token,
+                    Currency.wrap(migrationParams.currency),
+                    Currency.wrap(token),
                     migrationParams.poolParameters.fee,
                     migrationParams.poolParameters.tickSpacing,
                     migrationParams.poolParameters.hook
@@ -466,14 +466,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         emit TokensSwept(recipient, amount);
     }
 
-    function _createPoolKey(address currency, address token, uint24 lpFee, int24 poolTickSpacing, address hook)
-        private
-        pure
-        returns (PoolKey memory key)
-    {
-        return _createPoolKey(Currency.wrap(currency), Currency.wrap(token), lpFee, poolTickSpacing, hook);
-    }
-
+    /// @notice Builds the v4 pool key for a (currency, token) pair, ordering the currencies as required by v4
     function _createPoolKey(Currency currency, Currency token, uint24 lpFee, int24 poolTickSpacing, address hook)
         private
         pure
