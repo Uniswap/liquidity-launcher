@@ -12,6 +12,10 @@ interface ILiquidityLauncher {
     /// @notice Thrown when the strategy did not consume the full pre-approved allowance.
     error AllowanceNotFullyConsumed();
 
+    /// @notice Thrown when the launcher still holds a balance of the distributed token after the
+    ///         distribution completes.
+    error NonZeroResidualBalance();
+
     /// @notice Emitted when a token is created
     /// @param tokenAddress The address of the token that was created
     event TokenCreated(address indexed tokenAddress);
@@ -55,9 +59,10 @@ interface ILiquidityLauncher {
     function depositToken(address token, uint160 amount) external;
 
     /// @notice Distribute tokens already held by this contract via one or more strategies
-    /// @dev The launcher must already hold `distribution.amount` of `tokenAddress`. The launcher
+    /// @dev The launcher must hold exactly `distribution.amount` of `tokenAddress`. The launcher
     ///      approves the strategy for that amount; the strategy is expected to pull the full amount
-    ///      via `safeTransferFrom` inside its `initializeDistribution` call.
+    ///      via `safeTransferFrom` inside its `initializeDistribution` call. The call reverts if any
+    ///      balance remains in the launcher afterwards, so an over-deposit leaves nothing claimable.
     ///      Always batch token-acquisition (`createToken` or `depositToken`) and `distributeToken`
     ///      in a single `multicall`
     /// @param tokenAddress The address of the token to distribute

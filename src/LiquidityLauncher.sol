@@ -58,6 +58,12 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         // Reject strategies that pull less than the full approved amount.
         if (IERC20(token).allowance(address(this), distribution.strategy) != 0) revert AllowanceNotFullyConsumed();
 
+        // The launcher must not hold tokens at rest: any residual beyond what this distribution
+        // consumed (e.g. an over-deposit, partial distribution of a held supply, or a direct transfer
+        // in) is claimable by any caller via an arbitrary strategy. Require a zero balance so a
+        // mismatched deposit reverts instead of silently leaving tokens behind.
+        if (IERC20(token).balanceOf(address(this)) != 0) revert NonZeroResidualBalance();
+
         emit TokenDistributed(token, distribution.strategy, distribution.amount);
     }
 

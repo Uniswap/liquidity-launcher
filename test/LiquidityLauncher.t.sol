@@ -175,6 +175,26 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
     }
 
+    /// @notice distributeToken must revert if the launcher holds more than the distribution consumes,
+    /// leaving a residual balance that any caller could later route to an arbitrary strategy.
+    function test_fuzz_distributeToken_revertsWhenResidualBalanceRemains(uint128 total, uint128 distributionAmount)
+        public
+    {
+        total = uint128(bound(total, 2, type(uint128).max));
+        distributionAmount = uint128(bound(distributionAmount, 1, total - 1));
+
+        address tokenAddress = _mockToken(address(liquidityLauncher), total, "Test Token", "TEST");
+        MockStrategy strategy = new MockStrategy();
+
+        // The strategy pulls (and fully consumes the allowance for) only `distributionAmount`,
+        // leaving `total - distributionAmount` stranded in the launcher.
+        Distribution memory distribution =
+            Distribution({strategy: address(strategy), amount: distributionAmount, configData: ""});
+
+        vm.expectRevert(abi.encodeWithSelector(ILiquidityLauncher.NonZeroResidualBalance.selector));
+        liquidityLauncher.distributeToken(tokenAddress, distribution, bytes32(0));
+    }
+
     function test_fuzz_depositToken_revertsWithoutPermit2Allowance(uint128 amount) public {
         // The caller approves Permit2 on the token but never grants the launcher a Permit2 allowance,
         // so the launcher's permit2.transferFrom inside depositToken reverts (no allowance).
