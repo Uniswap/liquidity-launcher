@@ -254,7 +254,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint128 currencyAmountForLp,
         MigratorParameters memory mp
     ) internal virtual returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
-        bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
+        bool currencyIsCurrency0 = key.currency0 == currency;
 
         Position[] memory positions;
         CurrencyAmounts memory amounts;
