@@ -154,7 +154,7 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
         // 1. Register A with fuzzed params — strategy ends up holding reservedTokenAmountForLP_A of `token`.
         (MockLBPInitializer initA, MockERC20 token) = _setupForMigration(pA);
 
-        // Need headroom in block.number for B's endBlock/migrationBlock to fit in uint64.
+        // Need remaining liquidity in block.number for B's endBlock/migrationBlock to fit in uint64.
         // _boundMigratorParams uses [block.number, uint64.max-1] for endBlock, so block.number must be < uint64.max-1.
         vm.assume(block.number < type(uint64).max - 1);
 

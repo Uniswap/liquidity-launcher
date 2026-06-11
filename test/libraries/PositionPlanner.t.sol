@@ -456,7 +456,7 @@ contract PositionPlannerTest is Test {
         );
 
         // The explicit position is clamped to the per-tick cap. Its leftover currency budget flows into the
-        // full-range fallback, which sits on distinct boundary ticks and so gets its own per-tick headroom
+        // full-range fallback, which sits on distinct boundary ticks and so gets its own per-tick remaining liquidity
         // instead of being squeezed out (the cap is applied per boundary, not as a single plan-wide budget).
         assertEq(positions.length, 2);
         // Explicit position as defined, clamped to the per-tick max liquidity.
