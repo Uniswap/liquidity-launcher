@@ -53,7 +53,7 @@ library MigratorParams {
     /// @notice The maximum bracket rate (100% in mps)
     uint24 internal constant MAX_BRACKET_RATE = 1e7;
     /// @notice The maximum number of brackets in the LP allocation schedule
-    uint256 internal constant MAX_BRACKETS = 3;
+    uint256 internal constant MAX_BRACKETS = 32;
 
     /// @notice Error thrown when a configured hook does not support IInitializerHook
     /// @param hook The invalid hook address
