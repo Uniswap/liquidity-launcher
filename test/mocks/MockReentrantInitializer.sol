@@ -7,8 +7,8 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
 
 /// @notice Adversarial initializer that reenters `strategy.migrate(self)` from inside `sweepCurrency`.
-/// With CEI in place (`reserves[initializer] = 0` set before any external call in migrate), the inner
-/// reentrant call must revert with InsufficientReserves.
+/// migrate() is `nonReentrant` (transient reentrancy guard), so the inner reentrant call must revert
+/// with ReentrancyGuardTransient.Reentrancy before reaching any reservation/state checks.
 contract MockReentrantInitializer is MockLBPInitializer {
     using CurrencyLibrary for Currency;
 
