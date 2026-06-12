@@ -102,7 +102,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         if (address(initializer) == address(0) || _initializers[initializer].migrationBlock != 0) {
             revert InitializerAlreadyCreated(initializer);
         }
-        // Validate the initializer parameters are set as expected (recipients, end block, and token/currency consistency)
+        // Validate the initializer parameters are set as expected (recipients, end block
         _validateInitializerParams(initializer, migrationParams);
 
         if (migrationParams.token != token || initializer.token() != token) {
