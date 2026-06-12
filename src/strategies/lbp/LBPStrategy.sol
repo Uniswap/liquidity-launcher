@@ -80,8 +80,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
         // Validate the migrator parameters (scalar fields, reservedTokenAmountForLP cap, position plan, and LP allocation schedule)
         migrationParams.validate();
-        // Validate the configured hook as soon as it is parsed so unsupported hooks are rejected before any deployment.
-        migrationParams.poolParameters.hook.validateHook(migrationParams.poolParameters.fee);
 
         // Validate the hook is not the strategy itself.  The strategy hook is a fallback for hookless pools that fail to initialize.
         if (migrationParams.poolParameters.hook == address(this)) {
@@ -141,7 +139,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                     migrationParams.poolParameters.tickSpacing,
                     migrationParams.poolParameters.hook
                 ).toId();
-            migrationParams.poolParameters.hook.validateHook(poolId, poolManager);
+            // Validate the hook address and if the pool is already initialized
+            migrationParams.poolParameters.hook.validateHook(migrationParams.poolParameters.fee, poolId, poolManager);
             if (registeredInitializers[poolId] != address(0)) {
                 // The pool id is already reserved by another initializer. Re-launch with different pool
                 // parameters (fee/tickSpacing) or a unique InitializerHook to obtain a distinct pool id.

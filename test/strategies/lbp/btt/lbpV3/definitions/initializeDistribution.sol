@@ -18,6 +18,10 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 contract MockInitializerHook {
     address public immutable authorized;
@@ -106,22 +110,6 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         );
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
         token.approve(address(strategy), totalSupply);
-
-        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
-        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
-    }
-
-    function test_WhenHookLacksBeforeInitializePermission(MigrationFuzzParams memory p) public {
-        // A hook authorized to the strategy that still lacks the BEFORE_INITIALIZE_FLAG permission bit is rejected:
-        // v4 derives permissions from the hook address, so without that bit beforeInitialize() is never called and the
-        // initialization gate the strategy relies on would be silently skipped.
-        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
-        // AFTER_INITIALIZE_FLAG passes the v4 address validity check but omits BEFORE_INITIALIZE_FLAG.
-        mp.poolParameters.hook = _etchInitializerHook(uint160(Hooks.AFTER_INITIALIZE_FLAG), address(strategy));
-
-        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.reservedTokenAmountForLP, endBlock);
-        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
@@ -220,25 +208,15 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         _;
     }
 
-    function test_WhenTooManyBrackets(uint24 _rate3, uint128 _threshold2, MigrationFuzzParams memory p) public {
-        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
-        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
-        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
-        uint24 rate3 = uint24(bound(_rate3, 1, MigratorParams.MAX_BRACKET_RATE));
-        uint128 threshold0 = uint128(bound(p.bpParams.threshold0, 1, type(uint128).max - 2));
-        uint128 threshold1 = uint128(bound(p.bpParams.threshold1, threshold0 + 1, type(uint128).max - 1));
-        uint128 threshold2 = uint128(bound(_threshold2, threshold1 + 1, type(uint128).max));
-
+    function test_WhenTooManyBrackets(MigrationFuzzParams memory p) public {
         (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
 
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](4);
-        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate0});
-        bp[1] = LiquidityAllocationBracket({lowerThreshold: threshold0, rate: rate1});
-        bp[2] = LiquidityAllocationBracket({lowerThreshold: threshold1, rate: rate2});
-        bp[3] = LiquidityAllocationBracket({lowerThreshold: threshold2, rate: rate3});
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](MigratorParams.MAX_BRACKETS + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, 4));
+        vm.expectRevert(
+            abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, MigratorParams.MAX_BRACKETS + 1)
+        );
         strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
     }
 
@@ -736,5 +714,60 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         assertEq(storedParams.poolParameters.hook, mp.poolParameters.hook);
         assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
         assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));
+    }
+
+    function test_WhenHookLacksBeforeInitializePermission(MigrationFuzzParams memory p) public {
+        // it reverts with {InvalidHook}
+
+        // it saves the parameters to storage
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        // A hook authorized to the strategy that still lacks the BEFORE_INITIALIZE_FLAG permission bit is rejected:
+        // v4 derives permissions from the hook address, so without that bit beforeInitialize() is never called and the
+        // initialization gate the strategy relies on would be silently skipped.
+        // AFTER_INITIALIZE_FLAG passes the v4 address validity check but omits BEFORE_INITIALIZE_FLAG.
+        mp.poolParameters.hook = _etchInitializerHook(uint160(Hooks.AFTER_INITIALIZE_FLAG), address(strategy));
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        token.approve(address(strategy), totalSupply);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, mp.currency, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenHookIsZeroAddress_AndPoolIsInitialized(MigrationFuzzParams memory p) public {
+        // it reverts with {InvalidHook}
+
+        // it saves the parameters to storage
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolParameters.hook = address(0);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+
+        token.approve(address(strategy), totalSupply);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, mp.currency, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        // initialize the pool
+        POOL_MANAGER.initialize(
+            PoolKey({
+                currency0: Currency.wrap(mp.currency),
+                currency1: Currency.wrap(mp.token),
+                fee: mp.poolParameters.fee,
+                tickSpacing: mp.poolParameters.tickSpacing,
+                hooks: IHooks(mp.poolParameters.hook)
+            }),
+            TickMath.MIN_SQRT_PRICE
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 }
