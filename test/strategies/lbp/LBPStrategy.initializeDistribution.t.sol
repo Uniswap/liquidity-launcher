@@ -13,6 +13,8 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {MigratorParams} from "src/libraries/MigratorParams.sol";
@@ -116,9 +118,15 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
         mp.poolParameters.hook = makeAddr("hookWithoutInitializerHookSupport");
 
+        // validateHook now runs after the initializer is deployed and token consistency is checked, so the
+        // config must be otherwise valid (matching token/currency, well-formed mock params) to reach it.
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.reservedTokenAmountForLP, endBlock);
+        mp.token = address(token);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
         bytes memory configData = _encodeConfigData(mp, bp, initializerParams);
+        token.approve(address(strategy), totalSupply);
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
@@ -158,5 +166,69 @@ contract LBPStrategy_InitializeDistribution_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, bp);
         (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
         assertEq(storedParams.poolParameters.hook, hookAddr);
+    }
+
+    /// @notice Registration reserves the resulting poolId; a second launch resolving to the same
+    /// (currency, token, fee, tickSpacing, hook) is rejected with PoolIdOccupied.
+    function test_initializeDistribution_revertsIfPoolIdOccupied(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+
+        // First registration reserves the pool key (hook == address(0) from _boundMigratorParams).
+        (MockLBPInitializer first, MockERC20 token) = _initializeWith(mp, totalSupply, endBlock, bp);
+        assertEq(_registeredFor(ILBPInitializer(address(first))), address(first));
+
+        // A second launch with the SAME token + pool params resolves to the same poolId.
+        deal(address(token), address(this), totalSupply);
+        token.approve(address(strategy), totalSupply);
+        bytes memory configData =
+            _encodeConfigData(mp, bp, _encodeMockInitializerParams(endBlock, address(0), _zeroLbpParams()));
+
+        PoolId poolId = _poolIdFor(ILBPInitializer(address(first)));
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.PoolIdOccupied.selector, poolId, address(first)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(uint256(1)));
+    }
+
+    /// @notice The strategy address is reserved as the hookless fallback hook, so it cannot be set as
+    /// an explicit migration hook.
+    function test_initializeDistribution_revertsIfHookIsStrategy(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+        mp.poolParameters.hook = address(strategy);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        bytes memory configData =
+            _encodeConfigData(mp, bp, _encodeMockInitializerParams(endBlock, address(0), _zeroLbpParams()));
+        token.approve(address(strategy), totalSupply);
+
+        vm.expectRevert(ILBPStrategy.HookIsStrategy.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    /// @notice For a hookless launch, registration fails fast if the raw pool is already initialized
+    /// (validateHook's getSlot0 check), since that launch could never migrate into it.
+    function test_initializeDistribution_revertsIfHooklessPoolAlreadyInitialized(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        LiquidityAllocationBracket[] memory bp = _boundBrackets(p.bpParams);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+
+        // Front-run: initialize the raw hookless pool before registration.
+        PoolKey memory rawKey =
+            _poolKey(address(0), address(token), mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(0));
+        POOL_MANAGER.initialize(rawKey, uint160(1 << 96));
+
+        bytes memory configData =
+            _encodeConfigData(mp, bp, _encodeMockInitializerParams(endBlock, address(0), _zeroLbpParams()));
+        token.approve(address(strategy), totalSupply);
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, address(0)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function _zeroLbpParams() internal pure returns (LBPInitializationParams memory) {
+        return LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0});
     }
 }
