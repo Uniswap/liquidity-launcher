@@ -8,6 +8,7 @@ import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
 import {MockReentrantMigrateRecipient} from "test/mocks/MockReentrantMigrateRecipient.sol";
 import {MockRejectEth} from "test/mocks/MockRejectEth.sol";
+import {MockNativeDonationHook} from "test/mocks/MockNativeDonationHook.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -16,9 +17,16 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {
+    MigratorParams,
+    MigratorParameters,
+    PoolParameters,
+    LiquidityAllocationBracket
+} from "src/libraries/MigratorParams.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -222,6 +230,122 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
         assertEq(address(strategy).balance, 0);
         assertEq(token.balanceOf(address(strategy)), 0);
+    }
+
+    /// @notice Nonzero native dust returned by the plan's closing TAKE_PAIR is captured by the strategy
+    /// (the modifyLiquidities caller) and forwarded to the recipient. The strategy must end empty, and
+    /// recipient + pool must net the full raise plus the donation. A donating hook drives the dust because
+    /// the standard plan settles exactly and leaves zero POSM dust, so this return path is otherwise unexercised.
+    function test_migrate_posmNativeDust_returnedToStrategy_andForwardedToRecipient() public {
+        address dustRecipient = makeAddr("dustRecipient");
+        MockNativeDonationHook hook = _deployDonationHook(1 ether);
+
+        // 50% of the raise goes to LP, leaving non-LP leftover; the single full-range position fires the
+        // hook's afterAddLiquidity, which donates 1 ether of native currency to the strategy via TAKE_PAIR.
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 5e6});
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 1e7,
+            overridePositionRecipient: positionRecipient
+        });
+        MigratorParameters memory mp = MigratorParameters({
+            token: address(0),
+            currency: address(0),
+            migrationBlock: uint64(block.number + 1),
+            reservedTokenAmountForLP: 100 ether,
+            recipient: dustRecipient,
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(hook)}),
+            positionDefinitions: abi.encode(defs),
+            lpAllocationSchedule: new bytes(0)
+        });
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
+        });
+        (MockLBPInitializer initializer,) =
+            _initializeWith(mp, 110 ether, uint64(block.number), bp, address(0), lbpParams);
+        vm.deal(address(initializer), 100 ether);
+        vm.roll(mp.migrationBlock);
+
+        uint256 recipientBalBefore = dustRecipient.balance;
+        uint256 poolMgrBalBefore = address(POOL_MANAGER).balance;
+        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 recipientGain = dustRecipient.balance - recipientBalBefore;
+        uint256 poolGain = address(POOL_MANAGER).balance - poolMgrBalBefore;
+
+        // The hook fired and donated its entire balance into the plan.
+        assertTrue(hook.donated(), "hook did not donate");
+        assertEq(address(hook).balance, 0, "hook retained donation");
+        // Migration succeeded (LP position minted), it did not silently downgrade to recovery.
+        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore, "no LP position minted");
+        assertGt(poolGain, 0, "pool received no liquidity");
+        // Strategy keeps nothing: the dust it received from TAKE_PAIR was swept on to the recipient.
+        assertEq(address(strategy).balance, 0, "strategy retained dust");
+        // The recipient receives the non-LP leftover PLUS the TAKE_PAIR dust (the donation).
+        assertEq(recipientGain, 100 ether - poolGain + 1 ether, "recipient missing leftover + dust");
+        assertEq(recipientGain + poolGain, 100 ether + 1 ether, "native conservation broken");
+    }
+
+    /// @notice Nonzero native TAKE_PAIR dust combined with a recipient that reverts on plain ETH transfers.
+    /// The dust is returned to the strategy and force-sent, so migration completes (LP minted) and the
+    /// recipient still receives the dust, rather than the plan reverting and downgrading to recovery.
+    function test_migrate_posmNativeDust_rejectingRecipient_doesNotBrickMigration() public {
+        MockRejectEth rejecter = new MockRejectEth();
+        MockNativeDonationHook hook = _deployDonationHook(1 ether);
+
+        // 50% of the raise goes to LP, leaving non-LP leftover; the single full-range position fires the
+        // hook's afterAddLiquidity, which donates 1 ether of native currency to the strategy via TAKE_PAIR.
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 5e6});
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 1e7,
+            overridePositionRecipient: positionRecipient
+        });
+        MigratorParameters memory mp = MigratorParameters({
+            token: address(0),
+            currency: address(0),
+            migrationBlock: uint64(block.number + 1),
+            reservedTokenAmountForLP: 100 ether,
+            recipient: address(rejecter),
+            positionRecipient: positionRecipient,
+            poolParameters: PoolParameters({fee: 3000, tickSpacing: 60, hook: address(hook)}),
+            positionDefinitions: abi.encode(defs),
+            lpAllocationSchedule: new bytes(0)
+        });
+        LBPInitializationParams memory lbpParams = LBPInitializationParams({
+            initialPriceX96: uint160(1 << 96), tokensSold: 1 ether, currencyRaised: 100 ether
+        });
+        (MockLBPInitializer initializer,) =
+            _initializeWith(mp, 110 ether, uint64(block.number), bp, address(0), lbpParams);
+        vm.deal(address(initializer), 100 ether);
+        vm.roll(mp.migrationBlock);
+
+        uint256 recipientBalBefore = address(rejecter).balance;
+        uint256 poolMgrBalBefore = address(POOL_MANAGER).balance;
+        uint256 nextTokenIdBefore = POSITION_MANAGER.nextTokenId();
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        uint256 recipientGain = address(rejecter).balance - recipientBalBefore;
+        uint256 poolGain = address(POOL_MANAGER).balance - poolMgrBalBefore;
+
+        // Migration completed via force-send rather than falling back to recovery.
+        assertGt(POSITION_MANAGER.nextTokenId(), nextTokenIdBefore, "no LP position minted (recovered instead)");
+        assertGt(poolGain, 0, "pool received no liquidity (recovered instead)");
+        assertTrue(hook.donated(), "hook did not donate");
+        assertEq(address(strategy).balance, 0, "strategy retained dust");
+        // Force-send delivered the leftover + dust despite the recipient's reverting receive().
+        assertEq(recipientGain, 100 ether - poolGain + 1 ether, "dust not force-sent to rejecting recipient");
+        assertEq(recipientGain + poolGain, 100 ether + 1 ether, "native conservation broken");
     }
 
     function test_fuzz_recoversFundsWhenPositionManagerReverts_erc20Currency(MigrationFuzzParams memory p) public {
@@ -462,6 +586,22 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
         assertTrue(recipient.reentered());
         assertEq(bytes4(recipient.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
+    }
+
+    /// @notice Mines and deploys a donating InitializerHook authorized for the strategy, funded so it can
+    /// settle its native donation during the migration plan.
+    function _deployDonationHook(uint256 donationAmount) internal returns (MockNativeDonationHook hook) {
+        uint160 flags = uint160(
+            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG
+        );
+        bytes memory args = abi.encode(POOL_MANAGER, address(strategy), donationAmount);
+        (address hookAddr, bytes32 salt) =
+            HookMiner.find(address(this), flags, type(MockNativeDonationHook).creationCode, args);
+
+        hook = new MockNativeDonationHook{salt: salt}(POOL_MANAGER, address(strategy), donationAmount);
+        assertEq(address(hook), hookAddr, "hook address mismatch");
+
+        vm.deal(address(hook), donationAmount);
     }
 
     function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)
