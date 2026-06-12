@@ -103,7 +103,14 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             revert InitializerAlreadyCreated(initializer);
         }
         // Validate the initializer parameters are set as expected (recipients, end block, and token/currency consistency)
-        _validateInitializerParams(initializer, migrationParams, token);
+        _validateInitializerParams(initializer, migrationParams);
+
+        if (migrationParams.token != token || initializer.token() != token) {
+            revert TokenMismatch(token, migrationParams.token, initializer.token());
+        }
+        if (migrationParams.currency != initializer.currency()) {
+            revert CurrencyMismatch(migrationParams.currency, initializer.currency());
+        }
 
         // Set the migrator params in storage for future use
         _initializers[initializer] = migrationParams;
@@ -364,12 +371,10 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice Validates the auction parameters and reverts if any are invalid. Continues if all are valid
     /// @param initializer The initializer contract
     /// @param migrationParams The migrator parameters that will be used to create the v4 pool and position
-    /// @param token The function-param token being distributed; checked for consistency with the declared and initializer token
-    function _validateInitializerParams(
-        ILBPInitializer initializer,
-        MigratorParameters memory migrationParams,
-        address token
-    ) private view {
+    function _validateInitializerParams(ILBPInitializer initializer, MigratorParameters memory migrationParams)
+        private
+        view
+    {
         // The strategy must be the fundsRecipient (it sweeps currency during migration), but must NOT be the
         // tokensRecipient — unsold auction tokens are claimed directly by the configured tokensRecipient via
         // the initializer's sweepUnsoldTokens.
@@ -384,15 +389,6 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         // Ensure the migration block is actually after the end block to ensure a successful migration
         if (initializer.endBlock() >= migrationParams.migrationBlock) {
             revert InvalidEndBlock(initializer.endBlock(), migrationParams.migrationBlock);
-        }
-        // Belt-and-suspenders: the function-param token, the declared token, and the freshly deployed initializer's
-        // token()/currency() must all agree. These hold when the initializer factory is trusted, but are validated
-        // here so all initializer-parameter checks live in one place.
-        if (migrationParams.token != token || initializer.token() != token) {
-            revert TokenMismatch(token, migrationParams.token, initializer.token());
-        }
-        if (migrationParams.currency != initializer.currency()) {
-            revert CurrencyMismatch(migrationParams.currency, initializer.currency());
         }
     }
 
