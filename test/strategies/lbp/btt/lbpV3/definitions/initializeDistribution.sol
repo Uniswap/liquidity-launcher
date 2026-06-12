@@ -97,9 +97,15 @@ contract InitializeDistributionTest is LBPStrategyTestBase {
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
         mp.poolParameters.hook = address(new MockInitializerHook(_authorized));
 
+        // validateHook now runs after the initializer is deployed and token consistency is checked, so the
+        // config must be otherwise valid (matching token, well-formed mock params) to reach the hook check.
         MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
-        bytes memory initializerParams = abi.encode(mp.reservedTokenAmountForLP, endBlock);
+        mp.token = address(token);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
         bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+        token.approve(address(strategy), totalSupply);
 
         vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));

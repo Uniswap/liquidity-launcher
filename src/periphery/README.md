@@ -10,7 +10,7 @@ Peripheral contracts used alongside LBP strategies.
 | [`PositionFeesForwarder`](./PositionFeesForwarder.sol) | Adds a permissionless `collectFees(tokenId)` entrypoint that collects LP fees from a held position and forwards both sides to an immutable recipient. |
 | [`BuybackAndBurnPositionRecipient`](./BuybackAndBurnPositionRecipient.sol) | Adds a permissionless `collectFees(tokenId, minCurrency)` entrypoint that (a) pulls a minimum amount of `token` from the caller and burns it, (b) collects LP fees, (c) forwards the `token` side to the burn address, (d) forwards the `currency` side to the caller. Designed so MEV searchers can profitably trigger buyback-and-burns. |
 | [`ProtocolFeeController`](./ProtocolFeeController.sol) | Governance-controlled source of truth for the protocol fee applied to currency raised by a launch. Integrators call it at fee-settlement time to discover the fee amount and recipient. See below. |
-| [`hooks/SelfInitializerHook`](./hooks/SelfInitializerHook.sol) | Abstract v4 hook that restricts `initializePool` to the hook contract itself. Used by strategies that must deterministically control the initial pool state. |
+| [`SelfInitializerMixin`](../strategies/lbp/SelfInitializerMixin.sol) | Abstract mixin for v4 hooks that may only initialize their own pools (restricts `beforeInitialize` to self-calls). Used by strategies that must deterministically control the initial pool state. |
 
 ## ProtocolFeeController
 
@@ -20,7 +20,7 @@ A single contract, owned by governance, that tells an integrator exactly **how m
 
 ```solidity
 // Source of truth for fee deduction
-(uint256 feeAmount, address recipient) = controller.getProtocolFeeAmount(currency, amount);
+uint256 feeAmount = controller.getProtocolFeeAmount(currency, amount);
 ```
 
 ### How the fee is determined
@@ -46,7 +46,7 @@ To turn the protocol fee fully off — across the global flat fee **and** every 
 controller.setGlobalProtocolFeeSettings(0, address(0));
 ```
 
-While the global recipient is `address(0)`, `getProtocolFeeAmount` returns `(0, address(0))` for every currency regardless of any per-currency schedule still in storage.
+While the global recipient is `address(0)`, `getProtocolFeeAmount` returns `0` for every currency regardless of any per-currency schedule still in storage.
 
 ### Per-currency override (optional)
 
@@ -125,5 +125,4 @@ The fee can be enabled or updated at any time after deployment.
 ### Notes for integrators
 
 - **Always forward fees to the returned `recipient`.** The recipient is the *global* recipient; per-currency configs do not override it.
-- **`amount > type(uint256).max / 1_000_000` is silently clamped inside the controller** to prevent overflow in internal multiplications. This threshold is ~`1.16 × 10^71`, far beyond any realistic raise, but something to be aware of if you're feeding in adversarial inputs.
 - **Events.** `GlobalProtocolFeeSettingsUpdated` and `ProtocolFeeBracketsForCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getProtocolFeeBracketsForCurrency(currency)` returns the full tier array for a given currency.

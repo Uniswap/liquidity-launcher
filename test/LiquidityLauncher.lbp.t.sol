@@ -186,8 +186,8 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
         // Strategy holds the LP portion; initializer holds the auction portion.
         assertEq(IERC20(tokenAddress).balanceOf(address(strategy)), reservedTokenAmountForLP);
         assertEq(IERC20(tokenAddress).balanceOf(address(initializer)), auctionSupply);
-        // Reserves tracks the strategy's portion.
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), reservedTokenAmountForLP);
+        // The pool key is reserved to the freshly registered initializer (not yet migrated).
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(initializer));
 
         // MigratorParameters were stored correctly on the strategy.
         MigratorParameters memory stored = strategy.initializers(ILBPInitializer(address(initializer)));
