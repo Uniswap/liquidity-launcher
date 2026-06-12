@@ -102,7 +102,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         if (address(initializer) == address(0) || _initializers[initializer].migrationBlock != 0) {
             revert InitializerAlreadyCreated(initializer);
         }
-        // Validate the initializer parameters are set as expected
+        // Validate the initializer parameters are set as expected (recipients, end block
         _validateInitializerParams(initializer, migrationParams);
 
         if (migrationParams.token != token || initializer.token() != token) {
@@ -300,7 +300,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         uint128 currencyAmountForLp,
         MigratorParameters memory mp
     ) internal virtual returns (bytes memory plan, uint128 currencyTransferAmount, uint128 tokenTransferAmount) {
-        bool currencyIsCurrency0 = Currency.unwrap(key.currency0) == Currency.unwrap(currency);
+        bool currencyIsCurrency0 = key.currency0 == currency;
 
         Position[] memory positions;
         CurrencyAmounts memory amounts;

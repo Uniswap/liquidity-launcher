@@ -3,9 +3,8 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IStrategy} from "./IStrategy.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILBPInitializer} from "./ILBPInitializer.sol";
-import {MigratorParameters, LiquidityAllocationBracket} from "../libraries/MigratorParams.sol";
+import {MigratorParameters} from "../libraries/MigratorParams.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 /// @title ILBPStrategy
@@ -26,15 +25,19 @@ interface ILBPStrategy is IStrategy {
     event Migrated(ILBPInitializer indexed initializer, PoolKey indexed key, uint160 initialSqrtPriceX96, bytes plan);
 
     /// @notice Emitted when the currency is swept
-    event CurrencySwept(address indexed operator, uint256 amount);
+    /// @param recipient The recipient that received the swept currency
+    /// @param amount The amount of currency swept
+    event CurrencySwept(address indexed recipient, uint256 amount);
 
     /// @notice Emitted when the tokens are swept
-    event TokensSwept(address indexed operator, uint256 amount);
-
-    /// @notice Emitted when an initializer's held reservedTokenAmountForLP is swept by its recipient after the
-    /// recovery delay expires (recovery path when migrate fails).
-    /// @param initializer The initializer whose reserves were swept
     /// @param recipient The recipient that received the swept tokens
+    /// @param amount The amount of tokens swept
+    event TokensSwept(address indexed recipient, uint256 amount);
+
+    /// @notice Emitted when an initializer's held reservedTokenAmountForLP is recovered to its recipient. Recovery
+    /// happens inline in the failure branch of `migrate()`, so the funds are returned in the same call that fails.
+    /// @param initializer The initializer whose reserves were recovered
+    /// @param recipient The recipient that received the recovered tokens
     /// @param amount The amount of reservedTokenAmountForLP transferred out of the strategy
     event FundsRecovered(ILBPInitializer indexed initializer, address indexed recipient, uint256 amount);
 
