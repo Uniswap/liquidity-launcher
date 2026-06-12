@@ -56,29 +56,26 @@ contract MockUnsupportedHook {
 
 /// @title MigratorParamsTest
 /// @notice BTT unit tests for the MigratorParams library, focused on the chained validation logic in
-/// validateHook. The four `||` clauses are reached left-to-right with short-circuiting, so each test
-/// arranges exactly one clause to be the first failing one, and the zero-address `&&` guard plus the
-/// trailing pool-initialization check are covered independently.
+/// validateHook. The pool-initialization check runs first (so it also covers hookless pools), then a zero
+/// hook returns early, and finally the four `||` clauses are reached left-to-right with short-circuiting —
+/// so each address-validation test arranges exactly one clause to be the first failing one.
 ///
 /// validateHook
-/// ├── when the hook is the zero address
-/// │   ├── when the pool is already initialized
-/// │   │   └── it reverts with {InvalidHook}
-/// │   └── when the pool is not initialized
-/// │       └── it does not revert
-/// └── when the hook is not the zero address
-///     ├── when the hook does not support the IInitializerHook interface
-///     │   └── it reverts with {InvalidHook}
-///     ├── when the hook is not authorized to the caller
-///     │   └── it reverts with {InvalidHook}
-///     ├── when the hook is not a valid v4 hook address for the fee
-///     │   └── it reverts with {InvalidHook}
-///     ├── when the hook lacks the before-initialize permission bit
-///     │   └── it reverts with {InvalidHook}
-///     └── when the hook passes every hook check
-///         ├── when the pool is already initialized
+/// ├── when the pool is already initialized
+/// │   └── it reverts with {InvalidHook}
+/// └── when the pool is not initialized
+///     ├── when the hook is the zero address
+///     │   └── it does not revert
+///     └── when the hook is not the zero address
+///         ├── when the hook does not support the IInitializerHook interface
 ///         │   └── it reverts with {InvalidHook}
-///         └── when the pool is not initialized
+///         ├── when the hook is not authorized to the caller
+///         │   └── it reverts with {InvalidHook}
+///         ├── when the hook is not a valid v4 hook address for the fee
+///         │   └── it reverts with {InvalidHook}
+///         ├── when the hook lacks the before-initialize permission bit
+///         │   └── it reverts with {InvalidHook}
+///         └── when the hook passes every hook check
 ///             └── it does not revert
 contract MigratorParamsTest is Test {
     /// @notice A normal static fee; isValidHookAddress only consults the fee for dynamic-fee pools, which
@@ -106,16 +103,10 @@ contract MigratorParamsTest is Test {
         vm.etch(hookAddr, address(impl).code);
     }
 
-    modifier whenTheHookIsTheZeroAddress() {
-        _;
-    }
-
-    function test_ValidateHook_WhenTheHookIsTheZeroAddress_WhenThePoolIsAlreadyInitialized(uint160 _sqrtPriceX96)
-        public
-        whenTheHookIsTheZeroAddress
-    {
+    function test_ValidateHook_WhenThePoolIsAlreadyInitialized(uint160 _sqrtPriceX96) public {
         // it reverts with {InvalidHook}
-        // A zero hook skips the inner clauses (the leading `&&`), but the pool-initialization guard still applies.
+        // The pool-initialization check runs first, before the zero-hook early return — so even a zero hook
+        // reverts when the target pool is already initialized.
         _sqrtPriceX96 = uint160(bound(_sqrtPriceX96, 1, type(uint160).max));
         poolManager.setSqrtPriceX96(_sqrtPriceX96);
 
@@ -123,11 +114,16 @@ contract MigratorParamsTest is Test {
         harness.validateHook(address(0), FEE, poolId, IPoolManager(address(poolManager)));
     }
 
-    function test_ValidateHook_WhenTheHookIsTheZeroAddress_WhenThePoolIsNotInitialized()
+    modifier whenThePoolIsNotInitialized() {
+        _;
+    }
+
+    function test_ValidateHook_WhenThePoolIsNotInitialized_WhenTheHookIsTheZeroAddress()
         public
-        whenTheHookIsTheZeroAddress
+        whenThePoolIsNotInitialized
     {
         // it does not revert
+        // A zero hook returns early once the pool is confirmed uninitialized; no hook checks run.
         poolManager.setSqrtPriceX96(0);
 
         harness.validateHook(address(0), FEE, poolId, IPoolManager(address(poolManager)));
@@ -139,6 +135,7 @@ contract MigratorParamsTest is Test {
 
     function test_ValidateHook_WhenTheHookDoesNotSupportTheIInitializerHookInterface()
         public
+        whenThePoolIsNotInitialized
         whenTheHookIsNotTheZeroAddress
     {
         // it reverts with {InvalidHook}
@@ -153,6 +150,7 @@ contract MigratorParamsTest is Test {
 
     function test_ValidateHook_WhenTheHookIsNotAuthorizedToTheCaller(address _authorized)
         public
+        whenThePoolIsNotInitialized
         whenTheHookIsNotTheZeroAddress
     {
         // it reverts with {InvalidHook}
@@ -166,7 +164,11 @@ contract MigratorParamsTest is Test {
         harness.validateHook(hook, FEE, poolId, IPoolManager(address(poolManager)));
     }
 
-    function test_ValidateHook_WhenTheHookIsNotAValidV4HookAddressForTheFee() public whenTheHookIsNotTheZeroAddress {
+    function test_ValidateHook_WhenTheHookIsNotAValidV4HookAddressForTheFee()
+        public
+        whenThePoolIsNotInitialized
+        whenTheHookIsNotTheZeroAddress
+    {
         // it reverts with {InvalidHook}
         // Third OR clause: the hook supports the interface and is authorized to the caller, but its address sets
         // the before-swap-return-delta flag without the before-swap flag, so isValidHookAddress returns false.
@@ -180,6 +182,7 @@ contract MigratorParamsTest is Test {
 
     function test_ValidateHook_WhenTheHookLacksTheBeforeInitializePermissionBit()
         public
+        whenThePoolIsNotInitialized
         whenTheHookIsNotTheZeroAddress
     {
         // it reverts with {InvalidHook}
@@ -193,30 +196,14 @@ contract MigratorParamsTest is Test {
         harness.validateHook(hook, FEE, poolId, IPoolManager(address(poolManager)));
     }
 
-    modifier whenTheHookPassesEveryHookCheck() {
-        _;
-    }
-
-    function test_ValidateHook_WhenTheHookPassesEveryHookCheck_WhenThePoolIsAlreadyInitialized(uint160 _sqrtPriceX96)
+    function test_ValidateHook_WhenTheHookPassesEveryHookCheck()
         public
+        whenThePoolIsNotInitialized
         whenTheHookIsNotTheZeroAddress
-        whenTheHookPassesEveryHookCheck
-    {
-        // it reverts with {InvalidHook}
-        _sqrtPriceX96 = uint160(bound(_sqrtPriceX96, 1, type(uint160).max));
-        address hook = _etchInitializerHook(uint160(Hooks.BEFORE_INITIALIZE_FLAG), address(harness));
-        poolManager.setSqrtPriceX96(_sqrtPriceX96);
-
-        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, hook));
-        harness.validateHook(hook, FEE, poolId, IPoolManager(address(poolManager)));
-    }
-
-    function test_ValidateHook_WhenTheHookPassesEveryHookCheck_WhenThePoolIsNotInitialized()
-        public
-        whenTheHookIsNotTheZeroAddress
-        whenTheHookPassesEveryHookCheck
     {
         // it does not revert
+        // A hook that supports the interface, is authorized to the caller, is a valid v4 hook address, and holds
+        // the before-initialize bit clears every clause; with an uninitialized pool, validateHook passes.
         address hook = _etchInitializerHook(uint160(Hooks.BEFORE_INITIALIZE_FLAG), address(harness));
         poolManager.setSqrtPriceX96(0);
 

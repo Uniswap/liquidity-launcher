@@ -1,21 +1,18 @@
 MigratorParamsTest
 └── validateHook
-    ├── when the hook is the zero address
-    │   ├── when the pool is already initialized
-    │   │   └── it reverts with {InvalidHook}
-    │   └── when the pool is not initialized
-    │       └── it does not revert
-    └── when the hook is not the zero address
-        ├── when the hook does not support the IInitializerHook interface
-        │   └── it reverts with {InvalidHook}
-        ├── when the hook is not authorized to the caller
-        │   └── it reverts with {InvalidHook}
-        ├── when the hook is not a valid v4 hook address for the fee
-        │   └── it reverts with {InvalidHook}
-        ├── when the hook lacks the before-initialize permission bit
-        │   └── it reverts with {InvalidHook}
-        └── when the hook passes every hook check
-            ├── when the pool is already initialized
+    ├── when the pool is already initialized
+    │   └── it reverts with {InvalidHook}
+    └── when the pool is not initialized
+        ├── when the hook is the zero address
+        │   └── it does not revert
+        └── when the hook is not the zero address
+            ├── when the hook does not support the IInitializerHook interface
             │   └── it reverts with {InvalidHook}
-            └── when the pool is not initialized
+            ├── when the hook is not authorized to the caller
+            │   └── it reverts with {InvalidHook}
+            ├── when the hook is not a valid v4 hook address for the fee
+            │   └── it reverts with {InvalidHook}
+            ├── when the hook lacks the before-initialize permission bit
+            │   └── it reverts with {InvalidHook}
+            └── when the hook passes every hook check
                 └── it does not revert

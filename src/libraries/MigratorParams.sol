@@ -141,19 +141,19 @@ library MigratorParams {
     /// @param poolId The pool ID to validate
     /// @param poolManager The Uniswap v4 pool manager deployed on the chain
     function validateHook(address hook, uint24 fee, PoolId poolId, IPoolManager poolManager) internal view {
-        if (
-            // zero address hooks don't need to be validated for hook flag bits
-            hook != address(0)
-                && (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
-                    || IInitializerHook(hook).authorized() != address(this)
-                    || !IHooks(hook).isValidHookAddress(fee)
-                    || !IHooks(hook).hasPermission(Hooks.BEFORE_INITIALIZE_FLAG))
-        ) {
-            revert InvalidHook(hook);
-        }
-        // See if the pool is already initialized
+        // Reject an already-initialized pool first, so the check also applies to hookless (zero hook) pools.
         (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (existingSqrtPriceX96 != 0) {
+            revert InvalidHook(hook);
+        }
+        // zero address hooks don't need to be validated for hook flag bits
+        if (hook == address(0)) return;
+        if (
+            !ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
+                || IInitializerHook(hook).authorized() != address(this)
+                || !IHooks(hook).isValidHookAddress(fee)
+                || !IHooks(hook).hasPermission(Hooks.BEFORE_INITIALIZE_FLAG)
+        ) {
             revert InvalidHook(hook);
         }
     }
