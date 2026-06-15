@@ -90,9 +90,9 @@ This fallback is intentional and an accepted operating mode. Hookless pools are 
 
 ### LBPStrategy fund recovery
 
-`migrate()` attempts pool initialization and liquidity creation through an internal self-call. There is no separate recovery step to configure — recovery is automatic and inline. Launch creators, recipients, and integrators should understand the recovery path:
+`migrate()` attempts pool initialization and liquidity creation through an internal self-call. There is no separate recovery step to configure. Launch creators, recipients, and integrators should understand the recovery path:
 
-- **If automated migration fails, `migrate()` enters recovery** in the same call's failure branch (`tryMigrate()` exposes the same recovery without reverting). No `recoveryDelayBlocks` constructor argument or `recoverFunds` entrypoint exists.
+- **If automated migration fails, `migrate()` enters recovery** in the same call's failure branch (`tryMigrate()` exposes the same recovery without reverting).
 - **Recovery returns funds to the configured `recipient`**: it sweeps any raised currency from the initializer and transfers that currency plus the reserved LP tokens (`reservedTokenAmountForLP`) to `recipient`, then emits `FundsRecovered`.
 - **The initializer reserve is consumed.** Recovery zeroes `reserves[initializer]`, so the same initializer **cannot be retried** through `LBPStrategy.migrate()` afterward.
 - **Post-recovery liquidity is manual.** Recovery only returns the assets; it does not create a v4 position. Any desired liquidity must be created manually by the token creator, recipient, or another operator outside the strategy migration flow, subject to the selected pool and hook permissions.
