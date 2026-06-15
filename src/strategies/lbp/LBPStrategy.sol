@@ -52,7 +52,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     mapping(ILBPInitializer initializer => MigratorParameters) internal _initializers;
 
     /// @notice The initializer registered to a poolId. Zeroed when the initializer is migrated.
-    mapping(PoolId poolId => address initializer) public registeredInitializers;
+    mapping(PoolId poolId => address initializer) public registeredPoolIds;
 
     constructor(IPositionManager _positionManager, IPoolManager _poolManager, IDistributorFactory _initializerFactory) {
         positionManager = _positionManager;
@@ -138,14 +138,14 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                     migrationParams.poolParameters.hook
                 ).toId();
             migrationParams.poolParameters.hook.validateHook(poolId, poolManager);
-            if (registeredInitializers[poolId] != address(0)) {
+            if (registeredPoolIds[poolId] != address(0)) {
                 // The pool id is already reserved by another initializer. Re-launch with different pool
                 // parameters (fee/tickSpacing) or a unique InitializerHook to obtain a distinct pool id.
-                revert PoolIdOccupied(poolId, registeredInitializers[poolId]);
+                revert PoolIdOccupied(poolId, registeredPoolIds[poolId]);
             }
 
             // Register the initializer for the pool id
-            registeredInitializers[poolId] = address(initializer);
+            registeredPoolIds[poolId] = address(initializer);
         }
 
         initializer.onTokensReceived();
@@ -238,10 +238,10 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             PoolId poolId = key.toId();
 
             // Ensure the pool id is still registered, to prevent replay attacks
-            if (registeredInitializers[poolId] != address(initializer)) revert InitializerNotRegistered(initializer);
+            if (registeredPoolIds[poolId] != address(initializer)) revert InitializerNotRegistered(initializer);
 
             // Zero out the initializer for the pool id for replay protection
-            registeredInitializers[poolId] = address(0);
+            registeredPoolIds[poolId] = address(0);
 
             // If no hook is provided, check availability of the hookless pool
             if (migrationParams.poolParameters.hook == address(0)) {

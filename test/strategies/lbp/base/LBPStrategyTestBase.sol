@@ -383,6 +383,6 @@ abstract contract LBPStrategyTestBase is Test {
     /// @notice The initializer currently registered for an initializer's reserved poolId
     /// (address(0) once consumed by migrate). Replaces the removed `reserves` accessor in assertions.
     function _registeredFor(ILBPInitializer initializer) internal view returns (address) {
-        return strategy.registeredInitializers(_poolIdFor(initializer));
+        return strategy.registeredPoolIds(_poolIdFor(initializer));
     }
 }
