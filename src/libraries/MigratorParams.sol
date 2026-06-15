@@ -86,8 +86,7 @@ library MigratorParams {
     /// position plan definitions, and the embedded LP allocation schedule. Reverts on any invalidity.
     /// @param p The migrator parameters to validate
     function validate(MigratorParameters memory p) internal pure {
-        // A zero token is rejected later by token consistency checks. This guards real same-token ERC20 pairs
-        // without shadowing native-currency placeholder tests that intentionally leave both fields unset.
+        // Token consistency is checked at registration; reject only concrete same-token ERC20 pairs here.
         if (p.token != address(0) && p.token == p.currency) revert InvalidTokenCurrencyPair(p.token);
 
         // tick spacing validation (cannot be greater than the v4 max tick spacing or less than the v4 min tick spacing)
