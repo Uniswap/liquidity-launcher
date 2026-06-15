@@ -139,7 +139,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                     migrationParams.poolParameters.tickSpacing,
                     migrationParams.poolParameters.hook
                 ).toId();
-            migrationParams.poolParameters.hook.validateHook(poolId, poolManager);
+            // Validate the hook address and if the pool is already initialized
+            migrationParams.poolParameters.hook.validateHook(migrationParams.poolParameters.fee, poolId, poolManager);
             if (registeredInitializers[poolId] != address(0)) {
                 // The pool id is already reserved by another initializer. Re-launch with different pool
                 // parameters (fee/tickSpacing) or a unique InitializerHook to obtain a distinct pool id.
