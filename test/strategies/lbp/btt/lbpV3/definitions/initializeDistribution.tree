@@ -1,39 +1,68 @@
 InitializeDistributionTest
 ├── when hook authorized address is not strategy
 │   └── it reverts with {InvalidHook}
-├── when breakpoints array is empty
-│   └── it reverts with {InvalidBreakpointLength}
-├── when breakpoint rate is greater than 1e7
-│   └── it reverts with {InvalidBreakpointRate}
-├── when non-last breakpoint threshold is 0
-│   └── it reverts with {InvalidBreakpointThreshold}
-├── when breakpoint thresholds are not ascending
-│   └── it reverts with {InvalidBreakpointThreshold}
-└── when breakpoint config is valid
+├── when hook lacks the before-initialize permission bit
+│   └── it reverts with {InvalidHook}
+├── when hook is the zero address and the pool is already initialized
+│   └── it reverts with {InvalidHook}
+├── when bracket schedule is empty
+│   └── it reverts with {InvalidBracketCount}
+├── when bracket count exceeds the max
+│   └── it reverts with {InvalidBracketCount}
+├── when a bracket rate is zero
+│   └── it reverts with {InvalidBracketRate}
+├── when a bracket rate is greater than the max bracket rate
+│   └── it reverts with {InvalidBracketRate}
+├── when the first bracket lowerThreshold is non-zero
+│   └── it reverts with {InvalidBracketThreshold}
+├── when a non-last bracket lowerThreshold is zero
+│   └── it reverts with {InvalidBracketThreshold}
+├── when bracket lowerThresholds are not strictly ascending
+│   └── it reverts with {InvalidBracketThreshold}
+├── when bracket lowerThresholds are equal
+│   └── it reverts with {InvalidBracketThreshold}
+├── when a bracket rate is exactly the max bracket rate
+│   └── it stores the migration parameters
+└── when the bracket schedule is valid
     ├── when poolParameters.tickSpacing is out of bounds
     │   └── it reverts with {InvalidTickSpacing}
     └── when poolParameters.tickSpacing is valid
         ├── when poolParameters.fee is greater than MAX_LP_FEE
         │   └── it reverts with {InvalidFee}
+        ├── when poolParameters.fee is the dynamic fee flag without a hook
+        │   └── it reverts with {InvalidDynamicFeeHook}
+        ├── when poolParameters.fee is the dynamic fee flag with a hook
+        │   └── it stores the migration parameters
         └── when poolParameters.fee is valid
-            ├── when position definition recipient is reserved
+            ├── when a position definition recipient is reserved
             │   └── it reverts with {InvalidPositionRecipient}
-            └── when position definition recipient is valid
+            └── when the position definition recipient is valid
+                ├── when reservedTokenAmountForLP exceeds int128.max
+                │   └── it reverts with {InvalidReservedTokenAmountForLP}
+                ├── when reservedTokenAmountForLP is zero
+                │   └── it reverts with {InvalidReservedTokenAmountForLP}
                 ├── when reservedTokenAmountForLP equals totalSupply
                 │   └── it reverts with {InvalidReservedTokenAmountForLP}
-                ├── when token and currency are the same
-                │   └── it reverts with {InvalidTokenCurrencyPair}
-                ├── when position definition tick bounds are invalid
-                │   └── it reverts with {InvalidTickBounds}
-                ├── when position definition count exceeds max
-                │   └── it reverts with {TooManyPositions}
-                ├── when initializer fundsRecipient is not strategy
-                │   └── it reverts with {InvalidRecipient}
-                ├── when initializer tokensRecipient is not strategy
-                │   └── it reverts with {InvalidRecipient}
-                ├── when initializer endBlock is GTE migrationBlock
-                │   └── it reverts with {InvalidEndBlock}
-                └── when initializer is valid
-                    ├── it deploys an initializer via the factory
-                    ├── it stores the migration parameters
-                    └── it emits {InitializerCreated}
+                └── when reservedTokenAmountForLP is valid
+                    ├── when token and currency are the same
+                    │   └── it reverts with {InvalidTokenCurrencyPair}
+                    ├── when position definitions are empty
+                    │   └── it stores the migration parameters
+                    ├── when position definition weights exceed 1e7
+                    │   └── it reverts with {InvalidAllocationWeights}
+                    ├── when a position definition weight is zero
+                    │   └── it reverts with {ZeroPositionWeight}
+                    ├── when position definition tick bounds are invalid
+                    │   └── it reverts with {InvalidTickBounds}
+                    ├── when position definition count exceeds max
+                    │   └── it reverts with {TooManyPositions}
+                    └── when the migrator params are valid
+                        ├── when initializer fundsRecipient is not strategy
+                        │   └── it reverts with {InvalidFundsRecipient}
+                        ├── when initializer tokensRecipient is strategy
+                        │   └── it reverts with {InvalidTokensRecipient}
+                        ├── when initializer endBlock is GTE migrationBlock
+                        │   └── it reverts with {InvalidEndBlock}
+                        └── when the initializer is valid
+                            ├── it stores the migration parameters
+                            └── it emits {InitializerCreated}

@@ -9,6 +9,8 @@ import {PositionPlanner} from "./PositionPlanner.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
 import {IInitializerHook} from "../interfaces/IInitializerHook.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -50,6 +52,8 @@ struct LiquidityAllocationBracket {
 /// @notice Validation helpers for MigratorParameters, including the embedded LP allocation schedule
 /// and the position-planner definitions.
 library MigratorParams {
+    using Hooks for IHooks;
+
     /// @notice The maximum bracket rate (100% in mps)
     uint24 internal constant MAX_BRACKET_RATE = 1e7;
     /// @notice The maximum number of brackets in the LP allocation schedule
@@ -127,20 +131,28 @@ library MigratorParams {
         _validateLpAllocationSchedule(p.lpAllocationSchedule);
     }
 
-    /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook
-    /// @dev Reverts if the hook does not implement IInitializerHook, is not authorized to initialize the pool,
-    ///      or the target pool is already initialized
-    function validateHook(address hook, PoolId poolId, IPoolManager poolManager) internal view {
-        if (
-            hook != address(0)
-                && (!ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
-                    || IInitializerHook(hook).authorized() != address(this))
-        ) {
-            revert InvalidHook(hook);
-        }
-        // See if the pool is already initialized. Also applies to hookless pools (hook == address(0)).
+    /// @notice Validates that the hook set in MigratorParameters correctly implements IInitializerHook and is a
+    ///         valid v4 hook for the configured fee that will actually receive the beforeInitialize callback
+    /// @dev Reverts if the hook does not implement IInitializerHook, is not authorized to initialize the pool, is not a
+    ///      valid v4 hook address for `fee`, or lacks the BEFORE_INITIALIZE_FLAG permission bit, or the target pool is already initialized
+    /// @dev Zero hook addresses are not validated but are still checked for pool initialization
+    /// @param hook The hook address to validate
+    /// @param fee The LP fee configured for the pool the hook will be used with
+    /// @param poolId The pool ID to validate
+    /// @param poolManager The Uniswap v4 pool manager deployed on the chain
+    function validateHook(address hook, uint24 fee, PoolId poolId, IPoolManager poolManager) internal view {
+        // Reject an already-initialized pool first, so the check also applies to hookless (zero hook) pools.
         (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (existingSqrtPriceX96 != 0) {
+            revert InvalidHook(hook);
+        }
+        // zero address hooks don't need to be validated for hook flag bits
+        if (hook == address(0)) return;
+        if (
+            !ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
+                || IInitializerHook(hook).authorized() != address(this) || !IHooks(hook).isValidHookAddress(fee)
+                || !IHooks(hook).hasPermission(Hooks.BEFORE_INITIALIZE_FLAG)
+        ) {
             revert InvalidHook(hook);
         }
     }
