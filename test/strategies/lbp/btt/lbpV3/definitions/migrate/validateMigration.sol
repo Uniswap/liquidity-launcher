@@ -22,7 +22,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// migrate
 /// ├── when initializer is unregistered (migrationBlock == 0)
 /// │   └── it reverts with InitializerNotRegistered(initializer)
-/// ├── when initializer was already migrated (registeredInitializers cleared, migrationBlock != 0)
+/// ├── when initializer was already migrated (registeredPoolIds cleared, migrationBlock != 0)
 /// │   ├── it reverts with InitializerNotRegistered(initializer)
 /// │   └── it reverts with MigrationNotYetAllowed when rolled back below migrationBlock
 /// ├── when block.number < migrationBlock

@@ -1,7 +1,7 @@
 ValidateMigrationTest
 ├── when initializer is unregistered (migrationBlock is 0)
 │   └── it reverts with {InitializerNotRegistered}
-├── when initializer was already migrated (registeredInitializers cleared, migrationBlock is nonzero)
+├── when initializer was already migrated (registeredPoolIds cleared, migrationBlock is nonzero)
 │   ├── it reverts with {InitializerNotRegistered}
 │   └── it reverts with {MigrationNotYetAllowed} when rolled back below migrationBlock
 ├── when block.number is LT migrationBlock
