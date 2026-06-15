@@ -24,10 +24,7 @@ import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "..
 import {ILBPStrategy} from "../../interfaces/ILBPStrategy.sol";
 import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
 import {Plan, Position, PositionDefinition} from "../../types/PositionPlannerTypes.sol";
-import {
-    ILBPInitializer,
-    LBPInitializationParams
-} from "../../interfaces/ILBPInitializer.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../interfaces/ILBPInitializer.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
@@ -137,7 +134,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                     migrationParams.poolParameters.tickSpacing,
                     migrationParams.poolParameters.hook
                 ).toId();
-            migrationParams.poolParameters.hook.validateHook(poolId, poolManager);
+            // Validate the hook address and if the pool is already initialized
+            migrationParams.poolParameters.hook.validateHook(migrationParams.poolParameters.fee, poolId, poolManager);
             if (registeredPoolIds[poolId] != address(0)) {
                 // The pool id is already reserved by another initializer. Re-launch with different pool
                 // parameters (fee/tickSpacing) or a unique InitializerHook to obtain a distinct pool id.
