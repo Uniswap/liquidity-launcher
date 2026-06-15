@@ -26,10 +26,8 @@ import {IDistributorFactory} from "../../interfaces/IDistributorFactory.sol";
 import {Plan, Position, PositionDefinition} from "../../types/PositionPlannerTypes.sol";
 import {
     ILBPInitializer,
-    LBPInitializationParams,
-    ILBP_INITIALIZER_INTERFACE_ID
+    LBPInitializationParams
 } from "../../interfaces/ILBPInitializer.sol";
-import {IInitializerHook} from "../../interfaces/IInitializerHook.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
