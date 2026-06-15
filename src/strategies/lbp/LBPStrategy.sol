@@ -162,19 +162,21 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         Currency currency = Currency.wrap(migrationParams.currency);
         Currency token = Currency.wrap(migrationParams.token);
 
-        uint256 balanceOfBeforeInit = currency.balanceOfSelf();
+        // Snapshot the currency balance of the singleton before calling sweepCurrency on the initializer
+        // this represents any existing currency balance in the singleton which is not related to this migration
+        uint256 currencyBalanceBefore = currency.balanceOfSelf();
         initializer.sweepCurrency();
 
         uint160 sqrtPriceX96;
         uint256 currencyAmountForLp;
-        uint256 currencyFromInitializer;
         {
             // Retrieves the LBP initialization parameters from the initializer. Must revert if the initializer is not graduated.
             LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
             // amount actually swept must match the currencyRaised the initializer reports.
-            currencyFromInitializer = currency.balanceOfSelf() - balanceOfBeforeInit;
-            if (currencyFromInitializer != lbpParams.currencyRaised) {
-                revert CurrencyRaisedMismatch(currencyFromInitializer, lbpParams.currencyRaised);
+            if (currency.balanceOfSelf() - currencyBalanceBefore != lbpParams.currencyRaised) {
+                revert CurrencyRaisedMismatch(
+                    currency.balanceOfSelf() - currencyBalanceBefore, lbpParams.currencyRaised
+                );
             }
             // Apply the bracket schedule to derive the LP currency budget.
             // Any excess (above the int128 cap or beyond bracket allocation) is swept to recipient.
@@ -196,14 +198,22 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
             migrationParams
         );
 
+        // Snapshot the token balance of the singleton before calling PositionManager, which includes
+        // the token reserves for this migration as well as other unrelated migrations.
+        uint256 tokenBalanceBeforePlusReserves = token.balanceOfSelf();
+
         // Transfer the assets to the position manager and execute the position plan. Reentrancy protected by Initializer.sweep
         _transferAssetsAndExecutePlan(currency, token, currencyTransferAmount, tokenTransferAmount, plan);
 
         // Sweep this initializer's leftover (non-LP currency and unused reservedTokenAmountForLP) to the recipient.
         // Unsold auction tokens stay in the initializer and are claimed separately by the tokensRecipient.
-        // _transferCurrency force-sends native currency so a recipient that rejects ETH cannot brick migration.
-        _transferCurrency(currency, migrationParams.recipient, currencyFromInitializer - currencyTransferAmount);
-        _transferToken(token, migrationParams.recipient, migrationParams.reservedTokenAmountForLP - tokenTransferAmount);
+        // Any leftover dust from the position creation is returned to this contract, and is sent to the recipient.
+        _transferCurrency(currency, migrationParams.recipient, currency.balanceOfSelf() - currencyBalanceBefore);
+        _transferToken(
+            token,
+            migrationParams.recipient,
+            migrationParams.reservedTokenAmountForLP + token.balanceOfSelf() - tokenBalanceBeforePlusReserves
+        );
 
         emit Migrated(initializer, key, sqrtPriceX96, plan);
     }
@@ -321,7 +331,7 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                 : amount0In - SafeCastLib.toUint128(amounts.amount0);
         }
 
-        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, mp.recipient);
+        Plan memory encodedPlan = PositionPlanner.toPlan(positions, key, ActionConstants.MSG_SENDER);
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
@@ -443,8 +453,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
     /// @notice Low level function to transfer currency to a recipient
     /// @dev Native currency is force-sent (via SELFDESTRUCT) so a recipient that rejects ETH cannot brick migration.
-    /// @dev Does not cover the plan's TAKE_PAIR dust: the PositionManager sends that to the recipient with a plain
-    ///      transfer, so a rejecting recipient can still revert migration when PM-side native dust is nonzero.
+    ///      The plan's TAKE_PAIR dust is routed back to this strategy and forwarded through here, so it is covered
+    ///      by the same force-send protection.
     function _transferCurrency(Currency currency, address recipient, uint256 amount) private {
         if (amount == 0) return;
         if (currency.isAddressZero()) {
