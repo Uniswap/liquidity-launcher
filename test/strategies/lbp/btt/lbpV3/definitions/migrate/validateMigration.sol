@@ -22,9 +22,9 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// migrate
 /// ├── when initializer is unregistered (migrationBlock == 0)
 /// │   └── it reverts with InitializerNotRegistered(initializer)
-/// ├── when initializer was already consumed (reserves == 0, migrationBlock != 0)
-/// │   ├── it reverts with InsufficientReserves(initializer)
-/// │   └── it reverts with InsufficientReserves(initializer) before checking migrationBlock
+/// ├── when initializer was already migrated (registeredPoolIds cleared, migrationBlock != 0)
+/// │   ├── it reverts with InitializerNotRegistered(initializer)
+/// │   └── it reverts with MigrationNotYetAllowed when rolled back below migrationBlock
 /// ├── when block.number < migrationBlock
 /// │   └── it reverts with MigrationNotYetAllowed
 /// └── when block.number >= migrationBlock
@@ -63,33 +63,39 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         strategy.migrate(unregistered);
     }
 
-    function test_WhenInitializerWasInsufficientReserves(MigrationFuzzParams memory p) public {
-        // it reverts with {InsufficientReserves}
+    function test_WhenInitializerWasAlreadyMigrated(MigrationFuzzParams memory p) public {
+        // it reverts with {InitializerNotRegistered}
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         strategy.migrate(ILBPInitializer(address(initializer)));
 
-        // After the first migrate, reserves are zeroed but migrationBlock remains nonzero —
-        // so the second call hits the InsufficientReserves branch, not InitializerNotRegistered.
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        // After a successful migrate the reservation is cleared (replay protection), but the stored
+        // params (incl. migrationBlock) remain — so a second call reverts InitializerNotRegistered
+        // at the reservation check, not at the migrationBlock guard.
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
         assertGt(strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock, 0);
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(
+                ILBPStrategy.InitializerNotRegistered.selector, ILBPInitializer(address(initializer))
+            )
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
 
-    function test_WhenInitializerWasInsufficientReservesBeforeMigrationBlock(MigrationFuzzParams memory p) public {
-        // it reverts with {InsufficientReserves} before checking migrationBlock
+    function test_WhenInitializerWasAlreadyMigratedBeforeMigrationBlock(MigrationFuzzParams memory p) public {
+        // it reverts with {MigrationNotYetAllowed} when rolled back below migrationBlock
         (MockLBPInitializer initializer,) = _setupForMigration(p);
         strategy.migrate(ILBPInitializer(address(initializer)));
-        uint256 migrationBlock = strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock;
+        uint64 migrationBlock = strategy.initializers(ILBPInitializer(address(initializer))).migrationBlock;
 
-        // Roll back below migrationBlock to isolate onlyPendingMigrate's check order.
+        // Roll back below migrationBlock. migrate() now checks migrationBlock BEFORE the reservation,
+        // so the migrationBlock guard fires first even though the reservation is already cleared.
         vm.roll(migrationBlock - 1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(ILBPStrategy.InsufficientReserves.selector, ILBPInitializer(address(initializer)))
+            abi.encodeWithSelector(
+                ILBPStrategy.MigrationNotYetAllowed.selector, migrationBlock, uint64(migrationBlock - 1)
+            )
         );
         strategy.migrate(ILBPInitializer(address(initializer)));
     }
@@ -150,7 +156,7 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         assertEq(mp.recipient.balance, recipientCurrencyBefore + actualAmount);
         assertEq(token.balanceOf(mp.recipient), recipientTokenBefore + mp.reservedTokenAmountForLP);
         assertEq(token.balanceOf(address(strategy)), strategyTokenBefore - mp.reservedTokenAmountForLP);
-        assertEq(strategy.reserves(ILBPInitializer(address(initializer))), 0);
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
         assertEq(address(initializer).balance, 0);
     }
 

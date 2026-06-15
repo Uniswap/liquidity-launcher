@@ -25,7 +25,11 @@ library ProtocolFeeLib {
         returns (uint256)
     {
         if (address(protocolFeeController) == address(0)) return 0;
-        return protocolFeeController.getProtocolFeeAmount(currency, amount);
+        try protocolFeeController.getProtocolFeeAmount(currency, amount) returns (uint256 protocolFeeAmount) {
+            return protocolFeeAmount;
+        } catch {
+            return 0;
+        }
     }
 
     /// @notice Transfers the protocol fee amount to the protocol fee recipient

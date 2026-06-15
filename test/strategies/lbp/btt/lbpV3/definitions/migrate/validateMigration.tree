@@ -1,9 +1,9 @@
 ValidateMigrationTest
 ├── when initializer is unregistered (migrationBlock is 0)
 │   └── it reverts with {InitializerNotRegistered}
-├── when initializer was already consumed (reserves is 0, migrationBlock is nonzero)
-│   ├── it reverts with {InsufficientReserves}
-│   └── it reverts with {InsufficientReserves} before checking migrationBlock
+├── when initializer was already migrated (registeredPoolIds cleared, migrationBlock is nonzero)
+│   ├── it reverts with {InitializerNotRegistered}
+│   └── it reverts with {MigrationNotYetAllowed} when rolled back below migrationBlock
 ├── when block.number is LT migrationBlock
 │   └── it reverts with {MigrationNotYetAllowed}
 └── when block.number is GTE migrationBlock

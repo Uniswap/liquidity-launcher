@@ -175,6 +175,14 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
             initialPriceX96: pB.initialPriceX96, tokensSold: pB.tokensSold, currencyRaised: pB.currencyRaised
         });
 
+        // A and B share the same launch token by design (the drain scenario), so give B a distinct fee
+        // to keep their pool keys different — otherwise B's registration collides with A's reservation
+        // (PoolIdOccupied). Fee is part of the pool key but does not affect position planning.
+        MigratorParameters memory mpA = strategy.initializers(ILBPInitializer(address(initA)));
+        if (mp_B.poolParameters.fee == mpA.poolParameters.fee) {
+            mp_B.poolParameters.fee = mpA.poolParameters.fee == 0 ? uint24(1) : mpA.poolParameters.fee - 1;
+        }
+
         // 3. Fund the test contract with B's totalSupply of `token` and approve the strategy.
         deal(address(token), address(this), totalSupply_B);
         token.approve(address(strategy), totalSupply_B);
@@ -270,7 +278,8 @@ contract LBPStrategy_E2E_Test is LBPStrategyTestBase {
 
         // 5. A's reservedTokenAmountForLP is untouched — the lie did not cross initializers.
         assertEq(tokenX.balanceOf(address(strategy)), reservedTokenAmountForLP_A);
-        assertEq(strategy.reserves(ILBPInitializer(address(initA))), reservedTokenAmountForLP_A);
+        // A was never migrated, so its pool key is still reserved to A.
+        assertEq(_registeredFor(ILBPInitializer(address(initA))), address(initA));
     }
 
     /// @notice initializeDistribution rejects configData whose declared `mp.token` doesn't match

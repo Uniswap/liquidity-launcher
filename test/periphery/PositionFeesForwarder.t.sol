@@ -7,6 +7,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {TimelockedPositionRecipient} from "../../src/periphery/TimelockedPositionRecipient.sol";
 import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
 import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
@@ -57,6 +58,12 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
     }
 
     function test_CanBeConstructed(uint256 _timelockBlockNumber, address _feeRecipient) public {
+        // A zero/sentinel fee recipient is rejected by the constructor; see test_constructor_revertsOnSentinelFeeRecipient.
+        vm.assume(
+            _feeRecipient != address(0) && _feeRecipient != ActionConstants.MSG_SENDER
+                && _feeRecipient != ActionConstants.ADDRESS_THIS
+        );
+
         positionRecipient = new PositionFeesForwarder(
             IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, _feeRecipient
         );
@@ -65,6 +72,15 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
         assertEq(positionRecipient.operator(), operator);
         assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
         assertEq(positionRecipient.feeRecipient(), _feeRecipient);
+    }
+
+    function test_constructor_revertsOnSentinelFeeRecipient(uint256 _timelockBlockNumber, uint8 _which) public {
+        // The three rejected sentinels: address(0), MSG_SENDER (address(1)), ADDRESS_THIS (address(2)).
+        address[3] memory sentinels = [address(0), ActionConstants.MSG_SENDER, ActionConstants.ADDRESS_THIS];
+        address sentinel = sentinels[_which % 3];
+
+        vm.expectRevert(abi.encodeWithSelector(PositionFeesForwarder.InvalidFeeRecipient.selector, sentinel));
+        new PositionFeesForwarder(IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, sentinel);
     }
 
     function test_collectFees_revertsIfPositionIsNotOwner() public {

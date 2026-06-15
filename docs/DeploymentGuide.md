@@ -7,6 +7,7 @@
 - [Token distribution](#token-distribution)
 - [Example](#example)
 - [Contract verification](#contract-verification)
+- [Legacy deployments (deprecated)](#legacy-deployments-deprecated)
 
 ## Deployment Process
 Most deployments will be initiated through the `LiquidityLauncher` contract. If you are also creating a new token, see [Creating a new token](#creating-a-new-token).
@@ -76,11 +77,25 @@ When configuring an LBP distribution, the `MigratorParameters.poolParameters.hoo
 
 Do not configure third-party or custom hooks in `hook` unless they inherit `InitializerHook` and are deployed at an address with the correct v4 hook permission bits, including `BEFORE_INITIALIZE`.
 
-Passing `address(0)` keeps a static-fee launch on the hookless pool when that pool has not been initialized. If the hookless pool already exists at migration time, `LBPStrategy` uses its own address as the v4 hook and initializes the strategy-hooked pool. This fallback relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address; deployment scripts and tests must mine the strategy address accordingly. Dynamic-fee launches must provide a nonzero hook with the fee logic.
+Dynamic-fee launches must provide a nonzero hook with the fee logic.
 
-### LBPStrategy `recoveryDelayBlocks`
+#### Static-fee launches with `hook = address(0)`: hookless pool with strategy-hooked fallback
 
-`LBPStrategy`'s constructor takes an immutable `recoveryDelayBlocks` (in blocks) — the wait past `migrationBlock` before `recoverFunds` can be called. Pick a per-chain value that corresponds to roughly the wall-time you want (e.g. `7_200` for ~1 day on a 12s-block chain).
+For static-fee launches with `hook = address(0)`, the migration destination is **state-dependent and chosen at migration time**. `hook = address(0)` does not guarantee the final pool is hookless — it means "prefer the hookless pool, but fall back to the strategy-hooked pool if the hookless pool already exists." A launch configured this way migrates into exactly one of:
+
+- `(currency0, currency1, fee, tickSpacing, address(0))` — the canonical hookless pool, when that pool is still uninitialized at migration time; or
+- `(currency0, currency1, fee, tickSpacing, address(strategy))` — the strategy-hooked fallback pool, when the hookless pool has already been initialized.
+
+This fallback is intentional and an accepted operating mode. Hookless pools are preferred because they are simpler and easier to route through, so the strategy targets the canonical hookless pool whenever it is available. The strategy-hooked pool only exists to preserve a migration path when the hookless key has already been consumed; it relies on `LBPStrategy` itself being deployed at a valid `BEFORE_INITIALIZE` hook address (deployment scripts and tests must mine the strategy address accordingly) and self-gating `beforeInitialize`, so no separate `InitializerHook` deployment is required. Integrators routing to a hookless launch's pool should resolve the actual pool key from the `Migrated` event rather than assuming `address(0)`.
+
+### LBPStrategy fund recovery
+
+`migrate()` attempts pool initialization and liquidity creation through an internal self-call. There is no separate recovery step to configure. Launch creators, recipients, and integrators should understand the recovery path:
+
+- **If automated migration fails, `migrate()` enters recovery** in the same call's failure branch (`tryMigrate()` exposes the same recovery without reverting).
+- **Recovery returns funds to the configured `recipient`**: it sweeps any raised currency from the initializer and transfers that currency plus the reserved LP tokens (`reservedTokenAmountForLP`) to `recipient`, then emits `FundsRecovered`.
+- **The initializer reserve is consumed.** Recovery zeroes `reserves[initializer]`, so the same initializer **cannot be retried** through `LBPStrategy.migrate()` afterward.
+- **Post-recovery liquidity is manual.** Recovery only returns the assets; it does not create a v4 position. Any desired liquidity must be created manually by the token creator, recipient, or another operator outside the strategy migration flow, subject to the selected pool and hook permissions.
 
 ## Example
 
@@ -148,3 +163,34 @@ If the user already has an active Permit2 allowance for the launcher, the `permi
 
 ### Contract verification
 Because multiple contracts may be created as part of the initial call to `LiquidityLauncher.distributeToken`, you may need to manually verify the contracts after the deployment with `forge verify-contract`.
+
+## Legacy deployments (deprecated)
+
+> **Deprecated.** The per-variant LBP strategy factories below were removed in v3.0.0 and consolidated into a single `LBPStrategy` (see the [v3.0.0 changelog](../CHANGELOG.md)). These addresses point to v2.0.0 contracts that are no longer part of the current codebase and are retained for historical reference only. Do not integrate against them for new launches.
+
+### FullRangeLBPStrategyFactory (v2.0.0, deprecated)
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Mainnet | 0x65aF3B62EE79763c704f04238080fBADD005B332 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Unichain | 0xAa56d4d68646B4858A5A3a99058169D0100b38e2 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Sepolia | 0x89Dd5691e53Ea95d19ED2AbdEdCf4cBbE50da1ff | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0xa3A236647c80BCD69CAD561ACf863c29981b6fbC | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+
+### AdvancedLBPStrategyFactory (v2.0.0, deprecated)
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Mainnet | 0x982DC187cbeB4E21431C735B01Ecbd8A606129C5 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Unichain | 0xeB44195e1847F23D4ff411B7d501b726C7620529 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Sepolia | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+
+### GovernedLBPStrategyFactory (v2.0.0, deprecated)
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v2.0.0 | Base | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+| v2.0.0 | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |

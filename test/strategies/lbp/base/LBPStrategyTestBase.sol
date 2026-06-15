@@ -27,11 +27,17 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {TokenPricing} from "src/libraries/TokenPricing.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 /// @notice Base test contract for LBPStrategy tests.
 /// Uses local v4 PoolManager and PositionManager deployments at canonical addresses.
 /// Uses mock initializer (MockInitializerFactory + MockLBPInitializer) for auction simulation.
 abstract contract LBPStrategyTestBase is Test {
+    using PoolIdLibrary for PoolKey;
+
     // Canonical v4 deployment addresses
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
@@ -350,5 +356,33 @@ abstract contract LBPStrategyTestBase is Test {
     function _boundInitialPriceX96(uint160 _initialPriceX96) internal pure returns (uint160) {
         uint256 minPrice = (uint256(1) << 192) / type(uint160).max + 1;
         return uint160(bound(_initialPriceX96, minPrice, type(uint160).max));
+    }
+
+    /// @notice Builds the v4 PoolKey for a (currency, token, fee, tickSpacing, hook) tuple, mirroring
+    /// the strategy's currency-ordering. Used to derive the reserved poolId for assertions.
+    function _poolKey(address currency, address token, uint24 fee, int24 tickSpacing, address hook)
+        internal
+        pure
+        returns (PoolKey memory key)
+    {
+        Currency c = Currency.wrap(currency);
+        Currency t = Currency.wrap(token);
+        key = PoolKey({
+            currency0: c < t ? c : t, currency1: c < t ? t : c, fee: fee, tickSpacing: tickSpacing, hooks: IHooks(hook)
+        });
+    }
+
+    /// @notice The poolId the strategy reserved for an initializer (derived from its stored params).
+    function _poolIdFor(ILBPInitializer initializer) internal view returns (PoolId) {
+        MigratorParameters memory mp = strategy.initializers(initializer);
+        return _poolKey(
+                mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, mp.poolParameters.hook
+            ).toId();
+    }
+
+    /// @notice The initializer currently registered for an initializer's reserved poolId
+    /// (address(0) once consumed by migrate). Replaces the removed `reserves` accessor in assertions.
+    function _registeredFor(ILBPInitializer initializer) internal view returns (address) {
+        return strategy.registeredPoolIds(_poolIdFor(initializer));
     }
 }

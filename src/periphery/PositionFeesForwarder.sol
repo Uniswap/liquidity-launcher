@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 import {Multicall} from "../Multicall.sol";
@@ -15,6 +16,10 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
     /// @param feeRecipient The recipient of the fees
     event FeesForwarded(address indexed feeRecipient);
 
+    /// @notice Thrown when the fee recipient is the zero address or a PositionManager sentinel (address(1)/address(2))
+    /// @param feeRecipient The invalid fee recipient
+    error InvalidFeeRecipient(address feeRecipient);
+
     /// @notice The recipient of collected fees. If set to a contract, it must be able to receive ETH.
     address public immutable feeRecipient;
 
@@ -24,6 +29,15 @@ contract PositionFeesForwarder is TimelockedPositionRecipient, Multicall {
         uint256 _timelockBlockNumber,
         address _feeRecipient
     ) TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+        // The fee recipient is passed as the TAKE_PAIR recipient in collectFees(). The PositionManager treats
+        // address(0)/MSG_SENDER/ADDRESS_THIS as sentinels there, which would silently route fees away from a real
+        // recipient. Reject them at deploy time since feeRecipient is immutable and cannot be corrected later.
+        if (
+            _feeRecipient == address(0) || _feeRecipient == ActionConstants.MSG_SENDER
+                || _feeRecipient == ActionConstants.ADDRESS_THIS
+        ) {
+            revert InvalidFeeRecipient(_feeRecipient);
+        }
         feeRecipient = _feeRecipient;
     }
 
