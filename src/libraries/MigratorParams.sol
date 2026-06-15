@@ -150,8 +150,7 @@ library MigratorParams {
         if (hook == address(0)) return;
         if (
             !ERC165Checker.supportsInterface(hook, type(IInitializerHook).interfaceId)
-                || IInitializerHook(hook).authorized() != address(this)
-                || !IHooks(hook).isValidHookAddress(fee)
+                || IInitializerHook(hook).authorized() != address(this) || !IHooks(hook).isValidHookAddress(fee)
                 || !IHooks(hook).hasPermission(Hooks.BEFORE_INITIALIZE_FLAG)
         ) {
             revert InvalidHook(hook);
