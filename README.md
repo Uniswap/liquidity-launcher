@@ -72,11 +72,28 @@ The LiquidityLauncher contract can be deployed to the same address on all networ
 
 | Version | Address | Commit Hash |
 |---------|---------|------------|
-| v1.0.0 | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d |
+| v3.0.0 | 0x00004c4ccc709Ef590F7C81102C0689F0263D4e9 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
 
-> No changes have been made to the LiquidityLauncher contract since v1.0.0.
+### LBPStrategy
+The LBPStrategy contract is deployed to a different address on each chain. It must be deployed to a valid v4 hook address.
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v3.0.0 | Mainnet | 0xb98766A35cdc28415be0767D4EA41e39fBA3e000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Base | 0x5bB4bAfafEc57BEd50D864AAA9D1ef992611e000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Unichain | 0x824A3eCDe463DD45cC156b64CEfA132596C9A000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Arbitrum | 0x18608AD558dcD233F7854242bbAef73988Bee000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Sepolia | 0x3f37838651B5AD71D4e01Ec9745862A5D9DF2000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Base Sepolia | 0x0e1793a989c682117fcBfB3a9aA8e451D37D2000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
 
 > The v2.0.0 LBP strategy factories (`FullRangeLBPStrategyFactory`, `AdvancedLBPStrategyFactory`, `GovernedLBPStrategyFactory`) were removed in v3.0.0 and consolidated into a single `LBPStrategy`. Their prior deployment addresses are retained for reference, marked deprecated, in the [Deployment Guide](./docs/DeploymentGuide.md#legacy-deployments-deprecated).
+
+### TokenSplitter
+The TokenSplitter contract is deployed to the same address on all networks.
+
+| Version | Address | Commit Hash |
+|---------|---------|------------|
+| v3.0.0 | 0x8B7DCeb5639DB986FCf86606C74e6300C40FE3cd | 3a3103543f50a13a0ae52a253bb98a925d72146f |
 
 ## Audits
 - 1/23/2026 [OpenZeppelin](./docs/audit/OpenZeppelin_v2.0.0.pdf)
