@@ -32,6 +32,11 @@ contract Parameters {
         IPositionManager(0x4529A01c7A0410167c5740C487A8DE60232617bf);
     IPoolManager public constant UNICHAIN_POOL_MANAGER = IPoolManager(0x1F98400000000000000000000000000000000004);
 
+    // Arbitrum addresses: https://developers.uniswap.org/docs/protocols/v4/deployments#arbitrum-one-42161
+    IPositionManager public constant ARBITRUM_POSITION_MANAGER =
+        IPositionManager(0xd88F38F930b7952f2DB2432Cb002E7abbF3dD869);
+    IPoolManager public constant ARBITRUM_POOL_MANAGER = IPoolManager(0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32);
+
     // Sepolia addresses: https://docs.uniswap.org/contracts/v4/deployments#sepolia-11155111
     IPositionManager public constant SEPOLIA_POSITION_MANAGER =
         IPositionManager(0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4);
@@ -45,6 +50,7 @@ contract Parameters {
     uint256 public constant MAINNET_CHAIN_ID = 1;
     uint256 public constant BASE_CHAIN_ID = 8453;
     uint256 public constant UNICHAIN_CHAIN_ID = 130;
+    uint256 public constant ARBITRUM_CHAIN_ID = 42161;
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84532;
 
@@ -68,6 +74,11 @@ contract Parameters {
             positionManager: UNICHAIN_POSITION_MANAGER,
             poolManager: UNICHAIN_POOL_MANAGER,
             salt: 0x000000000000000000000000000000000000000000000000000000000000848a
+        });
+        parameters[ARBITRUM_CHAIN_ID] = DeployParameters({
+            positionManager: ARBITRUM_POSITION_MANAGER,
+            poolManager: ARBITRUM_POOL_MANAGER,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000007740
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
