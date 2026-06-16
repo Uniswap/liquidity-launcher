@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IDistributor} from "src/interfaces/IDistributor.sol";
-import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
+import {IDistributor} from "../../src/interfaces/IDistributor.sol";
+import {IDistributorFactory} from "../../src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
-import {LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {LBPInitializationParams} from "../../src/interfaces/ILBPInitializer.sol";
 
 /// @notice Mock factory that deploys MockLBPInitializers
 contract MockInitializerFactory is IDistributorFactory {

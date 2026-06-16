@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.17;
 
-import "src/libraries/external/MerkleClaimHelpers.sol";
+import "../libraries/external/MerkleClaimHelpers.sol";
 
 /// @title MerkleClaim
 /// @notice A contract that allows users to claim tokens from a merkle distribution

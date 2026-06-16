@@ -2,10 +2,10 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {LBPStrategy} from "src/strategies/lbp/LBPStrategy.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
+import {LBPStrategy} from "../../../../src/strategies/lbp/LBPStrategy.sol";
+import {ILBPStrategy} from "../../../../src/interfaces/ILBPStrategy.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../../../src/interfaces/ILBPInitializer.sol";
+import {IDistributorFactory} from "../../../../src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockInitializerFactory} from "test/mocks/MockInitializerFactory.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
@@ -13,7 +13,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionDefinition} from "../../../../src/types/PositionPlannerTypes.sol";
 import {PositionPlannerFuzzHelpers} from "test/shared/PositionPlannerFuzzHelpers.sol";
 import {
     MigratorParams,
@@ -26,7 +26,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
-import {TokenPricing} from "src/libraries/TokenPricing.sol";
+import {TokenPricing} from "../../../../src/libraries/TokenPricing.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";

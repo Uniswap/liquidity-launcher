@@ -9,7 +9,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {InitializerHook} from "src/periphery/hooks/InitializerHook.sol";
+import {InitializerHook} from "../../src/periphery/hooks/InitializerHook.sol";
 
 /// @notice Test-only InitializerHook that donates a fixed amount of native currency to the
 /// `modifyLiquidities` caller (the LBPStrategy) during `afterAddLiquidity`.

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
+import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
@@ -11,10 +11,10 @@ import {UERC20} from "@uniswap/uerc20-factory/src/tokens/UERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockStrategy} from "./mocks/MockStrategy.sol";
 import {MockUnderClaimingStrategy} from "./mocks/MockUnderClaimingStrategy.sol";
-import {Distribution} from "src/types/Distribution.sol";
+import {Distribution} from "../src/types/Distribution.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockStrategyAndDistributor} from "./mocks/MockStrategyAndDistributor.sol";
-import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
+import {ILiquidityLauncher} from "../src/interfaces/ILiquidityLauncher.sol";
 
 contract LiquidityLauncherTest is Test, DeployPermit2 {
     LiquidityLauncher public liquidityLauncher;

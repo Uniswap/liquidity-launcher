@@ -3,12 +3,16 @@ pragma solidity ^0.8.26;
 
 import {Vm} from "forge-std/Vm.sol";
 import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {ILBPStrategy} from "../../../../../../src/interfaces/ILBPStrategy.sol";
+import {
+    MigratorParams,
+    MigratorParameters,
+    LiquidityAllocationBracket
+} from "../../../../../../src/libraries/MigratorParams.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
-import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../../../../../src/interfaces/ILBPInitializer.sol";
+import {IInitializerHook} from "../../../../../../src/interfaces/IInitializerHook.sol";
+import {IDistributorFactory} from "../../../../../../src/interfaces/IDistributorFactory.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -16,8 +20,8 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "../../../../../../src/libraries/PositionPlanner.sol";
+import {PositionDefinition} from "../../../../../../src/types/PositionPlannerTypes.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";

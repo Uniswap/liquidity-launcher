@@ -5,8 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
-import {Position, PositionDefinition, CurrencyAmounts} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "../../../../../src/libraries/PositionPlanner.sol";
+import {Position, PositionDefinition, CurrencyAmounts} from "../../../../../src/types/PositionPlannerTypes.sol";
 import {PositionPlannerFuzzHelpers} from "test/shared/PositionPlannerFuzzHelpers.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 

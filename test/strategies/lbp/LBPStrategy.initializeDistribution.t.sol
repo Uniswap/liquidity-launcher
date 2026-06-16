@@ -2,11 +2,11 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
-import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
-import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
+import {ILBPStrategy} from "../../../src/interfaces/ILBPStrategy.sol";
+import {IDistributorFactory} from "../../../src/interfaces/IDistributorFactory.sol";
+import {MigratorParameters, LiquidityAllocationBracket} from "../../../src/libraries/MigratorParams.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../../src/interfaces/ILBPInitializer.sol";
+import {IInitializerHook} from "../../../src/interfaces/IInitializerHook.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -15,9 +15,9 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {GatedSwapHook} from "src/periphery/hooks/GatedSwapHook.sol";
+import {GatedSwapHook} from "../../../src/periphery/hooks/GatedSwapHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
-import {MigratorParams} from "src/libraries/MigratorParams.sol";
+import {MigratorParams} from "../../../src/libraries/MigratorParams.sol";
 
 contract GatedSwapHookNoValidation is GatedSwapHook {
     constructor(IPoolManager _pm, address _strategy, address _gatekeeper) GatedSwapHook(_pm, _strategy, _gatekeeper) {}

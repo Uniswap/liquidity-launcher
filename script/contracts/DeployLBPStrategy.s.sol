@@ -3,10 +3,10 @@ pragma solidity 0.8.26;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {LBPStrategy} from "src/strategies/lbp/LBPStrategy.sol";
+import {LBPStrategy} from "../../src/strategies/lbp/LBPStrategy.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
+import {IDistributorFactory} from "../../src/interfaces/IDistributorFactory.sol";
 import {Parameters, DeployParameters} from "./Parameters.sol";
 
 /// @title DeployLBPStrategyScript

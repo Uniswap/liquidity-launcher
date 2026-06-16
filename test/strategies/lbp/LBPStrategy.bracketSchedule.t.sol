@@ -2,10 +2,14 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../../src/interfaces/ILBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
-import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {
+    MigratorParams,
+    MigratorParameters,
+    LiquidityAllocationBracket
+} from "../../../src/libraries/MigratorParams.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @notice Tests that verify the bracket schedule controls the LP currency budget.

@@ -6,8 +6,8 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {InitializerHook} from "src/periphery/hooks/InitializerHook.sol";
-import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
+import {InitializerHook} from "../../../src/periphery/hooks/InitializerHook.sol";
+import {IInitializerHook} from "../../../src/interfaces/IInitializerHook.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 

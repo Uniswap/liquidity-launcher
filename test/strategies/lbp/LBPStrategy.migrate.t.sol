@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPStrategy} from "../../../src/interfaces/ILBPStrategy.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../../src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
 import {MockReentrantMigrateRecipient} from "test/mocks/MockReentrantMigrateRecipient.sol";
@@ -20,7 +20,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionDefinition} from "../../../src/types/PositionPlannerTypes.sol";
 import {
     MigratorParams,
     MigratorParameters,
