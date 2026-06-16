@@ -3,17 +3,19 @@ pragma solidity ^0.8.0;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 struct DeployParameters {
     IPositionManager positionManager;
     IPoolManager poolManager;
-    bytes32 salt;
+    bytes32 salt; // salt required to deploy LBPStrategy contracts to valid v4 hook addresses across chains
 }
 
 /// @title Parameters
 contract Parameters {
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public constant DEFAULT_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+    uint160 public constant DEFAULT_HOOK_FLAGS = Hooks.BEFORE_INITIALIZE_FLAG;
 
     // Mainnet addresses: https://docs.uniswap.org/contracts/v4/deployments#ethereum-1
     IPositionManager public constant MAINNET_POSITION_MANAGER =
@@ -46,8 +48,6 @@ contract Parameters {
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84532;
 
-    bytes32 public DEFAULT_SALT = 0x0000000000000000000000000000000000000000000000000000000000000000;
-
     /// @notice Thrown when parameters are not set for a given chainId
     error ParametersNotSetForChainId(uint256 chainId);
 
@@ -55,19 +55,29 @@ contract Parameters {
 
     constructor() {
         parameters[MAINNET_CHAIN_ID] = DeployParameters({
-            positionManager: MAINNET_POSITION_MANAGER, poolManager: MAINNET_POOL_MANAGER, salt: DEFAULT_SALT
+            positionManager: MAINNET_POSITION_MANAGER,
+            poolManager: MAINNET_POOL_MANAGER,
+            salt: 0x00000000000000000000000000000000000000000000000000000000000079e3
         });
         parameters[BASE_CHAIN_ID] = DeployParameters({
-            positionManager: BASE_POSITION_MANAGER, poolManager: BASE_POOL_MANAGER, salt: DEFAULT_SALT
+            positionManager: BASE_POSITION_MANAGER,
+            poolManager: BASE_POOL_MANAGER,
+            salt: 0x000000000000000000000000000000000000000000000000000000000000e380
         });
         parameters[UNICHAIN_CHAIN_ID] = DeployParameters({
-            positionManager: UNICHAIN_POSITION_MANAGER, poolManager: UNICHAIN_POOL_MANAGER, salt: DEFAULT_SALT
+            positionManager: UNICHAIN_POSITION_MANAGER,
+            poolManager: UNICHAIN_POOL_MANAGER,
+            salt: 0x000000000000000000000000000000000000000000000000000000000000848a
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
-            positionManager: SEPOLIA_POSITION_MANAGER, poolManager: SEPOLIA_POOL_MANAGER, salt: DEFAULT_SALT
+            positionManager: SEPOLIA_POSITION_MANAGER,
+            poolManager: SEPOLIA_POOL_MANAGER,
+            salt: 0x00000000000000000000000000000000000000000000000000000000000068fc
         });
         parameters[BASE_SEPOLIA_CHAIN_ID] = DeployParameters({
-            positionManager: BASE_SEPOLIA_POSITION_MANAGER, poolManager: BASE_SEPOLIA_POOL_MANAGER, salt: DEFAULT_SALT
+            positionManager: BASE_SEPOLIA_POSITION_MANAGER,
+            poolManager: BASE_SEPOLIA_POOL_MANAGER,
+            salt: 0x000000000000000000000000000000000000000000000000000000000000179e
         });
     }
 

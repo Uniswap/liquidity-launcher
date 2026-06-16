@@ -14,8 +14,10 @@ contract DeployLiquidityLauncherScript is Script, Parameters {
     function run() public {
         bytes32 initCodeHash = keccak256(abi.encodePacked(type(LiquidityLauncher).creationCode, abi.encode(PERMIT2)));
 
-        // Deploys to 0x00000008412db3394C91A5CbD01635c6d140637C
-        bytes32 salt = 0x9a269ec151cdb4159e40d33648400e3ac814791b0051656925f1f8b53831aab7;
+        console.logBytes32(initCodeHash);
+
+        // Deploys to 0x00004c4ccc709Ef590F7C81102C0689F0263D4e9
+        bytes32 salt = 0xe503b94dfc0162b562e5d02083245f97b79e77e1241d35ee43a91a3d6e6c1492;
         address liquidityLauncherAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
 
         if (address(liquidityLauncherAddress).code.length > 0) {

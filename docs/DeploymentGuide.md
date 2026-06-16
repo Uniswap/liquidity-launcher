@@ -164,9 +164,19 @@ If the user already has an active Permit2 allowance for the launcher, the `permi
 ### Contract verification
 Because multiple contracts may be created as part of the initial call to `LiquidityLauncher.distributeToken`, you may need to manually verify the contracts after the deployment with `forge verify-contract`.
 
+## Deployments
+The canonical deployments for each contract are in the [Deployment Addresses](../README.md#deployment-addresses) section of the README.
+
 ## Legacy deployments (deprecated)
 
 > **Deprecated.** The per-variant LBP strategy factories below were removed in v3.0.0 and consolidated into a single `LBPStrategy` (see the [v3.0.0 changelog](../CHANGELOG.md)). These addresses point to v2.0.0 contracts that are no longer part of the current codebase and are retained for historical reference only. Do not integrate against them for new launches.
+
+### LiquidityLauncher (v1.0.0, deprecated)
+LiquidityLauncher was deployed with the initial v1.0.0 launch and is deployed to the same address on all chains. The v1.0.0 version below is only compatible with v1.0.0 and v2.0.0 deployments of other contracts.
+
+| Version | Chain | Address | Commit Hash |
+|---------|-------|---------|------------|
+| v1.0.0 | Mainnet | 0x00000008412db3394C91A5CbD01635c6d140637C | fd5be9b7a918ca3d925d985dff9bcde82b3b8a9d |
 
 ### FullRangeLBPStrategyFactory (v2.0.0, deprecated)
 
