@@ -1,0 +1,773 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import {Vm} from "forge-std/Vm.sol";
+import {LBPStrategyTestBase} from "../../../base/LBPStrategyTestBase.sol";
+import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {MigratorParams, MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
+import {Ownable} from "solady/auth/Ownable.sol";
+import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
+import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
+import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
+import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+
+contract MockInitializerHook {
+    address public immutable authorized;
+
+    constructor(address _authorized) {
+        authorized = _authorized;
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IInitializerHook).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+}
+
+/// @title InitializeDistributionTest
+/// @notice BTT tests for LBPStrategy.initializeDistribution
+///
+/// initializeDistribution
+/// ├── when hook authorized address is not strategy
+/// │   └── it reverts with InvalidHook
+/// ├── when hook lacks the before-initialize permission bit
+/// │   └── it reverts with InvalidHook
+/// ├── when bracket count is invalid (empty or too many)
+/// │   └── it reverts with InvalidBracketCount
+/// ├── when bracket rate is invalid (>1e7)
+/// │   └── it reverts with InvalidBracketRate
+/// ├── when bracket lowerThreshold is invalid (first ≠ 0, zero non-first, or not strictly ascending)
+/// │   └── it reverts with InvalidBracketThreshold
+/// ├── when tickSpacing is out of bounds
+/// │   └── it reverts with InvalidTickSpacing
+/// ├── when fee > MAX_LP_FEE
+/// │   └── it reverts with InvalidFee
+/// ├── when fee is the dynamic fee flag without a hook
+/// │   └── it reverts with InvalidDynamicFeeHook
+/// ├── when fee is the dynamic fee flag with a hook
+/// │   └── it stores the migration parameters
+/// ├── when a position definition recipient is reserved
+/// │   └── it reverts with InvalidPositionRecipient
+/// ├── when reservedTokenAmountForLP > int128.max
+/// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when reservedTokenAmountForLP is zero
+/// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when reservedTokenAmountForLP equals totalSupply
+/// │   └── it reverts with InvalidReservedTokenAmountForLP
+/// ├── when token and currency are the same
+/// │   └── it reverts with InvalidTokenCurrencyPair
+/// ├── when position definitions are empty
+/// │   └── it stores the migration parameters
+/// ├── when position definitions weights exceed 1e7
+/// │   └── it reverts with InvalidAllocationWeights
+/// ├── when position definitions contain invalid tick bounds
+/// │   └── it reverts with InvalidTickBounds
+/// ├── when position definitions exceed the max position count
+/// │   └── it reverts with TooManyPositions
+/// └── when migrator params are valid
+///     ├── when initializer.fundsRecipient != strategy
+///     │   └── it reverts with InvalidFundsRecipient
+///     ├── when initializer.tokensRecipient == strategy
+///     │   └── it reverts with InvalidTokensRecipient
+///     ├── when initializer.endBlock >= migrationBlock
+///     │   └── it reverts with InvalidEndBlock
+///     └── when initializer is valid
+///         ├── it stores the migration parameters
+///         └── it emits InitializerCreated
+contract InitializeDistributionTest is LBPStrategyTestBase {
+    /// @notice Deploys a MockInitializerHook and etches it at an address carrying `flags` in its low bits, so the
+    /// hook satisfies v4's address-derived permission rules. Immutables (authorized) are baked into runtime code and
+    /// survive the etch.
+    function _etchInitializerHook(uint160 flags, address _authorized) internal returns (address hookAddr) {
+        hookAddr = address(flags);
+        MockInitializerHook impl = new MockInitializerHook(_authorized);
+        vm.etch(hookAddr, address(impl).code);
+    }
+
+    function test_WhenHookAuthorizedAddressIsNotStrategy(address _authorized, MigrationFuzzParams memory p) public {
+        vm.assume(_authorized != address(strategy));
+
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolParameters.hook = address(new MockInitializerHook(_authorized));
+
+        // validateHook now runs after the initializer is deployed and token consistency is checked, so the
+        // config must be otherwise valid (matching token, well-formed mock params) to reach the hook check.
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+        token.approve(address(strategy), totalSupply);
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenScheduleEmpty(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](0);
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, 0));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenFirstBracketLowerThresholdIsNonZero(
+        uint128 _threshold,
+        uint24 _rate,
+        MigrationFuzzParams memory p
+    ) public {
+        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
+        _rate = uint24(bound(_rate, 1, MigratorParams.MAX_BRACKET_RATE));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: _threshold, rate: _rate});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, _threshold));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenBracketRateIsOver100Percent(uint24 _rate, MigrationFuzzParams memory p) public {
+        _rate = uint24(bound(_rate, MigratorParams.MAX_BRACKET_RATE + 1, type(uint24).max));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, _rate));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenBracketRateIsZero(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: 0});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketRate.selector, 0));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenNonLastBracketLowerThresholdIsZero(uint24 _rate0, uint24 _rate1, MigrationFuzzParams memory p)
+        public
+    {
+        _rate0 = uint24(bound(_rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        _rate1 = uint24(bound(_rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](2);
+        // Non-first bracket with lowerThreshold == previous fails the strict-ascend check on bp[1]
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate1});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, 0));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenBracketLowerThresholdsNotAscending(MigrationFuzzParams memory p) public {
+        uint24 rate0 = uint24(bound(p.bpParams.rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate1 = uint24(bound(p.bpParams.rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint24 rate2 = uint24(bound(p.bpParams.rate2, 1, MigratorParams.MAX_BRACKET_RATE));
+        uint128 threshold0 = uint128(bound(p.bpParams.threshold0, 2, type(uint128).max));
+        uint128 threshold1 = uint128(bound(p.bpParams.threshold1, 1, threshold0 - 1));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](3);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: threshold0, rate: rate1});
+        bp[2] = LiquidityAllocationBracket({lowerThreshold: threshold1, rate: rate2});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, threshold1));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    modifier whenBracketScheduleIsValid() {
+        _;
+    }
+
+    function test_WhenTooManyBrackets(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](MigratorParams.MAX_BRACKETS + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(MigratorParams.InvalidBracketCount.selector, MigratorParams.MAX_BRACKETS + 1)
+        );
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenBracketLowerThresholdsAreEqual(
+        uint24 _rate0,
+        uint24 _rate1,
+        uint24 _rate2,
+        uint128 _threshold,
+        MigrationFuzzParams memory p
+    ) public {
+        _rate0 = uint24(bound(_rate0, 1, MigratorParams.MAX_BRACKET_RATE));
+        _rate1 = uint24(bound(_rate1, 1, MigratorParams.MAX_BRACKET_RATE));
+        _rate2 = uint24(bound(_rate2, 1, MigratorParams.MAX_BRACKET_RATE));
+        _threshold = uint128(bound(_threshold, 1, type(uint128).max));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](3);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: _rate0});
+        bp[1] = LiquidityAllocationBracket({lowerThreshold: _threshold, rate: _rate1});
+        bp[2] = LiquidityAllocationBracket({lowerThreshold: _threshold, rate: _rate2});
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidBracketThreshold.selector, _threshold));
+        strategy.initializeDistribution(address(token), totalSupply, _encodeConfigData(mp, bp, hex""), bytes32(0));
+    }
+
+    function test_WhenBracketRateExactlyAtMaxBracketRate(MigrationFuzzParams memory p) public {
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        LiquidityAllocationBracket[] memory bp = new LiquidityAllocationBracket[](1);
+        bp[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(0), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        token.approve(address(strategy), totalSupply);
+        // Should not revert — rate is exactly MAX_BRACKET_RATE
+        strategy.initializeDistribution(
+            address(token), totalSupply, _encodeConfigData(mp, bp, initializerParams), bytes32(0)
+        );
+    }
+
+    function test_WhenTickSpacingIsOutOfBounds(int24 _tickSpacing, MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+    {
+        // it reverts with {InvalidTickSpacing}
+        vm.assume(_tickSpacing > TickMath.MAX_TICK_SPACING || _tickSpacing < TickMath.MIN_TICK_SPACING);
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.poolParameters.tickSpacing = _tickSpacing;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILBPStrategy.InvalidTickSpacing.selector,
+                _tickSpacing,
+                TickMath.MIN_TICK_SPACING,
+                TickMath.MAX_TICK_SPACING
+            )
+        );
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    modifier whenTickSpacingIsValid() {
+        _;
+    }
+
+    function test_WhenFeeIsAboveMax(uint24 _fee, MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+    {
+        // it reverts with {InvalidFee}
+        _fee = uint24(bound(_fee, LPFeeLibrary.MAX_LP_FEE + 1, type(uint24).max));
+        if (_fee == LPFeeLibrary.DYNAMIC_FEE_FLAG) _fee++;
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.poolParameters.fee = _fee;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidFee.selector, _fee, LPFeeLibrary.MAX_LP_FEE));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenFeeIsDynamicFeeFlagWithoutHook(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+    {
+        // it reverts with {InvalidDynamicFeeHook}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolParameters.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+        mp.poolParameters.hook = address(0);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData =
+            _encodeConfigData(mp, _boundBrackets(p.bpParams), abi.encode(mp.reservedTokenAmountForLP, endBlock));
+
+        vm.expectRevert(MigratorParams.InvalidDynamicFeeHook.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenFeeIsDynamicFeeFlagWithHook(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+    {
+        // it stores the migration parameters
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolParameters.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
+        mp.poolParameters.hook = _etchInitializerHook(uint160(Hooks.BEFORE_INITIALIZE_FLAG), address(strategy));
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
+
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.poolParameters.fee, LPFeeLibrary.DYNAMIC_FEE_FLAG);
+        assertEq(storedParams.poolParameters.hook, mp.poolParameters.hook);
+    }
+
+    modifier whenFeeIsValid() {
+        _;
+    }
+
+    function test_WhenPositionDefinitionRecipientIsReserved(uint256 _seed, MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+    {
+        // it reverts with {InvalidPositionRecipient}
+        // A non-zero overridePositionRecipient cannot be a reserved sentinel (address(1) or address(2)).
+        // address(0) is valid and means "default to positionRecipient", so it is not tested here.
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = abi.decode(mp.positionDefinitions, (PositionDefinition[]));
+
+        if (_seed % 2 == 0) {
+            defs[0].overridePositionRecipient = ActionConstants.MSG_SENDER;
+        } else {
+            defs[0].overridePositionRecipient = ActionConstants.ADDRESS_THIS;
+        }
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InvalidPositionRecipient.selector, defs[0].overridePositionRecipient)
+        );
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    modifier whenPositionRecipientIsValid() {
+        _;
+    }
+
+    function test_WhenReservetokenAmountForLPExceedsInt128Max(
+        uint128 _reservedTokenAmountForLP,
+        MigrationFuzzParams memory p
+    ) public whenBracketScheduleIsValid whenTickSpacingIsValid whenFeeIsValid whenPositionRecipientIsValid {
+        // it reverts with {InvalidReservedTokenAmountForLP}
+        _reservedTokenAmountForLP =
+            uint128(bound(_reservedTokenAmountForLP, uint128(type(int128).max) + 1, type(uint128).max));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.reservedTokenAmountForLP = _reservedTokenAmountForLP;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(ILBPStrategy.InvalidReservedTokenAmountForLP.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenReservetokenAmountForLPIsZero(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // it reverts with {InvalidReservedTokenAmountForLP}
+        (MigratorParameters memory mp, uint128 totalSupply,, uint128 auctionSupply) = _boundMigratorParams(p);
+        mp.reservedTokenAmountForLP = 0;
+        totalSupply = auctionSupply;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(ILBPStrategy.InvalidReservedTokenAmountForLP.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenReservetokenAmountForLPEqualsTotalSupply(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+    {
+        // it reverts with {InvalidReservedTokenAmountForLP}
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        mp.reservedTokenAmountForLP = totalSupply;
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(ILBPStrategy.InvalidReservedTokenAmountForLP.selector);
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    modifier whenReservetokenAmountForLPIsValid() {
+        _;
+    }
+
+    function test_WhenTokenAndCurrencyAreTheSame(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it reverts with {InvalidTokenCurrencyPair}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        mp.currency = address(token);
+
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, address(token), LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        token.approve(address(strategy), totalSupply);
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidTokenCurrencyPair.selector, address(token)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionsAreEmpty(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it stores the migration parameters
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.positionDefinitions = abi.encode(new PositionDefinition[](0));
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
+
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
+    }
+
+    function test_WhenAllocationWeightsExceedMPS(uint24 _weight, MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it reverts with {InvalidAllocationWeights}
+        _weight = uint24(bound(_weight, 1e7 + 1, type(uint24).max));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: _weight,
+            overridePositionRecipient: positionRecipient
+        });
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidAllocationWeights.selector, _weight));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionWeightIsZero(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](2);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 0,
+            overridePositionRecipient: positionRecipient
+        });
+        defs[1] = PositionDefinition({
+            offsetLower: -100, offsetUpper: 100, weight: 1e7, overridePositionRecipient: positionRecipient
+        });
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.ZeroPositionWeight.selector, 0));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionTickBoundsAreInvalid(
+        int24 _offsetLower,
+        int24 _offsetUpper,
+        MigrationFuzzParams memory p
+    )
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it reverts with {InvalidTickBounds}
+        _offsetLower = int24(bound(_offsetLower, TickMath.MIN_TICK, TickMath.MAX_TICK));
+        _offsetUpper = int24(bound(_offsetUpper, TickMath.MIN_TICK, _offsetLower));
+
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: _offsetLower,
+            offsetUpper: _offsetUpper,
+            weight: 1e7,
+            overridePositionRecipient: positionRecipient
+        });
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(PositionPlanner.InvalidTickBounds.selector, _offsetLower, _offsetUpper));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenPositionDefinitionCountExceedsMax(MigrationFuzzParams memory p)
+        public
+        whenBracketScheduleIsValid
+        whenTickSpacingIsValid
+        whenFeeIsValid
+        whenPositionRecipientIsValid
+        whenReservetokenAmountForLPIsValid
+    {
+        // it reverts with {TooManyPositions}
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+        PositionDefinition[] memory defs =
+            new PositionDefinition[](PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN + 1);
+        for (uint256 i; i < defs.length; i++) {
+            uint24 weight =
+                i == defs.length - 1 ? uint24(1e7 - PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN) : uint24(1);
+            defs[i] = PositionDefinition({
+                offsetLower: -100, offsetUpper: 100, weight: weight, overridePositionRecipient: positionRecipient
+            });
+        }
+        mp.positionDefinitions = abi.encode(defs);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PositionPlanner.TooManyPositions.selector,
+                PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN + 1,
+                PositionPlanner.MAX_ADDITIONAL_POSITIONS_PER_PLAN
+            )
+        );
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    modifier whenMigratorParamsAreValid() {
+        _;
+    }
+
+    function test_WhenInitializerFundsRecipientIsWrong(address _wrongRecipient, MigrationFuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidFundsRecipient}
+        vm.assume(_wrongRecipient != address(strategy));
+
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        uint128 expectedAuctionSupply = totalSupply - mp.reservedTokenAmountForLP;
+        // tokensRecipient must NOT be the strategy under the new model; use _wrongRecipient for both.
+        MockLBPInitializer badInit = new MockLBPInitializer(
+            address(1), address(0), expectedAuctionSupply, _wrongRecipient, _wrongRecipient, 0, endBlock
+        );
+
+        vm.mockCall(
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
+        );
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILBPStrategy.InvalidFundsRecipient.selector, _wrongRecipient, address(strategy))
+        );
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenInitializerTokensRecipientIsStrategy(MigrationFuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidTokensRecipient}
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        uint128 expectedAuctionSupply = totalSupply - mp.reservedTokenAmountForLP;
+        // fundsRecipient must be the strategy (passes that check), tokensRecipient is the strategy (fails)
+        MockLBPInitializer badInit = new MockLBPInitializer(
+            address(1), address(0), expectedAuctionSupply, address(strategy), address(strategy), 0, endBlock
+        );
+
+        vm.mockCall(
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
+        );
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidTokensRecipient.selector, address(strategy)));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenInitializerEndBlockGTEMigrationBlock(uint64 _endBlockOffset, MigrationFuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+    {
+        // it reverts with {InvalidEndBlock}
+        (MigratorParameters memory mp, uint128 totalSupply,,) = _boundMigratorParams(p);
+
+        // endBlock >= migrationBlock
+        uint64 endBlock = uint64(bound(_endBlockOffset, mp.migrationBlock, type(uint64).max));
+
+        uint128 expectedAuctionSupply = totalSupply - mp.reservedTokenAmountForLP;
+        // tokensRecipient must NOT be the strategy under the new model
+        MockLBPInitializer badInit = new MockLBPInitializer(
+            address(1), address(0), expectedAuctionSupply, tokensRecipient, address(strategy), 0, endBlock
+        );
+
+        vm.mockCall(
+            address(factory), abi.encodeWithSelector(IDistributorFactory.create.selector), abi.encode(address(badInit))
+        );
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), hex"");
+
+        vm.expectRevert(abi.encodeWithSelector(ILBPStrategy.InvalidEndBlock.selector, endBlock, mp.migrationBlock));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    modifier whenInitializerIsValid() {
+        _;
+    }
+
+    function test_WhenInitializerIsNew(MigrationFuzzParams memory p)
+        public
+        whenMigratorParamsAreValid
+        whenInitializerIsValid
+    {
+        // it saves the parameters to storage
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+
+        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, _boundBrackets(p.bpParams));
+
+        assertNotEq(address(initializer), address(0));
+
+        // Verify migration parameters were stored correctly
+        (MigratorParameters memory storedParams) = strategy.initializers(ILBPInitializer(address(initializer)));
+        assertEq(storedParams.migrationBlock, mp.migrationBlock);
+        assertEq(storedParams.poolParameters.fee, mp.poolParameters.fee);
+        assertEq(storedParams.poolParameters.tickSpacing, mp.poolParameters.tickSpacing);
+        assertEq(storedParams.reservedTokenAmountForLP, mp.reservedTokenAmountForLP);
+        assertEq(storedParams.recipient, mp.recipient);
+        assertEq(storedParams.poolParameters.hook, mp.poolParameters.hook);
+        assertEq(storedParams.positionDefinitions, mp.positionDefinitions);
+        assertEq(storedParams.lpAllocationSchedule, abi.encode(_boundBrackets(p.bpParams)));
+    }
+
+    function test_WhenHookLacksBeforeInitializePermission(MigrationFuzzParams memory p) public {
+        // it reverts with {InvalidHook}
+
+        // it saves the parameters to storage
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        // A hook authorized to the strategy that still lacks the BEFORE_INITIALIZE_FLAG permission bit is rejected:
+        // v4 derives permissions from the hook address, so without that bit beforeInitialize() is never called and the
+        // initialization gate the strategy relies on would be silently skipped.
+        // AFTER_INITIALIZE_FLAG passes the v4 address validity check but omits BEFORE_INITIALIZE_FLAG.
+        mp.poolParameters.hook = _etchInitializerHook(uint160(Hooks.AFTER_INITIALIZE_FLAG), address(strategy));
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+        token.approve(address(strategy), totalSupply);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, mp.currency, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    function test_WhenHookIsZeroAddress_AndPoolIsInitialized(MigrationFuzzParams memory p) public {
+        // it reverts with {InvalidHook}
+
+        // it saves the parameters to storage
+        (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock,) = _boundMigratorParams(p);
+        mp.poolParameters.hook = address(0);
+
+        MockERC20 token = new MockERC20("Test Token", "TT", totalSupply, address(this));
+        mp.token = address(token);
+
+        token.approve(address(strategy), totalSupply);
+        bytes memory initializerParams = _encodeMockInitializerParams(
+            endBlock, mp.currency, LBPInitializationParams({initialPriceX96: 0, tokensSold: 0, currencyRaised: 0})
+        );
+        bytes memory configData = _encodeConfigData(mp, _boundBrackets(p.bpParams), initializerParams);
+
+        // initialize the pool
+        POOL_MANAGER.initialize(
+            PoolKey({
+                currency0: Currency.wrap(mp.currency),
+                currency1: Currency.wrap(mp.token),
+                fee: mp.poolParameters.fee,
+                tickSpacing: mp.poolParameters.tickSpacing,
+                hooks: IHooks(mp.poolParameters.hook)
+            }),
+            TickMath.MIN_SQRT_PRICE
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, mp.poolParameters.hook));
+        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+}

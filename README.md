@@ -16,7 +16,7 @@ Liquidity Launcher provides a streamlined approach for projects to:
 - **Bootstrap** liquidity using price discovery mechanisms
 - **Deploy** automated market making pools on Uniswap v4
 
-The primary distribution strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
+The primary strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
 ## Installation
 This project uses Foundry for development and testing. To get started:
@@ -44,12 +44,21 @@ forge build
 ./script/build_rust.sh
 
 # Run tests
-forge test --isolate -vvv
+forge test
+
+# Run the LBP strategy suite
+forge test --match-path 'test/strategies/lbp/**/*.sol'
 ```
 
-The project requires the following environment variable for testing:
+Most tests run locally. The periphery position-recipient tests fork mainnet and require:
 
 - `QUICKNODE_RPC_URL`: An Ethereum mainnet RPC endpoint for fork testing
+
+## LBP Hooks
+
+LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.hook`. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. `InitializerHook` gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool. `GatedSwapHook` already inherits `InitializerHook`.
+
+If `hook` is `address(0)`, the migration destination is state-dependent: `hook = address(0)` means "prefer the hookless pool, but fall back to the strategy-hooked pool if the hookless pool already exists," so it does not guarantee the final pool is hookless. Migration first attempts to initialize the canonical hookless v4 pool `(currency0, currency1, fee, tickSpacing, address(0))`. If that pool was already initialized, `LBPStrategy` falls back to using its own address as the hook and initializes the strategy-hooked pool `(currency0, currency1, fee, tickSpacing, address(strategy))` instead. `LBPStrategy` is deployed at a valid `BEFORE_INITIALIZE` hook address and self-gates `beforeInitialize`, so this fallback does not require a separate `InitializerHook` deployment. The hookless pool is preferred for simpler routing; the strategy-hooked pool only preserves a migration path when the hookless key has already been consumed. See the [Deployment Guide](./docs/DeploymentGuide.md#lbp-hook-requirement) for details.
 
 ## Docs
 - [Technical Reference](./docs/TechnicalReference.md)
@@ -67,35 +76,7 @@ The LiquidityLauncher contract can be deployed to the same address on all networ
 
 > No changes have been made to the LiquidityLauncher contract since v1.0.0.
 
-### FullRangeLBPStrategyFactory
-The FullRangeLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
-
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Mainnet | 0x65aF3B62EE79763c704f04238080fBADD005B332 | 610603eed7c35ff504e23ec87cd18ec3f701e746  |
-| v2.0.0 | Unichain | 0xAa56d4d68646B4858A5A3a99058169D0100b38e2 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base | 0x39E5eB34dD2c8082Ee1e556351ae660F33B04252 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Sepolia | 0x89Dd5691e53Ea95d19ED2AbdEdCf4cBbE50da1ff | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0xa3A236647c80BCD69CAD561ACf863c29981b6fbC | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-
-### AdvancedLBPStrategyFactory
-The AdvancedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
-
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Mainnet | 0x982DC187cbeB4E21431C735B01Ecbd8A606129C5 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Unichain | 0xeB44195e1847F23D4ff411B7d501b726C7620529 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base | 0x9C5A6fb9B0D9A60e665d93a3e6923bDe428c389a | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Sepolia | 0xdC3553B7Cea1ad3DAB35cBE9d40728C4198BCBb6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0x67E24586231D4329AfDbF1F4Ac09E081cFD1e6a6 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-
-### GovernedLBPStrategyFactory
-The GovernedLBPStrategyFactory contract is deployed to different addresses on different networks as it uses the deployed Position Manager and Pool Manager contracts from Uniswap v4.
-
-| Version | Chain | Address | Commit Hash |
-|---------|-------|---------|------------|
-| v2.0.0 | Base | 0xBc869216dAD02E1A95c1478a459D064b16F41B24 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
-| v2.0.0 | Base Sepolia | 0xB460228ACa3bbf8FaDB781d22Cf051f55e7460A9 | 610603eed7c35ff504e23ec87cd18ec3f701e746 |
+> The v2.0.0 LBP strategy factories (`FullRangeLBPStrategyFactory`, `AdvancedLBPStrategyFactory`, `GovernedLBPStrategyFactory`) were removed in v3.0.0 and consolidated into a single `LBPStrategy`. Their prior deployment addresses are retained for reference, marked deprecated, in the [Deployment Guide](./docs/DeploymentGuide.md#legacy-deployments-deprecated).
 
 ## Audits
 - 1/23/2026 [OpenZeppelin](./docs/audit/OpenZeppelin_v2.0.0.pdf)

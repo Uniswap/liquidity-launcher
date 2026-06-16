@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IDistributionContract} from "./IDistributionContract.sol";
+import {IDistributor} from "./IDistributor.sol";
 
 /// @dev The interface id of the ILBPInitializer interface
 /// @dev Per ERC165, the interface selector is the XOR of the selectors of the interfaces implemented by the contract
@@ -17,11 +17,21 @@ struct LBPInitializationParams {
 
 /// @title ILBPInitializer
 /// @notice Generic interface for contracts used for initializing an LBP strategy
-interface ILBPInitializer is IDistributionContract, IERC165 {
+interface ILBPInitializer is IDistributor, IERC165 {
     /// @notice Returns the LBP initialization parameters as determined by the implementing contract
     /// @dev The implementing contract MUST ensure that these values are correct at the time of calling
-    /// @return params The LBP initialization parameters
-    function lbpInitializationParams() external view returns (LBPInitializationParams memory params);
+    function lbpInitializationParams() external view returns (LBPInitializationParams memory);
+
+    /// @notice Sweeps the raised currency from the initializer. Must NOT revert.
+    /// @dev The initializer must ensure this can only be called by the currency recipient directly.
+    /// @dev MUST transfer exactly `currencyRaised` (from {lbpInitializationParams}) to the funds recipient.
+    ///      `tryMigrate` enforces `received == currencyRaised` and reverts if unequal. Any surplus held by the
+    ///      initializer must be left behind, not swept here.
+    function sweepCurrency() external;
+
+    /// @notice Sweeps the unsold tokens from the initializer. Must NOT revert.
+    /// @dev The initializer must ensure this can only be called by the tokens recipient directly
+    function sweepUnsoldTokens() external;
 
     /// @notice Returns the token used by the initializer
     function token() external view returns (address);

@@ -2,8 +2,10 @@
 pragma solidity 0.8.26;
 
 import "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {MerkleClaimFactory} from "src/factories/periphery/MerkleClaimFactory.sol";
-import {IDistributionContract} from "src/interfaces/IDistributionContract.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
 
 interface IMerkleClaim {
     function token() external view returns (address);
@@ -16,7 +18,7 @@ contract MerkleClaimFactoryTest is Test {
     uint128 constant TOTAL_SUPPLY = 1000e18;
 
     MerkleClaimFactory public factory;
-    address token;
+    MockERC20 token;
     address owner;
 
     bytes32 merkleRoot;
@@ -25,7 +27,7 @@ contract MerkleClaimFactoryTest is Test {
 
     function setUp() public {
         factory = new MerkleClaimFactory();
-        token = makeAddr("token");
+        token = new MockERC20("Test Token", "TT", TOTAL_SUPPLY, address(this));
 
         // Setup merkle claim parameters
         merkleRoot = keccak256("test merkle root");
@@ -37,25 +39,26 @@ contract MerkleClaimFactoryTest is Test {
     function test_initializeDistribution_succeeds() public {
         bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
 
-        IMerkleClaim merkleClaim =
-            IMerkleClaim(address(factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt)));
+        token.approve(address(factory), TOTAL_SUPPLY);
 
-        assertEq(merkleClaim.token(), token);
+        vm.recordLogs();
+        factory.initializeDistribution(address(token), TOTAL_SUPPLY, configData, salt);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 initializedTopic = keccak256("DistributionInitialized(address,address,uint256)");
+        address merkleClaimAddress;
+        for (uint256 i; i < entries.length; ++i) {
+            if (entries[i].topics[0] == initializedTopic) {
+                merkleClaimAddress = address(uint160(uint256(entries[i].topics[1])));
+                break;
+            }
+        }
+        assertNotEq(merkleClaimAddress, address(0));
+        IMerkleClaim merkleClaim = IMerkleClaim(merkleClaimAddress);
+
+        assertEq(merkleClaim.token(), address(token));
         assertEq(merkleClaim.merkleRoot(), merkleRoot);
         assertEq(merkleClaim.owner(), owner);
         assertEq(merkleClaim.endTime(), endTime);
-    }
-
-    function test_getAddress_succeeds() public {
-        bytes32 salt = 0x7fa9385be102ac3eac297483dd6233d62b3e1496c857faf801c8174cae36c06f;
-
-        // Get the predicted address
-        address predictedAddress = factory.getAddress(token, TOTAL_SUPPLY, configData, salt, address(this));
-
-        // Deploy the actual contract
-        IDistributionContract deployedContract = factory.initializeDistribution(token, TOTAL_SUPPLY, configData, salt);
-
-        // Verify the addresses match
-        assertEq(address(deployedContract), predictedAddress);
+        assertEq(IERC20(address(token)).balanceOf(address(merkleClaim)), TOTAL_SUPPLY);
     }
 }

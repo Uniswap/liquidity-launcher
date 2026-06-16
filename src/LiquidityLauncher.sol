@@ -5,8 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Multicall} from "./Multicall.sol";
 import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
-import {IDistributionContract} from "./interfaces/IDistributionContract.sol";
-import {IDistributionStrategy} from "./interfaces/IDistributionStrategy.sol";
+import {IStrategy} from "./interfaces/IStrategy.sol";
 import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
 import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
 import {Distribution} from "./types/Distribution.sol";
@@ -39,50 +38,31 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     }
 
     /// @inheritdoc ILiquidityLauncher
-    function distributeToken(address token, Distribution calldata distribution, bool payerIsUser, bytes32 salt)
-        external
-        override
-        returns (IDistributionContract distributionContract)
-    {
-        // Call the strategy: it might do distributions itself or deploy a new instance.
-        // If it does distributions itself, distributionContract == dist.strategy
-        distributionContract = IDistributionStrategy(distribution.strategy)
+    function depositToken(address token, uint160 amount) external override {
+        // Pulls tokens from msg.sender via permit2 so the deposit can be batched with `distributeToken`
+        // in a single multicall (preceded by a `permit` call for first-time approvals).
+        permit2.transferFrom(msg.sender, address(this), amount, token);
+    }
+
+    /// @inheritdoc ILiquidityLauncher
+    function distributeToken(address token, Distribution calldata distribution, bytes32 salt) external override {
+        // Approve the strategy to pull `distribution.amount` from this contract. The strategy is
+        // expected to consume the full allowance via `safeTransferFrom` inside `initializeDistribution`.
+        IERC20(token).forceApprove(distribution.strategy, distribution.amount);
+
+        IStrategy(distribution.strategy)
             .initializeDistribution(
                 token, distribution.amount, distribution.configData, keccak256(abi.encode(msg.sender, salt))
             );
 
-        // Now transfer the tokens to the returned address
-        // payerIsUser should be false if the tokens were created in the same call via multicall
-        _transferToken(token, _mapPayer(payerIsUser), address(distributionContract), distribution.amount);
+        // Reject strategies that pull less than the full approved amount.
+        if (IERC20(token).allowance(address(this), distribution.strategy) != 0) revert AllowanceNotFullyConsumed();
 
-        // Notify the distribution contract that it has received the tokens
-        distributionContract.onTokensReceived();
-
-        emit TokenDistributed(token, address(distributionContract), distribution.amount);
+        emit TokenDistributed(token, distribution.strategy, distribution.amount);
     }
 
     /// @inheritdoc ILiquidityLauncher
     function getGraffiti(address originalCreator) public pure returns (bytes32 graffiti) {
         graffiti = keccak256(abi.encode(originalCreator));
-    }
-
-    /// @notice Transfers tokens to the distribution contract
-    /// @param token The address of the token to transfer
-    /// @param from The address to transfer the tokens from (this contract or the user)
-    /// @param to The distribution contract address to transfer the tokens to
-    /// @param amount The amount of tokens to transfer
-    function _transferToken(address token, address from, address to, uint256 amount) internal {
-        if (from == address(this)) {
-            IERC20(token).safeTransfer(to, amount);
-        } else {
-            permit2.transferFrom(from, to, uint160(amount), token);
-        }
-    }
-
-    /// @notice Calculates the payer for an action (this contract or the user)
-    /// @param payerIsUser Whether the payer is the user
-    /// @return payer The address of the payer
-    function _mapPayer(bool payerIsUser) internal view returns (address) {
-        return payerIsUser ? msg.sender : address(this);
     }
 }

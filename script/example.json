@@ -1,22 +1,22 @@
 {
    "8453": {
       "token": "",
-      "totalSupply": 1e29,
+      "totalSupply": "",
+      "lbpStrategy": "",
+      "liquidityLauncher": "",
       "migratorParameters": {
         "migrationBlock": 0,
         "currency": "",
-        "poolLPFee": 500,
-        "poolTickSpacing": 60,
-        "tokenSplit": 5e6,
-        "initializerFactory": "0xCCccCcCAE7503Cac057829BF2811De42E16e0bD5",
+        "poolLPFee": 0,
+        "poolTickSpacing": 0,
+        "tokenSplit": 0,
+        "initializerFactory": "",
         "positionRecipient": "",
         "sweepBlock": 0,
         "operator": "",
         "maxCurrencyAmountForLP": 0
       },
       "initializerParameters": "",
-      "salt":"0x0000000000000000000000000000000000000000000000000000000000000000",
-      "strategyFactory": "0x39E5eB34dD2c8082Ee1e556351ae660F33B04252",
-      "liquidityLauncher": "0x00000008412db3394C91A5CbD01635c6d140637C"
+      "salt":"0x0000000000000000000000000000000000000000000000000000000000000000"
    }
 }

@@ -6,7 +6,6 @@ merkle-distributor/=lib/merkle-distributor/
 @solady/=lib/solady/
 @optimism/=lib/optimism/packages/contracts-bedrock/
 @uniswap/uerc20-factory/=lib/uerc20-factory/
-@uniswap/continuous-clearing-auction/=lib/continuous-clearing-auction/
 @uniswap/blocknumberish/=lib/blocknumberish/
 blocknumberish=lib/blocknumberish
 @lbp/factories=src/factories/lbp
