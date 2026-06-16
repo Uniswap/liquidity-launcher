@@ -10,6 +10,9 @@ import {IMulticall} from "src/interfaces/IMulticall.sol";
 /// @notice Example script for distributing a token via LBPStrategy
 contract DeployExample is Script {
     using stdJson for string;
+    using SafeCastLib for *;
+
+    uint160 constant BEFORE_INITIALIZE_FLAG_MASK = 1 << 13;
 
     function run() external {
         vm.startBroadcast();
@@ -19,8 +22,24 @@ contract DeployExample is Script {
         string memory chainIdSlug = string(abi.encodePacked('["', vm.toString(block.chainid), '"]'));
         address token = input.readAddress(string.concat(chainIdSlug, ".token"));
         uint128 totalSupply = uint128(input.readUint(string.concat(chainIdSlug, ".totalSupply")));
-        bytes memory configData = input.readBytes(string.concat(chainIdSlug, ".configData"));
-        bytes32 salt = input.readBytes32(string.concat(chainIdSlug, ".salt"));
+
+        MigratorParameters memory migratorParameters = MigratorParameters({
+            migrationBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.migrationBlock")).toUint64(),
+            currency: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.currency")),
+            poolLPFee: input.readUint(string.concat(chainIdSlug, ".migratorParameters.poolLPFee")).toUint24(),
+            poolTickSpacing: input.readInt(string.concat(chainIdSlug, ".migratorParameters.poolTickSpacing")).toInt24(),
+            tokenSplit: input.readUint(string.concat(chainIdSlug, ".migratorParameters.tokenSplit")).toUint24(),
+            initializerFactory: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.initializerFactory")),
+            positionRecipient: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.positionRecipient")),
+            sweepBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.sweepBlock")).toUint64(),
+            operator: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.operator")),
+            maxCurrencyAmountForLP: input.readUint(
+                    string.concat(chainIdSlug, ".migratorParameters.maxCurrencyAmountForLP")
+                ).toUint128()
+        });
+        bytes memory initializerParameters = input.readBytes(string.concat(chainIdSlug, ".initializerParameters"));
+        bytes memory configData = abi.encode(migratorParameters, initializerParameters);
+
         address liquidityLauncher = input.readAddress(string.concat(chainIdSlug, ".liquidityLauncher"));
         address lbpStrategy = input.readAddress(string.concat(chainIdSlug, ".lbpStrategy"));
 
