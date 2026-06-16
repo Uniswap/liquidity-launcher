@@ -32,21 +32,20 @@ The controller resolves the fee in two steps:
 
 Both branches always return the **global recipient**. Per-currency configs only override the *rate schedule*, not the recipient.
 
-### Global fee (off by default)
+### Global fee
 
-The protocol fee is **off by default** — a freshly deployed controller returns 0 fee and `address(0)` recipient, similar to v4's protocol fee design. Governance can turn it on at any time via `setGlobalProtocolFeeSettings`:
-
-```solidity
-controller.setGlobalProtocolFeeSettings(50_000, treasury); // 5% on all currencies
-```
-
-To turn the protocol fee fully off — across the global flat fee **and** every per-currency override — clear the global recipient:
+The protocol fee rate is **off by default**: a freshly deployed controller returns 0 fee. Governance can set the recipient and enable a global rate with:
 
 ```solidity
-controller.setGlobalProtocolFeeSettings(0, address(0));
+controller.setProtocolFeeRecipient(treasury);
+controller.setGlobalProtocolFeePips(50_000); // 5% on all currencies
 ```
 
-While the global recipient is `address(0)`, `getProtocolFeeAmount` returns `0` for every currency regardless of any per-currency schedule still in storage.
+To turn the global flat fee off, set `globalProtocolFeePips` to 0. Per-currency schedules must be cleared separately with `setProtocolFeeBracketsForCurrency(currency, new ProtocolFeeBracket[](0))`.
+
+```solidity
+controller.setGlobalProtocolFeePips(0);
+```
 
 ### Per-currency override (optional)
 
@@ -115,9 +114,9 @@ Call `setProtocolFeeBracketsForCurrency(currency, new ProtocolFeeBracket[](0))` 
 new ProtocolFeeController(governance);
 ```
 
-The protocol fee is off by default. The expected post-deploy sequence is:
+The protocol fee rate is off by default. The expected post-deploy sequence is:
 
-1. Optionally call `setGlobalProtocolFeeSettings(pips, recipient)` to turn on the global fee.
+1. Optionally call `setProtocolFeeRecipient(recipient)` and `setGlobalProtocolFeePips(pips)` to turn on the global fee.
 2. If the deployer was set as the initial owner, transfer ownership to the governance multisig/timelock.
 
 The fee can be enabled or updated at any time after deployment.
@@ -125,4 +124,4 @@ The fee can be enabled or updated at any time after deployment.
 ### Notes for integrators
 
 - **Always forward fees to the returned `recipient`.** The recipient is the *global* recipient; per-currency configs do not override it.
-- **Events.** `GlobalProtocolFeeSettingsUpdated` and `ProtocolFeeBracketsForCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getProtocolFeeBracketsForCurrency(currency)` returns the full tier array for a given currency.
+- **Events.** `ProtocolFeeRecipientUpdated`, `GlobalProtocolFeePipsUpdated`, and `ProtocolFeeBracketsForCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getProtocolFeeBracketsForCurrency(currency)` returns the full tier array for a given currency.

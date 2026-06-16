@@ -130,7 +130,6 @@ library PositionPlanner {
         address _positionRecipient
     ) internal pure returns (Position[] memory positions, CurrencyAmounts memory remainingAmounts) {
         TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
-        // Allocate space for the maximum possible number of positions (assuming all can be created)
         positions = new Position[](ticks.length + 1);
 
         // V4 enforces maxLiquidityPerTick against that tick's liquidityGross, which only accumulates at a
@@ -199,10 +198,8 @@ library PositionPlanner {
         CurrencyAmounts memory _currencyAmounts,
         address _recipient
     ) internal pure returns (Position memory position) {
-        // Skip invalid tick bounds
         if (!_bounds.isValid()) return position;
 
-        // Get the maximum liquidity which can be created from the budgeted amounts
         uint256 liquidity = _getLiquidityForAmounts(
             _sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(_bounds.lowerTick),
@@ -210,11 +207,10 @@ library PositionPlanner {
             _currencyAmounts.amount0,
             _currencyAmounts.amount1
         );
-        // Skip positions that have no liquidity
         if (liquidity == 0) return position;
-        // Cap the liquidity to the max liquidity allowable
+
         liquidity = liquidity > _maxLiquidity ? _maxLiquidity : liquidity;
-        // Back out the amounts from the derived liquidity. This is guaranteed to be less than or equal to the budget amounts.
+
         (uint256 amount0, uint256 amount1) =
             _getAmountsForLiquidity(_sqrtPriceX96, _bounds.lowerTick, _bounds.upperTick, uint128(liquidity));
 

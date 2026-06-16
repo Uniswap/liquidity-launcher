@@ -18,7 +18,7 @@ contract Permit2Forwarder is IPermit2Forwarder {
         external
         returns (bytes memory err)
     {
-        // use try/catch in case an actor front-runs the permit, which would DOS multicalls
+        // Keep batched calls from reverting if the permit was already consumed.
         try permit2.permit(owner, permitSingle, signature) {}
         catch (bytes memory reason) {
             err = reason;
