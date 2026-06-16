@@ -3,8 +3,8 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {TokenSplitter} from "src/strategies/TokenSplitter.sol";
-import {ITokenSplitter} from "src/interfaces/ITokenSplitter.sol";
+import {TokenSplitter} from "../../src/strategies/TokenSplitter.sol";
+import {ITokenSplitter} from "../../src/interfaces/ITokenSplitter.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 
 contract TokenSplitterTest is Test {

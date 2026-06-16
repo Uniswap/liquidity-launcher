@@ -3,9 +3,11 @@ pragma solidity ^0.8.26;
 
 import {Script, stdJson} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
-import {Distribution} from "src/types/Distribution.sol";
-import {ILiquidityLauncher} from "src/interfaces/ILiquidityLauncher.sol";
-import {IMulticall} from "src/interfaces/IMulticall.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {Distribution} from "../src/types/Distribution.sol";
+import {MigratorParameters, PoolParameters} from "../src/libraries/MigratorParams.sol";
+import {ILiquidityLauncher} from "../src/interfaces/ILiquidityLauncher.sol";
+import {IMulticall} from "../src/interfaces/IMulticall.sol";
 
 /// @notice Example script for distributing a token via LBPStrategy
 contract DeployExample is Script {
@@ -24,24 +26,31 @@ contract DeployExample is Script {
         uint128 totalSupply = uint128(input.readUint(string.concat(chainIdSlug, ".totalSupply")));
 
         MigratorParameters memory migratorParameters = MigratorParameters({
-            migrationBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.migrationBlock")).toUint64(),
+            token: token,
             currency: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.currency")),
-            poolLPFee: input.readUint(string.concat(chainIdSlug, ".migratorParameters.poolLPFee")).toUint24(),
-            poolTickSpacing: input.readInt(string.concat(chainIdSlug, ".migratorParameters.poolTickSpacing")).toInt24(),
-            tokenSplit: input.readUint(string.concat(chainIdSlug, ".migratorParameters.tokenSplit")).toUint24(),
-            initializerFactory: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.initializerFactory")),
+            migrationBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.migrationBlock")).toUint64(),
+            reservedTokenAmountForLP: input.readUint(
+                    string.concat(chainIdSlug, ".migratorParameters.reservedTokenAmountForLP")
+                ).toUint128(),
+            recipient: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.recipient")),
             positionRecipient: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.positionRecipient")),
-            sweepBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.sweepBlock")).toUint64(),
-            operator: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.operator")),
-            maxCurrencyAmountForLP: input.readUint(
-                    string.concat(chainIdSlug, ".migratorParameters.maxCurrencyAmountForLP")
-                ).toUint128()
+            poolParameters: PoolParameters({
+                fee: input.readUint(string.concat(chainIdSlug, ".migratorParameters.poolParameters.fee")).toUint24(),
+                tickSpacing: input.readInt(string.concat(chainIdSlug, ".migratorParameters.poolParameters.tickSpacing"))
+                    .toInt24(),
+                hook: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.poolParameters.hook"))
+            }),
+            positionDefinitions: input.readBytes(string.concat(chainIdSlug, ".migratorParameters.positionDefinitions")),
+            lpAllocationSchedule: input.readBytes(
+                string.concat(chainIdSlug, ".migratorParameters.lpAllocationSchedule")
+            )
         });
         bytes memory initializerParameters = input.readBytes(string.concat(chainIdSlug, ".initializerParameters"));
         bytes memory configData = abi.encode(migratorParameters, initializerParameters);
 
         address liquidityLauncher = input.readAddress(string.concat(chainIdSlug, ".liquidityLauncher"));
         address lbpStrategy = input.readAddress(string.concat(chainIdSlug, ".lbpStrategy"));
+        bytes32 salt = input.readBytes32(string.concat(chainIdSlug, ".salt"));
 
         Distribution memory distribution =
             Distribution({strategy: lbpStrategy, amount: totalSupply, configData: configData});

@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {ProtocolFeeLib} from "src/libraries/ProtocolFeeLib.sol";
-import {IProtocolFeeController} from "src/interfaces/IProtocolFeeController.sol";
+import {ProtocolFeeLib} from "../../../../../src/libraries/ProtocolFeeLib.sol";
+import {IProtocolFeeController} from "../../../../../src/interfaces/IProtocolFeeController.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 
 contract ProtocolFeeLibHarness {

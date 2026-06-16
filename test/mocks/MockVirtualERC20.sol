@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {MockERC20} from "./MockERC20.sol";
-import {IVirtualERC20} from "src/interfaces/external/IVirtualERC20.sol";
+import {IVirtualERC20} from "../../src/interfaces/external/IVirtualERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 

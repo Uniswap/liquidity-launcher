@@ -6,8 +6,8 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "../../src/libraries/PositionPlanner.sol";
+import {PositionDefinition} from "../../src/types/PositionPlannerTypes.sol";
 
 library PositionPlannerFuzzHelpers {
     uint24 internal constant MPS = 1e7;

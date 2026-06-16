@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
+import {ILBPInitializer} from "../../src/interfaces/ILBPInitializer.sol";
+import {ILBPStrategy} from "../../src/interfaces/ILBPStrategy.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {MockLBPInitializer} from "./MockLBPInitializer.sol";
 

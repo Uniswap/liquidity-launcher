@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {ILBPInitializer} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPStrategy} from "../../src/interfaces/ILBPStrategy.sol";
+import {ILBPInitializer} from "../../src/interfaces/ILBPInitializer.sol";
 
 /// @notice Adversarial recipient that reenters `strategy.migrate(initializer)` from its
 /// receive() when it gets ETH during migrate's leftover-currency-transfer leg.

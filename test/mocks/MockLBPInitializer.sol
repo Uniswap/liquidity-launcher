@@ -6,7 +6,7 @@ import {
     LBPInitializationParams,
     ILBP_INITIALIZER_INTERFACE_ID
 } from "src/interfaces/ILBPInitializer.sol";
-import {IDistributor} from "src/interfaces/IDistributor.sol";
+import {IDistributor} from "../../src/interfaces/IDistributor.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";

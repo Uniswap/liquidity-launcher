@@ -10,9 +10,9 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {PositionPlanner} from "src/libraries/PositionPlanner.sol";
-import {Plan, Position, PositionDefinition, CurrencyAmounts} from "src/types/PositionPlannerTypes.sol";
-import {TickCalculations} from "src/libraries/TickCalculations.sol";
+import {PositionPlanner} from "../../src/libraries/PositionPlanner.sol";
+import {Plan, Position, PositionDefinition, CurrencyAmounts} from "../../src/types/PositionPlannerTypes.sol";
+import {TickCalculations} from "../../src/libraries/TickCalculations.sol";
 import {PositionPlannerFuzzHelpers} from "test/shared/PositionPlannerFuzzHelpers.sol";
 
 contract MockPositionPlanner {

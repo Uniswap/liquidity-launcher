@@ -2,8 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {MigratorParams} from "src/libraries/MigratorParams.sol";
-import {IInitializerHook} from "src/interfaces/IInitializerHook.sol";
+import {MigratorParams} from "../../../../../src/libraries/MigratorParams.sol";
+import {IInitializerHook} from "../../../../../src/interfaces/IInitializerHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";

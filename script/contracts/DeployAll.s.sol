@@ -5,7 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {DeployLiquidityLauncherScript} from "./DeployLiquidityLauncher.s.sol";
 import {DeployLBPStrategyScript} from "./DeployLBPStrategy.s.sol";
 import {DeployTokenSplitterScript} from "./DeployTokenSplitter.s.sol";
-import {IDistributorFactory} from "src/interfaces/IDistributorFactory.sol";
+import {IDistributorFactory} from "../../src/interfaces/IDistributorFactory.sol";
 import {console} from "forge-std/console.sol";
 
 contract DeployAllScript is Script {

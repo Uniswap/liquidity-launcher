@@ -2,13 +2,17 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
-import {ILBPStrategy} from "src/interfaces/ILBPStrategy.sol";
-import {MigratorParameters, PoolParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {ILBPStrategy} from "../../../src/interfaces/ILBPStrategy.sol";
+import {
+    MigratorParameters,
+    PoolParameters,
+    LiquidityAllocationBracket
+} from "../../../src/libraries/MigratorParams.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../../../src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionDefinition} from "../../../src/types/PositionPlannerTypes.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";

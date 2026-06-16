@@ -7,14 +7,16 @@
       "migratorParameters": {
         "migrationBlock": 0,
         "currency": "",
-        "poolLPFee": 0,
-        "poolTickSpacing": 0,
-        "tokenSplit": 0,
-        "initializerFactory": "",
+        "reservedTokenAmountForLP": 0,
+        "recipient": "",
         "positionRecipient": "",
-        "sweepBlock": 0,
-        "operator": "",
-        "maxCurrencyAmountForLP": 0
+        "poolParameters": {
+          "fee": 0,
+          "tickSpacing": 0,
+          "hook": ""
+        },
+        "positionDefinitions": "",
+        "lpAllocationSchedule": ""
       },
       "initializerParameters": "",
       "salt":"0x0000000000000000000000000000000000000000000000000000000000000000"

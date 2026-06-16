@@ -3,19 +3,19 @@ pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./strategies/lbp/base/LBPStrategyTestBase.sol";
 import {Permit2SignatureHelpers} from "./shared/Permit2SignatureHelpers.sol";
-import {LiquidityLauncher} from "src/LiquidityLauncher.sol";
-import {Permit2Forwarder} from "src/Permit2Forwarder.sol";
+import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
+import {Permit2Forwarder} from "../src/Permit2Forwarder.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory.sol";
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Distribution} from "src/types/Distribution.sol";
-import {MigratorParameters, LiquidityAllocationBracket} from "src/libraries/MigratorParams.sol";
-import {ILBPInitializer, LBPInitializationParams} from "src/interfaces/ILBPInitializer.sol";
+import {Distribution} from "../src/types/Distribution.sol";
+import {MigratorParameters, LiquidityAllocationBracket} from "../src/libraries/MigratorParams.sol";
+import {ILBPInitializer, LBPInitializationParams} from "../src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
-import {PositionDefinition} from "src/types/PositionPlannerTypes.sol";
+import {PositionDefinition} from "../src/types/PositionPlannerTypes.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 /// @notice End-to-end integration test
