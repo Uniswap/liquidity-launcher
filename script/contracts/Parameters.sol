@@ -47,6 +47,11 @@ contract Parameters {
         IPositionManager(0xcF1EAFC6928dC385A342E7C6491d371d2871458b);
     IPoolManager public constant XLAYER_POOL_MANAGER = IPoolManager(0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32);
 
+    // Robinhood Chain addresses: https://developers.uniswap.org/docs/protocols/v4/deployments#robinhood-chain-4663
+    IPositionManager public constant ROBINHOOD_POSITION_MANAGER =
+        IPositionManager(0x58daec3116aae6D93017bAAea7749052E8a04fA7);
+    IPoolManager public constant ROBINHOOD_POOL_MANAGER = IPoolManager(0x8366a39CC670B4001A1121B8F6A443A643e40951);
+
     // Sepolia addresses: https://docs.uniswap.org/contracts/v4/deployments#sepolia-11155111
     IPositionManager public constant SEPOLIA_POSITION_MANAGER =
         IPositionManager(0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4);
@@ -63,6 +68,7 @@ contract Parameters {
     uint256 public constant ARBITRUM_CHAIN_ID = 42161;
     uint256 public constant AVALANCHE_CHAIN_ID = 43114;
     uint256 public constant XLAYER_CHAIN_ID = 196;
+    uint256 public constant ROBINHOOD_CHAIN_ID = 4663;
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84532;
 
@@ -101,6 +107,11 @@ contract Parameters {
             positionManager: XLAYER_POSITION_MANAGER,
             poolManager: XLAYER_POOL_MANAGER,
             salt: 0x00000000000000000000000000000000000000000000000000000000000022f7
+        });
+        parameters[ROBINHOOD_CHAIN_ID] = DeployParameters({
+            positionManager: ROBINHOOD_POSITION_MANAGER,
+            poolManager: ROBINHOOD_POOL_MANAGER,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000009d87
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
