@@ -87,7 +87,7 @@ The LBPStrategy contract is deployed to a different address on each chain. It mu
 | v3.0.0 | XLayer | 0x95bcb80e3804a085d23778F2956c305d6488e000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
 | v3.0.0 | Sepolia | 0x3f37838651B5AD71D4e01Ec9745862A5D9DF2000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
 | v3.0.0 | Base Sepolia | 0x0e1793a989c682117fcBfB3a9aA8e451D37D2000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Robinhood Chain | 0x095e38a2135aeBcfFa98A5B6911591937f912000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Robinhood Chain | 0x843747f4c08E3393E55508F577296bA48E8Ca000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
 
 > The v2.0.0 LBP strategy factories (`FullRangeLBPStrategyFactory`, `AdvancedLBPStrategyFactory`, `GovernedLBPStrategyFactory`) were removed in v3.0.0 and consolidated into a single `LBPStrategy`. Their prior deployment addresses are retained for reference, marked deprecated, in the [Deployment Guide](./docs/DeploymentGuide.md#legacy-deployments-deprecated).
 
