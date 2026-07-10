@@ -14,7 +14,7 @@ import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 /// @title DeployLBPStrategyScript
 /// @notice Deploys the LBPStrategy singleton
 contract DeployLBPStrategyScript is Script, Parameters {
-    function run(IDistributorFactory initializerFactory) public {
+    function run(IDistributorFactory initializerFactory) public returns (address) {
         DeployParameters memory params = getParameters(block.chainid);
 
         bytes memory bytecode = abi.encodePacked(
@@ -43,7 +43,7 @@ contract DeployLBPStrategyScript is Script, Parameters {
 
         if (expectedAddress.code.length > 0) {
             console.log("Skipping deployment of LBPStrategy as it already exists at", expectedAddress);
-            return;
+            return expectedAddress;
         }
 
         vm.broadcast();
@@ -51,5 +51,7 @@ contract DeployLBPStrategyScript is Script, Parameters {
             new LBPStrategy{salt: salt}(params.positionManager, params.poolManager, initializerFactory);
 
         console.log("LBPStrategy deployed to:", address(lbpStrategy));
+        require(address(lbpStrategy).code.length > 0, "LBPStrategy deployment failed");
+        return address(lbpStrategy);
     }
 }

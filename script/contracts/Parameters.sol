@@ -111,7 +111,7 @@ contract Parameters {
         parameters[ROBINHOOD_CHAIN_ID] = DeployParameters({
             positionManager: ROBINHOOD_POSITION_MANAGER,
             poolManager: ROBINHOOD_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000294c
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000907
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
