@@ -79,15 +79,15 @@ The LBPStrategy contract is deployed to a different address on each chain. It mu
 
 | Version | Chain | Address | Commit Hash |
 |---------|-------|---------|------------|
-| v3.0.0 | Mainnet | 0xb98766A35cdc28415be0767D4EA41e39fBA3e000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Base | 0x5bB4bAfafEc57BEd50D864AAA9D1ef992611e000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Unichain | 0x824A3eCDe463DD45cC156b64CEfA132596C9A000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Arbitrum | 0x18608AD558dcD233F7854242bbAef73988Bee000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Avalanche | 0xcAcd77134b072b4AD5621f585b0b422C6Da4E000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | XLayer | 0x95bcb80e3804a085d23778F2956c305d6488e000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Sepolia | 0x3f37838651B5AD71D4e01Ec9745862A5D9DF2000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Base Sepolia | 0x0e1793a989c682117fcBfB3a9aA8e451D37D2000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
-| v3.0.0 | Robinhood Chain | 0x05d552391067389EE44fec3924157ed33F976000 | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.1.0 | Mainnet | 0x49380c4EfaB1b491006aF7FabAB8B3459F0E6000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Base | 0x34385dD739FE5464892BF0bA4CC42492804dA000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Unichain | 0x298eA05D0356B2Ae5cCAa3169E471783ee9EA000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Arbitrum | 0x8Af0775a70Cc94D71DFc0fE809435e833F2Fe000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Robinhood Chain | 0x05d552391067389EE44fec3924157ed33F976000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Avalanche | 0x57BD0A9Cd933c89Ba55e086D53031367b6406000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | XLayer | 0x58DF162fF41e5cB42B8515f75F90C1841938A000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Sepolia | 0x96641d91e223c766F45b19d09494F5925C3cE000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
+| v3.1.0 | Base Sepolia | 0xB06428b62c259eE982cE3D9BED47391dC9A5E000 | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
 
 > Prior deployment addresses are retained for reference, marked deprecated, in the [Deployment Guide](./docs/DeploymentGuide.md#legacy-deployments-deprecated).
 
@@ -96,7 +96,7 @@ InitializerHooks are simple hooks which restrict pool initialization to a deploy
 
 | Version | Chain | Address | LBPStrategy Address | Salt |Commit Hash |
 |---------|-------|---------|---------|---------|------------|
-| v3.0.0 | Robinhood Chain | 0xD462a559337859369EF271814851A18F496ba000 | 0x05d552391067389EE44fec3924157ed33F976000 | 0x0000000000000000000000000000000000000000000000000000000000002dcb | 3a3103543f50a13a0ae52a253bb98a925d72146f |
+| v3.0.0 | Robinhood Chain | 0xD462a559337859369EF271814851A18F496ba000 | 0x05d552391067389EE44fec3924157ed33F976000 | 0x0000000000000000000000000000000000000000000000000000000000002dcb | 873cbb23c5019a795193c5ad561edff2f78ba5a3 |
 
 ### TokenSplitter
 The TokenSplitter contract is deployed to the same address on all networks.
