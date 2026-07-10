@@ -12,7 +12,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 /// @title InitializerHook
 /// @notice Base hook that restricts pool initialization to a preset address
 /// @dev Any caller specified hook MUST inherit this contract to be used in LBPStrategy
-abstract contract InitializerHook is BaseHook, IInitializerHook {
+contract InitializerHook is BaseHook, IInitializerHook {
     /// @notice Error thrown when the caller is not authorized to initialize the pool
     error InvalidInitializer(address caller, address expected);
 
