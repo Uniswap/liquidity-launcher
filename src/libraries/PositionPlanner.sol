@@ -47,16 +47,20 @@ library PositionPlanner {
     /// @param actual The actual number of positions
     /// @param max The maximum allowed number of positions
     error TooManyPositions(uint24 actual, uint24 max);
+    /// @notice Thrown when a position's range is not entirely on the token side of the initial price
+    /// @param lowerTick The resolved lower tick of the invalid position
+    /// @param upperTick The resolved upper tick of the invalid position
+    error PositionNotSingleSided(int24 lowerTick, int24 upperTick);
 
     /// @notice Validates that position definitions are correct
     /// @dev Reverts if the number of definitions exceeds the maximum allowed,
     ///      if tick offsets are out of order, or if the total weight exceeds `MPS`
     /// @param _definitions the position definitions
-    function validate(PositionDefinition[] memory _definitions) internal pure {
+    /// @return totalWeight The sum of all definition weights, for callers that constrain it further
+    function validate(PositionDefinition[] memory _definitions) internal pure returns (uint256 totalWeight) {
         if (_definitions.length > MAX_ADDITIONAL_POSITIONS_PER_PLAN) {
             revert TooManyPositions(uint24(_definitions.length), MAX_ADDITIONAL_POSITIONS_PER_PLAN);
         }
-        uint256 totalWeight;
         for (uint256 i; i < _definitions.length; i++) {
             PositionDefinition memory definition = _definitions[i];
             if (definition.offsetLower >= definition.offsetUpper) {
@@ -74,6 +78,32 @@ library PositionPlanner {
         }
         if (totalWeight > MPS) {
             revert InvalidAllocationWeights(totalWeight);
+        }
+    }
+
+    /// @notice Validates that every definition resolves to a range entirely on the token side of the price
+    /// @dev Token-side ranges quote liquidity purely from the token budget. A range that spans the price or
+    ///      sits on the currency side would resolve to zero liquidity against a zero currency budget and be
+    ///      silently skipped by `resolve`, so it is rejected here instead. Boundary ticks exactly at the
+    ///      price are token-side. Resolved bounds that collapse after clamping/snapping are also rejected.
+    /// @param _definitions The weighted position definitions to validate
+    /// @param _sqrtPriceX96 The pool initialization price
+    /// @param _tickSpacing The pool tick spacing
+    /// @param _tokenIsCurrency0 Whether the token providing the liquidity is currency0
+    function validateSingleSided(
+        PositionDefinition[] memory _definitions,
+        uint160 _sqrtPriceX96,
+        int24 _tickSpacing,
+        bool _tokenIsCurrency0
+    ) internal pure {
+        TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
+        for (uint256 i; i < ticks.length; i++) {
+            TickBounds memory bounds = ticks[i];
+            if (!bounds.isValid()) revert InvalidTickBounds(bounds.lowerTick, bounds.upperTick);
+            bool tokenSide = _tokenIsCurrency0
+                ? TickMath.getSqrtPriceAtTick(bounds.lowerTick) >= _sqrtPriceX96
+                : TickMath.getSqrtPriceAtTick(bounds.upperTick) <= _sqrtPriceX96;
+            if (!tokenSide) revert PositionNotSingleSided(bounds.lowerTick, bounds.upperTick);
         }
     }
 
