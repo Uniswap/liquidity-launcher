@@ -7,6 +7,8 @@
         - [UERC20Factory](#uerc20factory)
         - [USUPERC20Factory](#usuperc20factory)
     - [Distribution Strategies](#distribution-strategies)
+        - [DirectLaunchStrategy](#directlaunchstrategy)
+        - [CanonicalLaunchStrategy](#canonicallaunchstrategy)
         - [FullRangeLBPStrategy](#fullrangelbpstrategy)
         - [AdvancedLBPStrategy](#advancedlbpstrategy)
         - [GovernedLBPStrategy](#governedlbpstrategy)
@@ -43,9 +45,41 @@ Creates standard ERC20 tokens with extended metadata. These tokens support Permi
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
-The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy.migrate()` is a one-shot action: if the internal migration attempt succeeds, liquidity is deployed to V4; if it reverts, the strategy immediately sweeps the held LP token reserves and any raised currency back to the initializer's configured `recipient`.
+The distribution system is modular and supports direct-to-pool launches and auction-based launches.
 
-They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
+#### DirectLaunchStrategy
+
+`DirectLaunchStrategy` creates a v4 pool and token-side LP positions in one call. It has no auction or graduation step. The caller approves `totalSupply`, then calls `initializeDistribution` with ABI-encoded `DirectLaunchParameters`. The strategy pulls the tokens, registers any launch-hook configuration, initializes the pool, and mints the positions.
+
+The caller configures:
+
+- The paired currency, initial price, fee, tick spacing, and hook.
+- Weighted `PositionDefinition[]` data. Weights MUST total `1e7`, and every resolved range MUST be entirely on the token side of the initial price.
+- The LP NFT recipient and optional per-position recipient overrides.
+- A recipient for rounding dust and tokens that cannot be placed because of per-tick liquidity limits.
+- Optional `LaunchConfig` data when the hook implements `ILaunchHook`.
+
+The launched token MUST be a standard ERC20, MUST differ from the paired currency, and MUST transfer exactly `totalSupply`. Fee-on-transfer and rebasing tokens are not supported. Position definitions allocate the full token budget, but the strategy does not guarantee that all tokens become liquidity: rounding and v4 liquidity limits can leave tokens for the configured sweep recipient. LP NFTs are owned and controlled by their configured recipients.
+
+Hooks are trusted launch inputs. The target pool MUST be uninitialized. A nonzero hook MUST implement `IInitializerHook`, authorize `DirectLaunchStrategy`, and have the required v4 permission bits. An `ILaunchHook` also requires a nonempty `LaunchConfig`; other hooks reject launch configuration. `DirectLaunchStrategy` derives the token's currency ordering and overwrites `LaunchConfig.tokenIsCurrency0` before registration.
+
+`LaunchHook` restricts initialization to the strategy, rejects static-fee pools, blocks swaps before `swapStartBlock`, and applies `baseFee` at or after `windowEndBlock`. During the launch window, it uses the configured `IDynamicFeeModule` quote for the swap direction, or `baseFee` if no module is set. Module calls fail closed: a failed or malformed quote blocks initialization or reverts the affected swap. Preflight does not guarantee future quotes or economic behavior.
+
+`TokenLaunched` records the pool key, initial price, and executed PositionManager plan. `TokensSwept` records tokens sent to the sweep recipient.
+
+#### CanonicalLaunchStrategy
+
+`CanonicalLaunchStrategy` is a fixed wrapper around `DirectLaunchStrategy`. Only its immutable `launcher` may call `initializeDistribution`, and `configData` MUST be empty. Each launch supplies the token's full 1 billion token supply. The strategy also verifies that the token reports 18 decimals and a total supply of 1 billion tokens.
+
+Every canonical pool uses native ETH, dynamic fees, tick spacing 200, and one token-side position from the minimum usable tick to the immutable `initialTick`. The initial tick is set when the strategy is deployed and MUST be aligned to tick spacing 200. Each launch starts at a 99% LP fee in both directions, decays linearly to zero over five blocks, and uses a zero base fee afterward.
+
+The wrapper deploys a `BuybackAndBurnPositionRecipient` for each token. The LP NFT is permanently held by that contract: its operator is the zero address and its timelock is `type(uint256).max`. Anyone may collect fees by supplying 0.05% of the token supply for burning. Accrued token fees are burned, and the collected ETH is paid to the caller subject to the caller's minimum-output check. Tokens that cannot be placed, including rounding dust or amounts above per-tick liquidity limits, are sent to `address(0xdead)`.
+
+The launcher and token implementation are trust assumptions. The wrapper checks the current supply and decimals, but it does not prove that minting is permanently disabled or that the token cannot later change balances or transfer behavior. The delegated strategy MUST consume the full allowance and return no launch tokens to the wrapper. Canonical launches have no creator fee, auction, graduation, migration, or mutable per-launch configuration.
+
+`CanonicalTokenLaunched` records the pool ID, token, and permanent position recipient.
+
+The LBP strategies below create a Continuous Clearing Auction and later migrate liquidity to v4. `LBPStrategy.migrate()` is a one-shot action: if migration succeeds, liquidity is deployed to v4; if it reverts, the strategy sweeps the held LP token reserves and raised currency to the initializer's configured `recipient`.
 
 #### FullRangeLBPStrategy
 A simple implementation that migrates raised funds to Uniswap V4 as a single full-range position. It is the simplest strategy and is suitable for most use cases.
@@ -59,7 +93,7 @@ A strategy that lets a trusted entity restrict swapping on the liquidity pool.
 #### VirtualLBPStrategy
 A strategy that implements a virtual token backed by an underlying token. This is useful for tokens with complex vesting or lockup schedules.
 
-All of the above strategies are provided as-is, and custom strategies can be implemented by extending the `LBPStrategyBase` contract.
+The LBP strategies are provided as-is. Custom auction strategies can extend `LBPStrategyBase`.
 
 ### Warnings
 

@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {LaunchConfig} from "../../src/interfaces/ILaunchHook.sol";
 
-/// @notice Minimal launch-config holder standing in for a launch hook in module tests
+/// @notice Stores launch configuration for fee module tests
 contract MockLaunchConfigStore {
     mapping(PoolId poolId => LaunchConfig config) internal _launchConfigs;
 

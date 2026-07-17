@@ -23,7 +23,8 @@ import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
 import {DirectLaunchStrategy} from "./DirectLaunchStrategy.sol";
 
 /// @title CanonicalLaunchStrategy
-/// @notice Launches a fixed-supply token into a canonical native-currency pool.
+/// @notice Launches a fixed-supply token into a canonical native-currency pool
+/// @dev Pool, position, fee, and LP custody parameters are fixed at deployment or in contract constants.
 /// @custom:security-contact security@uniswap.org
 contract CanonicalLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
@@ -85,12 +86,12 @@ contract CanonicalLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuardTr
         address _dynamicFeeModule,
         int24 _initialTick
     ) {
-        // Every launch uses the same immutable set of protocol collaborators.
+        // All protocol collaborators are required and fixed for every launch.
         if (
             _launcher == address(0) || address(_directLaunchStrategy) == address(0) || _launchHook == address(0)
                 || _dynamicFeeModule == address(0)
         ) revert ZeroAddress();
-        // The initial tick must align with the pool and leave a non-empty token-only range below it.
+        // The initial tick must be usable and leave a non-empty token-side range.
         if (
             _initialTick % TICK_SPACING != 0 || _initialTick <= TickMath.minUsableTick(TICK_SPACING)
                 || _initialTick > TickMath.maxUsableTick(TICK_SPACING)
@@ -106,21 +107,22 @@ contract CanonicalLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuardTr
     }
 
     /// @inheritdoc IStrategy
-    /// @dev A canonical launch requires 100% of the token's fixed total supply in a single distribution.
+    /// @dev Requires 100% of the token's fixed total supply in one distribution. Caller configuration is not
+    ///      supported.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
         external
         override
         nonReentrant
     {
-        // Launch parameters are fixed at deployment and only the canonical launcher may use the strategy.
+        // Only the configured launcher may use this strategy with its fixed parameters.
         if (msg.sender != launcher) revert OnlyLauncher();
         if (configData.length != 0) revert UnexpectedConfigData();
 
-        // Canonical tokens have a fixed 1 billion token supply with 18 decimals.
+        // Canonical tokens have a 1 billion token supply and 18 decimals.
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
-        // Balance deltas ensure the launcher delivered the exact distribution without consuming prior balances.
+        // Verify the exact distribution without consuming any pre-existing balance.
         IERC20 launchToken = IERC20(token);
         uint256 balanceBefore = launchToken.balanceOf(address(this));
         launchToken.safeTransferFrom(msg.sender, address(this), TOTAL_SUPPLY);
@@ -129,23 +131,23 @@ contract CanonicalLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuardTr
             revert TokenAmountMismatch();
         }
 
-        // Each position is permanently assigned to a token-specific buyback-and-burn recipient.
+        // Permanently custody the LP position in a token-specific fee recipient.
         BuybackAndBurnPositionRecipient positionRecipient = new BuybackAndBurnPositionRecipient(
             token, address(0), address(0), positionManager, type(uint256).max, TOTAL_SUPPLY / 2_000
         );
 
-        // Delegate pool initialization and position minting with the fixed canonical parameters.
+        // Use DirectLaunchStrategy for pool initialization and position minting.
         launchToken.forceApprove(address(directLaunchStrategy), TOTAL_SUPPLY);
         DirectLaunchParameters memory params = _launchParameters(address(positionRecipient));
         directLaunchStrategy.initializeDistribution(token, TOTAL_SUPPLY, abi.encode(params), bytes32(0));
 
-        // The delegated strategy must consume the full allowance without leaving tokens on this wrapper.
+        // Reject incomplete transfers or tokens returned to this contract.
         if (launchToken.allowance(address(this), address(directLaunchStrategy)) != 0) {
             revert AllowanceNotFullyConsumed();
         }
         if (launchToken.balanceOf(address(this)) != balanceBefore) revert UnplacedTokens();
 
-        // Reconstruct the deterministic pool key for launch attribution.
+        // Derive the pool ID emitted for this launch.
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
@@ -156,13 +158,15 @@ contract CanonicalLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuardTr
         emit CanonicalTokenLaunched(key.toId(), token, address(positionRecipient));
     }
 
-    /// @notice Builds the direct-launch configuration shared by every canonical pool.
-    /// @param positionRecipient The permanent recipient of the minted LP position.
-    /// @return params The fixed pool, position, and dynamic fee configuration.
+    /// @notice Builds the direct-launch parameters for a canonical pool
+    /// @dev Uses native ETH, tick spacing 200, one token-side position, and a dynamic fee that starts at 99% and
+    ///      decays to zero over five blocks.
+    /// @param positionRecipient The permanent recipient of the LP position
+    /// @return params The pool, position, and fee configuration
     function _launchParameters(address positionRecipient) private view returns (DirectLaunchParameters memory params) {
         uint48 swapStartBlock = uint48(_getBlockNumberish());
 
-        // Native ETH is currency0, so token-only liquidity spans from the minimum tick to the initial tick.
+        // Native ETH is currency0, so token liquidity ranges from the minimum tick to the initial tick.
         PositionDefinition[] memory positions = new PositionDefinition[](1);
         positions[0] = PositionDefinition({
             offsetLower: TickMath.minUsableTick(TICK_SPACING) - initialTick,

@@ -6,7 +6,7 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IStrategy} from "./IStrategy.sol";
 
 /// @title IDirectLaunchStrategy
-/// @notice Interface for the DirectLaunchStrategy contract
+/// @notice Interface for direct-to-pool token launches
 interface IDirectLaunchStrategy is IStrategy {
     /// @notice Emitted when a token is launched into a freshly initialized v4 pool
     /// @param poolId The id of the initialized pool

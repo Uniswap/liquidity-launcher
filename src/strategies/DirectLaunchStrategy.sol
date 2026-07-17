@@ -21,11 +21,9 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 
 /// @title DirectLaunchStrategy
-/// @notice Strategy that launches a token directly into a freshly initialized v4 pool as single-sided liquidity
-/// @dev The entire distribution is placed as token-only positions at or above the initial price; buyers swap
-///      the pool currency in to move the price through the tiers. Hooks supporting ILaunchHook additionally
-///      receive a launch configuration (swap gate + windowed fee module) before the pool is initialized.
-///      Supply that cannot be placed (per-tick liquidity cap or rounding) is swept to the configured recipient.
+/// @notice Launches a token directly into a new v4 pool as single-sided liquidity
+/// @dev The caller controls the pool, positions, recipients, hook, and launch configuration. Unplaced tokens are
+/// swept to the configured recipient.
 /// @custom:security-contact security@uniswap.org
 contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient {
     using DirectLaunchParams for DirectLaunchParameters;
@@ -41,18 +39,15 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
         poolManager = _poolManager;
     }
 
-    /// @notice Initialize a direct launch distribution.
-    /// @dev Validates the params, registers the launch configuration on ILaunchHook-conforming hooks, pulls
-    ///      `totalSupply` tokens from the caller, initializes the pool at the configured price, and mints the
-    ///      single-sided position plan. The caller (typically the launcher) must have approved this strategy
-    ///      for at least `totalSupply` of `token` before calling.
+    /// @notice Initializes a pool and mints its token-side positions
+    /// @dev The caller must approve `totalSupply` tokens. Fee-on-transfer and rebasing tokens are not supported.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
         external
         nonReentrant
     {
-        // The pool currency can be native ETH, but the launched token must be ERC20.
+        // Native ETH is supported as the pool currency, but not as the launched token.
         if (token == address(0)) revert ZeroAddressToken();
-        // v4's PoolManager._accountDelta uses int128 for deltas; the entire supply is placed as position amounts.
+        // PoolManager represents currency deltas as int128.
         if (totalSupply == 0 || totalSupply > uint128(type(int128).max)) {
             revert InvalidAmount(totalSupply, uint128(type(int128).max));
         }
@@ -74,7 +69,7 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
         params.poolParameters.hook.validateHook(params.poolParameters.fee, poolId, poolManager);
         _registerLaunchConfig(params.poolParameters.hook, poolId, params.launchConfig, tokenIsCurrency0);
 
-        // Fee-on-transfer tokens are unsupported because the position plan requires the supply to arrive exactly.
+        // Position accounting requires the exact amount requested.
         uint256 balanceBefore = tokenCurrency.balanceOfSelf();
         SafeERC20.safeTransferFrom(IERC20(token), msg.sender, address(this), totalSupply);
         {
@@ -86,13 +81,13 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
 
         bytes memory plan = _mintPositions(key, tokenCurrency, tokenIsCurrency0, uint128(totalSupply), params);
 
-        // Sweep rounding dust returned by the plan's TAKE_PAIR plus any supply the plan could not place.
+        // Return rounding dust and any supply limited by per-tick liquidity caps.
         _sweepToken(tokenCurrency, params.recipient, tokenCurrency.balanceOfSelf() - balanceBefore);
 
         emit TokenLaunched(poolId, token, key, params.initialSqrtPriceX96, plan);
     }
 
-    /// @notice Builds the position plan, funds the PositionManager, and executes the mint
+    /// @notice Builds and executes the PositionManager mint plan
     /// @return plan The encoded PositionManager plan that was executed
     function _mintPositions(
         PoolKey memory key,
@@ -107,10 +102,9 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
         positionManager.modifyLiquidities(plan, block.timestamp);
     }
 
-    /// @notice Builds the single-sided position plan to be executed against the PositionManager
-    /// @dev The token budget covers the entire supply and the currency budget is zero, so every resolved
-    ///      position quotes liquidity purely from the token side (enforced by validateSingleSided).
-    /// @param key the pool key for the launch
+    /// @notice Builds the single-sided PositionManager plan
+    /// @dev The plan has no pool-currency budget. Each position must therefore be entirely token-side.
+    /// @param key The pool key for the launch
     /// @param tokenIsCurrency0 Whether the token is currency0 of the pool
     /// @param tokenAmount The token budget for LP positions
     /// @param params The launch parameters
@@ -139,11 +133,9 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
         plan = abi.encode(encodedPlan.actions, encodedPlan.params);
     }
 
-    /// @notice Registers the launch configuration on hooks that support ILaunchHook
-    /// @dev The config must be registered before the pool is initialized (the hook's beforeInitialize requires
-    ///      it). Hooks without ILaunchHook support must not be given a launch config, so a mismatch reverts
-    ///      instead of being silently ignored. The currency ordering is a launch-level fact this strategy
-    ///      derives itself, so any caller-supplied tokenIsCurrency0 is overwritten rather than trusted.
+    /// @notice Registers configuration on hooks that support ILaunchHook
+    /// @dev The strategy derives and overwrites `tokenIsCurrency0`. A launch config is required for ILaunchHook
+    /// hooks and rejected for all other hooks.
     function _registerLaunchConfig(address hook, PoolId poolId, bytes memory launchConfig, bool tokenIsCurrency0)
         private
     {
@@ -157,13 +149,13 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
         }
     }
 
-    /// @notice Low level function to transfer tokens to a recipient
+    /// @notice Transfers unplaced tokens to a recipient
     function _sweepToken(Currency token, address recipient, uint256 amount) private {
         if (amount == 0) return;
         token.transfer(recipient, amount);
         emit TokensSwept(recipient, amount);
     }
 
-    /// @notice Receive native currency returned by the position plan's TAKE_PAIR
+    /// @notice Receives native currency returned by the PositionManager plan
     receive() external payable {}
 }

@@ -9,7 +9,7 @@ import {PositionPlanner} from "./PositionPlanner.sol";
 import {PoolParameters} from "./MigratorParams.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
 
-/// @notice Launch parameters for a direct-to-pool distribution
+/// @notice Parameters for a direct-to-pool distribution
 struct DirectLaunchParameters {
     address currency; // pool currency paired with the token; native is address(0). Must differ from the token
     uint160 initialSqrtPriceX96; // pool initialization price
@@ -21,11 +21,10 @@ struct DirectLaunchParameters {
 }
 
 /// @title DirectLaunchParams
-/// @notice Validation helpers for DirectLaunchParameters, including the single-sided position plan
+/// @notice Validates direct launch parameters and token-side position definitions
 library DirectLaunchParams {
-    /// @notice Validates the full launch parameters struct. Reverts on any invalidity.
-    /// @dev The position plan must allocate exactly 100% of the supplied token amount and every position
-    ///      must sit entirely on the token side of the initial price (see PositionPlanner.validateSingleSided).
+    /// @notice Validates direct launch parameters
+    /// @dev Position weights must allocate 100% of the token budget, and every range must be token-side.
     /// @param p The launch parameters to validate
     /// @param token The token being launched
     /// @param tokenIsCurrency0 Whether the token orders as currency0 against p.currency
@@ -57,8 +56,7 @@ library DirectLaunchParams {
         }
 
         PositionDefinition[] memory definitions = abi.decode(p.positionDefinitions, (PositionDefinition[]));
-        // With no currency budget the implicit full-range fallback cannot absorb unallocated supply, so the
-        // explicit definitions must place all of it.
+        // There is no pool-currency budget or fallback position to absorb an incomplete allocation.
         uint256 totalWeight = PositionPlanner.validate(definitions);
         if (totalWeight != PositionPlanner.MPS) revert IDirectLaunchStrategy.IncompleteAllocation(totalWeight);
 

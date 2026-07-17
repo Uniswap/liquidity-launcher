@@ -17,8 +17,9 @@ import {IDynamicFeeModule} from "../../interfaces/IDynamicFeeModule.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title LaunchHook
-/// @notice Hook that overrides the LP fee of a launch pool with a module-quoted fee during a launch window
-/// @dev Inherits InitializerHook, which is required for any hook configured on a launch pool.
+/// @notice Gates pool initialization and applies module-quoted LP fees during a launch window
+/// @dev The authorized strategy registers each pool exactly once before initialization. Fee modules are trusted:
+///      a module failure reverts the affected swap during its configured window.
 contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
     using LPFeeLibrary for uint24;
 
@@ -78,7 +79,7 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
         returns (bytes4)
     {
         bytes4 selector = super._beforeInitialize(sender, key, sqrtPriceX96);
-        // Fee overrides are silently ignored on static-fee pools, so the dynamic fee flag is required.
+        // v4 only applies fee overrides to dynamic-fee pools.
         if (!key.fee.isDynamicFee()) revert NotDynamicFee(key.fee);
         PoolId poolId = key.toId();
         if (!isConfigured[poolId]) revert LaunchConfigNotSet(poolId);
@@ -106,7 +107,7 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
         if (currentBlock < config.windowEndBlock) {
             address module = config.module;
             if (module != address(0)) {
-                // Fail-closed: a module revert blocks the swap until windowEndBlock.
+                // Module failures block swaps until the launch window ends.
                 (uint24 zeroForOneFee, uint24 oneForZeroFee) = IDynamicFeeModule(module).getFee(key);
                 fee = params.zeroForOne ? zeroForOneFee : oneForZeroFee;
                 if (fee > LPFeeLibrary.MAX_LP_FEE) fee = LPFeeLibrary.MAX_LP_FEE;

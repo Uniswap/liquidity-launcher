@@ -18,8 +18,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-/// @notice End-to-end tests: launch through the strategy (and launcher), then trade through the launch
-/// window asserting the gate, the decaying fee, direction asymmetry, and the post-window base fee.
+/// @notice End-to-end tests for direct launches and launch-window fees
 contract DirectLaunchStrategyE2ETest is DirectLaunchTestBase {
     using StateLibrary for IPoolManager;
 
@@ -126,23 +125,23 @@ contract DirectLaunchStrategyE2ETest is DirectLaunchTestBase {
         (MockERC20 token, PoolKey memory key) = _launch();
         uint256 tokenBalanceBefore = token.balanceOf(address(this));
 
-        // launch block: full sniping tax
+        // Start fee at launch.
         vm.roll(swapStartBlock);
         assertEq(_buy(key), START_FEE);
 
-        // mid-decay: linearly interpolated fee
+        // Interpolated fee during decay.
         vm.roll(swapStartBlock + 25);
         assertEq(_buy(key), _expectedFee(25));
 
-        // decay complete, window still open: end fee
+        // End fee after decay.
         vm.roll(swapStartBlock + DECAY_BLOCKS);
         assertEq(_buy(key), END_FEE);
 
-        // window over: pool trades at the configured base fee
+        // Base fee after the launch window.
         vm.roll(windowEndBlock);
         assertEq(_buy(key), BASE_FEE);
 
-        // buys actually delivered tokens
+        // The swaps delivered tokens.
         assertGt(token.balanceOf(address(this)), tokenBalanceBefore);
     }
 
@@ -152,7 +151,7 @@ contract DirectLaunchStrategyE2ETest is DirectLaunchTestBase {
         vm.roll(swapStartBlock);
         _buy(key);
 
-        // Still at the launch block: buys quote START_FEE but sells only pay END_FEE
+        // Sells use END_FEE while buys use START_FEE.
         uint256 tokenBalance = token.balanceOf(address(this));
         assertGt(tokenBalance, 0);
         assertEq(_sell(key, token, tokenBalance / 2), END_FEE);
@@ -201,14 +200,14 @@ contract DirectLaunchStrategyE2ETest is DirectLaunchTestBase {
             bytes32(0)
         );
 
-        // pool live, config registered, launcher fully drained
+        // The pool is live and the launcher is empty.
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
         assertEq(sqrtPriceX96, params.initialSqrtPriceX96);
         assertTrue(launchHook.isConfigured(key.toId()));
         assertEq(token.balanceOf(address(launcher)), 0);
         assertEq(token.allowance(address(launcher), address(strategy)), 0);
 
-        // gated until the swap start block, then trading at the base fee
+        // Swaps open at the configured block.
         vm.expectRevert();
         swapRouter.swap{value: 1 ether}(
             key,

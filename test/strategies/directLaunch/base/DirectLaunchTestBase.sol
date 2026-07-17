@@ -22,11 +22,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-/// @notice Base test contract for DirectLaunchStrategy tests.
-/// Uses local v4 PoolManager and PositionManager deployments at canonical addresses, with the LaunchHook
-/// mined to a valid BEFORE_INITIALIZE | BEFORE_SWAP hook address and authorized to the strategy.
+/// @notice Shared local v4 setup for DirectLaunchStrategy tests
 abstract contract DirectLaunchTestBase is Test {
-    // Canonical v4 deployment addresses
+    // Canonical v4 deployment addresses.
     IPoolManager constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
@@ -63,9 +61,7 @@ abstract contract DirectLaunchTestBase is Test {
         dutchModule = new DutchDecayFeeModule();
     }
 
-    /// @notice Two token-side tiers relative to an initial tick of 0. The token orders as currency1 against
-    /// native currency, so token-side ranges sit at or below the initial tick; ERC20 pairs where the token
-    /// orders as currency0 mirror the offsets above the tick.
+    /// @notice Returns two token-side tiers relative to an initial tick of zero
     function _defaultDefinitions(bool tokenIsCurrency0) internal pure returns (PositionDefinition[] memory) {
         PositionDefinition[] memory definitions = new PositionDefinition[](2);
         if (tokenIsCurrency0) {
@@ -118,8 +114,8 @@ abstract contract DirectLaunchTestBase is Test {
         });
     }
 
-    /// @notice A launch config gated to open at `swapStartBlock` with a dutch-decay module window
-    /// @dev tokenIsCurrency0 is deliberately wrong here: the strategy must overwrite it with the derived value
+    /// @notice Returns a gated launch configuration with a Dutch-decay fee window
+    /// @dev `tokenIsCurrency0` is intentionally wrong to verify that the strategy overwrites it.
     function _launchConfig(uint48 swapStartBlock, uint48 windowEndBlock, DutchDecayConfig memory config)
         internal
         view
@@ -137,8 +133,8 @@ abstract contract DirectLaunchTestBase is Test {
         );
     }
 
-    /// @notice A moduleless launch config: gate + base fee only
-    /// @dev tokenIsCurrency0 is deliberately wrong here: the strategy must overwrite it with the derived value
+    /// @notice Returns a moduleless launch configuration with a base fee
+    /// @dev `tokenIsCurrency0` is intentionally wrong to verify that the strategy overwrites it.
     function _gateOnlyLaunchConfig(uint48 swapStartBlock) internal pure returns (bytes memory) {
         return abi.encode(
             LaunchConfig({

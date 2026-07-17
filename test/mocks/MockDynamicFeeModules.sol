@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IDynamicFeeModule} from "../../src/interfaces/IDynamicFeeModule.sol";
 
-/// @notice Module that returns configurable fees for both directions
+/// @notice Returns configurable fees for both swap directions
 contract MockDynamicFeeModule is IDynamicFeeModule {
     uint24 public zeroForOneFee;
     uint24 public oneForZeroFee;
@@ -19,7 +19,7 @@ contract MockDynamicFeeModule is IDynamicFeeModule {
     }
 }
 
-/// @notice Module that always reverts
+/// @notice Reverts when asked for a fee quote
 contract MockRevertingDynamicFeeModule is IDynamicFeeModule {
     error ModuleBroken();
 
@@ -28,7 +28,7 @@ contract MockRevertingDynamicFeeModule is IDynamicFeeModule {
     }
 }
 
-/// @notice Module that returns malformed data shorter than the expected return encoding
+/// @notice Returns malformed fee data
 contract MockGarbageDynamicFeeModule {
     fallback() external {
         assembly {

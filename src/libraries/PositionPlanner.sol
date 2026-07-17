@@ -81,11 +81,8 @@ library PositionPlanner {
         }
     }
 
-    /// @notice Validates that every definition resolves to a range entirely on the token side of the price
-    /// @dev Token-side ranges quote liquidity purely from the token budget. A range that spans the price or
-    ///      sits on the currency side would resolve to zero liquidity against a zero currency budget and be
-    ///      silently skipped by `resolve`, so it is rejected here instead. Boundary ticks exactly at the
-    ///      price are token-side. Resolved bounds that collapse after clamping/snapping are also rejected.
+    /// @notice Validates that every definition resolves entirely to the token side of the price
+    /// @dev Bounds at the price are token-side. Invalid or currency-side ranges revert.
     /// @param _definitions The weighted position definitions to validate
     /// @param _sqrtPriceX96 The pool initialization price
     /// @param _tickSpacing The pool tick spacing

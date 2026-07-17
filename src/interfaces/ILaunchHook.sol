@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IInitializerHook} from "./IInitializerHook.sol";
 
-/// @notice Per-pool launch configuration enforced by a launch hook
-/// @dev Field order packs the swap-path scalars into a single slot: post-window swaps never touch `module`.
+/// @notice Per-pool configuration enforced by a launch hook
+/// @dev Scalar fields are packed into one slot. The module is not read after the launch window.
 struct LaunchConfig {
     uint48 swapStartBlock; // swaps revert before this block
     uint48 windowEndBlock; // the module is consulted while the block number is below this; baseFee applies after
@@ -16,7 +16,7 @@ struct LaunchConfig {
 }
 
 /// @title ILaunchHook
-/// @notice ERC165 interface for hooks that enforce a per-pool launch window with module-driven LP fees
+/// @notice Configures swap start blocks and module-driven LP fees for launch pools
 interface ILaunchHook is IInitializerHook {
     /// @notice Emitted when a launch configuration is registered for a pool
     /// @param poolId The pool the configuration applies to
@@ -57,8 +57,8 @@ interface ILaunchHook is IInitializerHook {
     /// @param currentBlock The current block number
     error SwapsNotStarted(uint256 swapStartBlock, uint256 currentBlock);
 
-    /// @notice Registers the launch configuration for a pool. Only callable by `authorized`, once per pool,
-    ///         before the pool is initialized.
+    /// @notice Registers a pool before initialization
+    /// @dev May only be called once per pool by `authorized`.
     /// @param poolId The pool the configuration applies to
     /// @param config The launch configuration to register
     function setLaunchConfig(PoolId poolId, LaunchConfig calldata config) external;
