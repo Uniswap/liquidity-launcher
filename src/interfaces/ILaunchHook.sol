@@ -49,6 +49,9 @@ interface ILaunchHook is IInitializerHook {
     /// @param fee The invalid pool fee
     error NotDynamicFee(uint24 fee);
 
+    /// @notice Error thrown at pool initialization when the configured fee module cannot quote a fee
+    error InvalidModule(address module);
+
     /// @notice Error thrown when a swap is attempted before the configured swap start block
     /// @param swapStartBlock The block at which swaps open
     /// @param currentBlock The current block number

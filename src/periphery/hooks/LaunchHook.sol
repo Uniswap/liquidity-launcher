@@ -18,10 +18,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title LaunchHook
 /// @notice Hook that overrides the LP fee of a launch pool with a module-quoted fee during a launch window
-/// @dev Inherits InitializerHook, which is required for any hook configured on a launch pool. Pools must use
-///      the dynamic fee flag. During the window the module is consulted via staticcall and a module revert
-///      blocks the swap (fail-closed); after the window swaps pay the configured base fee and the module is
-///      never called again. Configurations are one-shot and immutable once set.
+/// @dev Inherits InitializerHook, which is required for any hook configured on a launch pool.
 contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
     using LPFeeLibrary for uint24;
 
@@ -85,6 +82,12 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
         if (!key.fee.isDynamicFee()) revert NotDynamicFee(key.fee);
         PoolId poolId = key.toId();
         if (!isConfigured[poolId]) revert LaunchConfigNotSet(poolId);
+
+        address module = _launchConfigs[poolId].module;
+        if (module != address(0)) {
+            (bool success, bytes memory returnData) = module.staticcall(abi.encodeCall(IDynamicFeeModule.getFee, (key)));
+            if (!success || returnData.length < 64) revert InvalidModule(module);
+        }
         return selector;
     }
 

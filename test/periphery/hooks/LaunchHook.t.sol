@@ -47,6 +47,15 @@ contract LaunchHookNoValidation is LaunchHook {
 /// │   └── it reverts with NotDynamicFee
 /// ├── when no config is registered for the pool
 /// │   └── it reverts with LaunchConfigNotSet
+/// ├── when a module is configured
+/// │   ├── when the module reverts
+/// │   │   └── it reverts with InvalidModule
+/// │   ├── when the module returns malformed data
+/// │   │   └── it reverts with InvalidModule
+/// │   ├── when the module has no code
+/// │   │   └── it reverts with InvalidModule
+/// │   └── when the module quotes fees
+/// │       └── it returns the beforeInitialize selector
 /// └── when configured with a dynamic fee pool
 ///     └── it returns the beforeInitialize selector
 ///
@@ -219,6 +228,45 @@ contract LaunchHookTest is HookTestBase {
         vm.prank(poolManager);
         vm.expectRevert(abi.encodeWithSelector(ILaunchHook.LaunchConfigNotSet.selector, key.toId()));
         hook.beforeInitialize(strategy, key, 0);
+    }
+
+    function test_beforeInitialize_revertsWhenModuleReverts() public {
+        PoolKey memory key = _dynamicFeePoolKey();
+        address revertingModule = address(new MockRevertingDynamicFeeModule());
+        _setConfig(key, _config(revertingModule, 0, uint48(block.number + 10), 500));
+
+        vm.prank(poolManager);
+        vm.expectRevert(abi.encodeWithSelector(ILaunchHook.InvalidModule.selector, revertingModule));
+        hook.beforeInitialize(strategy, key, 0);
+    }
+
+    function test_beforeInitialize_revertsWhenModuleReturnsGarbage() public {
+        PoolKey memory key = _dynamicFeePoolKey();
+        address garbageModule = address(new MockGarbageDynamicFeeModule());
+        _setConfig(key, _config(garbageModule, 0, uint48(block.number + 10), 500));
+
+        vm.prank(poolManager);
+        vm.expectRevert(abi.encodeWithSelector(ILaunchHook.InvalidModule.selector, garbageModule));
+        hook.beforeInitialize(strategy, key, 0);
+    }
+
+    function test_beforeInitialize_revertsWhenModuleHasNoCode() public {
+        PoolKey memory key = _dynamicFeePoolKey();
+        address eoaModule = makeAddr("eoaModule");
+        _setConfig(key, _config(eoaModule, 0, uint48(block.number + 10), 500));
+
+        vm.prank(poolManager);
+        vm.expectRevert(abi.encodeWithSelector(ILaunchHook.InvalidModule.selector, eoaModule));
+        hook.beforeInitialize(strategy, key, 0);
+    }
+
+    function test_beforeInitialize_succeedsWhenModuleQuotesFees() public {
+        PoolKey memory key = _dynamicFeePoolKey();
+        _setConfig(key, _config(address(module), 0, uint48(block.number + 10), 500));
+
+        vm.prank(poolManager);
+        bytes4 result = hook.beforeInitialize(strategy, key, 0);
+        assertEq(result, IHooks.beforeInitialize.selector);
     }
 
     function test_beforeInitialize_succeedsWhenConfigured() public {
