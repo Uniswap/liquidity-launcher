@@ -3,7 +3,8 @@ pragma solidity ^0.8.26;
 
 import {CanonicalLaunchTestBase} from "../../base/CanonicalLaunchTestBase.sol";
 import {CanonicalLaunchStrategy} from "../../../../../src/strategies/CanonicalLaunchStrategy.sol";
-import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 /// @title ConstructorTest
@@ -22,17 +23,21 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 ///     └── it stores the immutable configuration
 contract ConstructorTest is CanonicalLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
-        zeroIndex = uint8(bound(zeroIndex, 0, 3));
+        zeroIndex = uint8(bound(zeroIndex, 0, 4));
         address configuredLauncher = zeroIndex == 0 ? address(0) : launcher;
-        DirectLaunchStrategy configuredDirectLaunchStrategy = zeroIndex == 1
-            ? DirectLaunchStrategy(payable(address(0)))
-            : DirectLaunchStrategy(payable(address(directLaunchStrategy)));
-        address configuredLaunchHook = zeroIndex == 2 ? address(0) : launchHook;
-        address configuredModule = zeroIndex == 3 ? address(0) : dynamicFeeModule;
+        IPositionManager configuredPositionManager = zeroIndex == 1 ? IPositionManager(address(0)) : positionManager;
+        IPoolManager configuredPoolManager = zeroIndex == 2 ? IPoolManager(address(0)) : poolManager;
+        address configuredLaunchHook = zeroIndex == 3 ? address(0) : launchHook;
+        address configuredModule = zeroIndex == 4 ? address(0) : dynamicFeeModule;
 
         vm.expectRevert(CanonicalLaunchStrategy.ZeroAddress.selector);
         new CanonicalLaunchStrategy(
-            configuredLauncher, configuredDirectLaunchStrategy, configuredLaunchHook, configuredModule, INITIAL_TICK
+            configuredLauncher,
+            configuredPositionManager,
+            configuredPoolManager,
+            configuredLaunchHook,
+            configuredModule,
+            INITIAL_TICK
         );
     }
 
@@ -70,10 +75,10 @@ contract ConstructorTest is CanonicalLaunchTestBase {
 
     function test_WhenConfigurationIsValid_storesImmutableConfiguration() public view {
         assertEq(strategy.launcher(), launcher);
-        assertEq(address(strategy.directLaunchStrategy()), address(directLaunchStrategy));
         assertEq(strategy.launchHook(), launchHook);
         assertEq(strategy.dynamicFeeModule(), dynamicFeeModule);
         assertEq(address(strategy.positionManager()), address(positionManager));
+        assertEq(address(strategy.poolManager()), address(poolManager));
         assertEq(strategy.initialTick(), INITIAL_TICK);
         assertEq(strategy.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
     }

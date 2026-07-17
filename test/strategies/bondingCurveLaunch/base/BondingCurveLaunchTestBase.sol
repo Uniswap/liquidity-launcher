@@ -2,19 +2,24 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {CanonicalLaunchStrategy} from "../../../../src/strategies/CanonicalLaunchStrategy.sol";
+import {BondingCurveLaunchStrategy} from "../../../../src/strategies/BondingCurveLaunchStrategy.sol";
+import {IBondingCurveLaunchHook} from "../../../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {DirectLaunchParameters} from "../../../../src/libraries/DirectLaunchParams.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 
-contract CanonicalLaunchStrategyHarness is CanonicalLaunchStrategy {
+contract MockBondingPositionManager {
+    uint256 public nextTokenId = 1;
+}
+
+contract BondingCurveLaunchStrategyHarness is BondingCurveLaunchStrategy {
     using PoolIdLibrary for PoolKey;
 
     address public lastToken;
@@ -26,11 +31,14 @@ contract CanonicalLaunchStrategyHarness is CanonicalLaunchStrategy {
         address _launcher,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        address _launchHook,
+        IBondingCurveLaunchHook _launchHook,
         address _dynamicFeeModule,
-        int24 _initialTick
+        int24 _initialTick,
+        int24 _graduationTick
     )
-        CanonicalLaunchStrategy(_launcher, _positionManager, _poolManager, _launchHook, _dynamicFeeModule, _initialTick)
+        BondingCurveLaunchStrategy(
+            _launcher, _positionManager, _poolManager, _launchHook, _dynamicFeeModule, _initialTick, _graduationTick
+        )
     {}
 
     function _launch(address token, uint256 totalSupply, DirectLaunchParameters memory params, uint256 balanceBefore)
@@ -57,7 +65,7 @@ contract CanonicalLaunchStrategyHarness is CanonicalLaunchStrategy {
     }
 }
 
-contract MockCanonicalSixDecimalToken is ERC20 {
+contract MockBondingSixDecimalToken is ERC20 {
     constructor(uint256 supply, address recipient) ERC20("Six Decimal Token", "SIX") {
         _mint(recipient, supply);
     }
@@ -67,7 +75,7 @@ contract MockCanonicalSixDecimalToken is ERC20 {
     }
 }
 
-contract MockCanonicalShortTransferToken is ERC20 {
+contract MockBondingShortTransferToken is ERC20 {
     constructor(uint256 supply, address recipient) ERC20("Short Transfer Token", "SHORT") {
         _mint(recipient, supply);
     }
@@ -79,33 +87,40 @@ contract MockCanonicalShortTransferToken is ERC20 {
     }
 }
 
-abstract contract CanonicalLaunchTestBase is Test {
+abstract contract BondingCurveLaunchTestBase is Test {
     uint256 internal constant TOTAL_SUPPLY = 1_000_000_000 ether;
     int24 internal constant INITIAL_TICK = 122_000;
-    address internal constant BURN_ADDRESS = address(0xdead);
+    int24 internal constant GRADUATION_TICK = 94_200;
 
     address internal launcher = address(this);
-    address internal launchHook = makeAddr("launchHook");
+    IBondingCurveLaunchHook internal launchHook = IBondingCurveLaunchHook(makeAddr("launchHook"));
     address internal dynamicFeeModule = makeAddr("dynamicFeeModule");
-    IPositionManager internal positionManager = IPositionManager(makeAddr("positionManager"));
     IPoolManager internal poolManager = IPoolManager(makeAddr("poolManager"));
 
-    CanonicalLaunchStrategyHarness internal strategyHarness;
-    CanonicalLaunchStrategy internal strategy;
+    MockBondingPositionManager internal positionManager;
+    BondingCurveLaunchStrategyHarness internal strategyHarness;
+    BondingCurveLaunchStrategy internal strategy;
 
     function setUp() public virtual {
-        strategy = _deployStrategy(INITIAL_TICK);
-        strategyHarness = CanonicalLaunchStrategyHarness(payable(address(strategy)));
+        positionManager = new MockBondingPositionManager();
+        strategy = _deployStrategy(INITIAL_TICK, GRADUATION_TICK);
+        strategyHarness = BondingCurveLaunchStrategyHarness(payable(address(strategy)));
     }
 
-    function _deployStrategy(int24 initialTick) internal returns (CanonicalLaunchStrategy) {
-        return new CanonicalLaunchStrategyHarness(
-            launcher, positionManager, poolManager, launchHook, dynamicFeeModule, initialTick
+    function _deployStrategy(int24 initialTick, int24 graduationTick) internal returns (BondingCurveLaunchStrategy) {
+        return new BondingCurveLaunchStrategyHarness(
+            launcher,
+            IPositionManager(address(positionManager)),
+            poolManager,
+            launchHook,
+            dynamicFeeModule,
+            initialTick,
+            graduationTick
         );
     }
 
     function _deployToken(uint256 supply) internal returns (MockERC20) {
-        return new MockERC20("Canonical Token", "CAN", supply, address(this));
+        return new MockERC20("Bonding Token", "BOND", supply, address(this));
     }
 
     function _initialize(IERC20 token, uint256 totalSupply, bytes memory configData) internal {

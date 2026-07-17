@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {DirectLaunchTestBase} from "../directLaunch/base/DirectLaunchTestBase.sol";
 import {CanonicalLaunchStrategy} from "../../../src/strategies/CanonicalLaunchStrategy.sol";
+import {LaunchHook} from "../../../src/periphery/hooks/LaunchHook.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
 import {DutchDecayConfig} from "../../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {LaunchConfig} from "../../../src/interfaces/ILaunchHook.sol";
@@ -22,6 +23,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract CanonicalLaunchStrategyE2ETest is DirectLaunchTestBase {
     using StateLibrary for IPoolManager;
@@ -36,9 +39,20 @@ contract CanonicalLaunchStrategyE2ETest is DirectLaunchTestBase {
     function setUp() public override {
         super.setUp();
         launcher = new LiquidityLauncher(IAllowanceTransfer(makeAddr("permit2")));
-        canonicalStrategy = new CanonicalLaunchStrategy(
-            address(launcher), strategy, address(launchHook), address(dutchModule), INITIAL_TICK
+
+        address predictedStrategy = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(this),
+            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG,
+            type(LaunchHook).creationCode,
+            abi.encode(POOL_MANAGER, predictedStrategy)
         );
+        canonicalStrategy = new CanonicalLaunchStrategy(
+            address(launcher), POSITION_MANAGER, POOL_MANAGER, hookAddress, address(dutchModule), INITIAL_TICK
+        );
+        assertEq(address(canonicalStrategy), predictedStrategy);
+        launchHook = new LaunchHook{salt: salt}(POOL_MANAGER, address(canonicalStrategy));
+        assertEq(address(launchHook), hookAddress);
         swapRouter = new PoolSwapTest(POOL_MANAGER);
     }
 

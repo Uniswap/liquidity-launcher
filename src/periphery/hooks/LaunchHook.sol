@@ -42,6 +42,7 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
 
         _launchConfigs[poolId] = config;
         isConfigured[poolId] = true;
+        _afterSetLaunchConfig(poolId, config);
 
         emit LaunchConfigSet(poolId, config);
     }
@@ -75,6 +76,7 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
     function _beforeInitialize(address sender, PoolKey calldata key, uint160 sqrtPriceX96)
         internal
         view
+        virtual
         override
         returns (bytes4)
     {
@@ -96,6 +98,7 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
     function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
         view
+        virtual
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
@@ -116,8 +119,17 @@ contract LaunchHook is InitializerHook, BlockNumberish, ILaunchHook {
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
 
+    /// @notice Called after a pool's launch configuration is stored
+    function _afterSetLaunchConfig(PoolId, LaunchConfig calldata) internal virtual {}
+
     /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public pure override(IERC165, InitializerHook) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        pure
+        virtual
+        override(IERC165, InitializerHook)
+        returns (bool)
+    {
         return interfaceId == type(ILaunchHook).interfaceId || super.supportsInterface(interfaceId);
     }
 }

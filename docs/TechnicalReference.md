@@ -9,6 +9,7 @@
     - [Distribution Strategies](#distribution-strategies)
         - [DirectLaunchStrategy](#directlaunchstrategy)
         - [CanonicalLaunchStrategy](#canonicallaunchstrategy)
+        - [BondingCurveLaunchStrategy](#bondingcurvelaunchstrategy)
         - [FullRangeLBPStrategy](#fullrangelbpstrategy)
         - [AdvancedLBPStrategy](#advancedlbpstrategy)
         - [GovernedLBPStrategy](#governedlbpstrategy)
@@ -61,7 +62,9 @@ The caller configures:
 
 The launched token MUST be a standard ERC20, MUST differ from the paired currency, and MUST transfer exactly `totalSupply`. Fee-on-transfer and rebasing tokens are not supported. Position definitions allocate the full token budget, but the strategy does not guarantee that all tokens become liquidity: rounding and v4 liquidity limits can leave tokens for the configured sweep recipient. LP NFTs are owned and controlled by their configured recipients.
 
-Hooks are trusted launch inputs. The target pool MUST be uninitialized. A nonzero hook MUST implement `IInitializerHook`, authorize `DirectLaunchStrategy`, and have the required v4 permission bits. An `ILaunchHook` also requires a nonempty `LaunchConfig`; other hooks reject launch configuration. `DirectLaunchStrategy` derives the token's currency ordering and overwrites `LaunchConfig.tokenIsCurrency0` before registration.
+Hooks are trusted launch inputs. The target pool MUST be uninitialized. A nonzero hook MUST implement `IInitializerHook`, authorize the calling strategy, and have the required v4 permission bits. An `ILaunchHook` also requires a nonempty `LaunchConfig`; other hooks reject launch configuration. `DirectLaunchStrategy` derives the token's currency ordering and overwrites `LaunchConfig.tokenIsCurrency0` before registration.
+
+`DirectLaunchStrategy` is inheritable. Derived strategies can reuse exact token intake and the full launch sequence, or override launch, position-planning, hook-registration, and sweep steps when their constraints allow a smaller implementation.
 
 `LaunchHook` restricts initialization to the strategy, rejects static-fee pools, blocks swaps before `swapStartBlock`, and applies `baseFee` at or after `windowEndBlock`. During the launch window, it uses the configured `IDynamicFeeModule` quote for the swap direction, or `baseFee` if no module is set. Module calls fail closed: a failed or malformed quote blocks initialization or reverts the affected swap. Preflight does not guarantee future quotes or economic behavior.
 
@@ -69,15 +72,29 @@ Hooks are trusted launch inputs. The target pool MUST be uninitialized. A nonzer
 
 #### CanonicalLaunchStrategy
 
-`CanonicalLaunchStrategy` is a fixed wrapper around `DirectLaunchStrategy`. Only its immutable `launcher` may call `initializeDistribution`, and `configData` MUST be empty. Each launch supplies the token's full 1 billion token supply. The strategy also verifies that the token reports 18 decimals and a total supply of 1 billion tokens.
+`CanonicalLaunchStrategy` specializes `DirectLaunchStrategy` with fixed launch parameters. Only its immutable `launcher` may call `initializeDistribution`, and `configData` MUST be empty. Each launch supplies the token's full 1 billion token supply. The strategy also verifies that the token reports 18 decimals and a total supply of 1 billion tokens.
 
 Every canonical pool uses native ETH, dynamic fees, tick spacing 200, and one token-side position from the minimum usable tick to the immutable `initialTick`. The initial tick is set when the strategy is deployed and MUST be aligned to tick spacing 200. Each launch starts at a 99% LP fee in both directions, decays linearly to zero over five blocks, and uses a zero base fee afterward.
 
-The wrapper deploys a `BuybackAndBurnPositionRecipient` for each token. The LP NFT is permanently held by that contract: its operator is the zero address and its timelock is `type(uint256).max`. Anyone may collect fees by supplying 0.05% of the token supply for burning. Accrued token fees are burned, and the collected ETH is paid to the caller subject to the caller's minimum-output check. Tokens that cannot be placed, including rounding dust or amounts above per-tick liquidity limits, are sent to `address(0xdead)`.
+The strategy deploys a `BuybackAndBurnPositionRecipient` for each token. The LP NFT is permanently held by that contract: its operator is the zero address and its timelock is `type(uint256).max`. Anyone may collect fees by supplying 0.05% of the token supply for burning. Accrued token fees are burned, and the collected ETH is paid to the caller subject to the caller's minimum-output check. Tokens that cannot be placed, including rounding dust or amounts above per-tick liquidity limits, are sent to `address(0xdead)`.
 
-The launcher and token implementation are trust assumptions. The wrapper checks the current supply and decimals, but it does not prove that minting is permanently disabled or that the token cannot later change balances or transfer behavior. The delegated strategy MUST consume the full allowance and return no launch tokens to the wrapper. Canonical launches have no creator fee, auction, graduation, migration, or mutable per-launch configuration.
+The launcher and token implementation are trust assumptions. The strategy checks the current supply and decimals, but it does not prove that minting is permanently disabled or that the token cannot later change balances or transfer behavior. Canonical launches have no creator fee, auction, graduation, migration, or mutable per-launch configuration.
 
 `CanonicalTokenLaunched` records the pool ID, token, and permanent position recipient.
+
+#### BondingCurveLaunchStrategy
+
+`BondingCurveLaunchStrategy` specializes `DirectLaunchStrategy` for a finite, single-position bonding curve. Only its immutable `launcher` may call `initializeDistribution`, `configData` MUST be empty, and each launch MUST supply the token's full 1 billion token supply. The token MUST report 18 decimals and a total supply of 1 billion tokens.
+
+The deployment configures an initial tick and a lower terminal tick. Both MUST align to tick spacing 200. These ticks determine the price multiple and the exact split between tokens sold through the curve and tokens reserved for graduation. The split is derived so the completed curve proceeds and token reserve pair into one full-range position; neither an absolute starting valuation nor an 80/20 split is hardcoded. A roughly 16x price range produces an approximately 80/20 split, subject to tick granularity and the finite minimum and maximum v4 ticks.
+
+Each launch creates one token-side position between the terminal and initial ticks. Buys move toward the terminal tick and sells can move back down the curve. `BondingCurveLaunchHook` prevents buys from crossing the terminal price. Once the pool reaches that exact price, all swaps remain frozen until graduation. The hook uses only `beforeInitialize`, `beforeAddLiquidity`, and `beforeSwap` permissions.
+
+Anyone may call `BondingCurvePositionManager.graduate()` after the terminal price is reached. Graduation atomically burns the finite curve NFT and mints one full-range NFT in the same pool. The final NFT is permanently held by a per-launch `BuybackAndBurnPositionRecipient`. Curve token fees and token rounding excess are burned; native-currency fees and excess are sent to the same buyback-and-burn recipient. There is no creator fee.
+
+Graduation depends on a keeper or other caller. If no one calls `graduate()`, the completed pool remains frozen. The launcher, token implementation, PositionManager, hook, and dynamic fee module are trust assumptions. Fee-on-transfer, rebasing, or otherwise nonstandard tokens are not supported.
+
+`BondingCurveTokenLaunched` records the pool ID, token, per-launch position manager, permanent position recipient, curve supply, and reserve supply. `Graduated` records the burned curve NFT, final NFT, and final liquidity.
 
 The LBP strategies below create a Continuous Clearing Auction and later migrate liquidity to v4. `LBPStrategy.migrate()` is a one-shot action: if migration succeeds, liquidity is deployed to v4; if it reverts, the strategy sweeps the held LP token reserves and raised currency to the initializer's configured `recipient`.
 

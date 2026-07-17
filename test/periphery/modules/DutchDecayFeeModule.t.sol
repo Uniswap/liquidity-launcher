@@ -56,7 +56,8 @@ contract DutchDecayFeeModuleTest is Test {
                 baseFee: 0,
                 tokenIsCurrency0: tokenIsCurrency0,
                 module: address(module),
-                moduleConfig: abi.encode(config)
+                moduleConfig: abi.encode(config),
+                hookConfig: bytes("")
             })
         );
     }

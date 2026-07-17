@@ -13,6 +13,7 @@ struct LaunchConfig {
     bool tokenIsCurrency0; // whether the launched token is currency0 of the pool; stamped by the registering strategy
     address module; // IDynamicFeeModule consulted for fee overrides during the launch window; address(0) applies baseFee
     bytes moduleConfig; // opaque module parameters, readable by the module via launchConfig()
+    bytes hookConfig; // opaque configuration interpreted by specialized launch hooks
 }
 
 /// @title ILaunchHook

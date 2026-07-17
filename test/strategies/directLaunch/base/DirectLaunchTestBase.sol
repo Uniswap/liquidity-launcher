@@ -128,7 +128,8 @@ abstract contract DirectLaunchTestBase is Test {
                 baseFee: BASE_FEE,
                 tokenIsCurrency0: true,
                 module: address(dutchModule),
-                moduleConfig: abi.encode(config)
+                moduleConfig: abi.encode(config),
+                hookConfig: bytes("")
             })
         );
     }
@@ -143,7 +144,8 @@ abstract contract DirectLaunchTestBase is Test {
                 baseFee: BASE_FEE,
                 tokenIsCurrency0: true,
                 module: address(0),
-                moduleConfig: bytes("")
+                moduleConfig: bytes(""),
+                hookConfig: bytes("")
             })
         );
     }

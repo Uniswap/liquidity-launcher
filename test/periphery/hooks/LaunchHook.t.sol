@@ -15,7 +15,11 @@ import {LaunchHook} from "../../../src/periphery/hooks/LaunchHook.sol";
 import {InitializerHook} from "../../../src/periphery/hooks/InitializerHook.sol";
 import {IInitializerHook} from "../../../src/interfaces/IInitializerHook.sol";
 import {ILaunchHook, LaunchConfig} from "../../../src/interfaces/ILaunchHook.sol";
-import {MockDynamicFeeModule, MockRevertingDynamicFeeModule, MockGarbageDynamicFeeModule} from "test/mocks/MockDynamicFeeModules.sol";
+import {
+    MockDynamicFeeModule,
+    MockRevertingDynamicFeeModule,
+    MockGarbageDynamicFeeModule
+} from "test/mocks/MockDynamicFeeModules.sol";
 
 contract LaunchHookNoValidation is LaunchHook {
     constructor(IPoolManager _pm, address _strategy) LaunchHook(_pm, _strategy) {}
@@ -109,7 +113,8 @@ contract LaunchHookTest is HookTestBase {
             baseFee: _baseFee,
             tokenIsCurrency0: false,
             module: _module,
-            moduleConfig: bytes("")
+            moduleConfig: bytes(""),
+            hookConfig: bytes("")
         });
     }
 
@@ -168,7 +173,8 @@ contract LaunchHookTest is HookTestBase {
         uint48 windowEndBlock,
         uint24 baseFee,
         bool tokenIsCurrency0,
-        bytes memory moduleConfig
+        bytes memory moduleConfig,
+        bytes memory hookConfig
     ) public {
         swapStartBlock = uint48(bound(swapStartBlock, 0, type(uint48).max - 1));
         windowEndBlock = uint48(bound(windowEndBlock, swapStartBlock, type(uint48).max));
@@ -182,7 +188,8 @@ contract LaunchHookTest is HookTestBase {
             baseFee: baseFee,
             tokenIsCurrency0: tokenIsCurrency0,
             module: _module,
-            moduleConfig: moduleConfig
+            moduleConfig: moduleConfig,
+            hookConfig: hookConfig
         });
 
         assertFalse(hook.isConfigured(poolId));
@@ -200,6 +207,7 @@ contract LaunchHookTest is HookTestBase {
         assertEq(stored.baseFee, baseFee);
         assertEq(stored.tokenIsCurrency0, tokenIsCurrency0);
         assertEq(stored.moduleConfig, moduleConfig);
+        assertEq(stored.hookConfig, hookConfig);
     }
 
     function test_fuzz_beforeInitialize_revertsIfNotStrategy(address notStrategy) public {
