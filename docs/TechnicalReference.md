@@ -8,7 +8,6 @@
         - [USUPERC20Factory](#usuperc20factory)
     - [Distribution Strategies](#distribution-strategies)
         - [DirectLaunchStrategy](#directlaunchstrategy)
-        - [CanonicalLaunchStrategy](#canonicallaunchstrategy)
         - [BondingCurveLaunchStrategy](#bondingcurvelaunchstrategy)
         - [FullRangeLBPStrategy](#fullrangelbpstrategy)
         - [AdvancedLBPStrategy](#advancedlbpstrategy)
@@ -69,18 +68,6 @@ Hooks are trusted launch inputs. Every direct launch MUST configure an `IInitial
 `LaunchHook` restricts initialization to the strategy, rejects static-fee pools, blocks swaps before `swapStartBlock`, and applies `baseFee` at or after `windowEndBlock`. During the launch window, it uses the configured `IDynamicFeeModule` quote for the swap direction, or `baseFee` if no module is set. Module calls fail closed: a failed or malformed quote blocks initialization or reverts the affected swap. Preflight does not guarantee future quotes or economic behavior.
 
 `TokenLaunched` records the pool key, initial price, and executed PositionManager plan. `TokensSwept` records tokens sent to the sweep recipient.
-
-#### CanonicalLaunchStrategy
-
-`CanonicalLaunchStrategy` specializes `DirectLaunchStrategy` with fixed launch parameters. Only its immutable `launcher` may call `initializeDistribution`, and `configData` MUST be empty. Each launch supplies the token's full 1 billion token supply. The strategy also verifies that the token reports 18 decimals and a total supply of 1 billion tokens.
-
-Every canonical pool uses native ETH, dynamic fees, tick spacing 200, and one token-side position from the minimum usable tick to the immutable `initialTick`. The initial tick is set when the strategy is deployed and MUST be aligned to tick spacing 200. Each launch starts at a 99% LP fee in both directions, decays linearly to zero over five blocks, and uses a zero base fee afterward.
-
-The strategy deploys a `BuybackAndBurnPositionRecipient` for each token. The LP NFT is permanently held by that contract: its operator is the zero address and its timelock is `type(uint256).max`. Anyone may collect fees by supplying 0.05% of the token supply for burning. Accrued token fees are burned, and the collected ETH is paid to the caller subject to the caller's minimum-output check. Tokens that cannot be placed, including rounding dust or amounts above per-tick liquidity limits, are sent to `address(0xdead)`.
-
-The launcher and token implementation are trust assumptions. The strategy checks the current supply and decimals, but it does not prove that minting is permanently disabled or that the token cannot later change balances or transfer behavior. Canonical launches have no creator fee, auction, graduation, migration, or mutable per-launch configuration.
-
-`CanonicalTokenLaunched` records the pool ID, token, and permanent position recipient.
 
 #### BondingCurveLaunchStrategy
 
