@@ -8,7 +8,6 @@ import {
 } from "../../base/BondingCurveLaunchTestBase.sol";
 import {BondingCurveLaunchStrategy} from "../../../../../src/strategies/BondingCurveLaunchStrategy.sol";
 import {IDirectLaunchStrategy} from "../../../../../src/interfaces/IDirectLaunchStrategy.sol";
-import {BondingCurvePositionManager} from "../../../../../src/periphery/BondingCurvePositionManager.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
 import {DirectLaunchParameters} from "../../../../../src/libraries/DirectLaunchParams.sol";
 import {BondingCurveHookConfig} from "../../../../../src/interfaces/IBondingCurveLaunchHook.sol";
@@ -37,7 +36,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 /// │   └── it reverts with TokenAmountMismatch
 /// └── when the launch is valid
 ///     ├── it preserves preexisting balances
-///     ├── it reserves the derived supply in a per-launch manager
+///     ├── it reserves the derived supply in the launch hook
 ///     ├── it builds one finite curve position
 ///     └── it configures permanent full-range graduation
 contract InitializeDistributionTest is BondingCurveLaunchTestBase {
@@ -98,7 +97,6 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 launchBlock = block.number;
         address finalPositionRecipient = vm.computeCreateAddress(address(strategy), 1);
-        address curvePositionManager = vm.computeCreateAddress(address(strategy), 2);
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(address(token)),
@@ -110,25 +108,12 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         token.approve(address(strategy), TOTAL_SUPPLY);
         vm.expectEmit(true, true, true, true, address(strategy));
         emit BondingCurveLaunchStrategy.BondingCurveTokenLaunched(
-            key.toId(),
-            address(token),
-            curvePositionManager,
-            finalPositionRecipient,
-            strategy.curveSupply(),
-            strategy.reserveSupply()
+            key.toId(), address(token), finalPositionRecipient, strategy.curveSupply(), strategy.reserveSupply()
         );
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(uint256(1)));
 
-        assertEq(token.balanceOf(curvePositionManager), strategy.reserveSupply());
+        assertEq(token.balanceOf(address(launchHook)), strategy.reserveSupply());
         assertEq(token.balanceOf(address(strategy)), 0);
-
-        BondingCurvePositionManager manager = BondingCurvePositionManager(payable(curvePositionManager));
-        assertEq(address(manager.token()), address(token));
-        assertEq(address(manager.positionManager()), address(positionManager));
-        assertEq(address(manager.launchHook()), address(launchHook));
-        assertEq(manager.curveTokenId(), positionManager.nextTokenId());
-        assertEq(manager.reserveTokenAmount(), strategy.reserveSupply());
-        assertEq(manager.finalPositionRecipient(), finalPositionRecipient);
 
         BuybackAndBurnPositionRecipient recipient = BuybackAndBurnPositionRecipient(payable(finalPositionRecipient));
         assertEq(recipient.token(), address(token));
@@ -143,8 +128,8 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         DirectLaunchParameters memory params = abi.decode(strategyHarness.lastConfigData(), (DirectLaunchParameters));
         assertEq(params.currency, address(0));
         assertEq(params.initialSqrtPriceX96, strategy.initialSqrtPriceX96());
-        assertEq(params.recipient, curvePositionManager);
-        assertEq(params.positionRecipient, curvePositionManager);
+        assertEq(params.recipient, address(0xdead));
+        assertEq(params.positionRecipient, address(launchHook));
         assertEq(params.poolParameters.fee, LPFeeLibrary.DYNAMIC_FEE_FLAG);
         assertEq(params.poolParameters.tickSpacing, strategy.TICK_SPACING());
         assertEq(params.poolParameters.hook, address(launchHook));
@@ -170,7 +155,8 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         assertTrue(decay.taxBothDirections);
 
         BondingCurveHookConfig memory hookConfig = abi.decode(config.hookConfig, (BondingCurveHookConfig));
-        assertEq(hookConfig.manager, curvePositionManager);
+        assertEq(hookConfig.reserveTokenAmount, strategy.reserveSupply());
+        assertEq(hookConfig.finalPositionRecipient, finalPositionRecipient);
         assertEq(hookConfig.graduationSqrtPriceX96, strategy.graduationSqrtPriceX96());
         assertEq(hookConfig.curveTickLower, GRADUATION_TICK);
         assertEq(hookConfig.curveTickUpper, INITIAL_TICK);

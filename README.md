@@ -18,6 +18,14 @@ Liquidity Launcher provides a streamlined approach for projects to:
 
 The primary strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
+The repository also includes direct-launch strategies:
+
+- `DirectLaunchStrategy` creates a v4 pool and one or more token-side positions from caller-supplied configuration.
+- `CanonicalLaunchStrategy` creates a fixed-shape, immediately tradable pool with permanent buyback-and-burn LP custody.
+- `BondingCurveLaunchStrategy` sells through one finite v4 position, then atomically replaces it with permanent full-range liquidity when the curve is exhausted. Its hook owns the curve NFT and graduation reserve.
+
+See the [Technical Reference](./docs/TechnicalReference.md#directlaunchstrategy) for configuration, lifecycle, and trust assumptions.
+
 ## Installation
 This project uses Foundry for development and testing. To get started:
 

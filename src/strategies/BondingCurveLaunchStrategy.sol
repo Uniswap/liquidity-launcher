@@ -27,7 +27,6 @@ import {MigratorParams, PoolParameters} from "../libraries/MigratorParams.sol";
 import {BondingCurveMath} from "../libraries/BondingCurveMath.sol";
 import {DutchDecayConfig} from "../periphery/modules/DutchDecayFeeModule.sol";
 import {BuybackAndBurnPositionRecipient} from "../periphery/BuybackAndBurnPositionRecipient.sol";
-import {BondingCurvePositionManager} from "../periphery/BondingCurvePositionManager.sol";
 import {PositionDefinition} from "../types/PositionPlannerTypes.sol";
 import {DirectLaunchStrategy} from "./DirectLaunchStrategy.sol";
 
@@ -61,31 +60,29 @@ contract BondingCurveLaunchStrategy is DirectLaunchStrategy, BlockNumberish {
     /// @notice Thrown when an address required by the strategy is zero.
     error ZeroAddress();
 
-    /// @notice Emitted after the curve pool and its graduation contracts are created.
+    /// @notice Emitted after the curve pool and permanent LP recipient are created.
     /// @param poolId The identifier of the initialized pool.
     /// @param token The launched token.
-    /// @param positionManager The per-launch manager that graduates the curve.
     /// @param finalPositionRecipient The permanent recipient of the graduated LP position.
     /// @param curveSupply The token amount placed in the finite curve position.
     /// @param reserveSupply The token amount reserved for full-range graduation.
     event BondingCurveTokenLaunched(
         PoolId indexed poolId,
         address indexed token,
-        address indexed positionManager,
-        address finalPositionRecipient,
+        address indexed finalPositionRecipient,
         uint256 curveSupply,
         uint256 reserveSupply
     );
 
     /// @notice Launcher authorized to initialize distributions.
     address public immutable launcher;
-    /// @notice Hook that freezes completed curves and controls graduation liquidity.
+    /// @notice Hook that atomically graduates completed curves.
     IBondingCurveLaunchHook public immutable launchHook;
     /// @notice Dynamic fee module used during the launch window.
     address public immutable dynamicFeeModule;
     /// @notice Aligned tick at which the curve begins.
     int24 public immutable initialTick;
-    /// @notice Aligned tick at which the curve is frozen for graduation.
+    /// @notice Aligned tick at which the curve graduates.
     int24 public immutable graduationTick;
     /// @notice Initial pool square-root price.
     uint160 public immutable initialSqrtPriceX96;
@@ -145,37 +142,23 @@ contract BondingCurveLaunchStrategy is DirectLaunchStrategy, BlockNumberish {
         IERC20 launchToken = IERC20(token);
         uint256 balanceBefore = _pullTokenExact(token, msg.sender, TOTAL_SUPPLY);
 
-        PoolKey memory key = _poolKey(token);
-        uint256 curveTokenId = positionManager.nextTokenId();
         // The graduated LP NFT is permanently held by a token-specific fee recipient.
         BuybackAndBurnPositionRecipient finalPositionRecipient = new BuybackAndBurnPositionRecipient(
             token, address(0), address(0), positionManager, type(uint256).max, TOTAL_SUPPLY / 2_000
         );
-        BondingCurvePositionManager curvePositionManager = new BondingCurvePositionManager(
-            launchToken,
-            positionManager,
-            launchHook,
-            key,
-            curveTokenId,
-            reserveSupply,
-            address(finalPositionRecipient),
-            initialSqrtPriceX96,
-            graduationSqrtPriceX96
-        );
 
-        // Reserve one side of the final LP and initialize the finite curve.
-        launchToken.safeTransfer(address(curvePositionManager), reserveSupply);
-        (PoolId poolId,,) = _launch(token, curveSupply, _launchParameters(address(curvePositionManager)), balanceBefore);
+        // The hook holds the curve NFT and the token side of final liquidity until graduation.
+        launchToken.safeTransfer(address(launchHook), reserveSupply);
+        (PoolId poolId,,) =
+            _launch(token, curveSupply, _launchParameters(address(finalPositionRecipient)), balanceBefore);
 
-        emit BondingCurveTokenLaunched(
-            poolId, token, address(curvePositionManager), address(finalPositionRecipient), curveSupply, reserveSupply
-        );
+        emit BondingCurveTokenLaunched(poolId, token, address(finalPositionRecipient), curveSupply, reserveSupply);
     }
 
     /// @notice Builds the direct-launch parameters for the finite curve position.
-    /// @param curvePositionManager The recipient and custodian of the curve LP NFT.
+    /// @param finalPositionRecipient The permanent recipient of the graduated LP position.
     /// @return params The pool, curve position, fee, and hook configuration.
-    function _launchParameters(address curvePositionManager)
+    function _launchParameters(address finalPositionRecipient)
         internal
         view
         virtual
@@ -194,8 +177,8 @@ contract BondingCurveLaunchStrategy is DirectLaunchStrategy, BlockNumberish {
         params = DirectLaunchParameters({
             currency: address(0),
             initialSqrtPriceX96: initialSqrtPriceX96,
-            recipient: curvePositionManager,
-            positionRecipient: curvePositionManager,
+            recipient: address(0xdead),
+            positionRecipient: address(launchHook),
             poolParameters: PoolParameters({
                 fee: LPFeeLibrary.DYNAMIC_FEE_FLAG, tickSpacing: TICK_SPACING, hook: address(launchHook)
             }),
@@ -214,7 +197,8 @@ contract BondingCurveLaunchStrategy is DirectLaunchStrategy, BlockNumberish {
                     ),
                     hookConfig: abi.encode(
                         BondingCurveHookConfig({
-                            manager: curvePositionManager,
+                            reserveTokenAmount: reserveSupply,
+                            finalPositionRecipient: finalPositionRecipient,
                             graduationSqrtPriceX96: graduationSqrtPriceX96,
                             curveTickLower: graduationTick,
                             curveTickUpper: initialTick
