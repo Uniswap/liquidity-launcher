@@ -41,6 +41,9 @@ interface IDirectLaunchStrategy is IStrategy {
     /// @notice Error thrown when dynamic LP fees are configured without a hook
     error InvalidDynamicFeeHook();
 
+    /// @notice Error thrown when no initializer hook is configured for a direct launch.
+    error MissingInitializerHook();
+
     /// @notice Error thrown when the recipient of unplaced tokens is the zero address
     error InvalidRecipient();
 

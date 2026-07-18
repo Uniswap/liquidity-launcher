@@ -6,6 +6,7 @@ import {DirectLaunchStrategy} from "../../../../src/strategies/DirectLaunchStrat
 import {DirectLaunchParameters} from "../../../../src/libraries/DirectLaunchParams.sol";
 import {PoolParameters} from "../../../../src/libraries/MigratorParams.sol";
 import {LaunchHook} from "../../../../src/periphery/hooks/LaunchHook.sol";
+import {InitializerHook} from "../../../../src/periphery/hooks/InitializerHook.sol";
 import {LaunchConfig} from "../../../../src/interfaces/ILaunchHook.sol";
 import {DutchDecayFeeModule, DutchDecayConfig} from "../../../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {PositionDefinition} from "../../../../src/types/PositionPlannerTypes.sol";
@@ -33,6 +34,7 @@ abstract contract DirectLaunchTestBase is Test {
     uint128 constant DEFAULT_SUPPLY = 1_000_000 ether;
 
     DirectLaunchStrategy strategy;
+    InitializerHook initializerHook;
     LaunchHook launchHook;
     DutchDecayFeeModule dutchModule;
 
@@ -48,6 +50,15 @@ abstract contract DirectLaunchTestBase is Test {
         );
 
         strategy = new DirectLaunchStrategy(POSITION_MANAGER, POOL_MANAGER);
+
+        (address initializerHookAddress, bytes32 initializerHookSalt) = HookMiner.find(
+            address(this),
+            Hooks.BEFORE_INITIALIZE_FLAG,
+            type(InitializerHook).creationCode,
+            abi.encode(POOL_MANAGER, address(strategy))
+        );
+        initializerHook = new InitializerHook{salt: initializerHookSalt}(POOL_MANAGER, address(strategy));
+        assertEq(address(initializerHook), initializerHookAddress);
 
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(this),

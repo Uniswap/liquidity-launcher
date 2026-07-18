@@ -6,11 +6,13 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -19,12 +21,72 @@ import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {BondingCurveLaunchStrategy} from "../../../src/strategies/BondingCurveLaunchStrategy.sol";
 import {BondingCurveLaunchHook} from "../../../src/periphery/hooks/BondingCurveLaunchHook.sol";
 import {DutchDecayFeeModule} from "../../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
 import {BondingCurvePhase, IBondingCurveLaunchHook} from "../../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
+
+contract SharedDeltaAttacker is IUnlockCallback {
+    using TransientStateLibrary for IPoolManager;
+
+    IPoolManager internal immutable manager;
+    IPositionManager internal immutable positionManager;
+    address internal attacker;
+    uint256 internal terminalBudget;
+
+    constructor(IPoolManager _manager, IPositionManager _positionManager) {
+        manager = _manager;
+        positionManager = _positionManager;
+    }
+
+    function attack(PoolKey calldata curveKey, PoolKey calldata sideKey, uint256 nativeDebt) external payable {
+        attacker = msg.sender;
+        terminalBudget = msg.value;
+        manager.unlock(abi.encode(curveKey, sideKey, nativeDebt));
+    }
+
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(manager)) revert();
+        (PoolKey memory curveKey, PoolKey memory sideKey, uint256 nativeDebt) =
+            abi.decode(data, (PoolKey, PoolKey, uint256));
+
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmount0(
+            TickMath.getSqrtPriceAtTick(60), TickMath.getSqrtPriceAtTick(120), nativeDebt
+        );
+        bytes[] memory mintParams = new bytes[](1);
+        mintParams[0] = abi.encode(
+            sideKey, int24(60), int24(120), liquidity, uint128(nativeDebt), uint128(0), address(this), bytes("")
+        );
+        positionManager.modifyLiquiditiesWithoutUnlock(abi.encodePacked(uint8(Actions.MINT_POSITION)), mintParams);
+
+        if (manager.currencyDelta(address(positionManager), sideKey.currency0) >= 0) revert();
+        manager.swap(
+            curveKey,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(terminalBudget),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            bytes("")
+        );
+        if (manager.currencyDelta(address(positionManager), curveKey.currency0) != 0) revert();
+
+        int256 nativeDelta = manager.currencyDelta(address(this), curveKey.currency0);
+        if (nativeDelta >= 0) revert();
+        manager.settle{value: uint256(-nativeDelta)}();
+
+        int256 tokenDelta = manager.currencyDelta(address(this), curveKey.currency1);
+        if (tokenDelta <= 0) revert();
+        manager.take(curveKey.currency1, attacker, uint256(tokenDelta));
+        return bytes("");
+    }
+
+    receive() external payable {}
+}
 
 /// @notice BTT integration coverage for the complete bonding-curve lifecycle
 ///
@@ -120,6 +182,28 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         );
     }
 
+    function test_swapExactOutput_succeedsAtInitialCurveBoundary() public {
+        (MockERC20 token, PoolKey memory key,) = _launch();
+        vm.roll(block.number + strategy.DECAY_BLOCKS());
+        uint256 requestedOutput = 1 ether;
+        uint256 balanceBefore = token.balanceOf(address(this));
+
+        BalanceDelta delta = swapRouter.swap{value: 1 ether}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: int256(requestedOutput),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+
+        assertLt(delta.amount0(), 0);
+        assertEq(delta.amount1(), int128(uint128(requestedOutput)));
+        assertEq(token.balanceOf(address(this)) - balanceBefore, requestedOutput);
+    }
+
     function test_swapExactInput_partiallyFillsAndGraduatesAtomically() public {
         (MockERC20 token, PoolKey memory key, uint256 curveTokenId) = _launch();
         vm.roll(block.number + strategy.DECAY_BLOCKS());
@@ -137,6 +221,32 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
+    }
+
+    function test_graduationRevertsWithUnsettledPositionManagerDelta() public {
+        (MockERC20 token, PoolKey memory curveKey,) = _launch();
+        swapRouter.swap{value: 1 ether}(
+            curveKey,
+            SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+
+        PoolKey memory sideKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(token)),
+            fee: 3_000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        POOL_MANAGER.initialize(sideKey, TickMath.getSqrtPriceAtTick(0));
+        vm.roll(block.number + strategy.DECAY_BLOCKS());
+
+        SharedDeltaAttacker attacker = new SharedDeltaAttacker(POOL_MANAGER, POSITION_MANAGER);
+        vm.expectRevert();
+        attacker.attack{value: 20_000 ether}(curveKey, sideKey, 0.5 ether);
+
+        assertEq(uint256(launchHook.bondingCurvePhase(curveKey.toId())), uint256(BondingCurvePhase.Active));
     }
 
     function _swapThroughGraduation(PoolKey memory key) private {

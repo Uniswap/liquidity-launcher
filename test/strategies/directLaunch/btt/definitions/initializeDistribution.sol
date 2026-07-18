@@ -48,8 +48,8 @@ contract MockInitializerHook {
 /// │   └── it reverts with InvalidTickSpacing
 /// ├── when fee > MAX_LP_FEE and not the dynamic fee flag
 /// │   └── it reverts with InvalidFee
-/// ├── when fee is the dynamic fee flag without a hook
-/// │   └── it reverts with InvalidDynamicFeeHook
+/// ├── when the hook is zero
+/// │   └── it reverts with MissingInitializerHook
 /// ├── when recipient is the zero address
 /// │   └── it reverts with InvalidRecipient
 /// ├── when positionRecipient is reserved or zero
@@ -106,9 +106,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 token = _deployToken(DEFAULT_SUPPLY);
         DirectLaunchParameters memory params = _params(address(token), address(0), BASE_FEE, hex"", false);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IDirectLaunchStrategy.InvalidTokenCurrencyPair.selector, address(token))
-        );
+        vm.expectRevert(abi.encodeWithSelector(IDirectLaunchStrategy.InvalidTokenCurrencyPair.selector, address(token)));
         strategy.initializeDistribution(address(token), DEFAULT_SUPPLY, abi.encode(params), bytes32(0));
     }
 
@@ -135,18 +133,15 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 token = _deployToken(DEFAULT_SUPPLY);
         DirectLaunchParameters memory params = _params(address(0), address(0), fee, hex"", false);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IDirectLaunchStrategy.InvalidFee.selector, fee, LPFeeLibrary.MAX_LP_FEE)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IDirectLaunchStrategy.InvalidFee.selector, fee, LPFeeLibrary.MAX_LP_FEE));
         strategy.initializeDistribution(address(token), DEFAULT_SUPPLY, abi.encode(params), bytes32(0));
     }
 
-    function test_WhenFeeIsDynamicFeeFlagWithoutHook() public {
+    function test_WhenHookIsZeroAddress() public {
         MockERC20 token = _deployToken(DEFAULT_SUPPLY);
-        DirectLaunchParameters memory params =
-            _params(address(0), address(0), LPFeeLibrary.DYNAMIC_FEE_FLAG, hex"", false);
+        DirectLaunchParameters memory params = _params(address(0), address(0), BASE_FEE, hex"", false);
 
-        vm.expectRevert(IDirectLaunchStrategy.InvalidDynamicFeeHook.selector);
+        vm.expectRevert(IDirectLaunchStrategy.MissingInitializerHook.selector);
         strategy.initializeDistribution(address(token), DEFAULT_SUPPLY, abi.encode(params), bytes32(0));
     }
 
@@ -221,12 +216,13 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
 
     function test_WhenPoolIsAlreadyInitialized() public {
         MockERC20 token = _deployToken(DEFAULT_SUPPLY);
-        DirectLaunchParameters memory params = _params(address(0), address(0), BASE_FEE, hex"", false);
+        DirectLaunchParameters memory params = _params(address(0), address(initializerHook), BASE_FEE, hex"", false);
 
+        vm.prank(address(strategy));
         POOL_MANAGER.initialize(_poolKey(address(token), params), TickMath.getSqrtPriceAtTick(0));
 
         token.approve(address(strategy), DEFAULT_SUPPLY);
-        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(MigratorParams.InvalidHook.selector, address(initializerHook)));
         strategy.initializeDistribution(address(token), DEFAULT_SUPPLY, abi.encode(params), bytes32(0));
     }
 
@@ -239,12 +235,12 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         strategy.initializeDistribution(address(token), DEFAULT_SUPPLY, abi.encode(params), bytes32(0));
     }
 
-    function test_WhenHooklessWithLaunchConfig() public {
+    function test_WhenHookIsZeroAddressWithLaunchConfig() public {
         MockERC20 token = _deployToken(DEFAULT_SUPPLY);
         DirectLaunchParameters memory params =
             _params(address(0), address(0), BASE_FEE, _gateOnlyLaunchConfig(0), false);
 
-        vm.expectRevert(IDirectLaunchStrategy.UnexpectedLaunchConfig.selector);
+        vm.expectRevert(IDirectLaunchStrategy.MissingInitializerHook.selector);
         strategy.initializeDistribution(address(token), DEFAULT_SUPPLY, abi.encode(params), bytes32(0));
     }
 
@@ -274,7 +270,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         PositionDefinition[] memory definitions = _defaultDefinitions(false);
         definitions[1].overridePositionRecipient = override1;
         DirectLaunchParameters memory params =
-            _paramsWithDefinitions(address(0), address(0), BASE_FEE, hex"", definitions);
+            _paramsWithDefinitions(address(0), address(initializerHook), BASE_FEE, hex"", definitions);
         PoolKey memory key = _poolKey(address(token), params);
 
         uint256 nextTokenId = _positionManager().nextTokenId();
@@ -312,7 +308,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         definitions[0].weight = weight;
         definitions[1].weight = PositionPlanner.MPS - weight;
         DirectLaunchParameters memory params =
-            _paramsWithDefinitions(address(0), address(0), BASE_FEE, hex"", definitions);
+            _paramsWithDefinitions(address(0), address(initializerHook), BASE_FEE, hex"", definitions);
 
         _launch(token, totalSupply, params);
 
@@ -328,7 +324,8 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 b = _deployToken(DEFAULT_SUPPLY);
         (MockERC20 token, MockERC20 currency) = address(a) < address(b) ? (a, b) : (b, a);
 
-        DirectLaunchParameters memory params = _params(address(currency), address(0), BASE_FEE, hex"", true);
+        DirectLaunchParameters memory params =
+            _params(address(currency), address(initializerHook), BASE_FEE, hex"", true);
 
         uint256 nextTokenId = _positionManager().nextTokenId();
         _launch(token, DEFAULT_SUPPLY, params);

@@ -20,7 +20,7 @@ The primary strategy is a Liquidity Bootstrapping Pool (LBP) that combines a pri
 
 The repository also includes direct-launch strategies:
 
-- `DirectLaunchStrategy` creates a v4 pool and one or more token-side positions from caller-supplied configuration.
+- `DirectLaunchStrategy` creates a v4 pool and one or more token-side positions from caller-supplied configuration. Each launch uses an initializer hook that reserves the pool key for the strategy.
 - `CanonicalLaunchStrategy` creates a fixed-shape, immediately tradable pool with permanent buyback-and-burn LP custody.
 - `BondingCurveLaunchStrategy` sells through one finite v4 position, then atomically replaces it with permanent full-range liquidity when the curve is exhausted. Its hook owns the curve NFT and graduation reserve.
 

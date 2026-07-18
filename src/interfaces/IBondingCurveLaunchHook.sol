@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ILaunchHook} from "./ILaunchHook.sol";
 
@@ -64,6 +65,8 @@ interface IBondingCurveLaunchHook is ILaunchHook {
     error InvalidGraduationPrice(uint160 sqrtPriceX96, uint160 expected);
     /// @notice Thrown when the final position does not complete the graduation callback.
     error GraduationIncomplete();
+    /// @notice Thrown when the PositionManager has an unsettled pool-currency delta during graduation.
+    error UnexpectedPositionManagerDelta(Currency currency, int256 delta);
 
     /// @notice Returns the specialized curve configuration for a pool.
     function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory);

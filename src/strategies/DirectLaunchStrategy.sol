@@ -98,6 +98,8 @@ contract DirectLaunchStrategy is IDirectLaunchStrategy, ReentrancyGuardTransient
         Currency tokenCurrency = Currency.wrap(token);
         tokenIsCurrency0 = tokenCurrency < Currency.wrap(params.currency);
         params.validate(token, tokenIsCurrency0);
+        // A hook-owned beforeInitialize gate prevents third parties from consuming the pool key.
+        if (params.poolParameters.hook == address(0)) revert MissingInitializerHook();
 
         key = PoolKey({
             currency0: tokenIsCurrency0 ? tokenCurrency : Currency.wrap(params.currency),

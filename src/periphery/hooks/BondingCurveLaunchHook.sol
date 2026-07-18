@@ -5,6 +5,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -36,6 +37,7 @@ import {Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
 /// @notice Atomically replaces a completed finite curve with full-range liquidity
 contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
     using StateLibrary for IPoolManager;
+    using TransientStateLibrary for IPoolManager;
     using SafeERC20 for IERC20;
 
     address internal constant BURN_ADDRESS = address(0xdead);
@@ -173,10 +175,22 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         if (!isBuy || params.amountSpecified <= 0) return;
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        uint128 liquidity = poolManager.getLiquidity(poolId);
+        uint128 liquidity = positionManager.getPositionLiquidity(curveTokenId[poolId]);
+        uint160 initialSqrtPriceX96 =
+            TickMath.getSqrtPriceAtTick(tokenIsCurrency0 ? config.curveTickLower : config.curveTickUpper);
         uint256 available = tokenIsCurrency0
-            ? SqrtPriceMath.getAmount0Delta(sqrtPriceX96, config.graduationSqrtPriceX96, liquidity, false)
-            : SqrtPriceMath.getAmount1Delta(config.graduationSqrtPriceX96, sqrtPriceX96, liquidity, false);
+            ? SqrtPriceMath.getAmount0Delta(
+                sqrtPriceX96 < initialSqrtPriceX96 ? initialSqrtPriceX96 : sqrtPriceX96,
+                config.graduationSqrtPriceX96,
+                liquidity,
+                false
+            )
+            : SqrtPriceMath.getAmount1Delta(
+                config.graduationSqrtPriceX96,
+                sqrtPriceX96 > initialSqrtPriceX96 ? initialSqrtPriceX96 : sqrtPriceX96,
+                liquidity,
+                false
+            );
         uint256 requested = uint256(params.amountSpecified);
         if (requested > available) revert ExactOutputExceedsCurve(requested, available);
     }
@@ -221,6 +235,7 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
     }
 
     function _graduate(PoolKey calldata key, PoolId poolId, BondingCurveHookConfig storage config) private {
+        _assertPositionManagerDeltasCleared(key);
         uint256 tokenId = curveTokenId[poolId];
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
             revert InvalidCurvePositionOwner();
@@ -275,11 +290,22 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         (bytes memory actions, bytes[] memory params) =
             _graduationPlan(key, tokenId, finalPosition, tokenIsCurrency0, config.finalPositionRecipient);
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+        _assertPositionManagerDeltasCleared(key);
 
         // Forced token transfers and launch rounding dust never contribute to graduation.
         uint256 remainingToken = token.balanceOf(address(this));
         if (remainingToken != 0) token.safeTransfer(BURN_ADDRESS, remainingToken);
         emit Graduated(poolId, tokenId, finalTokenId, finalPosition.liquidity);
+    }
+
+    function _assertPositionManagerDeltasCleared(PoolKey calldata key) private view {
+        _assertPositionManagerDeltaCleared(key.currency0);
+        _assertPositionManagerDeltaCleared(key.currency1);
+    }
+
+    function _assertPositionManagerDeltaCleared(Currency currency) private view {
+        int256 delta = poolManager.currencyDelta(address(positionManager), currency);
+        if (delta != 0) revert UnexpectedPositionManagerDelta(currency, delta);
     }
 
     function _graduationPlan(

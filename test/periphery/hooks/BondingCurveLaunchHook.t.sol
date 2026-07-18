@@ -9,6 +9,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -202,6 +203,38 @@ contract BondingCurveLaunchHookTest is HookTestBase {
         );
     }
 
+    function test_beforeSwap_permitsExactOutputAtInitialCurveBoundary() public {
+        PoolKey memory key = _activate();
+        _mockPoolState(TickMath.getSqrtPriceAtTick(INITIAL_TICK), 0);
+
+        vm.prank(poolManager);
+        hook.beforeSwap(
+            address(this),
+            key,
+            _swapParams(true, 1, TickMath.getSqrtPriceAtTick(GRADUATION_TICK - TICK_SPACING)),
+            bytes("")
+        );
+    }
+
+    function test_beforeSwap_clampsExactOutputAvailabilityOutsideInitialCurveBoundary() public {
+        PoolKey memory key = _activate();
+        _mockPoolState(TickMath.getSqrtPriceAtTick(INITIAL_TICK + TICK_SPACING), 0);
+        uint256 available = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(GRADUATION_TICK), TickMath.getSqrtPriceAtTick(INITIAL_TICK), 1 ether, false
+        );
+
+        vm.prank(poolManager);
+        vm.expectRevert(
+            abi.encodeWithSelector(IBondingCurveLaunchHook.ExactOutputExceedsCurve.selector, available + 1, available)
+        );
+        hook.beforeSwap(
+            address(this),
+            key,
+            _swapParams(true, int256(available + 1), TickMath.getSqrtPriceAtTick(GRADUATION_TICK - TICK_SPACING)),
+            bytes("")
+        );
+    }
+
     function _poolKey() private view returns (PoolKey memory key) {
         key = _defaultPoolKey(address(hook));
         key.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
@@ -284,5 +317,10 @@ contract BondingCurveLaunchHookTest is HookTestBase {
             positionManager, abi.encodeWithSelector(IPositionManager.nextTokenId.selector), abi.encode(tokenId + 1)
         );
         vm.mockCall(positionManager, abi.encodeWithSelector(IERC721.ownerOf.selector, tokenId), abi.encode(owner));
+        vm.mockCall(
+            positionManager,
+            abi.encodeWithSelector(IPositionManager.getPositionLiquidity.selector, tokenId),
+            abi.encode(1 ether)
+        );
     }
 }
