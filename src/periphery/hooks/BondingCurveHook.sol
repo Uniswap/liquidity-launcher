@@ -44,6 +44,7 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
     using TransientStateLibrary for IPoolManager;
     using SafeERC20 for IERC20;
 
+    /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
     /// @notice Launch fee at `swapStartBlock`, in pips (99%). Decays linearly to zero.
@@ -59,6 +60,7 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
     /// @inheritdoc IBondingCurveHook
     IPositionManager public immutable override positionManager;
 
+    /// @notice The curve configuration registered for each pool.
     mapping(PoolId poolId => BondingCurveConfig config) internal _configs;
     /// @inheritdoc IBondingCurveHook
     mapping(PoolId poolId => CurvePhase phase) public override phase;

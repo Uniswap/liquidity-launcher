@@ -37,20 +37,49 @@ interface IBondingCurveHook is IInitializerHook {
     /// @notice Emitted when the curve NFT is replaced with a full-range NFT.
     event Graduated(PoolId indexed poolId, uint256 indexed curveTokenId, uint256 indexed finalTokenId, uint256 liquidity);
 
+    /// @notice Thrown when a caller other than the authorized launcher configures a pool.
+    /// @param caller The address that attempted the call
+    /// @param expected The authorized launcher
     error NotAuthorized(address caller, address expected);
+    /// @notice Thrown when a pool's curve has already been configured.
+    /// @param poolId The pool that is already configured
     error AlreadyConfigured(PoolId poolId);
+    /// @notice Thrown when a required constructor address is zero.
     error ZeroAddress();
+    /// @notice Thrown when the supplied curve configuration or pool initialization price is invalid.
     error InvalidCurveConfig();
+    /// @notice Thrown when a swap is attempted in a phase that does not permit trading.
+    /// @param phase The current lifecycle phase
     error InvalidPhaseForSwap(CurvePhase phase);
+    /// @notice Thrown when a swap is attempted before the configured swap-start block.
+    /// @param swapStartBlock The block at which swaps open
+    /// @param currentBlock The current block number
     error SwapsNotStarted(uint256 swapStartBlock, uint256 currentBlock);
+    /// @notice Thrown when the seeded liquidity does not match the configured curve position.
     error InvalidCurvePosition();
+    /// @notice Thrown when curve or graduation liquidity is not added through the configured PositionManager.
+    /// @param sender The unexpected liquidity provider
     error InvalidPositionManager(address sender);
+    /// @notice Thrown when the hook does not own the curve NFT it is registering or graduating.
     error InvalidCurvePositionOwner();
+    /// @notice Thrown when the graduation position is not full range or resolves to zero liquidity.
     error InvalidFinalPosition();
+    /// @notice Thrown when an exact-output buy requests more token than the curve still holds.
+    /// @param requested The requested token output
+    /// @param available The token remaining in the curve
     error ExactOutputExceedsCurve(uint256 requested, uint256 available);
+    /// @notice Thrown when the completed curve still has active liquidity at graduation.
+    /// @param liquidity The unexpected active liquidity
     error InvalidGraduationLiquidity(uint128 liquidity);
+    /// @notice Thrown when the pool cannot be restored to its configured terminal price for graduation.
+    /// @param sqrtPriceX96 The observed price
+    /// @param expected The required graduation price
     error InvalidGraduationPrice(uint160 sqrtPriceX96, uint160 expected);
+    /// @notice Thrown when normalizing the empty curve range produces a nonzero swap delta.
     error NonzeroNormalizationDelta();
+    /// @notice Thrown when the PositionManager holds an unsettled delta before or after graduation.
+    /// @param currency The currency with the unexpected delta
+    /// @param delta The unsettled delta
     error UnexpectedPositionManagerDelta(address currency, int256 delta);
 
     /// @notice Registers a pool's curve config. Callable once per pool by the authorized launcher,

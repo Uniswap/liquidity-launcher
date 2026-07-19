@@ -45,33 +45,56 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     int24 public constant TICK_SPACING = 200;
     /// @notice Minimum token burn required to harvest fees from the graduated position.
     uint256 public constant MIN_TOKEN_BURN = TOTAL_SUPPLY / 2_000;
+    /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
+    /// @notice Thrown when a caller other than the configured launcher initializes a distribution.
     error OnlyLauncher();
+    /// @notice Thrown when caller-supplied configuration is provided (this strategy uses fixed parameters).
     error UnexpectedConfigData();
+    /// @notice Thrown when the supplied or reported token supply is not the required fixed total.
     error InvalidSupply();
+    /// @notice Thrown when the launched token does not use 18 decimals.
     error InvalidTokenDecimals();
+    /// @notice Thrown when the configured ticks cannot define a valid downward curve.
     error InvalidTickRange();
+    /// @notice Thrown at deployment when the tick band cannot produce a graduatable position.
     error UnrealizableGraduation();
+    /// @notice Thrown when a required constructor address is zero.
     error ZeroAddress();
+    /// @notice Thrown when the hook does not recognize this strategy as its authorized initializer.
+    /// @param authorized The hook's authorized address
+    /// @param expected This strategy's address
     error HookNotBound(address authorized, address expected);
+    /// @notice Thrown when the amount received differs from the amount pulled (fee-on-transfer guard).
+    /// @param received The amount actually received
+    /// @param expected The amount expected
     error TokenAmountMismatch(uint256 received, uint256 expected);
 
     /// @notice Emitted after a curve pool and its permanent LP recipient are created.
     event BondingCurveLaunched(PoolId indexed poolId, address indexed token, address indexed finalPositionRecipient, uint256 curveSupply, uint256 reserveSupply);
 
+    /// @notice The v4 pool manager.
     IPoolManager public immutable poolManager;
+    /// @notice The v4 position manager that mints the curve and graduation positions.
     IPositionManager public immutable positionManager;
+    /// @notice The hook that gates the curve lifecycle and graduates completed curves.
     IBondingCurveHook public immutable hook;
     /// @notice The only address permitted to drive distributions — set to the canonical LiquidityLauncher
     ///         so launches must route through `distributeToken`.
     address public immutable launcher;
 
-    int24 public immutable initialTick; // curve start (highest price)
-    int24 public immutable graduationTick; // curve end (lowest price)
+    /// @notice Aligned tick at which the curve begins (highest price).
+    int24 public immutable initialTick;
+    /// @notice Aligned tick at which the curve graduates (lowest price).
+    int24 public immutable graduationTick;
+    /// @notice Initial pool square-root price (at `initialTick`).
     uint160 public immutable initialSqrtPriceX96;
+    /// @notice Terminal pool square-root price (at `graduationTick`).
     uint160 public immutable graduationSqrtPriceX96;
+    /// @notice Token amount placed in the finite curve position.
     uint256 public immutable curveSupply;
+    /// @notice Token amount reserved for full-range graduation.
     uint256 public immutable reserveSupply;
 
     constructor(
