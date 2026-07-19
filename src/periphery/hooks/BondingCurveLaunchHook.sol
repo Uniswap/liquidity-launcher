@@ -167,22 +167,12 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
     /// @dev Enforces the swap-start block, quotes the decaying launch fee, and bounds buys to the
     ///      remaining curve. The hook's own graduation-normalization swap bypasses every gate.
-    function _beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata)
+    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
         view
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        // The graduation-normalization swap originates from this hook; it must never be gated.
-        if (sender == address(this)) {
-            return
-                (
-                    IHooks.beforeSwap.selector,
-                    BeforeSwapDeltaLibrary.ZERO_DELTA,
-                    BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
-                );
-        }
-
         PoolId poolId = key.toId();
         BondingCurvePhase phase = bondingCurvePhase[poolId];
         if (phase == BondingCurvePhase.Graduated) {
