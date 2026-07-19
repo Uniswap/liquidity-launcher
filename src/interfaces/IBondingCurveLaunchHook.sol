@@ -4,20 +4,43 @@ pragma solidity 0.8.26;
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IInitializerHook} from "./IInitializerHook.sol";
-import {CurvePhase} from "../types/CurvePhase.sol";
 
-/// @notice Typed, per-pool configuration for one bonding-curve launch.
-/// @dev This product always pairs native ETH (currency0) against the launched token (currency1), so
-///      the curve runs from `curveTickUpper` (initial, highest price) DOWN to `curveTickLower`
-///      (graduation, lowest price) as buyers swap ETH for token. There is no `tokenIsCurrency0` flag
-///      and no opaque `bytes` — every field is explicit and validated at the single `configure` site.
-/// @param reserveTokenAmount Token held by the hook and paired with the completed curve's ETH at graduation.
-/// @param finalPositionRecipient Permanent recipient of the graduated full-range LP position.
-/// @param graduationSqrtPriceX96 Terminal price; MUST equal getSqrtPriceAtTick(curveTickLower).
-/// @param curveTickLower Graduation tick (curve lower bound / terminal price).
-/// @param curveTickUpper Initial tick (curve upper bound / starting price).
-/// @param swapStartBlock Block from which swaps are allowed; also the fee-decay anchor.
-struct BondingCurveConfig {
+/// @notice Lifecycle of one bonding-curve pool.
+/// @dev Ordered so every legal transition is exactly `+1`. Storage default is `Unconfigured`.
+///      Unconfigured -> Seeding -> Active -> Graduating -> Graduated; no other edges are legal.
+enum BondingCurvePhase {
+    Unconfigured,
+    Seeding,
+    Active,
+    Graduating,
+    Graduated
+}
+
+using {advanceTo} for BondingCurvePhase global;
+
+/// @notice Thrown when a phase transition is not the single legal forward edge.
+error IllegalPhaseTransition(BondingCurvePhase from, BondingCurvePhase to);
+
+/// @notice Advances `from` to `to`, reverting unless `to` is the immediate successor of `from`.
+/// @dev Centralizes the state machine: the caller writes the returned value back to storage. Because
+///      the enum is ordered, "legal" is simply `to == from + 1`, forbidding skips, reversals and self-loops.
+function advanceTo(BondingCurvePhase from, BondingCurvePhase to) pure returns (BondingCurvePhase) {
+    if (uint8(to) != uint8(from) + 1) revert IllegalPhaseTransition(from, to);
+    return to;
+}
+
+/// @notice Specialized configuration for one finite curve.
+/// @dev This product always pairs native ETH (currency0) against the launched token (currency1), so the
+///      curve runs from `curveTickUpper` (initial, highest price) DOWN to `curveTickLower` (graduation,
+///      lowest price) as buyers swap ETH for token. Every field is explicit — no `tokenIsCurrency0` flag
+///      and no opaque `bytes`.
+/// @param reserveTokenAmount The token amount paired with the completed curve proceeds.
+/// @param finalPositionRecipient The permanent recipient of the graduated LP position.
+/// @param graduationSqrtPriceX96 The terminal pool square-root price.
+/// @param curveTickLower The curve position's lower tick (graduation tick).
+/// @param curveTickUpper The curve position's upper tick (initial tick).
+/// @param swapStartBlock The block from which swaps are allowed; also the fee-decay anchor.
+struct BondingCurveHookConfig {
     uint256 reserveTokenAmount;
     address finalPositionRecipient;
     uint160 graduationSqrtPriceX96;
@@ -26,13 +49,13 @@ struct BondingCurveConfig {
     uint48 swapStartBlock;
 }
 
-/// @title IBondingCurveHook
-/// @notice A v4 hook that runs a token through a single-sided finite curve and, when the curve
-///         completes, graduates it in place to full-range liquidity in the same pool.
-interface IBondingCurveHook is IInitializerHook {
+/// @title IBondingCurveLaunchHook
+/// @notice A v4 hook that runs a token through a single-sided finite curve and, when the curve completes,
+///         graduates it in place to full-range liquidity in the same pool.
+interface IBondingCurveLaunchHook is IInitializerHook {
     /// @notice Emitted when a pool's curve is configured by the authorized launcher.
-    event CurveConfigured(PoolId indexed poolId, BondingCurveConfig config);
-    /// @notice Emitted when the completed curve begins graduation.
+    event BondingCurveConfigured(PoolId indexed poolId, BondingCurveHookConfig config);
+    /// @notice Emitted when the completed curve enters graduation.
     event GraduationStarted(PoolId indexed poolId);
     /// @notice Emitted when the curve NFT is replaced with a full-range NFT.
     event Graduated(PoolId indexed poolId, uint256 indexed curveTokenId, uint256 indexed finalTokenId, uint256 liquidity);
@@ -47,10 +70,10 @@ interface IBondingCurveHook is IInitializerHook {
     /// @notice Thrown when a required constructor address is zero.
     error ZeroAddress();
     /// @notice Thrown when the supplied curve configuration or pool initialization price is invalid.
-    error InvalidCurveConfig();
-    /// @notice Thrown when a swap is attempted in a phase that does not permit trading.
+    error InvalidBondingCurveConfig();
+    /// @notice Thrown when an action is attempted in a phase that does not permit it.
     /// @param phase The current lifecycle phase
-    error InvalidPhaseForSwap(CurvePhase phase);
+    error InvalidBondingCurvePhase(BondingCurvePhase phase);
     /// @notice Thrown when a swap is attempted before the configured swap-start block.
     /// @param swapStartBlock The block at which swaps open
     /// @param currentBlock The current block number
@@ -84,14 +107,16 @@ interface IBondingCurveHook is IInitializerHook {
 
     /// @notice Registers a pool's curve config. Callable once per pool by the authorized launcher,
     ///         before pool initialization.
-    function configure(PoolId poolId, BondingCurveConfig calldata config) external;
+    /// @param poolId The pool the configuration applies to
+    /// @param config The curve configuration to register
+    function configure(PoolId poolId, BondingCurveHookConfig calldata config) external;
 
-    /// @notice The curve configuration registered for a pool.
-    function curveConfig(PoolId poolId) external view returns (BondingCurveConfig memory);
-    /// @notice The current lifecycle phase for a pool.
-    function phase(PoolId poolId) external view returns (CurvePhase);
-    /// @notice The curve NFT held by the hook for a pool.
+    /// @notice Returns the curve configuration registered for a pool.
+    function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory);
+    /// @notice Returns the current lifecycle phase for a pool.
+    function bondingCurvePhase(PoolId poolId) external view returns (BondingCurvePhase);
+    /// @notice Returns the curve NFT held by the hook for a pool.
     function curveTokenId(PoolId poolId) external view returns (uint256);
-    /// @notice The v4 PositionManager used for curve and final positions.
+    /// @notice Returns the v4 PositionManager used for curve and final positions.
     function positionManager() external view returns (IPositionManager);
 }

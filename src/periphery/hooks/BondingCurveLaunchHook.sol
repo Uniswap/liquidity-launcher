@@ -26,12 +26,11 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {InitializerHook} from "./InitializerHook.sol";
-import {IBondingCurveHook, BondingCurveConfig} from "../../interfaces/IBondingCurveHook.sol";
-import {CurvePhase} from "../../types/CurvePhase.sol";
+import {IBondingCurveLaunchHook, BondingCurveHookConfig, BondingCurvePhase} from "../../interfaces/IBondingCurveLaunchHook.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
 
-/// @title BondingCurveHook
+/// @title BondingCurveLaunchHook
 /// @notice Single-purpose v4 hook for a native-ETH bonding-curve launch that graduates in place.
 /// @dev Native ETH is always currency0 and the token always currency1, so buys are `zeroForOne` and
 ///      walk the price DOWN from the initial tick to the graduation tick. The hook owns the curve NFT
@@ -39,7 +38,7 @@ import {Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
 ///      and — on the swap that completes the curve — atomically burns the curve position and mints a
 ///      permanent full-range position pairing the accumulated ETH with the reserve.
 /// @custom:security-contact security@uniswap.org
-contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook {
+contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurveLaunchHook {
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeERC20 for IERC20;
@@ -57,14 +56,14 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
     /// @dev Matches the pre-rearch `baseFee: 0` — the launch fee decays to this and stays here.
     uint24 public constant BASE_FEE = 0;
 
-    /// @inheritdoc IBondingCurveHook
+    /// @inheritdoc IBondingCurveLaunchHook
     IPositionManager public immutable override positionManager;
 
     /// @notice The curve configuration registered for each pool.
-    mapping(PoolId poolId => BondingCurveConfig config) internal _configs;
-    /// @inheritdoc IBondingCurveHook
-    mapping(PoolId poolId => CurvePhase phase) public override phase;
-    /// @inheritdoc IBondingCurveHook
+    mapping(PoolId poolId => BondingCurveHookConfig config) internal _configs;
+    /// @inheritdoc IBondingCurveLaunchHook
+    mapping(PoolId poolId => BondingCurvePhase phase) public override bondingCurvePhase;
+    /// @inheritdoc IBondingCurveLaunchHook
     mapping(PoolId poolId => uint256 tokenId) public override curveTokenId;
 
     constructor(IPoolManager _poolManager, IPositionManager _positionManager, address _authorized)
@@ -74,23 +73,23 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
         positionManager = _positionManager;
     }
 
-    /// @inheritdoc IBondingCurveHook
-    function configure(PoolId poolId, BondingCurveConfig calldata config) external override {
+    /// @inheritdoc IBondingCurveLaunchHook
+    function configure(PoolId poolId, BondingCurveHookConfig calldata config) external override {
         if (msg.sender != authorized) revert NotAuthorized(msg.sender, authorized);
-        if (phase[poolId] != CurvePhase.Unconfigured) revert AlreadyConfigured(poolId);
+        if (bondingCurvePhase[poolId] != BondingCurvePhase.Unconfigured) revert AlreadyConfigured(poolId);
         if (
             config.reserveTokenAmount == 0 || config.finalPositionRecipient == address(0)
                 || config.curveTickLower >= config.curveTickUpper
                 || config.graduationSqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickLower)
-        ) revert InvalidCurveConfig();
+        ) revert InvalidBondingCurveConfig();
 
         _configs[poolId] = config;
-        phase[poolId] = phase[poolId].advanceTo(CurvePhase.Seeding);
-        emit CurveConfigured(poolId, config);
+        bondingCurvePhase[poolId] = bondingCurvePhase[poolId].advanceTo(BondingCurvePhase.Seeding);
+        emit BondingCurveConfigured(poolId, config);
     }
 
-    /// @inheritdoc IBondingCurveHook
-    function curveConfig(PoolId poolId) external view returns (BondingCurveConfig memory) {
+    /// @inheritdoc IBondingCurveLaunchHook
+    function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory) {
         return _configs[poolId];
     }
 
@@ -123,8 +122,8 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
         returns (bytes4)
     {
         bytes4 selector = super._beforeInitialize(sender, key, sqrtPriceX96);
-        BondingCurveConfig storage config = _configs[key.toId()];
-        if (sqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickUpper)) revert InvalidCurveConfig();
+        BondingCurveHookConfig storage config = _configs[key.toId()];
+        if (sqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickUpper)) revert InvalidBondingCurveConfig();
         return selector;
     }
 
@@ -136,10 +135,10 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
         returns (bytes4)
     {
         PoolId poolId = key.toId();
-        CurvePhase current = phase[poolId];
-        BondingCurveConfig storage config = _configs[poolId];
+        BondingCurvePhase phase = bondingCurvePhase[poolId];
+        BondingCurveHookConfig storage config = _configs[poolId];
 
-        if (current == CurvePhase.Seeding) {
+        if (phase == BondingCurvePhase.Seeding) {
             if (
                 params.liquidityDelta <= 0 || params.tickLower != config.curveTickLower
                     || params.tickUpper != config.curveTickUpper
@@ -150,16 +149,16 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
             uint256 tokenId = nextTokenId - 1;
             if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
             curveTokenId[poolId] = tokenId;
-            phase[poolId] = current.advanceTo(CurvePhase.Active);
-        } else if (current == CurvePhase.Graduating) {
+            bondingCurvePhase[poolId] = phase.advanceTo(BondingCurvePhase.Active);
+        } else if (phase == BondingCurvePhase.Graduating) {
             if (
                 params.liquidityDelta <= 0 || params.tickLower != TickMath.minUsableTick(key.tickSpacing)
                     || params.tickUpper != TickMath.maxUsableTick(key.tickSpacing)
             ) revert InvalidFinalPosition();
             if (sender != address(positionManager)) revert InvalidPositionManager(sender);
-            phase[poolId] = current.advanceTo(CurvePhase.Graduated);
-        } else if (current != CurvePhase.Graduated) {
-            revert InvalidPhaseForSwap(current);
+            bondingCurvePhase[poolId] = phase.advanceTo(BondingCurvePhase.Graduated);
+        } else if (phase != BondingCurvePhase.Graduated) {
+            revert InvalidBondingCurvePhase(phase);
         }
         return IHooks.beforeAddLiquidity.selector;
     }
@@ -178,13 +177,13 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
         }
 
         PoolId poolId = key.toId();
-        CurvePhase current = phase[poolId];
-        if (current == CurvePhase.Graduated) {
+        BondingCurvePhase phase = bondingCurvePhase[poolId];
+        if (phase == BondingCurvePhase.Graduated) {
             return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
         }
-        if (current != CurvePhase.Active) revert InvalidPhaseForSwap(current);
+        if (phase != BondingCurvePhase.Active) revert InvalidBondingCurvePhase(phase);
 
-        BondingCurveConfig storage config = _configs[poolId];
+        BondingCurveHookConfig storage config = _configs[poolId];
         uint256 currentBlock = _getBlockNumberish();
         if (currentBlock < config.swapStartBlock) revert SwapsNotStarted(config.swapStartBlock, currentBlock);
 
@@ -202,7 +201,7 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
 
     /// @dev Bounds an exact-output buy so it cannot request more token than the curve still holds.
     ///      Exact-input buys are left to v4's native partial-fill-at-boundary behavior.
-    function _validateBuyWithinCurve(PoolId poolId, SwapParams calldata params, BondingCurveConfig storage config)
+    function _validateBuyWithinCurve(PoolId poolId, SwapParams calldata params, BondingCurveHookConfig storage config)
         private
         view
     {
@@ -232,18 +231,18 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
         returns (bytes4, int128)
     {
         PoolId poolId = key.toId();
-        if (phase[poolId] != CurvePhase.Active) return (IHooks.afterSwap.selector, 0);
+        if (bondingCurvePhase[poolId] != BondingCurvePhase.Active) return (IHooks.afterSwap.selector, 0);
         // Only a buy (zeroForOne) can complete the curve by pushing price down to graduation.
         if (!params.zeroForOne) return (IHooks.afterSwap.selector, 0);
 
-        BondingCurveConfig storage config = _configs[poolId];
+        BondingCurveHookConfig storage config = _configs[poolId];
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (sqrtPriceX96 > config.graduationSqrtPriceX96) return (IHooks.afterSwap.selector, 0);
 
         uint128 liquidity = poolManager.getLiquidity(poolId);
         if (liquidity != 0) revert InvalidGraduationLiquidity(liquidity);
 
-        phase[poolId] = phase[poolId].advanceTo(CurvePhase.Graduating);
+        bondingCurvePhase[poolId] = bondingCurvePhase[poolId].advanceTo(BondingCurvePhase.Graduating);
         emit GraduationStarted(poolId);
 
         // If the completing buy overshot the boundary, walk the (now empty) range back to grad price.
@@ -260,7 +259,7 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
         return (IHooks.afterSwap.selector, 0);
     }
 
-    function _graduate(PoolKey calldata key, PoolId poolId, BondingCurveConfig storage config) private {
+    function _graduate(PoolKey calldata key, PoolId poolId, BondingCurveHookConfig storage config) private {
         _assertDeltasCleared(key);
         uint256 tokenId = curveTokenId[poolId];
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
@@ -284,7 +283,7 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
 
     /// @dev The completed curve's ETH (currency0) principal is fixed by the burned position's
     ///      liquidity, not spot price; it pairs with the reserve into a full-range position at grad.
-    function _resolveFinalPosition(PoolKey calldata key, BondingCurveConfig storage config, uint128 curveLiquidity)
+    function _resolveFinalPosition(PoolKey calldata key, BondingCurveHookConfig storage config, uint128 curveLiquidity)
         private
         view
         returns (Position memory)
@@ -357,6 +356,6 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
 
     /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public pure override(InitializerHook, IERC165) returns (bool) {
-        return interfaceId == type(IBondingCurveHook).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(IBondingCurveLaunchHook).interfaceId || super.supportsInterface(interfaceId);
     }
 }

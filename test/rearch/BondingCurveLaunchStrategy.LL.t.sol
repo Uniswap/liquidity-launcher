@@ -26,9 +26,9 @@ import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20Metada
 import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {Distribution} from "../../src/types/Distribution.sol";
 import {BondingCurveLaunchStrategy} from "../../src/strategies/BondingCurveLaunchStrategy.sol";
-import {BondingCurveHook} from "../../src/periphery/hooks/BondingCurveHook.sol";
-import {IBondingCurveHook} from "../../src/interfaces/IBondingCurveHook.sol";
-import {CurvePhase} from "../../src/types/CurvePhase.sol";
+import {BondingCurveLaunchHook} from "../../src/periphery/hooks/BondingCurveLaunchHook.sol";
+import {IBondingCurveLaunchHook} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
+import {BondingCurvePhase} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
 
 contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -43,7 +43,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     LiquidityLauncher internal launcher;
     IAllowanceTransfer internal permit2;
     UERC20Factory internal factory;
-    BondingCurveHook internal hook;
+    BondingCurveLaunchHook internal hook;
     BondingCurveLaunchStrategy internal strategy;
 
     function setUp() public {
@@ -63,13 +63,13 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             | Hooks.AFTER_SWAP_FLAG;
         (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(this), flags, type(BondingCurveHook).creationCode, abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
+            address(this), flags, type(BondingCurveLaunchHook).creationCode, abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
         );
         strategy = new BondingCurveLaunchStrategy(
-            address(launcher), POSITION_MANAGER, POOL_MANAGER, IBondingCurveHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
+            address(launcher), POSITION_MANAGER, POOL_MANAGER, IBondingCurveLaunchHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
-        hook = new BondingCurveHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
+        hook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
         assertEq(address(hook), hookAddress);
     }
 
@@ -93,7 +93,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         launcher.multicall(_buildCalls(distribution));
 
         // The strategy ran end-to-end through the launcher and stood up the live curve pool.
-        assertEq(uint256(hook.phase(key.toId())), uint256(CurvePhase.Active));
+        assertEq(uint256(hook.bondingCurvePhase(key.toId())), uint256(BondingCurvePhase.Active));
         assertEq(hook.curveTokenId(key.toId()), curveTokenId);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(curveTokenId), address(hook));
         assertGe(IERC20(token).balanceOf(address(hook)), strategy.reserveSupply());

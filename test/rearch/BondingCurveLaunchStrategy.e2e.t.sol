@@ -28,10 +28,10 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {BondingCurveLaunchStrategy} from "../../src/strategies/BondingCurveLaunchStrategy.sol";
-import {BondingCurveHook} from "../../src/periphery/hooks/BondingCurveHook.sol";
+import {BondingCurveLaunchHook} from "../../src/periphery/hooks/BondingCurveLaunchHook.sol";
 import {BuybackAndBurnPositionRecipient} from "../../src/periphery/BuybackAndBurnPositionRecipient.sol";
-import {IBondingCurveHook} from "../../src/interfaces/IBondingCurveHook.sol";
-import {CurvePhase} from "../../src/types/CurvePhase.sol";
+import {IBondingCurveLaunchHook} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
+import {BondingCurvePhase} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
 contract SharedDeltaAttacker is IUnlockCallback {
@@ -92,7 +92,7 @@ contract SharedDeltaAttacker is IUnlockCallback {
     receive() external payable {}
 }
 
-/// @notice Rearch e2e: the same bonding-curve lifecycle assertions against BondingCurveLaunchStrategy/BondingCurveHook.
+/// @notice Rearch e2e: the same bonding-curve lifecycle assertions against BondingCurveLaunchStrategy/BondingCurveLaunchHook.
 contract BondingCurveLaunchStrategyE2ETest is Test {
     using StateLibrary for IPoolManager;
 
@@ -102,7 +102,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
     int24 internal constant INITIAL_TICK = 122_000;
     int24 internal constant GRADUATION_TICK = 94_200;
 
-    BondingCurveHook internal launchHook;
+    BondingCurveLaunchHook internal launchHook;
     BondingCurveLaunchStrategy internal strategy;
     PoolSwapTest internal swapRouter;
 
@@ -120,14 +120,14 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(this),
             flags,
-            type(BondingCurveHook).creationCode,
+            type(BondingCurveLaunchHook).creationCode,
             abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
         );
         strategy = new BondingCurveLaunchStrategy(
-            address(this), POSITION_MANAGER, POOL_MANAGER, IBondingCurveHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
+            address(this), POSITION_MANAGER, POOL_MANAGER, IBondingCurveLaunchHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
-        launchHook = new BondingCurveHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
+        launchHook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
         assertEq(address(launchHook), hookAddress);
         swapRouter = new PoolSwapTest(POOL_MANAGER);
         vm.deal(address(this), 100_000 ether);
@@ -139,7 +139,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         assertApproxEqRel(strategy.curveSupply(), strategy.TOTAL_SUPPLY() * 80 / 100, 6e15);
         assertEq(strategy.curveSupply() + strategy.reserveSupply(), strategy.TOTAL_SUPPLY());
         assertGe(token.balanceOf(address(launchHook)), strategy.reserveSupply());
-        assertEq(uint256(launchHook.phase(key.toId())), uint256(CurvePhase.Active));
+        assertEq(uint256(launchHook.bondingCurvePhase(key.toId())), uint256(BondingCurvePhase.Active));
 
         (, PositionInfo info) = POSITION_MANAGER.getPoolAndPositionInfo(curveTokenId);
         assertEq(info.tickLower(), GRADUATION_TICK);
@@ -184,7 +184,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         vm.roll(block.number + launchHook.DECAY_BLOCKS());
         uint256 forcedTokenAmount = 123;
         deal(address(token), address(launchHook), token.balanceOf(address(launchHook)) + forcedTokenAmount, false);
-        address finalPositionRecipient = launchHook.curveConfig(key.toId()).finalPositionRecipient;
+        address finalPositionRecipient = launchHook.bondingCurveConfig(key.toId()).finalPositionRecipient;
         uint256 burnedTokenBefore = token.balanceOf(address(0xdead));
 
         _swapThroughGraduation(key);
@@ -221,7 +221,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         vm.expectRevert();
         attacker.attack{value: 20_000 ether}(curveKey, sideKey, 0.5 ether);
 
-        assertEq(uint256(launchHook.phase(curveKey.toId())), uint256(CurvePhase.Active));
+        assertEq(uint256(launchHook.bondingCurvePhase(curveKey.toId())), uint256(BondingCurvePhase.Active));
     }
 
     function _swapThroughGraduation(PoolKey memory key) private {
@@ -251,7 +251,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         uint256 finalTokenId = POSITION_MANAGER.nextTokenId() - 1;
         assertEq(token.balanceOf(address(launchHook)), 0);
         assertGe(token.balanceOf(address(0xdead)) - burnedTokenBefore, forcedTokenAmount);
-        assertEq(uint256(launchHook.phase(key.toId())), uint256(CurvePhase.Graduated));
+        assertEq(uint256(launchHook.bondingCurvePhase(key.toId())), uint256(BondingCurvePhase.Graduated));
         vm.expectRevert();
         IERC721(address(POSITION_MANAGER)).ownerOf(curveTokenId);
 

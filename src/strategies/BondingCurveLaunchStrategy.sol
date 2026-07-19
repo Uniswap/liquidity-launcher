@@ -25,7 +25,7 @@ import {IStrategy} from "../interfaces/IStrategy.sol";
 import {BondingCurveMath} from "../libraries/BondingCurveMath.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Position, CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
-import {IBondingCurveHook, BondingCurveConfig} from "../interfaces/IBondingCurveHook.sol";
+import {IBondingCurveLaunchHook, BondingCurveHookConfig} from "../interfaces/IBondingCurveLaunchHook.sol";
 import {BuybackAndBurnPositionRecipient} from "../periphery/BuybackAndBurnPositionRecipient.sol";
 
 /// @title BondingCurveLaunchStrategy
@@ -62,8 +62,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     error UnrealizableGraduation();
     /// @notice Thrown when a required constructor address is zero.
     error ZeroAddress();
-    /// @notice Thrown when the hook does not recognize this strategy as its authorized initializer.
-    /// @param authorized The hook's authorized address
+    /// @notice Thrown when the launchHook does not recognize this strategy as its authorized initializer.
+    /// @param authorized The launchHook's authorized address
     /// @param expected This strategy's address
     error HookNotBound(address authorized, address expected);
     /// @notice Thrown when the amount received differs from the amount pulled (fee-on-transfer guard).
@@ -78,8 +78,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     IPoolManager public immutable poolManager;
     /// @notice The v4 position manager that mints the curve and graduation positions.
     IPositionManager public immutable positionManager;
-    /// @notice The hook that gates the curve lifecycle and graduates completed curves.
-    IBondingCurveHook public immutable hook;
+    /// @notice The launchHook that gates the curve lifecycle and graduates completed curves.
+    IBondingCurveLaunchHook public immutable launchHook;
     /// @notice The only address permitted to drive distributions — set to the canonical LiquidityLauncher
     ///         so launches must route through `distributeToken`.
     address public immutable launcher;
@@ -101,13 +101,13 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         address _launcher,
         IPositionManager _positionManager,
         IPoolManager _poolManager,
-        IBondingCurveHook _hook,
+        IBondingCurveLaunchHook _launchHook,
         int24 _initialTick,
         int24 _graduationTick
     ) {
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
-                || address(_hook) == address(0)
+                || address(_launchHook) == address(0)
         ) revert ZeroAddress();
 
         // Ticks must be aligned, usable, and ordered so the curve runs downward from initial to graduation.
@@ -120,7 +120,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         launcher = _launcher;
         poolManager = _poolManager;
         positionManager = _positionManager;
-        hook = _hook;
+        launchHook = _launchHook;
         initialTick = _initialTick;
         graduationTick = _graduationTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
@@ -146,8 +146,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     {
         // Only accept distributions routed through the configured launcher.
         if (msg.sender != launcher) revert OnlyLauncher();
-        // Verify the hook recognizes this strategy (deployed after this contract in the CREATE2 handshake).
-        if (hook.authorized() != address(this)) revert HookNotBound(hook.authorized(), address(this));
+        // Verify the launchHook recognizes this strategy (deployed after this contract in the CREATE2 handshake).
+        if (launchHook.authorized() != address(this)) revert HookNotBound(launchHook.authorized(), address(this));
         if (configData.length != 0) revert UnexpectedConfigData();
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
@@ -158,16 +158,16 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         BuybackAndBurnPositionRecipient recipient =
             new BuybackAndBurnPositionRecipient(token, address(0), address(0), positionManager, type(uint256).max, MIN_TOKEN_BURN);
 
-        // The hook custodies the graduation reserve until the curve completes.
-        IERC20(token).safeTransfer(address(hook), reserveSupply);
+        // The launchHook custodies the graduation reserve until the curve completes.
+        IERC20(token).safeTransfer(address(launchHook), reserveSupply);
 
         PoolKey memory key = _poolKey(token);
         PoolId poolId = key.toId();
 
         // Configure before initialize: _beforeInitialize reads the config to pin the opening price.
-        hook.configure(
+        launchHook.configure(
             poolId,
-            BondingCurveConfig({
+            BondingCurveHookConfig({
                 reserveTokenAmount: reserveSupply,
                 finalPositionRecipient: address(recipient),
                 graduationSqrtPriceX96: graduationSqrtPriceX96,
@@ -185,7 +185,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         uint256 balanceNow = IERC20(token).balanceOf(address(this));
         if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
-        emit DistributionInitialized(address(hook), token, totalSupply);
+        emit DistributionInitialized(address(launchHook), token, totalSupply);
         emit BondingCurveLaunched(poolId, token, address(recipient), curveSupply, reserveSupply);
     }
 
@@ -198,7 +198,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         if (received != amount) revert TokenAmountMismatch(received, amount);
     }
 
-    /// @notice Mints the single-sided curve position `[graduationTick, initialTick]` to the hook.
+    /// @notice Mints the single-sided curve position `[graduationTick, initialTick]` to the launchHook.
     function _mintCurve(PoolKey memory key, address token) private {
         uint256 liquidity = FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
         uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
@@ -210,7 +210,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
             uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
         );
         bytes[] memory params = new bytes[](4);
-        params[0] = abi.encode(key, graduationTick, initialTick, positionLiquidity, uint128(0), tokenTransferAmount, address(hook), bytes(""));
+        params[0] = abi.encode(key, graduationTick, initialTick, positionLiquidity, uint128(0), tokenTransferAmount, address(launchHook), bytes(""));
         params[1] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
         params[2] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
@@ -225,7 +225,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
             currency1: Currency.wrap(token),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(hook))
+            hooks: IHooks(address(launchHook))
         });
     }
 
