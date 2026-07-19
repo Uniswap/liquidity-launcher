@@ -21,20 +21,22 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {IStrategy} from "../interfaces/IStrategy.sol";
 import {BondingCurveMath} from "../libraries/BondingCurveMath.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Position, CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
 import {IBondingCurveHook, BondingCurveConfig} from "../interfaces/IBondingCurveHook.sol";
 import {BuybackAndBurnPositionRecipient} from "../periphery/BuybackAndBurnPositionRecipient.sol";
 
-/// @title BondingCurveLauncher
-/// @notice Launches a fixed-supply token into a native-ETH bonding-curve v4 pool that graduates in place.
-/// @dev Standalone and single-purpose: no configurable base, no inheritance for reuse. Every pool
-///      parameter is fixed at deployment. One instance launches every token at the same price band;
-///      deploy multiple instances for different bands. Pairs 1B-supply / 18-decimal tokens against
-///      native ETH (currency0); the token is always currency1.
+/// @title BondingCurveLaunchStrategy
+/// @notice `IStrategy` that launches a fixed-supply token into a native-ETH bonding-curve v4 pool which
+///         graduates in place. Plugs into `LiquidityLauncher.distributeToken`: the launcher approves this
+///         strategy and calls `initializeDistribution`, and the strategy pulls the full supply from it.
+/// @dev Standalone and single-purpose — no configurable base, no inheritance for reuse. Every pool
+///      parameter is fixed at deployment; one instance launches every token at the same price band.
+///      Pairs 1B-supply / 18-decimal tokens against native ETH (currency0); the token is always currency1.
 /// @custom:security-contact security@uniswap.org
-contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
+contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     /// @notice Total token supply required for every launch.
@@ -43,8 +45,10 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
     int24 public constant TICK_SPACING = 200;
     /// @notice Minimum token burn required to harvest fees from the graduated position.
     uint256 public constant MIN_TOKEN_BURN = TOTAL_SUPPLY / 2_000;
+    address internal constant BURN_ADDRESS = address(0xdead);
 
     error OnlyLauncher();
+    error UnexpectedConfigData();
     error InvalidSupply();
     error InvalidTokenDecimals();
     error InvalidTickRange();
@@ -59,6 +63,8 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
     IPoolManager public immutable poolManager;
     IPositionManager public immutable positionManager;
     IBondingCurveHook public immutable hook;
+    /// @notice The only address permitted to drive distributions — set to the canonical LiquidityLauncher
+    ///         so launches must route through `distributeToken`.
     address public immutable launcher;
 
     int24 public immutable initialTick; // curve start (highest price)
@@ -105,17 +111,25 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
         _assertGraduationRealizable();
     }
 
-    /// @notice Launches `token`: initializes the curve pool, mints the curve, and configures graduation.
-    /// @dev Only the configured launcher may call. The token must be the fixed 1B-supply / 18-decimal shape.
-    function launch(address token) external nonReentrant returns (PoolId poolId) {
+    /// @inheritdoc IStrategy
+    /// @dev Called by `LiquidityLauncher.distributeToken`, which approves `totalSupply` to this strategy
+    ///      first. Pulls exactly `totalSupply` from `msg.sender` (fully consuming the allowance, as the
+    ///      launcher's post-call guard requires), then builds the curve pool. `configData` must be empty
+    ///      and `salt` is unused — this singleton strategy uses fixed parameters.
+    function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
+        external
+        override
+        nonReentrant
+    {
+        // Only accept distributions routed through the configured launcher.
         if (msg.sender != launcher) revert OnlyLauncher();
-        // The hook is deployed after this contract in the CREATE2 handshake, so verify the binding here
-        // (first reachable point where the hook exists) rather than in the constructor.
+        // Verify the hook recognizes this strategy (deployed after this contract in the CREATE2 handshake).
         if (hook.authorized() != address(this)) revert HookNotBound(hook.authorized(), address(this));
-        if (IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
+        if (configData.length != 0) revert UnexpectedConfigData();
+        if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
-        uint256 balanceBefore = _pull(token, TOTAL_SUPPLY);
+        uint256 balanceBefore = _pull(token, totalSupply);
 
         // Permanent, per-token custodian of the graduated LP (timelocked forever; fees harvest-and-burn only).
         BuybackAndBurnPositionRecipient recipient =
@@ -125,7 +139,7 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
         IERC20(token).safeTransfer(address(hook), reserveSupply);
 
         PoolKey memory key = _poolKey(token);
-        poolId = key.toId();
+        PoolId poolId = key.toId();
 
         // Configure before initialize: _beforeInitialize reads the config to pin the opening price.
         hook.configure(
@@ -143,14 +157,17 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
 
         _mintCurve(key, token);
 
-        // Return any rounding dust (anything above the pre-existing balance) to the launcher.
+        // Burn any curve-rounding dust (anything above the pre-existing balance). Returning it to the
+        // launcher would re-strand tokens there, which LiquidityLauncher warns are distributable by anyone.
         uint256 balanceNow = IERC20(token).balanceOf(address(this));
-        if (balanceNow > balanceBefore) IERC20(token).safeTransfer(launcher, balanceNow - balanceBefore);
+        if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
+        emit DistributionInitialized(address(hook), token, totalSupply);
         emit BondingCurveLaunched(poolId, token, address(recipient), curveSupply, reserveSupply);
     }
 
-    /// @notice Pulls exactly `amount` of `token`, guarding against callback/FoT tokens via balance diff.
+    /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens
+    ///         via a balance-diff check and protecting any pre-existing strategy balance.
     function _pull(address token, uint256 amount) private returns (uint256 balanceBefore) {
         balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);

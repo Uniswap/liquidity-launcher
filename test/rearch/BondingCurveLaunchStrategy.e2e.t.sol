@@ -27,7 +27,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {BondingCurveLauncher} from "../../src/strategies/BondingCurveLauncher.sol";
+import {BondingCurveLaunchStrategy} from "../../src/strategies/BondingCurveLaunchStrategy.sol";
 import {BondingCurveHook} from "../../src/periphery/hooks/BondingCurveHook.sol";
 import {BuybackAndBurnPositionRecipient} from "../../src/periphery/BuybackAndBurnPositionRecipient.sol";
 import {IBondingCurveHook} from "../../src/interfaces/IBondingCurveHook.sol";
@@ -92,8 +92,8 @@ contract SharedDeltaAttacker is IUnlockCallback {
     receive() external payable {}
 }
 
-/// @notice Rearch e2e: the same bonding-curve lifecycle assertions against BondingCurveLauncher/BondingCurveHook.
-contract BondingCurveLauncherE2ETest is Test {
+/// @notice Rearch e2e: the same bonding-curve lifecycle assertions against BondingCurveLaunchStrategy/BondingCurveHook.
+contract BondingCurveLaunchStrategyE2ETest is Test {
     using StateLibrary for IPoolManager;
 
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
@@ -103,7 +103,7 @@ contract BondingCurveLauncherE2ETest is Test {
     int24 internal constant GRADUATION_TICK = 94_200;
 
     BondingCurveHook internal launchHook;
-    BondingCurveLauncher internal strategy;
+    BondingCurveLaunchStrategy internal strategy;
     PoolSwapTest internal swapRouter;
 
     function setUp() public {
@@ -123,7 +123,7 @@ contract BondingCurveLauncherE2ETest is Test {
             type(BondingCurveHook).creationCode,
             abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
         );
-        strategy = new BondingCurveLauncher(
+        strategy = new BondingCurveLaunchStrategy(
             address(this), POSITION_MANAGER, POOL_MANAGER, IBondingCurveHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
@@ -277,7 +277,7 @@ contract BondingCurveLauncherE2ETest is Test {
             hooks: IHooks(address(launchHook))
         });
         curveTokenId = POSITION_MANAGER.nextTokenId();
-        strategy.launch(address(token));
+        strategy.initializeDistribution(address(token), strategy.TOTAL_SUPPLY(), bytes(""), bytes32(0));
         assertEq(launchHook.curveTokenId(key.toId()), curveTokenId);
     }
 
