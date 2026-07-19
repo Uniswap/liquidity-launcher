@@ -80,8 +80,6 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
                 || address(_hook) == address(0)
         ) revert ZeroAddress();
-        // The hook must recognize this launcher as its authorized initializer (catches a bad deploy handshake).
-        if (_hook.authorized() != address(this)) revert HookNotBound(_hook.authorized(), address(this));
 
         // Ticks must be aligned, usable, and ordered so the curve runs downward from initial to graduation.
         if (
@@ -111,6 +109,9 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
     /// @dev Only the configured launcher may call. The token must be the fixed 1B-supply / 18-decimal shape.
     function launch(address token) external nonReentrant returns (PoolId poolId) {
         if (msg.sender != launcher) revert OnlyLauncher();
+        // The hook is deployed after this contract in the CREATE2 handshake, so verify the binding here
+        // (first reachable point where the hook exists) rather than in the constructor.
+        if (hook.authorized() != address(this)) revert HookNotBound(hook.authorized(), address(this));
         if (IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
@@ -142,11 +143,9 @@ contract BondingCurveLauncher is BlockNumberish, ReentrancyGuardTransient {
 
         _mintCurve(key, token);
 
-        // Return any rounding dust to the launcher.
-        uint256 dust = IERC20(token).balanceOf(address(this));
-        if (dust > (IERC20(token).balanceOf(address(this)) >= balanceBefore ? balanceBefore : 0)) {
-            IERC20(token).safeTransfer(launcher, dust - balanceBefore);
-        }
+        // Return any rounding dust (anything above the pre-existing balance) to the launcher.
+        uint256 balanceNow = IERC20(token).balanceOf(address(this));
+        if (balanceNow > balanceBefore) IERC20(token).safeTransfer(launcher, balanceNow - balanceBefore);
 
         emit BondingCurveLaunched(poolId, token, address(recipient), curveSupply, reserveSupply);
     }
