@@ -72,25 +72,29 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     error TokenAmountMismatch(uint256 received, uint256 expected);
 
     /// @notice Emitted after a curve pool and its permanent LP recipient are created.
-    event BondingCurveLaunched(PoolId indexed poolId, address indexed token, address indexed finalPositionRecipient, uint256 curveSupply, uint256 reserveSupply);
-
+    event BondingCurveLaunched(
+        PoolId indexed poolId,
+        address indexed token,
+        address indexed finalPositionRecipient,
+        uint256 curveSupply,
+        uint256 reserveSupply
+    );
+    /// @notice The only address permitted to drive distributions — set to the canonical LiquidityLauncher
+    ///         so launches must route through `distributeToken`.
+    address public immutable launcher;
     /// @notice The v4 pool manager.
     IPoolManager public immutable poolManager;
     /// @notice The v4 position manager that mints the curve and graduation positions.
     IPositionManager public immutable positionManager;
     /// @notice The launchHook that gates the curve lifecycle and graduates completed curves.
     IBondingCurveLaunchHook public immutable launchHook;
-    /// @notice The only address permitted to drive distributions — set to the canonical LiquidityLauncher
-    ///         so launches must route through `distributeToken`.
-    address public immutable launcher;
-
     /// @notice Aligned tick at which the curve begins (highest price).
     int24 public immutable initialTick;
-    /// @notice Aligned tick at which the curve graduates (lowest price).
+    /// @notice Aligned tick at which the curve graduates.
     int24 public immutable graduationTick;
-    /// @notice Initial pool square-root price (at `initialTick`).
+    /// @notice Initial pool square-root price.
     uint160 public immutable initialSqrtPriceX96;
-    /// @notice Terminal pool square-root price (at `graduationTick`).
+    /// @notice Terminal pool square-root price.
     uint160 public immutable graduationSqrtPriceX96;
     /// @notice Token amount placed in the finite curve position.
     uint256 public immutable curveSupply;
@@ -109,7 +113,6 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
                 || address(_launchHook) == address(0)
         ) revert ZeroAddress();
-
         // Ticks must be aligned, usable, and ordered so the curve runs downward from initial to graduation.
         if (
             _initialTick % TICK_SPACING != 0 || _graduationTick % TICK_SPACING != 0
@@ -155,8 +158,9 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         uint256 balanceBefore = _pull(token, totalSupply);
 
         // Permanent, per-token custodian of the graduated LP (timelocked forever; fees harvest-and-burn only).
-        BuybackAndBurnPositionRecipient recipient =
-            new BuybackAndBurnPositionRecipient(token, address(0), address(0), positionManager, type(uint256).max, MIN_TOKEN_BURN);
+        BuybackAndBurnPositionRecipient recipient = new BuybackAndBurnPositionRecipient(
+            token, address(0), address(0), positionManager, type(uint256).max, MIN_TOKEN_BURN
+        );
 
         // The launchHook custodies the graduation reserve until the curve completes.
         IERC20(token).safeTransfer(address(launchHook), reserveSupply);
@@ -203,20 +207,30 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         uint256 liquidity = FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
         uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
         uint128 positionLiquidity = liquidity > maxLiquidity ? maxLiquidity : SafeCastLib.toUint128(liquidity);
-        uint128 tokenTransferAmount =
-            SafeCastLib.toUint128(SqrtPriceMath.getAmount1Delta(graduationSqrtPriceX96, initialSqrtPriceX96, positionLiquidity, true));
+        uint128 tokenTransferAmount = SafeCastLib.toUint128(
+            SqrtPriceMath.getAmount1Delta(graduationSqrtPriceX96, initialSqrtPriceX96, positionLiquidity, true)
+        );
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
         );
-        bytes[] memory params = new bytes[](4);
-        params[0] = abi.encode(key, graduationTick, initialTick, positionLiquidity, uint128(0), tokenTransferAmount, address(launchHook), bytes(""));
-        params[1] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[2] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[3] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
+        bytes[] memory actionParams = new bytes[](4);
+        actionParams[0] = abi.encode(
+            key,
+            graduationTick,
+            initialTick,
+            positionLiquidity,
+            uint128(0),
+            tokenTransferAmount,
+            address(launchHook),
+            bytes("")
+        );
+        actionParams[1] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        actionParams[2] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        actionParams[3] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
 
         IERC20(token).safeTransfer(address(positionManager), tokenTransferAmount);
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        positionManager.modifyLiquidities(abi.encode(actions, actionParams), block.timestamp);
     }
 
     function _poolKey(address token) private view returns (PoolKey memory) {
@@ -233,11 +247,11 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         uint256 liquidity = FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
         uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
         uint128 positionLiquidity = liquidity > maxLiquidity ? maxLiquidity : SafeCastLib.toUint128(liquidity);
-        uint256 principal = SqrtPriceMath.getAmount0Delta(graduationSqrtPriceX96, initialSqrtPriceX96, positionLiquidity, false);
+        uint256 principal =
+            SqrtPriceMath.getAmount0Delta(graduationSqrtPriceX96, initialSqrtPriceX96, positionLiquidity, false);
         Position memory finalPosition = PositionPlanner.resolvePosition(
             PositionPlanner.TickBounds({
-                lowerTick: TickMath.minUsableTick(TICK_SPACING),
-                upperTick: TickMath.maxUsableTick(TICK_SPACING)
+                lowerTick: TickMath.minUsableTick(TICK_SPACING), upperTick: TickMath.maxUsableTick(TICK_SPACING)
             }),
             graduationSqrtPriceX96,
             maxLiquidity,

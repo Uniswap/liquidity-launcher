@@ -26,7 +26,11 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {InitializerHook} from "./InitializerHook.sol";
-import {IBondingCurveLaunchHook, BondingCurveHookConfig, BondingCurvePhase} from "../../interfaces/IBondingCurveLaunchHook.sol";
+import {
+    IBondingCurveLaunchHook,
+    BondingCurveHookConfig,
+    BondingCurvePhase
+} from "../../interfaces/IBondingCurveLaunchHook.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
 
@@ -129,11 +133,12 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
     /// @dev Phase-gated liquidity. Only the hook-owned curve seed (Seeding) and the graduation
     ///      full-range mint (Graduating) may add liquidity; post-graduation the pool is open.
-    function _beforeAddLiquidity(address sender, PoolKey calldata key, ModifyLiquidityParams calldata params, bytes calldata)
-        internal
-        override
-        returns (bytes4)
-    {
+    function _beforeAddLiquidity(
+        address sender,
+        PoolKey calldata key,
+        ModifyLiquidityParams calldata params,
+        bytes calldata
+    ) internal override returns (bytes4) {
         PoolId poolId = key.toId();
         BondingCurvePhase phase = bondingCurvePhase[poolId];
         BondingCurveHookConfig storage config = _configs[poolId];
@@ -147,7 +152,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             uint256 nextTokenId = positionManager.nextTokenId();
             if (nextTokenId == 0) revert InvalidCurvePositionOwner();
             uint256 tokenId = nextTokenId - 1;
-            if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
+            if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
+                revert InvalidCurvePositionOwner();
+            }
             curveTokenId[poolId] = tokenId;
             bondingCurvePhase[poolId] = phase.advanceTo(BondingCurvePhase.Active);
         } else if (phase == BondingCurvePhase.Graduating) {
@@ -173,13 +180,23 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     {
         // The graduation-normalization swap originates from this hook; it must never be gated.
         if (sender == address(this)) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+            return
+                (
+                    IHooks.beforeSwap.selector,
+                    BeforeSwapDeltaLibrary.ZERO_DELTA,
+                    BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
+                );
         }
 
         PoolId poolId = key.toId();
         BondingCurvePhase phase = bondingCurvePhase[poolId];
         if (phase == BondingCurvePhase.Graduated) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+            return
+                (
+                    IHooks.beforeSwap.selector,
+                    BeforeSwapDeltaLibrary.ZERO_DELTA,
+                    BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
+                );
         }
         if (phase != BondingCurvePhase.Active) revert InvalidBondingCurvePhase(phase);
 
@@ -272,7 +289,8 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         IERC20 token = IERC20(Currency.unwrap(key.currency1));
         token.safeTransfer(address(positionManager), config.reserveTokenAmount);
         uint256 finalTokenId = positionManager.nextTokenId();
-        (bytes memory actions, bytes[] memory planParams) = _graduationPlan(key, tokenId, finalPosition, config.finalPositionRecipient);
+        (bytes memory actions, bytes[] memory planParams) =
+            _graduationPlan(key, tokenId, finalPosition, config.finalPositionRecipient);
         positionManager.modifyLiquiditiesWithoutUnlock(actions, planParams);
         _assertDeltasCleared(key);
 
@@ -289,11 +307,11 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         returns (Position memory)
     {
         uint160 initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(config.curveTickUpper);
-        uint256 principal = SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
+        uint256 principal =
+            SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
         return PositionPlanner.resolvePosition(
             PositionPlanner.TickBounds({
-                lowerTick: TickMath.minUsableTick(key.tickSpacing),
-                upperTick: TickMath.maxUsableTick(key.tickSpacing)
+                lowerTick: TickMath.minUsableTick(key.tickSpacing), upperTick: TickMath.maxUsableTick(key.tickSpacing)
             }),
             config.graduationSqrtPriceX96,
             Pool.tickSpacingToMaxLiquidityPerTick(key.tickSpacing),
@@ -347,10 +365,14 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
     function _assertDeltasCleared(PoolKey calldata key) private view {
         if (poolManager.currencyDelta(address(positionManager), key.currency0) != 0) {
-            revert UnexpectedPositionManagerDelta(Currency.unwrap(key.currency0), poolManager.currencyDelta(address(positionManager), key.currency0));
+            revert UnexpectedPositionManagerDelta(
+                Currency.unwrap(key.currency0), poolManager.currencyDelta(address(positionManager), key.currency0)
+            );
         }
         if (poolManager.currencyDelta(address(positionManager), key.currency1) != 0) {
-            revert UnexpectedPositionManagerDelta(Currency.unwrap(key.currency1), poolManager.currencyDelta(address(positionManager), key.currency1));
+            revert UnexpectedPositionManagerDelta(
+                Currency.unwrap(key.currency1), poolManager.currencyDelta(address(positionManager), key.currency1)
+            );
         }
     }
 

@@ -58,7 +58,9 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     /// @notice Emitted when the completed curve enters graduation.
     event GraduationStarted(PoolId indexed poolId);
     /// @notice Emitted when the curve NFT is replaced with a full-range NFT.
-    event Graduated(PoolId indexed poolId, uint256 indexed curveTokenId, uint256 indexed finalTokenId, uint256 liquidity);
+    event Graduated(
+        PoolId indexed poolId, uint256 indexed curveTokenId, uint256 indexed finalTokenId, uint256 liquidity
+    );
 
     /// @notice Thrown when a caller other than the authorized launcher configures a pool.
     /// @param caller The address that attempted the call

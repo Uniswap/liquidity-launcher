@@ -63,10 +63,18 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             | Hooks.AFTER_SWAP_FLAG;
         (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(this), flags, type(BondingCurveLaunchHook).creationCode, abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
+            address(this),
+            flags,
+            type(BondingCurveLaunchHook).creationCode,
+            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
         );
         strategy = new BondingCurveLaunchStrategy(
-            address(launcher), POSITION_MANAGER, POOL_MANAGER, IBondingCurveLaunchHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
+            address(launcher),
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            IBondingCurveLaunchHook(hookAddress),
+            INITIAL_TICK,
+            GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
         hook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));

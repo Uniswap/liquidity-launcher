@@ -124,7 +124,12 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
         );
         strategy = new BondingCurveLaunchStrategy(
-            address(this), POSITION_MANAGER, POOL_MANAGER, IBondingCurveLaunchHook(hookAddress), INITIAL_TICK, GRADUATION_TICK
+            address(this),
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            IBondingCurveLaunchHook(hookAddress),
+            INITIAL_TICK,
+            GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
         launchHook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
@@ -155,7 +160,9 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         vm.expectRevert();
         swapRouter.swap{value: 100_000 ether}(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: requestedOutput, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: requestedOutput, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
@@ -169,7 +176,11 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
 
         BalanceDelta delta = swapRouter.swap{value: 1 ether}(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: int256(requestedOutput), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: int256(requestedOutput),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
@@ -228,7 +239,9 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         int256 amountSpecified = -100_000 ether;
         BalanceDelta delta = swapRouter.swap{value: uint256(-amountSpecified)}(
             key,
-            SwapParams({zeroForOne: true, amountSpecified: amountSpecified, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            SwapParams({
+                zeroForOne: true, amountSpecified: amountSpecified, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
