@@ -52,8 +52,9 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
     uint24 public constant END_FEE = 0;
     /// @notice Number of blocks over which the launch fee decays from START_FEE to END_FEE.
     uint256 public constant DECAY_BLOCKS = 5;
-    /// @notice LP fee applied once a pool has graduated, in pips (1%).
-    uint24 public constant GRADUATED_FEE = 10_000;
+    /// @notice LP fee applied outside the launch decay window (during and after graduation), in pips.
+    /// @dev Matches the pre-rearch `baseFee: 0` — the launch fee decays to this and stays here.
+    uint24 public constant BASE_FEE = 0;
 
     /// @inheritdoc IBondingCurveHook
     IPositionManager public immutable override positionManager;
@@ -171,13 +172,13 @@ contract BondingCurveHook is InitializerHook, BlockNumberish, IBondingCurveHook 
     {
         // The graduation-normalization swap originates from this hook; it must never be gated.
         if (sender == address(this)) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, GRADUATED_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
         }
 
         PoolId poolId = key.toId();
         CurvePhase current = phase[poolId];
         if (current == CurvePhase.Graduated) {
-            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, GRADUATED_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG);
         }
         if (current != CurvePhase.Active) revert InvalidPhaseForSwap(current);
 
