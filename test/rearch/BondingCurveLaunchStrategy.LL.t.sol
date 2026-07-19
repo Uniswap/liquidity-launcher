@@ -27,6 +27,7 @@ import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {Distribution} from "../../src/types/Distribution.sol";
 import {BondingCurveLaunchStrategy} from "../../src/strategies/BondingCurveLaunchStrategy.sol";
 import {BondingCurveLaunchHook} from "../../src/periphery/hooks/BondingCurveLaunchHook.sol";
+import {DutchDecayFeeModule} from "../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {IBondingCurveLaunchHook} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {BondingCurvePhase} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
 
@@ -45,6 +46,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     UERC20Factory internal factory;
     BondingCurveLaunchHook internal hook;
     BondingCurveLaunchStrategy internal strategy;
+    DutchDecayFeeModule internal feeModule;
 
     function setUp() public {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -59,6 +61,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // Deploy handshake: predict strategy addr, mine the hook bound to it, deploy strategy then hook.
         // The strategy's authorized launcher is the LiquidityLauncher itself.
+        feeModule = new DutchDecayFeeModule(990_000, 0, 5, true);
         address predictedStrategy = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             | Hooks.AFTER_SWAP_FLAG;
@@ -73,6 +76,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             POSITION_MANAGER,
             POOL_MANAGER,
             IBondingCurveLaunchHook(hookAddress),
+            address(feeModule),
             INITIAL_TICK,
             GRADUATION_TICK
         );

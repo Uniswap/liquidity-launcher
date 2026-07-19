@@ -41,7 +41,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
 
     /// @notice Total token supply required for every launch.
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
-    /// @notice Tick spacing used by all curve pools.
+    /// @notice Tick spacing used by bonding-curve pools.
     int24 public constant TICK_SPACING = 200;
     /// @notice Minimum token burn required to harvest fees from the graduated position.
     uint256 public constant MIN_TOKEN_BURN = TOTAL_SUPPLY / 2_000;
@@ -50,17 +50,17 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
 
     /// @notice Thrown when a caller other than the configured launcher initializes a distribution.
     error OnlyLauncher();
-    /// @notice Thrown when caller-supplied configuration is provided (this strategy uses fixed parameters).
+    /// @notice Thrown when caller-supplied configuration is provided.
     error UnexpectedConfigData();
-    /// @notice Thrown when the supplied or reported token supply is not the required fixed total.
+    /// @notice Thrown when the supplied or reported token supply is not fixed.
     error InvalidSupply();
-    /// @notice Thrown when the launched token does not use 18 decimals.
+    /// @notice Thrown when the token does not use 18 decimals.
     error InvalidTokenDecimals();
-    /// @notice Thrown when the configured ticks cannot define a valid downward curve.
+    /// @notice Thrown when the configured ticks cannot define the curve.
     error InvalidTickRange();
     /// @notice Thrown at deployment when the tick band cannot produce a graduatable position.
     error UnrealizableGraduation();
-    /// @notice Thrown when a required constructor address is zero.
+    /// @notice Thrown when an address required by the strategy is zero.
     error ZeroAddress();
     /// @notice Thrown when the launchHook does not recognize this strategy as its authorized initializer.
     /// @param authorized The launchHook's authorized address
@@ -71,8 +71,13 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     /// @param expected The amount expected
     error TokenAmountMismatch(uint256 received, uint256 expected);
 
-    /// @notice Emitted after a curve pool and its permanent LP recipient are created.
-    event BondingCurveLaunched(
+    /// @notice Emitted after the curve pool and permanent LP recipient are created.
+    /// @param poolId The identifier of the initialized pool.
+    /// @param token The launched token.
+    /// @param finalPositionRecipient The permanent recipient of the graduated LP position.
+    /// @param curveSupply The token amount placed in the finite curve position.
+    /// @param reserveSupply The token amount reserved for full-range graduation.
+    event BondingCurveTokenLaunched(
         PoolId indexed poolId,
         address indexed token,
         address indexed finalPositionRecipient,
@@ -88,6 +93,9 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     IPositionManager public immutable positionManager;
     /// @notice The launchHook that gates the curve lifecycle and graduates completed curves.
     IBondingCurveLaunchHook public immutable launchHook;
+    /// @notice The dynamic fee module the hook consults for the LP fee while the curve is active.
+    ///         Replaceable: deploy a different module and redeploy the strategy pointing at it.
+    address public immutable dynamicFeeModule;
     /// @notice Aligned tick at which the curve begins (highest price).
     int24 public immutable initialTick;
     /// @notice Aligned tick at which the curve graduates.
@@ -106,12 +114,13 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IBondingCurveLaunchHook _launchHook,
+        address _dynamicFeeModule,
         int24 _initialTick,
         int24 _graduationTick
     ) {
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
-                || address(_launchHook) == address(0)
+                || address(_launchHook) == address(0) || _dynamicFeeModule == address(0)
         ) revert ZeroAddress();
         // Ticks must be aligned, usable, and ordered so the curve runs downward from initial to graduation.
         if (
@@ -124,6 +133,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         poolManager = _poolManager;
         positionManager = _positionManager;
         launchHook = _launchHook;
+        dynamicFeeModule = _dynamicFeeModule;
         initialTick = _initialTick;
         graduationTick = _graduationTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
@@ -177,7 +187,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
                 graduationSqrtPriceX96: graduationSqrtPriceX96,
                 curveTickLower: graduationTick,
                 curveTickUpper: initialTick,
-                swapStartBlock: uint48(_getBlockNumberish())
+                swapStartBlock: uint48(_getBlockNumberish()),
+                module: dynamicFeeModule
             })
         );
         poolManager.initialize(key, initialSqrtPriceX96);
@@ -190,7 +201,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
         emit DistributionInitialized(address(launchHook), token, totalSupply);
-        emit BondingCurveLaunched(poolId, token, address(recipient), curveSupply, reserveSupply);
+        emit BondingCurveTokenLaunched(poolId, token, address(recipient), curveSupply, reserveSupply);
     }
 
     /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens

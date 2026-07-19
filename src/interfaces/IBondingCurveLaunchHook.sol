@@ -40,6 +40,8 @@ function advanceTo(BondingCurvePhase from, BondingCurvePhase to) pure returns (B
 /// @param curveTickLower The curve position's lower tick (graduation tick).
 /// @param curveTickUpper The curve position's upper tick (initial tick).
 /// @param swapStartBlock The block from which swaps are allowed; also the fee-decay anchor.
+/// @param module The IDynamicFeeModule consulted for the LP fee while the curve is active; address(0)
+///        applies a zero fee.
 struct BondingCurveHookConfig {
     uint256 reserveTokenAmount;
     address finalPositionRecipient;
@@ -47,6 +49,7 @@ struct BondingCurveHookConfig {
     int24 curveTickLower;
     int24 curveTickUpper;
     uint48 swapStartBlock;
+    address module;
 }
 
 /// @title IBondingCurveLaunchHook

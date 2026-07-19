@@ -26,6 +26,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {InitializerHook} from "./InitializerHook.sol";
+import {IDynamicFeeModule} from "../../interfaces/IDynamicFeeModule.sol";
 import {
     IBondingCurveLaunchHook,
     BondingCurveHookConfig,
@@ -50,14 +51,8 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
-    /// @notice Launch fee at `swapStartBlock`, in pips (99%). Decays linearly to zero.
-    uint24 public constant START_FEE = 990_000;
-    /// @notice Launch fee once the decay window has elapsed, in pips.
-    uint24 public constant END_FEE = 0;
-    /// @notice Number of blocks over which the launch fee decays from START_FEE to END_FEE.
-    uint256 public constant DECAY_BLOCKS = 5;
-    /// @notice LP fee applied outside the launch decay window (during and after graduation), in pips.
-    /// @dev Matches the pre-rearch `baseFee: 0` — the launch fee decays to this and stays here.
+    /// @notice LP fee applied when no fee module is configured and after graduation, in pips.
+    /// @dev Matches the pre-rearch `baseFee: 0`.
     uint24 public constant BASE_FEE = 0;
 
     /// @inheritdoc IBondingCurveLaunchHook
@@ -206,14 +201,17 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
         _validateBuyWithinCurve(poolId, params, config);
 
-        uint24 fee = _launchFee(currentBlock - config.swapStartBlock);
+        uint24 fee = _moduleFee(config.module, key, params.zeroForOne);
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
 
-    /// @notice Linear fee decay from START_FEE to END_FEE over DECAY_BLOCKS.
-    function _launchFee(uint256 elapsed) private pure returns (uint24) {
-        if (elapsed >= DECAY_BLOCKS) return END_FEE;
-        return uint24(START_FEE - (uint256(START_FEE - END_FEE) * elapsed) / DECAY_BLOCKS);
+    /// @notice Quotes the LP fee from the configured fee module for the swap's direction.
+    /// @dev A module failure reverts the swap. With no module, the base fee applies.
+    function _moduleFee(address module, PoolKey calldata key, bool zeroForOne) private view returns (uint24) {
+        if (module == address(0)) return BASE_FEE;
+        (uint24 zeroForOneFee, uint24 oneForZeroFee) = IDynamicFeeModule(module).getFee(key);
+        uint24 fee = zeroForOne ? zeroForOneFee : oneForZeroFee;
+        return fee > LPFeeLibrary.MAX_LP_FEE ? LPFeeLibrary.MAX_LP_FEE : fee;
     }
 
     /// @dev Bounds an exact-output buy so it cannot request more token than the curve still holds.
