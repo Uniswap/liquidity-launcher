@@ -59,7 +59,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     IPositionManager public immutable override positionManager;
 
     /// @notice The curve configuration registered for each pool.
-    mapping(PoolId poolId => BondingCurveHookConfig config) internal _configs;
+    mapping(PoolId poolId => BondingCurveHookConfig config) internal _launchConfigs;
     /// @inheritdoc IBondingCurveLaunchHook
     mapping(PoolId poolId => BondingCurvePhase phase) public override bondingCurvePhase;
     /// @inheritdoc IBondingCurveLaunchHook
@@ -82,14 +82,14 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
                 || config.graduationSqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickLower)
         ) revert InvalidBondingCurveConfig();
 
-        _configs[poolId] = config;
-        bondingCurvePhase[poolId] = bondingCurvePhase[poolId].advanceTo(BondingCurvePhase.Seeding);
+        _launchConfigs[poolId] = config;
+        bondingCurvePhase[poolId] = BondingCurvePhase.Seeding;
         emit BondingCurveConfigured(poolId, config);
     }
 
     /// @inheritdoc IBondingCurveLaunchHook
     function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory) {
-        return _configs[poolId];
+        return _launchConfigs[poolId];
     }
 
     /// @inheritdoc InitializerHook
@@ -121,7 +121,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         returns (bytes4)
     {
         bytes4 selector = super._beforeInitialize(sender, key, sqrtPriceX96);
-        BondingCurveHookConfig storage config = _configs[key.toId()];
+        BondingCurveHookConfig storage config = _launchConfigs[key.toId()];
         if (sqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickUpper)) revert InvalidBondingCurveConfig();
         return selector;
     }
@@ -136,7 +136,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     ) internal override returns (bytes4) {
         PoolId poolId = key.toId();
         BondingCurvePhase phase = bondingCurvePhase[poolId];
-        BondingCurveHookConfig storage config = _configs[poolId];
+        BondingCurveHookConfig storage config = _launchConfigs[poolId];
 
         if (phase == BondingCurvePhase.Seeding) {
             if (
@@ -151,14 +151,14 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
                 revert InvalidCurvePositionOwner();
             }
             curveTokenId[poolId] = tokenId;
-            bondingCurvePhase[poolId] = phase.advanceTo(BondingCurvePhase.Active);
+            bondingCurvePhase[poolId] = BondingCurvePhase.Active;
         } else if (phase == BondingCurvePhase.Graduating) {
             if (
                 params.liquidityDelta <= 0 || params.tickLower != TickMath.minUsableTick(key.tickSpacing)
                     || params.tickUpper != TickMath.maxUsableTick(key.tickSpacing)
             ) revert InvalidFinalPosition();
             if (sender != address(positionManager)) revert InvalidPositionManager(sender);
-            bondingCurvePhase[poolId] = phase.advanceTo(BondingCurvePhase.Graduated);
+            bondingCurvePhase[poolId] = BondingCurvePhase.Graduated;
         } else if (phase != BondingCurvePhase.Graduated) {
             revert InvalidBondingCurvePhase(phase);
         }
@@ -195,7 +195,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         }
         if (phase != BondingCurvePhase.Active) revert InvalidBondingCurvePhase(phase);
 
-        BondingCurveHookConfig storage config = _configs[poolId];
+        BondingCurveHookConfig storage config = _launchConfigs[poolId];
         uint256 currentBlock = _getBlockNumberish();
         if (currentBlock < config.swapStartBlock) revert SwapsNotStarted(config.swapStartBlock, currentBlock);
 
@@ -250,14 +250,14 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         // Only a buy (zeroForOne) can complete the curve by pushing price down to graduation.
         if (!params.zeroForOne) return (IHooks.afterSwap.selector, 0);
 
-        BondingCurveHookConfig storage config = _configs[poolId];
+        BondingCurveHookConfig storage config = _launchConfigs[poolId];
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (sqrtPriceX96 > config.graduationSqrtPriceX96) return (IHooks.afterSwap.selector, 0);
 
         uint128 liquidity = poolManager.getLiquidity(poolId);
         if (liquidity != 0) revert InvalidGraduationLiquidity(liquidity);
 
-        bondingCurvePhase[poolId] = bondingCurvePhase[poolId].advanceTo(BondingCurvePhase.Graduating);
+        bondingCurvePhase[poolId] = BondingCurvePhase.Graduating;
         emit GraduationStarted(poolId);
 
         // If the completing buy overshot the boundary, walk the (now empty) range back to grad price.
@@ -275,7 +275,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     }
 
     function _graduate(PoolKey calldata key, PoolId poolId, BondingCurveHookConfig storage config) private {
-        _assertDeltasCleared(key);
+        _assertPositionManagerDeltasCleared(key);
         uint256 tokenId = curveTokenId[poolId];
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
 
@@ -287,10 +287,10 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         IERC20 token = IERC20(Currency.unwrap(key.currency1));
         token.safeTransfer(address(positionManager), config.reserveTokenAmount);
         uint256 finalTokenId = positionManager.nextTokenId();
-        (bytes memory actions, bytes[] memory planParams) =
+        (bytes memory actions, bytes[] memory params) =
             _graduationPlan(key, tokenId, finalPosition, config.finalPositionRecipient);
-        positionManager.modifyLiquiditiesWithoutUnlock(actions, planParams);
-        _assertDeltasCleared(key);
+        positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+        _assertPositionManagerDeltasCleared(key);
 
         uint256 remaining = token.balanceOf(address(this));
         if (remaining != 0) token.safeTransfer(BURN_ADDRESS, remaining);
@@ -318,10 +318,20 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         );
     }
 
+    function _assertPositionManagerDeltasCleared(PoolKey calldata key) private view {
+        _assertPositionManagerDeltaCleared(key.currency0);
+        _assertPositionManagerDeltaCleared(key.currency1);
+    }
+
+    function _assertPositionManagerDeltaCleared(Currency currency) private view {
+        int256 delta = poolManager.currencyDelta(address(positionManager), currency);
+        if (delta != 0) revert UnexpectedPositionManagerDelta(currency, delta);
+    }
+
     function _graduationPlan(PoolKey calldata key, uint256 tokenId, Position memory finalPosition, address recipient)
         private
         pure
-        returns (bytes memory actions, bytes[] memory planParams)
+        returns (bytes memory actions, bytes[] memory params)
     {
         actions = abi.encodePacked(
             uint8(Actions.BURN_POSITION),
@@ -331,9 +341,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             uint8(Actions.TAKE),
             uint8(Actions.TAKE)
         );
-        planParams = new bytes[](6);
-        planParams[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        planParams[1] = abi.encode(
+        params = new bytes[](6);
+        params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
+        params[1] = abi.encode(
             key,
             finalPosition.tickLower,
             finalPosition.tickUpper,
@@ -343,11 +353,11 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             finalPosition.recipient,
             bytes("")
         );
-        planParams[2] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        planParams[3] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[3] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
         // Surplus ETH (currency0) to the LP recipient; surplus token (currency1) is burned.
-        planParams[4] = abi.encode(key.currency0, recipient, ActionConstants.OPEN_DELTA);
-        planParams[5] = abi.encode(key.currency1, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
+        params[4] = abi.encode(key.currency0, recipient, ActionConstants.OPEN_DELTA);
+        params[5] = abi.encode(key.currency1, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
     }
 
     /// @dev Empty-range traversal to restore the boundary price without moving either currency.
@@ -359,19 +369,6 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             bytes("")
         );
         if (BalanceDelta.unwrap(delta) != 0) revert NonzeroNormalizationDelta();
-    }
-
-    function _assertDeltasCleared(PoolKey calldata key) private view {
-        if (poolManager.currencyDelta(address(positionManager), key.currency0) != 0) {
-            revert UnexpectedPositionManagerDelta(
-                Currency.unwrap(key.currency0), poolManager.currencyDelta(address(positionManager), key.currency0)
-            );
-        }
-        if (poolManager.currencyDelta(address(positionManager), key.currency1) != 0) {
-            revert UnexpectedPositionManagerDelta(
-                Currency.unwrap(key.currency1), poolManager.currencyDelta(address(positionManager), key.currency1)
-            );
-        }
     }
 
     /// @inheritdoc IERC165

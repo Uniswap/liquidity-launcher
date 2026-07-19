@@ -2,31 +2,17 @@
 pragma solidity 0.8.26;
 
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IInitializerHook} from "./IInitializerHook.sol";
 
 /// @notice Lifecycle of one bonding-curve pool.
-/// @dev Ordered so every legal transition is exactly `+1`. Storage default is `Unconfigured`.
-///      Unconfigured -> Seeding -> Active -> Graduating -> Graduated; no other edges are legal.
 enum BondingCurvePhase {
     Unconfigured,
     Seeding,
     Active,
     Graduating,
     Graduated
-}
-
-using {advanceTo} for BondingCurvePhase global;
-
-/// @notice Thrown when a phase transition is not the single legal forward edge.
-error IllegalPhaseTransition(BondingCurvePhase from, BondingCurvePhase to);
-
-/// @notice Advances `from` to `to`, reverting unless `to` is the immediate successor of `from`.
-/// @dev Centralizes the state machine: the caller writes the returned value back to storage. Because
-///      the enum is ordered, "legal" is simply `to == from + 1`, forbidding skips, reversals and self-loops.
-function advanceTo(BondingCurvePhase from, BondingCurvePhase to) pure returns (BondingCurvePhase) {
-    if (uint8(to) != uint8(from) + 1) revert IllegalPhaseTransition(from, to);
-    return to;
 }
 
 /// @notice Specialized configuration for one finite curve.
@@ -108,7 +94,7 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     /// @notice Thrown when the PositionManager holds an unsettled delta before or after graduation.
     /// @param currency The currency with the unexpected delta
     /// @param delta The unsettled delta
-    error UnexpectedPositionManagerDelta(address currency, int256 delta);
+    error UnexpectedPositionManagerDelta(Currency currency, int256 delta);
 
     /// @notice Registers a pool's curve config. Callable once per pool by the authorized launcher,
     ///         before pool initialization.
