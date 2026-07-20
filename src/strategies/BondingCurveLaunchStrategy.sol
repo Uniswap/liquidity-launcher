@@ -16,7 +16,6 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
@@ -24,7 +23,7 @@ import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {IStrategy} from "../interfaces/IStrategy.sol";
 import {BondingCurveMath} from "../libraries/BondingCurveMath.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
-import {Position, CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
+import {Plan, Position, CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
 import {IBondingCurveLaunchHook, BondingCurveHookConfig} from "../interfaces/IBondingCurveLaunchHook.sol";
 import {BuybackAndBurnPositionRecipient} from "../periphery/BuybackAndBurnPositionRecipient.sol";
 
@@ -203,10 +202,24 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         );
         poolManager.initialize(key, initialSqrtPriceX96);
 
-        _mintCurve(key, token);
+        uint128 tokenTransferAmount = SafeCastLib.toUint128(
+            SqrtPriceMath.getAmount1Delta(graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, true)
+        );
+        Position[] memory positions = new Position[](1);
+        positions[0] = Position({
+            amount0: 0,
+            amount1: tokenTransferAmount,
+            tickLower: graduationTick,
+            tickUpper: initialTick,
+            liquidity: curveLiquidity,
+            recipient: address(launchHook)
+        });
+        Plan memory plan = PositionPlanner.toPlan(positions, key, ActionConstants.MSG_SENDER);
 
-        // Burn any curve-rounding dust (anything above the pre-existing balance). Returning it to the
-        // launcher would re-strand tokens there, which LiquidityLauncher warns are distributable by anyone.
+        IERC20(token).safeTransfer(address(positionManager), tokenTransferAmount);
+        positionManager.modifyLiquidities(abi.encode(plan.actions, plan.params), block.timestamp);
+
+        // Burn any dust from creating the initial position
         uint256 balanceNow = IERC20(token).balanceOf(address(this));
         if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
@@ -221,34 +234,6 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
         if (received != amount) revert TokenAmountMismatch(received, amount);
-    }
-
-    /// @notice Mints the single-sided curve position `[graduationTick, initialTick]` to the launchHook.
-    function _mintCurve(PoolKey memory key, address token) private {
-        uint128 tokenTransferAmount = SafeCastLib.toUint128(
-            SqrtPriceMath.getAmount1Delta(graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, true)
-        );
-
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
-        );
-        bytes[] memory actionParams = new bytes[](4);
-        actionParams[0] = abi.encode(
-            key,
-            graduationTick,
-            initialTick,
-            curveLiquidity,
-            uint128(0),
-            tokenTransferAmount,
-            address(launchHook),
-            bytes("")
-        );
-        actionParams[1] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        actionParams[2] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        actionParams[3] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
-
-        IERC20(token).safeTransfer(address(positionManager), tokenTransferAmount);
-        positionManager.modifyLiquidities(abi.encode(actions, actionParams), block.timestamp);
     }
 
     function _poolKey(address token) private view returns (PoolKey memory) {
