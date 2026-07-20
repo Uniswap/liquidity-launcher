@@ -114,6 +114,16 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         assertEq(IERC20(token).balanceOf(address(strategy)), 0);
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_e2e_launchThroughLiquidityLauncher_gas() public {
+        Distribution memory distribution =
+            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")});
+
+        launcher.multicall(_buildCalls(distribution));
+        vm.snapshotGasLastCall("BondingCurve launch: LiquidityLauncher multicall");
+    }
+
     function _buildCalls(Distribution memory distribution) internal view returns (bytes[] memory calls) {
         UERC20Metadata memory metadata = UERC20Metadata({
             description: "quicklaunch token",

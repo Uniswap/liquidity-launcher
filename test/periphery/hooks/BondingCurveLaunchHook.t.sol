@@ -101,6 +101,13 @@ contract BondingCurveLaunchHookTest is Test {
         assertEq(hook.bondingCurveConfig(poolId).curveTickUpper, INITIAL_TICK);
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_configure_gas() public {
+        hook.configure(poolId, _validConfig());
+        vm.snapshotGasLastCall("BondingCurveLaunchHook configure");
+    }
+
     function test_configure_revertsWhenAlreadyConfigured() public {
         hook.configure(poolId, _validConfig());
         vm.expectRevert(abi.encodeWithSelector(IBondingCurveLaunchHook.AlreadyConfigured.selector, poolId));

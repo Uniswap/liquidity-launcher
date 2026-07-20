@@ -195,6 +195,40 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         assertEq(token.balanceOf(address(this)) - balanceBefore, requestedOutput);
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_swapExactOutput_gas() public {
+        (, PoolKey memory key,) = _launch();
+        vm.roll(block.number + feeModule.decayBlocks());
+
+        swapRouter.swap{value: 1 ether}(
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: int256(1 ether), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+        vm.snapshotGasLastCall("BondingCurve swap: exact output");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_swapExactInput_gas() public {
+        (, PoolKey memory key,) = _launch();
+        vm.roll(block.number + feeModule.decayBlocks());
+
+        swapRouter.swap{value: 1 ether}(
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -int256(1 ether), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+        vm.snapshotGasLastCall("BondingCurve swap: exact input");
+    }
+
     function test_swapExactInput_partiallyFillsAndGraduatesAtomically() public {
         (MockERC20 token, PoolKey memory key, uint256 curveTokenId) = _launch();
         vm.roll(block.number + feeModule.decayBlocks());
@@ -224,6 +258,44 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_swapExactInput_graduates_gas() public {
+        (, PoolKey memory key,) = _launch();
+        vm.roll(block.number + feeModule.decayBlocks());
+
+        swapRouter.swap{value: 100_000 ether}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(100_000 ether),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+        vm.snapshotGasLastCall("BondingCurve swap: graduation");
+    }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_swapExactInput_afterGraduation_gas() public {
+        (, PoolKey memory key,) = _launch();
+        vm.roll(block.number + feeModule.decayBlocks());
+        _swapThroughGraduation(key);
+        vm.roll(block.number + 1);
+
+        swapRouter.swap{value: 1 ether}(
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -int256(1 ether), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+        vm.snapshotGasLastCall("BondingCurve swap: after graduation");
     }
 
     function test_swap_revertsForSellInGraduationBlock() public {

@@ -65,6 +65,16 @@ contract DutchDecayFeeModuleTest is Test {
         assertEq(z2, uint24(uint256(START_FEE) * 3 / 5)); // 594_000
     }
 
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_getFee_gas() public {
+        DutchDecayFeeModule module = _module(true);
+        vm.roll(block.number + 1);
+
+        module.getFee(key);
+        vm.snapshotGasLastCall("DutchDecayFeeModule getFee");
+    }
+
     function test_afterWindow_isEndFee() public {
         DutchDecayFeeModule module = _module(true);
         vm.roll(block.number + DECAY_BLOCKS);

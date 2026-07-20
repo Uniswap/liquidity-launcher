@@ -119,4 +119,14 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         assertEq(config.module, dynamicFeeModule);
         assertTrue(config.finalPositionRecipient != address(0));
     }
+
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_WhenLaunchIsValid_gas() public {
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        token.approve(address(strategy), TOTAL_SUPPLY);
+
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        vm.snapshotGasLastCall("BondingCurveLaunchStrategy initializeDistribution");
+    }
 }

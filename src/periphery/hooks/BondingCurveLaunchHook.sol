@@ -33,7 +33,7 @@ import {
     BondingCurvePhase
 } from "../../interfaces/IBondingCurveLaunchHook.sol";
 import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
-import {Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
+import {Plan, Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
 
 /// @title BondingCurveLaunchHook
 /// @notice Single-purpose v4 hook for a native-ETH bonding-curve launch that graduates in place.
@@ -164,6 +164,11 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         BondingCurvePhase phase = state.phase;
         BondingCurveHookConfig storage config = _launchConfigs[poolId];
 
+        // Liquidity cannot be added before graduation.
+        if (phase == BondingCurvePhase.Unconfigured || phase == BondingCurvePhase.Active) {
+            revert InvalidBondingCurvePhase(phase);
+        }
+
         if (phase == BondingCurvePhase.Seeding) {
             if (
                 params.liquidityDelta <= 0 || params.tickLower != config.curveTickLower
@@ -185,8 +190,6 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             ) revert InvalidFinalPosition();
             if (sender != address(positionManager)) revert InvalidPositionManager(sender);
             state.phase = BondingCurvePhase.Graduated;
-        } else if (phase != BondingCurvePhase.Graduated) {
-            revert InvalidBondingCurvePhase(phase);
         }
         return IHooks.beforeAddLiquidity.selector;
     }
@@ -202,11 +205,13 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         PoolId poolId = key.toId();
         CurveState storage state = _curveState[poolId];
         BondingCurvePhase phase = state.phase;
-        if (phase == BondingCurvePhase.Graduated) {
-            // Block every swap for the remainder of the block the pool graduated in, so a completed curve
-            // cannot be graduated and then traded against in the same block. phase and graduationBlock share
-            // one slot, so this gate adds no extra SLOAD.
+
+        if (phase != BondingCurvePhase.Active) {
+            // Block swaps before the curve is active or graduated.
+            if (phase != BondingCurvePhase.Graduated) revert InvalidBondingCurvePhase(phase);
+            // Block swaps in the same block as the graduation.
             if (_getBlockNumberish() == state.graduationBlock) revert SwapsBlockedInGraduationBlock(poolId);
+            // Return the zero delta and the base fee with override flag.
             return
                 (
                     IHooks.beforeSwap.selector,
@@ -214,7 +219,6 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
                     BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
                 );
         }
-        if (phase != BondingCurvePhase.Active) revert InvalidBondingCurvePhase(phase);
 
         BondingCurveHookConfig storage config = _launchConfigs[poolId];
         uint256 currentBlock = _getBlockNumberish();
@@ -268,13 +272,14 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     {
         PoolId poolId = key.toId();
         CurveState storage state = _curveState[poolId];
+        // No-op in all phases except active bonding curve.
         if (state.phase != BondingCurvePhase.Active) return (IHooks.afterSwap.selector, 0);
         // Only a buy (zeroForOne) can complete the curve by pushing price down to graduation.
         if (!params.zeroForOne) return (IHooks.afterSwap.selector, 0);
 
-        BondingCurveHookConfig storage config = _launchConfigs[poolId];
+        uint160 _graduationSqrtPriceX96 = _launchConfigs[poolId].graduationSqrtPriceX96;
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        if (sqrtPriceX96 > config.graduationSqrtPriceX96) return (IHooks.afterSwap.selector, 0);
+        if (sqrtPriceX96 > _graduationSqrtPriceX96) return (IHooks.afterSwap.selector, 0);
 
         uint128 liquidity = poolManager.getLiquidity(poolId);
         if (liquidity != 0) revert InvalidGraduationLiquidity(liquidity);
@@ -285,54 +290,71 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         // If the completing buy overshot the boundary, walk the (now empty) range back to grad price.
         // v4 skips a hook's own beforeSwap/afterSwap on self-calls (Hooks.beforeSwap/afterSwap return early
         // when msg.sender == the hook), so this swap neither re-runs the phase gate nor re-enters graduation.
-        if (sqrtPriceX96 != config.graduationSqrtPriceX96) {
-            _normalizePrice(key, config.graduationSqrtPriceX96);
+        if (sqrtPriceX96 != _graduationSqrtPriceX96) {
+            _normalizePrice(key, _graduationSqrtPriceX96);
             (sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-            if (sqrtPriceX96 != config.graduationSqrtPriceX96) {
-                revert InvalidGraduationPrice(sqrtPriceX96, config.graduationSqrtPriceX96);
+            if (sqrtPriceX96 != _graduationSqrtPriceX96) {
+                revert InvalidGraduationPrice(sqrtPriceX96, _graduationSqrtPriceX96);
             }
         }
 
-        _graduate(key, poolId, config);
+        _graduate(key, poolId);
         // Stamp the graduation block so _beforeSwap can reject any later swap in this same block.
         state.graduationBlock = uint48(_getBlockNumberish());
         return (IHooks.afterSwap.selector, 0);
     }
 
-    function _graduate(PoolKey calldata key, PoolId poolId, BondingCurveHookConfig storage config) private {
+    function _graduate(PoolKey calldata key, PoolId poolId) private {
         _assertPositionManagerDeltasCleared(key);
         uint256 tokenId = _curveState[poolId].curveTokenId;
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
 
+        BondingCurveHookConfig memory config = _launchConfigs[poolId];
         uint128 curveLiquidity = positionManager.getPositionLiquidity(tokenId);
-        Position memory finalPosition = _resolveFinalPosition(key, config, curveLiquidity);
-        if (finalPosition.liquidity == 0) revert InvalidFinalPosition();
+        Position[] memory positions = _resolveFinalPosition(key, config, curveLiquidity);
+        if (positions[0].liquidity == 0) revert InvalidFinalPosition();
 
         // token (currency1) is transferred into the PositionManager and settled inside the plan.
         IERC20 token = IERC20(Currency.unwrap(key.currency1));
         token.safeTransfer(address(positionManager), config.reserveTokenAmount);
         uint256 finalTokenId = positionManager.nextTokenId();
-        (bytes memory actions, bytes[] memory params) =
-            _graduationPlan(key, tokenId, finalPosition, config.finalPositionRecipient);
+
+        Plan memory plan = PositionPlanner.toPlan(positions, key, config.finalPositionRecipient);
+
+        // Replace TAKE_PAIR so surplus ETH goes to the LP recipient while surplus token is burned.
+        uint256 takePairIndex = plan.actions.length - 1;
+        plan.actions[takePairIndex] = bytes1(uint8(Actions.TAKE));
+        plan.params[takePairIndex] =
+            abi.encode(key.currency0, config.finalPositionRecipient, ActionConstants.OPEN_DELTA);
+
+        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), plan.actions, uint8(Actions.TAKE));
+        bytes[] memory params = new bytes[](plan.params.length + 2);
+        params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
+        for (uint256 i; i < plan.params.length; i++) {
+            params[i + 1] = plan.params[i];
+        }
+        params[params.length - 1] = abi.encode(key.currency1, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
+
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
         _assertPositionManagerDeltasCleared(key);
 
         uint256 remaining = token.balanceOf(address(this));
         if (remaining != 0) token.safeTransfer(BURN_ADDRESS, remaining);
-        emit Graduated(poolId, tokenId, finalTokenId, finalPosition.liquidity);
+        emit Graduated(poolId, tokenId, finalTokenId, positions[0].liquidity);
     }
 
     /// @dev The completed curve's ETH (currency0) principal is fixed by the burned position's
     ///      liquidity, not spot price; it pairs with the reserve into a full-range position at grad.
-    function _resolveFinalPosition(PoolKey calldata key, BondingCurveHookConfig storage config, uint128 curveLiquidity)
+    function _resolveFinalPosition(PoolKey calldata key, BondingCurveHookConfig memory config, uint128 curveLiquidity)
         private
         view
-        returns (Position memory)
+        returns (Position[] memory positions)
     {
         uint160 initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(config.curveTickUpper);
         uint256 principal =
             SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
-        return PositionPlanner.resolvePosition(
+        positions = new Position[](1);
+        positions[0] = PositionPlanner.resolvePosition(
             PositionPlanner.TickBounds({
                 lowerTick: TickMath.minUsableTick(key.tickSpacing), upperTick: TickMath.maxUsableTick(key.tickSpacing)
             }),
@@ -351,38 +373,6 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     function _assertPositionManagerDeltaCleared(Currency currency) private view {
         int256 delta = poolManager.currencyDelta(address(positionManager), currency);
         if (delta != 0) revert UnexpectedPositionManagerDelta(currency, delta);
-    }
-
-    function _graduationPlan(PoolKey calldata key, uint256 tokenId, Position memory finalPosition, address recipient)
-        private
-        pure
-        returns (bytes memory actions, bytes[] memory params)
-    {
-        actions = abi.encodePacked(
-            uint8(Actions.BURN_POSITION),
-            uint8(Actions.MINT_POSITION),
-            uint8(Actions.SETTLE),
-            uint8(Actions.SETTLE),
-            uint8(Actions.TAKE),
-            uint8(Actions.TAKE)
-        );
-        params = new bytes[](6);
-        params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        params[1] = abi.encode(
-            key,
-            finalPosition.tickLower,
-            finalPosition.tickUpper,
-            finalPosition.liquidity,
-            SafeCastLib.toUint128(finalPosition.amount0),
-            SafeCastLib.toUint128(finalPosition.amount1),
-            finalPosition.recipient,
-            bytes("")
-        );
-        params[2] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[3] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        // Surplus ETH (currency0) to the LP recipient; surplus token (currency1) is burned.
-        params[4] = abi.encode(key.currency0, recipient, ActionConstants.OPEN_DELTA);
-        params[5] = abi.encode(key.currency1, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
     }
 
     /// @dev Empty-range traversal to restore the boundary price without moving either currency.
