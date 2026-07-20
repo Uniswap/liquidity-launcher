@@ -22,7 +22,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {InitializerHook} from "./InitializerHook.sol";
@@ -305,54 +304,52 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     }
 
     function _graduate(PoolKey calldata key, PoolId poolId) private {
-        _assertPositionManagerDeltasCleared(key);
+        _assertPositionManagerDeltaCleared(key.currency0);
+        _assertPositionManagerDeltaCleared(key.currency1);
+
         uint256 tokenId = _curveState[poolId].curveTokenId;
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
 
         BondingCurveHookConfig memory config = _launchConfigs[poolId];
-        uint128 curveLiquidity = positionManager.getPositionLiquidity(tokenId);
-        Position[] memory positions = _resolveFinalPosition(key, config, curveLiquidity);
+        (Position[] memory positions, uint128 ethAmount0) =
+            _resolveFullRangePosition(key, config, positionManager.getPositionLiquidity(tokenId));
         if (positions[0].liquidity == 0) revert InvalidFinalPosition();
 
         // token (currency1) is transferred into the PositionManager and settled inside the plan.
         IERC20 token = IERC20(Currency.unwrap(key.currency1));
-        token.safeTransfer(address(positionManager), config.reserveTokenAmount);
+        token.safeTransfer(address(positionManager), positions[0].amount1);
         uint256 finalTokenId = positionManager.nextTokenId();
 
         Plan memory plan = PositionPlanner.toPlan(positions, key, config.finalPositionRecipient);
 
-        // Replace TAKE_PAIR so surplus ETH goes to the LP recipient while surplus token is burned.
-        uint256 takePairIndex = plan.actions.length - 1;
-        plan.actions[takePairIndex] = bytes1(uint8(Actions.TAKE));
-        plan.params[takePairIndex] =
-            abi.encode(key.currency0, config.finalPositionRecipient, ActionConstants.OPEN_DELTA);
-
-        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), plan.actions, uint8(Actions.TAKE));
-        bytes[] memory params = new bytes[](plan.params.length + 2);
-        params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
+        // prepend the plan with a burn of the initial LP position
+        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), plan.actions);
+        bytes[] memory params = new bytes[](plan.params.length + 1);
+        params[0] = abi.encode(tokenId, ethAmount0, uint128(0), bytes(""));
         for (uint256 i; i < plan.params.length; i++) {
             params[i + 1] = plan.params[i];
         }
-        params[params.length - 1] = abi.encode(key.currency1, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
 
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
-        _assertPositionManagerDeltasCleared(key);
+        _assertPositionManagerDeltaCleared(key.currency0);
+        _assertPositionManagerDeltaCleared(key.currency1);
 
         uint256 remaining = token.balanceOf(address(this));
         if (remaining != 0) token.safeTransfer(BURN_ADDRESS, remaining);
         emit Graduated(poolId, tokenId, finalTokenId, positions[0].liquidity);
     }
 
-    /// @dev The completed curve's ETH (currency0) principal is fixed by the burned position's
+    /// @dev The completed curve's ETH amount (currency0) is fixed by the burned position's
     ///      liquidity, not spot price; it pairs with the reserve into a full-range position at grad.
-    function _resolveFinalPosition(PoolKey calldata key, BondingCurveHookConfig memory config, uint128 curveLiquidity)
-        private
-        view
-        returns (Position[] memory positions)
-    {
+    function _resolveFullRangePosition(
+        PoolKey calldata key,
+        BondingCurveHookConfig memory config,
+        uint128 curveLiquidity
+    ) private view returns (Position[] memory positions, uint128 ethAmount0) {
         uint160 initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(config.curveTickUpper);
-        uint256 principal =
-            SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
+        ethAmount0 = SafeCastLib.toUint128(
+            SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false)
+        );
         positions = new Position[](1);
         positions[0] = PositionPlanner.resolvePosition(
             PositionPlanner.TickBounds({
@@ -360,14 +357,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             }),
             config.graduationSqrtPriceX96,
             Pool.tickSpacingToMaxLiquidityPerTick(key.tickSpacing),
-            CurrencyAmounts({amount0: principal, amount1: config.reserveTokenAmount}),
+            CurrencyAmounts({amount0: ethAmount0, amount1: config.reserveTokenAmount}),
             config.finalPositionRecipient
         );
-    }
-
-    function _assertPositionManagerDeltasCleared(PoolKey calldata key) private view {
-        _assertPositionManagerDeltaCleared(key.currency0);
-        _assertPositionManagerDeltaCleared(key.currency1);
     }
 
     function _assertPositionManagerDeltaCleared(Currency currency) private view {
