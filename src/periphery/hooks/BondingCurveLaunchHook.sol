@@ -51,8 +51,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     address internal constant BURN_ADDRESS = address(0xdead);
 
     /// @notice LP fee applied when no fee module is configured and after graduation, in pips.
-    /// @dev Matches the pre-rearch `baseFee: 0`.
-    uint24 public constant BASE_FEE = 0;
+    /// @dev Matches the standard 1% fee tier (the pool's tick spacing of 200 matches it too), so the
+    ///      graduated pool earns fees like a normal 1% pool and third-party LPs have a reason to add depth.
+    uint24 public constant BASE_FEE = 10_000;
 
     /// @inheritdoc IBondingCurveLaunchHook
     IPositionManager public immutable override positionManager;
