@@ -147,8 +147,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
 
         // The whole curve supply must fit in one position. Clamping instead would pass the guard below
         // and then silently burn the unplaced remainder of every launch's curve supply as dust.
-        uint256 liquidity =
-            FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
+        uint256 liquidity = FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
         if (liquidity > Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING)) revert UnrealizableGraduation();
         curveLiquidity = SafeCastLib.toUint128(liquidity);
 

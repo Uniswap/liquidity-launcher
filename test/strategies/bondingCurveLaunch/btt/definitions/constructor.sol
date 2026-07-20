@@ -111,8 +111,7 @@ contract ConstructorTest is BondingCurveLaunchTestBase {
         // Bands beyond this domain can legitimately revert UnrealizableGraduation (zero ETH principal);
         // within it every deployment must succeed with unclamped curve liquidity.
         graduationTick = int24(bound(graduationTick, 0, 300_000 / tickSpacing)) * tickSpacing;
-        initialTick =
-            int24(bound(initialTick, graduationTick / tickSpacing + 1, 600_000 / tickSpacing)) * tickSpacing;
+        initialTick = int24(bound(initialTick, graduationTick / tickSpacing + 1, 600_000 / tickSpacing)) * tickSpacing;
 
         BondingCurveLaunchStrategy deployed = _deployStrategy(initialTick, graduationTick);
         assertGt(deployed.curveLiquidity(), 0);
