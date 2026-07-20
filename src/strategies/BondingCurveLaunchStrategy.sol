@@ -58,7 +58,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     error InvalidTokenDecimals();
     /// @notice Thrown when the configured ticks cannot define the curve.
     error InvalidTickRange();
-    /// @notice Thrown at deployment when the tick band cannot produce a graduatable position.
+    /// @notice Thrown at deployment when the curve supply does not fit in a single position or the
+    ///         completed band cannot produce a graduatable position.
     error UnrealizableGraduation();
     /// @notice Thrown when an address required by the strategy is zero.
     error ZeroAddress();
@@ -108,6 +109,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     uint256 public immutable curveSupply;
     /// @notice Token amount reserved for full-range graduation.
     uint256 public immutable reserveSupply;
+    /// @notice Liquidity of the single-sided curve position.
+    uint128 public immutable curveLiquidity;
 
     constructor(
         address _launcher,
@@ -123,9 +126,10 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
                 || address(_launchHook) == address(0) || _dynamicFeeModule == address(0)
         ) revert ZeroAddress();
         // Ticks must be aligned, usable, and ordered so the curve runs downward from initial to graduation.
+        // Graduation is floored at tick 0 (ETH parity for an 18-decimal token): a launch never requires the
+        // token to be worth more than ETH, and every permitted band keeps the curve far under maxLiquidityPerTick.
         if (
-            _initialTick % TICK_SPACING != 0 || _graduationTick % TICK_SPACING != 0
-                || _graduationTick <= TickMath.minUsableTick(TICK_SPACING)
+            _initialTick % TICK_SPACING != 0 || _graduationTick % TICK_SPACING != 0 || _graduationTick < 0
                 || _initialTick > TickMath.maxUsableTick(TICK_SPACING) || _graduationTick >= _initialTick
         ) revert InvalidTickRange();
 
@@ -140,6 +144,13 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         graduationSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_graduationTick);
         (curveSupply, reserveSupply) =
             BondingCurveMath.splitSupply(TOTAL_SUPPLY, initialSqrtPriceX96, graduationSqrtPriceX96, TICK_SPACING);
+
+        // The whole curve supply must fit in one position. Clamping instead would pass the guard below
+        // and then silently burn the unplaced remainder of every launch's curve supply as dust.
+        uint256 liquidity =
+            FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
+        if (liquidity > Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING)) revert UnrealizableGraduation();
+        curveLiquidity = SafeCastLib.toUint128(liquidity);
 
         // Realizability guard: a completed curve must produce nonzero ETH principal AND a nonzero
         // full-range graduation position, or the pool would brick at the boundary. Reverts at deploy
@@ -215,11 +226,8 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
 
     /// @notice Mints the single-sided curve position `[graduationTick, initialTick]` to the launchHook.
     function _mintCurve(PoolKey memory key, address token) private {
-        uint256 liquidity = FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
-        uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
-        uint128 positionLiquidity = liquidity > maxLiquidity ? maxLiquidity : SafeCastLib.toUint128(liquidity);
         uint128 tokenTransferAmount = SafeCastLib.toUint128(
-            SqrtPriceMath.getAmount1Delta(graduationSqrtPriceX96, initialSqrtPriceX96, positionLiquidity, true)
+            SqrtPriceMath.getAmount1Delta(graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, true)
         );
 
         bytes memory actions = abi.encodePacked(
@@ -230,7 +238,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
             key,
             graduationTick,
             initialTick,
-            positionLiquidity,
+            curveLiquidity,
             uint128(0),
             tokenTransferAmount,
             address(launchHook),
@@ -255,17 +263,14 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     }
 
     function _assertGraduationRealizable() private view {
-        uint256 liquidity = FullMath.mulDiv(curveSupply, FixedPoint96.Q96, initialSqrtPriceX96 - graduationSqrtPriceX96);
-        uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
-        uint128 positionLiquidity = liquidity > maxLiquidity ? maxLiquidity : SafeCastLib.toUint128(liquidity);
         uint256 principal =
-            SqrtPriceMath.getAmount0Delta(graduationSqrtPriceX96, initialSqrtPriceX96, positionLiquidity, false);
+            SqrtPriceMath.getAmount0Delta(graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
         Position memory finalPosition = PositionPlanner.resolvePosition(
             PositionPlanner.TickBounds({
                 lowerTick: TickMath.minUsableTick(TICK_SPACING), upperTick: TickMath.maxUsableTick(TICK_SPACING)
             }),
             graduationSqrtPriceX96,
-            maxLiquidity,
+            Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING),
             CurrencyAmounts({amount0: principal, amount1: reserveSupply}),
             address(0xdead)
         );
