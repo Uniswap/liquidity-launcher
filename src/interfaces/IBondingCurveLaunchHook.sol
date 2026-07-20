@@ -95,6 +95,9 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     /// @param currency The currency with the unexpected delta
     /// @param delta The unsettled delta
     error UnexpectedPositionManagerDelta(Currency currency, int256 delta);
+    /// @notice Thrown when a swap is attempted in the same block the pool graduated in.
+    /// @param poolId The pool whose graduation block the swap fell in
+    error SwapsBlockedInGraduationBlock(PoolId poolId);
 
     /// @notice Registers a pool's curve config. Callable once per pool by the authorized launcher,
     ///         before pool initialization.
@@ -108,6 +111,8 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     function bondingCurvePhase(PoolId poolId) external view returns (BondingCurvePhase);
     /// @notice Returns the curve NFT held by the hook for a pool.
     function curveTokenId(PoolId poolId) external view returns (uint256);
+    /// @notice Returns the block in which the pool graduated; 0 before graduation.
+    function graduationBlock(PoolId poolId) external view returns (uint48);
     /// @notice Returns the v4 PositionManager used for curve and final positions.
     function positionManager() external view returns (IPositionManager);
 }

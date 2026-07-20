@@ -205,10 +205,39 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
 
         _swapThroughGraduation(key);
         _assertGraduated(token, key, curveTokenId, forcedTokenAmount, burnedTokenBefore, finalPositionRecipient);
+        assertEq(launchHook.graduationBlock(key.toId()), uint48(block.number));
 
+        // A swap in the graduation block is blocked (reverts inside the hook, wrapped by v4); the same swap
+        // succeeds in the next block. graduationBlock == block.number above pins this to the gate.
+        vm.expectRevert();
         swapRouter.swap{value: 1 ether}(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+
+        vm.roll(block.number + 1);
+        swapRouter.swap{value: 1 ether}(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+    }
+
+    function test_swap_revertsForSellInGraduationBlock() public {
+        (MockERC20 token, PoolKey memory key,) = _launch();
+        vm.roll(block.number + feeModule.decayBlocks());
+        _swapThroughGraduation(key);
+
+        // A sell (oneForZero) in the graduation block is blocked too, not just buys.
+        assertEq(launchHook.graduationBlock(key.toId()), uint48(block.number));
+        token.approve(address(swapRouter), type(uint256).max);
+        vm.expectRevert();
+        swapRouter.swap(
+            key,
+            SwapParams({zeroForOne: false, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );

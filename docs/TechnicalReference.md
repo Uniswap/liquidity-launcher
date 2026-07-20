@@ -71,7 +71,7 @@ Hooks are trusted launch inputs. Every direct launch MUST configure an `IInitial
 
 #### BondingCurveLaunchStrategy
 
-`BondingCurveLaunchStrategy` specializes `DirectLaunchStrategy` for a finite, single-position bonding curve. Only its immutable `launcher` may call `initializeDistribution`, `configData` MUST be empty, and each launch MUST supply the token's full 1 billion token supply. The token MUST report 18 decimals and a total supply of 1 billion tokens.
+`BondingCurveLaunchStrategy` is a standalone `IStrategy` for a finite, single-position bonding curve. Only its immutable `launcher` may call `initializeDistribution`, `configData` MUST be empty, and each launch MUST supply the token's full 1 billion token supply. The token MUST report 18 decimals and a total supply of 1 billion tokens. Every pool parameter is fixed at deployment: native ETH is always `currency0` and the launched token always `currency1`, so a buy (ETH → token) is always `zeroForOne` and walks the price down from the initial tick to the terminal tick.
 
 The deployment configures an initial tick and a lower terminal tick. Both MUST align to tick spacing 200. These ticks determine the price multiple and the exact split between tokens sold through the curve and tokens reserved for graduation. The split is derived so the completed curve proceeds and token reserve pair into one full-range position; neither an absolute starting valuation nor an 80/20 split is hardcoded. A roughly 16x price range produces an approximately 80/20 split, subject to tick granularity and the finite minimum and maximum v4 ticks.
 
@@ -84,6 +84,18 @@ Each launch creates one token-side position between the terminal and initial tic
 Graduation is atomic with the boundary-crossing swap and adds its gas cost to that transaction. A graduation failure reverts the entire swap. The launcher, token implementation, PositionManager, hook, and dynamic fee module are trust assumptions. Fee-on-transfer, rebasing, or otherwise nonstandard tokens are not supported.
 
 `BondingCurveTokenLaunched` records the pool ID, token, permanent position recipient, curve supply, and reserve supply. `Graduated` records the pool ID, burned curve NFT, final NFT, and final liquidity.
+
+##### Partial fills and router integration
+
+The curve pool is a dynamic-fee, native-ETH (`currency0`) / token (`currency1`) v4 pool. Integrators buying through the curve MUST account for the following, which differ from an ordinary pool:
+
+- **Time-varying launch fee.** While the curve is active the LP fee comes from the dynamic fee module (Dutch decay, high at the swap-start block, falling over the decay window). The quoted fee changes block-to-block, so a quote is only valid for the block it was produced in. After graduation the hook overrides the fee to 0.
+- **Exact-output buys are bounded to the curve.** An exact-output buy for more token than the curve still holds reverts with `ExactOutputExceedsCurve`. Clamp the requested output to the remaining curve, or size the last buy as exact-input.
+- **The completing buy partial-fills.** An exact-input buy that would cross the terminal tick consumes only the input needed to exhaust the curve; the unused input is refunded to the caller. The buyer receives ONLY the curve's remaining token — they do NOT continue into post-graduation liquidity in the same swap. Do not assume the full `amountSpecified` is spent, and set the minimum-output against the curve remainder, not the requested amount.
+- **A low `sqrtPriceLimitX96` is safe.** An overshooting exact-input buy (e.g. limit at `MIN_SQRT_PRICE + 1`) is expected: `afterSwap` internally restores the terminal price with a zero-delta swap before graduating, and the swap's returned delta reflects only the curve fill.
+- **Budget extra gas for the graduating swap.** The buy that exhausts the curve also pays for the burn, full-range mint, and price normalization inside `afterSwap`. A gas estimate tuned to an ordinary swap can leave that one transaction short and revert it; leave headroom on swaps that may complete the curve.
+- **No swaps in the graduation block.** Every swap in the same block the pool graduates in reverts with `SwapsBlockedInGraduationBlock` (both directions), so a completed curve cannot be graduated and traded against in the same block. The graduating buy itself is unaffected; swaps resume the next block. `graduationBlock(poolId)` exposes the stamped block (0 before graduation).
+- **After graduation the pool is ordinary.** From the block after graduation, liquidity is open to all, the fee is 0, and swaps behave with no hook-imposed bounds.
 
 The LBP strategies below create a Continuous Clearing Auction and later migrate liquidity to v4. `LBPStrategy.migrate()` is a one-shot action: if migration succeeds, liquidity is deployed to v4; if it reverts, the strategy sweeps the held LP token reserves and raised currency to the initializer's configured `recipient`.
 

@@ -8,6 +8,11 @@ import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {BondingCurveLaunchHook} from "../../../src/periphery/hooks/BondingCurveLaunchHook.sol";
 import {
     IBondingCurveLaunchHook,
@@ -128,5 +133,56 @@ contract BondingCurveLaunchHookTest is Test {
         config.graduationSqrtPriceX96 = TickMath.getSqrtPriceAtTick(GRADUATION_TICK + 200);
         vm.expectRevert(IBondingCurveLaunchHook.InvalidBondingCurveConfig.selector);
         hook.configure(poolId, config);
+    }
+
+    /// @dev A graduated pool key whose id addresses the storage forced by `_forceGraduated`.
+    function _gradKey() internal view returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(0xC0FFEE)),
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            tickSpacing: 200,
+            hooks: IHooks(address(hook))
+        });
+    }
+
+    /// @dev Forces a pool into the Graduated phase stamped at `gradBlock` without running graduation.
+    ///      `_curveState` is slot 1 (`forge inspect BondingCurveLaunchHook storage-layout`); its packed word is
+    ///      phase (bits 0-7) | graduationBlock (bits 8-55) | curveTokenId (bits 56-151).
+    function _forceGraduated(PoolId pid, uint48 gradBlock) internal {
+        uint256 packed = uint256(uint8(BondingCurvePhase.Graduated)) | (uint256(gradBlock) << 8);
+        vm.store(address(hook), keccak256(abi.encode(PoolId.unwrap(pid), uint256(1))), bytes32(packed));
+    }
+
+    function test_beforeSwap_revertsInGraduationBlock() public {
+        PoolKey memory key = _gradKey();
+        PoolId pid = key.toId();
+        _forceGraduated(pid, uint48(block.number));
+
+        vm.prank(address(POOL_MANAGER));
+        vm.expectRevert(abi.encodeWithSelector(IBondingCurveLaunchHook.SwapsBlockedInGraduationBlock.selector, pid));
+        hook.beforeSwap(
+            address(0xB0B),
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -1, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            bytes("")
+        );
+    }
+
+    function test_beforeSwap_succeedsAfterGraduationBlock() public {
+        PoolKey memory key = _gradKey();
+        PoolId pid = key.toId();
+        _forceGraduated(pid, uint48(block.number));
+        vm.roll(block.number + 1);
+
+        vm.prank(address(POOL_MANAGER));
+        (bytes4 selector,, uint24 fee) = hook.beforeSwap(
+            address(0xB0B),
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -1, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            bytes("")
+        );
+        assertEq(selector, IHooks.beforeSwap.selector);
+        assertEq(fee, uint24(hook.BASE_FEE()) | LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
 }
