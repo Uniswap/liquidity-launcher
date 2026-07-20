@@ -112,4 +112,6 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     function graduationBlock(PoolId poolId) external view returns (uint48);
     /// @notice Returns the v4 PositionManager used for curve and final positions.
     function positionManager() external view returns (IPositionManager);
+    /// @notice Returns the recipient of the curve's accrued fees swept at graduation.
+    function tokenJar() external view returns (address);
 }

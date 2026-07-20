@@ -54,6 +54,7 @@ abstract contract BondingCurveLaunchTestBase is Test {
         Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
 
     address internal launcher = address(this);
+    address internal tokenJar = makeAddr("tokenJar");
     IPoolManager internal poolManager = POOL_MANAGER;
     IPositionManager internal positionManager = POSITION_MANAGER;
     BondingCurveLaunchHook internal launchHook;
@@ -72,7 +73,7 @@ abstract contract BondingCurveLaunchTestBase is Test {
             address(this),
             HOOK_FLAGS,
             type(BondingCurveLaunchHook).creationCode,
-            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
+            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy, tokenJar)
         );
         strategy = new BondingCurveLaunchStrategy(
             launcher,
@@ -83,7 +84,7 @@ abstract contract BondingCurveLaunchTestBase is Test {
             GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
-        launchHook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
+        launchHook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy), tokenJar);
         assertEq(address(launchHook), hookAddress);
         vm.deal(address(this), 100_000 ether);
     }

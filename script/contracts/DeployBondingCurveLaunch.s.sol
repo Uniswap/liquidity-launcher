@@ -19,20 +19,21 @@ contract DeployBondingCurveLaunchScript is Script {
 
     /// @notice Deploys the bonding-curve strategy and mined hook.
     /// @param launcher The address authorized to launch tokens.
+    /// @param tokenJar The recipient of the curve's accrued fees swept at graduation.
     /// @param initialTick The initial curve tick.
     /// @param graduationTick The terminal curve tick.
-    function run(address launcher, int24 initialTick, int24 graduationTick)
+    function run(address launcher, address tokenJar, int24 initialTick, int24 graduationTick)
         public
         returns (address strategy, address hook)
     {
         address deployer = tx.origin;
         strategy = vm.computeCreateAddress(deployer, vm.getNonce(deployer));
-        (hook,) = bondingCurveHookDeployer.predict(strategy);
+        (hook,) = bondingCurveHookDeployer.predict(strategy, tokenJar);
 
         address deployedStrategy = bondingCurveStrategyDeployer.run(launcher, hook, initialTick, graduationTick);
         require(deployedStrategy == strategy, "BondingCurveLaunchStrategy deployed to unexpected address");
 
-        address deployedHook = bondingCurveHookDeployer.run(strategy);
+        address deployedHook = bondingCurveHookDeployer.run(strategy, tokenJar);
         require(deployedHook == hook, "BondingCurveLaunchHook deployed to unexpected address");
 
         console.log("Bonding curve launch deployed with strategy:", strategy);

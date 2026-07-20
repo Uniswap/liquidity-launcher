@@ -104,6 +104,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
     BondingCurveLaunchHook internal launchHook;
     BondingCurveLaunchStrategy internal strategy;
     PoolSwapTest internal swapRouter;
+    address internal tokenJar = makeAddr("tokenJar");
 
     function setUp() public {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -124,7 +125,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             address(this),
             flags,
             type(BondingCurveLaunchHook).creationCode,
-            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
+            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy, tokenJar)
         );
         strategy = new BondingCurveLaunchStrategy(
             address(this),
@@ -135,7 +136,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
-        launchHook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
+        launchHook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy), tokenJar);
         assertEq(address(launchHook), hookAddress);
         swapRouter = new PoolSwapTest(POOL_MANAGER);
         vm.deal(address(this), 100_000 ether);
@@ -360,6 +361,9 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         assertEq(token.balanceOf(address(launchHook)), 0);
         assertGe(token.balanceOf(address(0xdead)) - burnedTokenBefore, forcedTokenAmount);
         assertEq(uint256(launchHook.bondingCurvePhase(key.toId())), uint256(BondingCurvePhase.Graduated));
+        // The curve's accrued fee surplus is swept to the tokenJar, not the position recipient.
+        assertGt(tokenJar.balance, 0);
+        assertEq(finalPositionRecipient.balance, 0);
         vm.expectRevert();
         IERC721(address(POSITION_MANAGER)).ownerOf(curveTokenId);
 
