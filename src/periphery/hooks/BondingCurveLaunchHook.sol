@@ -310,7 +310,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
         // Since graduate is called from within a swap, the fee has not yet been paid
         // by its router yet. This should not be an issue since we can flashloan the ETH
-        // from PoolManager. 
+        // from PoolManager.
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
         _assertPositionManagerDeltaCleared(key.currency0);
         _assertPositionManagerDeltaCleared(key.currency1);
