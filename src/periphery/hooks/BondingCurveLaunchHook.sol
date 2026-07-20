@@ -8,7 +8,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -25,7 +24,6 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {InitializerHook} from "./InitializerHook.sol";
-import {IDynamicFeeModule} from "../../interfaces/IDynamicFeeModule.sol";
 import {
     IBondingCurveLaunchHook,
     BondingCurveHookConfig,
@@ -37,10 +35,10 @@ import {Plan, Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.
 /// @title BondingCurveLaunchHook
 /// @notice Single-purpose v4 hook for a native-ETH bonding-curve launch that graduates in place.
 /// @dev Native ETH is always currency0 and the token always currency1, so buys are `zeroForOne` and
-///      walk the price DOWN from the initial tick to the graduation tick. The hook owns the curve NFT
-///      and the graduation reserve, gates liquidity by phase, applies a baked-in decaying launch fee,
-///      and — on the swap that completes the curve — atomically burns the curve position and mints a
-///      permanent full-range position pairing the accumulated ETH with the reserve.
+///      walk the price DOWN from the initial tick to the graduation tick. The pool charges its static
+///      LP fee throughout. The hook owns the curve NFT and the graduation reserve, gates liquidity by
+///      phase, and — on the swap that completes the curve — atomically burns the curve position and
+///      mints a permanent full-range position pairing the accumulated ETH with the reserve.
 /// @custom:security-contact security@uniswap.org
 contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurveLaunchHook {
     using StateLibrary for IPoolManager;
@@ -49,11 +47,6 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
-
-    /// @notice LP fee applied when no fee module is configured and after graduation, in pips.
-    /// @dev Matches the standard 1% fee tier (the pool's tick spacing of 200 matches it too), so the
-    ///      graduated pool earns fees like a normal 1% pool and third-party LPs have a reason to add depth.
-    uint24 public constant BASE_FEE = 10_000;
 
     /// @inheritdoc IBondingCurveLaunchHook
     IPositionManager public immutable override positionManager;
@@ -194,8 +187,8 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         return IHooks.beforeAddLiquidity.selector;
     }
 
-    /// @dev Enforces the swap-start block, quotes the decaying launch fee, and bounds buys to the
-    ///      remaining curve. The hook's own graduation-normalization swap bypasses every gate.
+    /// @dev Enforces the swap-start block and bounds buys to the remaining curve. The hook's own
+    ///      graduation-normalization swap bypasses every gate.
     function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
         view
@@ -211,13 +204,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             if (phase != BondingCurvePhase.Graduated) revert InvalidBondingCurvePhase(phase);
             // Block swaps in the same block as the graduation.
             if (_getBlockNumberish() == state.graduationBlock) revert SwapsBlockedInGraduationBlock(poolId);
-            // Return the zero delta and the base fee with override flag.
-            return
-                (
-                    IHooks.beforeSwap.selector,
-                    BeforeSwapDeltaLibrary.ZERO_DELTA,
-                    BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
-                );
+            return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
         BondingCurveHookConfig storage config = _launchConfigs[poolId];
@@ -226,17 +213,7 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
 
         _validateBuyWithinCurve(poolId, params, config);
 
-        uint24 fee = _moduleFee(config.module, key, params.zeroForOne);
-        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
-    }
-
-    /// @notice Quotes the LP fee from the configured fee module for the swap's direction.
-    /// @dev A module failure reverts the swap. With no module, the base fee applies.
-    function _moduleFee(address module, PoolKey calldata key, bool zeroForOne) private view returns (uint24) {
-        if (module == address(0)) return BASE_FEE;
-        (uint24 zeroForOneFee, uint24 oneForZeroFee) = IDynamicFeeModule(module).getFee(key);
-        uint24 fee = zeroForOne ? zeroForOneFee : oneForZeroFee;
-        return fee > LPFeeLibrary.MAX_LP_FEE ? LPFeeLibrary.MAX_LP_FEE : fee;
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /// @dev Bounds an exact-output buy so it cannot request more token than the curve still holds.
@@ -331,6 +308,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
             params[i + 1] = plan.params[i];
         }
 
+        // Since graduate is called from within a swap, the fee has not yet been paid
+        // by its router yet. This should not be an issue since we can flashloan the ETH
+        // from PoolManager. 
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
         _assertPositionManagerDeltaCleared(key.currency0);
         _assertPositionManagerDeltaCleared(key.currency1);

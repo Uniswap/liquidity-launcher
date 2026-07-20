@@ -10,7 +10,6 @@ import {BondingCurveLaunchStrategy} from "../../../../../src/strategies/BondingC
 import {BondingCurveHookConfig, BondingCurvePhase} from "../../../../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -40,7 +39,7 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         return PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            fee: strategy.LP_FEE(),
             tickSpacing: strategy.TICK_SPACING(),
             hooks: IHooks(address(launchHook))
         });
@@ -116,7 +115,6 @@ contract InitializeDistributionTest is BondingCurveLaunchTestBase {
         assertEq(config.reserveTokenAmount, strategy.reserveSupply());
         assertEq(config.curveTickLower, GRADUATION_TICK);
         assertEq(config.curveTickUpper, INITIAL_TICK);
-        assertEq(config.module, dynamicFeeModule);
         assertTrue(config.finalPositionRecipient != address(0));
     }
 

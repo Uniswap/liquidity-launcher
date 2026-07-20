@@ -20,7 +20,6 @@ import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IMulticall3} from "forge-std/interfaces/IMulticall3.sol";
 import {Preinstalls} from "@optimism/src/libraries/Preinstalls.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
@@ -32,7 +31,6 @@ import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {Distribution} from "../../src/types/Distribution.sol";
 import {BondingCurveLaunchStrategy} from "../../src/strategies/BondingCurveLaunchStrategy.sol";
 import {BondingCurveLaunchHook} from "../../src/periphery/hooks/BondingCurveLaunchHook.sol";
-import {DutchDecayFeeModule} from "../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {IBondingCurveLaunchHook} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {BondingCurvePhase} from "../../src/interfaces/IBondingCurveLaunchHook.sol";
 
@@ -51,7 +49,6 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     UERC20Factory internal factory;
     BondingCurveLaunchHook internal hook;
     BondingCurveLaunchStrategy internal strategy;
-    DutchDecayFeeModule internal feeModule;
 
     function setUp() public {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -66,7 +63,6 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // Deploy handshake: predict strategy addr, mine the hook bound to it, deploy strategy then hook.
         // The strategy's authorized launcher is the LiquidityLauncher itself.
-        feeModule = new DutchDecayFeeModule(990_000, 0, 5, true);
         address predictedStrategy = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             | Hooks.AFTER_SWAP_FLAG;
@@ -81,7 +77,6 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             POSITION_MANAGER,
             POOL_MANAGER,
             IBondingCurveLaunchHook(hookAddress),
-            address(feeModule),
             INITIAL_TICK,
             GRADUATION_TICK
         );
@@ -93,13 +88,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     function test_e2e_launchThroughLiquidityLauncher() public {
         address token =
             factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(address(this)));
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(token),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            tickSpacing: strategy.TICK_SPACING(),
-            hooks: IHooks(address(hook))
-        });
+        PoolKey memory key = _poolKeyFor(token);
 
         Distribution memory distribution =
             Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")});
@@ -142,9 +131,9 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             token != factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(creator))
         );
 
+        IMulticall3.Call3Value[] memory calls = _launchAndBuyCalls(swapRouter, token, creator, buyAmount, quotedEthIn);
         vm.prank(creator);
-        IMulticall3(Preinstalls.MultiCall3)
-            .aggregate3Value{value: quotedEthIn}(_launchAndBuyCalls(swapRouter, token, creator, buyAmount, quotedEthIn));
+        IMulticall3(Preinstalls.MultiCall3).aggregate3Value{value: quotedEthIn}(calls);
 
         // Launched and bought in the launch block: the pool is live and the creator holds the tokens,
         // having paid the full launch-block anti-snipe fee like any other buyer.
@@ -170,12 +159,11 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             "QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(Preinstalls.MultiCall3)
         );
 
+        IMulticall3.Call3Value[] memory calls =
+            _launchAndBuyCalls(swapRouter, token, creator, buyAmount, overfundedEthIn);
         vm.prank(creator);
         vm.expectRevert("Multicall3: call failed");
-        IMulticall3(Preinstalls.MultiCall3)
-            .aggregate3Value{value: overfundedEthIn}(
-            _launchAndBuyCalls(swapRouter, token, creator, buyAmount, overfundedEthIn)
-        );
+        IMulticall3(Preinstalls.MultiCall3).aggregate3Value{value: overfundedEthIn}(calls);
     }
 
     /// @dev Dry-runs the launch + exact-output buy on a state snapshot to learn the exact ETH the
@@ -269,7 +257,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         return PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            fee: strategy.LP_FEE(),
             tickSpacing: strategy.TICK_SPACING(),
             hooks: IHooks(address(hook))
         });

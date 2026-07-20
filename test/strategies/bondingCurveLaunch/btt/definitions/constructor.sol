@@ -29,7 +29,7 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 ///     └── it derives a curve liquidity that fits in a single position
 contract ConstructorTest is BondingCurveLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
-        zeroIndex = uint8(bound(zeroIndex, 0, 4));
+        zeroIndex = uint8(bound(zeroIndex, 0, 3));
 
         vm.expectRevert(BondingCurveLaunchStrategy.ZeroAddress.selector);
         new BondingCurveLaunchStrategy(
@@ -37,7 +37,6 @@ contract ConstructorTest is BondingCurveLaunchTestBase {
             zeroIndex == 1 ? IPositionManager(address(0)) : IPositionManager(address(positionManager)),
             zeroIndex == 2 ? IPoolManager(address(0)) : poolManager,
             zeroIndex == 3 ? IBondingCurveLaunchHook(address(0)) : launchHook,
-            zeroIndex == 4 ? address(0) : dynamicFeeModule,
             INITIAL_TICK,
             GRADUATION_TICK
         );
@@ -92,7 +91,6 @@ contract ConstructorTest is BondingCurveLaunchTestBase {
     function test_WhenConfigurationIsValid_storesConfigurationAndDerivesSupplySplit() public view {
         assertEq(strategy.launcher(), launcher);
         assertEq(address(strategy.launchHook()), address(launchHook));
-        assertEq(strategy.dynamicFeeModule(), dynamicFeeModule);
         assertEq(address(strategy.positionManager()), address(positionManager));
         assertEq(address(strategy.poolManager()), address(poolManager));
         assertEq(strategy.initialTick(), INITIAL_TICK);

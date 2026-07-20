@@ -13,16 +13,12 @@ contract DeployBondingCurveLaunchStrategyScript is Script, Parameters {
     /// @notice Deploys a bonding-curve strategy with fixed launch parameters.
     /// @param launcher The address authorized to launch tokens.
     /// @param launchHook The hook that owns and graduates curve positions.
-    /// @param dynamicFeeModule The module that quotes launch-window fees.
     /// @param initialTick The initial curve tick.
     /// @param graduationTick The terminal curve tick.
-    function run(
-        address launcher,
-        address launchHook,
-        address dynamicFeeModule,
-        int24 initialTick,
-        int24 graduationTick
-    ) public returns (address) {
+    function run(address launcher, address launchHook, int24 initialTick, int24 graduationTick)
+        public
+        returns (address)
+    {
         DeployParameters memory params = getParameters(block.chainid);
 
         vm.broadcast();
@@ -31,7 +27,6 @@ contract DeployBondingCurveLaunchStrategyScript is Script, Parameters {
             params.positionManager,
             params.poolManager,
             IBondingCurveLaunchHook(launchHook),
-            dynamicFeeModule,
             initialTick,
             graduationTick
         );

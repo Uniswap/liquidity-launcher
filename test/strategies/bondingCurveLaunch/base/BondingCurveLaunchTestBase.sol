@@ -13,7 +13,6 @@ import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {BondingCurveLaunchStrategy} from "../../../../src/strategies/BondingCurveLaunchStrategy.sol";
 import {BondingCurveLaunchHook} from "../../../../src/periphery/hooks/BondingCurveLaunchHook.sol";
-import {DutchDecayFeeModule} from "../../../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {IBondingCurveLaunchHook} from "../../../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 
@@ -42,8 +41,8 @@ contract MockBondingShortTransferToken is ERC20 {
 }
 
 /// @notice Shared fixture for BondingCurveLaunchStrategy unit tests. Deploys the real v4 PoolManager /
-///         PositionManager, the fee module, and a mined hook bound to the strategy. `launcher` is this
-///         test contract, so it can drive `initializeDistribution` directly.
+///         PositionManager and a mined hook bound to the strategy. `launcher` is this test contract,
+///         so it can drive `initializeDistribution` directly.
 abstract contract BondingCurveLaunchTestBase is Test {
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
@@ -57,8 +56,6 @@ abstract contract BondingCurveLaunchTestBase is Test {
     address internal launcher = address(this);
     IPoolManager internal poolManager = POOL_MANAGER;
     IPositionManager internal positionManager = POSITION_MANAGER;
-    DutchDecayFeeModule internal feeModule;
-    address internal dynamicFeeModule;
     BondingCurveLaunchHook internal launchHook;
     BondingCurveLaunchStrategy internal strategy;
 
@@ -69,9 +66,6 @@ abstract contract BondingCurveLaunchTestBase is Test {
             abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
             address(POSITION_MANAGER)
         );
-
-        feeModule = new DutchDecayFeeModule(990_000, 0, 5, true);
-        dynamicFeeModule = address(feeModule);
 
         address predictedStrategy = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         (address hookAddress, bytes32 salt) = HookMiner.find(
@@ -85,7 +79,6 @@ abstract contract BondingCurveLaunchTestBase is Test {
             POSITION_MANAGER,
             POOL_MANAGER,
             IBondingCurveLaunchHook(hookAddress),
-            dynamicFeeModule,
             INITIAL_TICK,
             GRADUATION_TICK
         );
@@ -98,7 +91,7 @@ abstract contract BondingCurveLaunchTestBase is Test {
     /// @notice Deploys a strategy with the given ticks and the shared collaborators (used by constructor tests).
     function _deployStrategy(int24 initialTick, int24 graduationTick) internal returns (BondingCurveLaunchStrategy) {
         return new BondingCurveLaunchStrategy(
-            launcher, POSITION_MANAGER, POOL_MANAGER, launchHook, dynamicFeeModule, initialTick, graduationTick
+            launcher, POSITION_MANAGER, POOL_MANAGER, launchHook, initialTick, graduationTick
         );
     }
 

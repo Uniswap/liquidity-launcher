@@ -12,7 +12,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {BondingCurveLaunchHook} from "../../../src/periphery/hooks/BondingCurveLaunchHook.sol";
 import {
     IBondingCurveLaunchHook,
@@ -53,8 +52,7 @@ contract BondingCurveLaunchHookTest is Test {
             graduationSqrtPriceX96: TickMath.getSqrtPriceAtTick(GRADUATION_TICK),
             curveTickLower: GRADUATION_TICK,
             curveTickUpper: INITIAL_TICK,
-            swapStartBlock: uint48(block.number),
-            module: address(0)
+            swapStartBlock: uint48(block.number)
         });
     }
 
@@ -147,7 +145,7 @@ contract BondingCurveLaunchHookTest is Test {
         return PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(address(0xC0FFEE)),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            fee: 10_000,
             tickSpacing: 200,
             hooks: IHooks(address(hook))
         });
@@ -190,6 +188,7 @@ contract BondingCurveLaunchHookTest is Test {
             bytes("")
         );
         assertEq(selector, IHooks.beforeSwap.selector);
-        assertEq(fee, uint24(hook.BASE_FEE()) | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+        // Static-fee pool: the hook returns no LP fee override.
+        assertEq(fee, 0);
     }
 }

@@ -9,7 +9,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
@@ -40,7 +39,9 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
 
     /// @notice Total token supply required for every launch.
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
-    /// @notice Tick spacing used by bonding-curve pools.
+    /// @notice Static LP fee for bonding-curve pools, in pips — the standard 1% tier.
+    uint24 public constant LP_FEE = 10_000;
+    /// @notice Tick spacing used by bonding-curve pools, matching the standard 1% fee tier.
     int24 public constant TICK_SPACING = 200;
     /// @notice Minimum token burn required to harvest fees from the graduated position.
     uint256 public constant MIN_TOKEN_BURN = TOTAL_SUPPLY / 2_000;
@@ -93,9 +94,6 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
     IPositionManager public immutable positionManager;
     /// @notice The launchHook that gates the curve lifecycle and graduates completed curves.
     IBondingCurveLaunchHook public immutable launchHook;
-    /// @notice The dynamic fee module the hook consults for the LP fee while the curve is active.
-    ///         Replaceable: deploy a different module and redeploy the strategy pointing at it.
-    address public immutable dynamicFeeModule;
     /// @notice Aligned tick at which the curve begins (highest price).
     int24 public immutable initialTick;
     /// @notice Aligned tick at which the curve graduates.
@@ -116,13 +114,12 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         IPositionManager _positionManager,
         IPoolManager _poolManager,
         IBondingCurveLaunchHook _launchHook,
-        address _dynamicFeeModule,
         int24 _initialTick,
         int24 _graduationTick
     ) {
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
-                || address(_launchHook) == address(0) || _dynamicFeeModule == address(0)
+                || address(_launchHook) == address(0)
         ) revert ZeroAddress();
         // Ticks must be aligned, usable, and ordered so the curve runs downward from initial to graduation.
         // Graduation is floored at tick 0 (ETH parity for an 18-decimal token): a launch never requires the
@@ -136,7 +133,6 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         poolManager = _poolManager;
         positionManager = _positionManager;
         launchHook = _launchHook;
-        dynamicFeeModule = _dynamicFeeModule;
         initialTick = _initialTick;
         graduationTick = _graduationTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
@@ -196,7 +192,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            fee: LP_FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(launchHook))
         });
@@ -211,8 +207,7 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
                 graduationSqrtPriceX96: graduationSqrtPriceX96,
                 curveTickLower: graduationTick,
                 curveTickUpper: initialTick,
-                swapStartBlock: uint48(_getBlockNumberish()),
-                module: dynamicFeeModule
+                swapStartBlock: uint48(_getBlockNumberish())
             })
         );
         poolManager.initialize(key, initialSqrtPriceX96);
