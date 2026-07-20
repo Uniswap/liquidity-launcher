@@ -150,10 +150,19 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         if (liquidity > Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING)) revert UnrealizableGraduation();
         curveLiquidity = SafeCastLib.toUint128(liquidity);
 
-        // Realizability guard: a completed curve must produce nonzero ETH principal AND a nonzero
-        // full-range graduation position, or the pool would brick at the boundary. Reverts at deploy
-        // time instead of leaving an un-graduatable band.
-        _assertGraduationRealizable();
+        // Ensure that the configured parameters result in a tradeable pool after graduation.
+        uint256 principal =
+            SqrtPriceMath.getAmount0Delta(graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
+        Position memory finalPosition = PositionPlanner.resolvePosition(
+            PositionPlanner.TickBounds({
+                lowerTick: TickMath.minUsableTick(TICK_SPACING), upperTick: TickMath.maxUsableTick(TICK_SPACING)
+            }),
+            graduationSqrtPriceX96,
+            Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING),
+            CurrencyAmounts({amount0: principal, amount1: reserveSupply}),
+            address(0xdead)
+        );
+        if (principal == 0 || finalPosition.liquidity == 0) revert UnrealizableGraduation();
     }
 
     /// @inheritdoc IStrategy
@@ -184,7 +193,13 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         // The launchHook custodies the graduation reserve until the curve completes.
         IERC20(token).safeTransfer(address(launchHook), reserveSupply);
 
-        PoolKey memory key = _poolKey(token);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(token),
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(launchHook))
+        });
         PoolId poolId = key.toId();
 
         // Configure before initialize: _beforeInitialize reads the config to pin the opening price.
@@ -234,30 +249,5 @@ contract BondingCurveLaunchStrategy is IStrategy, BlockNumberish, ReentrancyGuar
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
         if (received != amount) revert TokenAmountMismatch(received, amount);
-    }
-
-    function _poolKey(address token) private view returns (PoolKey memory) {
-        return PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(token),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(launchHook))
-        });
-    }
-
-    function _assertGraduationRealizable() private view {
-        uint256 principal =
-            SqrtPriceMath.getAmount0Delta(graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
-        Position memory finalPosition = PositionPlanner.resolvePosition(
-            PositionPlanner.TickBounds({
-                lowerTick: TickMath.minUsableTick(TICK_SPACING), upperTick: TickMath.maxUsableTick(TICK_SPACING)
-            }),
-            graduationSqrtPriceX96,
-            Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING),
-            CurrencyAmounts({amount0: principal, amount1: reserveSupply}),
-            address(0xdead)
-        );
-        if (principal == 0 || finalPosition.liquidity == 0) revert UnrealizableGraduation();
     }
 }
