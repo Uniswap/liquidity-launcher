@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+// Ported from the pre-rearch BondingCurveLaunchStrategy.e2e.t.sol. The pool-level behaviour assertions
+// are unchanged; only the setup surface (constructors, launch entrypoint, typed config, phase enum,
+// DECAY_BLOCKS location) is adapted to the bonding-curve-only rearchitecture.
+
 import {Test} from "forge-std/Test.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -12,14 +16,14 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
@@ -27,7 +31,8 @@ import {BondingCurveLaunchStrategy} from "../../../src/strategies/BondingCurveLa
 import {BondingCurveLaunchHook} from "../../../src/periphery/hooks/BondingCurveLaunchHook.sol";
 import {DutchDecayFeeModule} from "../../../src/periphery/modules/DutchDecayFeeModule.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
-import {BondingCurvePhase, IBondingCurveLaunchHook} from "../../../src/interfaces/IBondingCurveLaunchHook.sol";
+import {IBondingCurveLaunchHook} from "../../../src/interfaces/IBondingCurveLaunchHook.sol";
+import {BondingCurvePhase} from "../../../src/interfaces/IBondingCurveLaunchHook.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 
 contract SharedDeltaAttacker is IUnlockCallback {
@@ -88,22 +93,7 @@ contract SharedDeltaAttacker is IUnlockCallback {
     receive() external payable {}
 }
 
-/// @notice BTT integration coverage for the complete bonding-curve lifecycle
-///
-/// initializeDistribution
-/// └── when the configured ticks imply an approximately 80/20 split
-///     ├── it reuses DirectLaunchStrategy to mint one finite curve position
-///     ├── it gives the hook custody of the curve position and reserve
-///     └── it rejects external liquidity while the curve is active
-///
-/// afterSwap
-/// ├── when an exact-output buy exceeds the remaining curve
-/// │   └── it reverts before the swap
-/// └── when an oversized exact-input buy crosses the terminal price
-///     ├── it partially fills at the curve boundary
-///     ├── it burns the curve position
-///     ├── it mints one permanently owned full-range position
-///     └── it completes graduation atomically
+/// @notice Rearch e2e: the same bonding-curve lifecycle assertions against BondingCurveLaunchStrategy/BondingCurveLaunchHook.
 contract BondingCurveLaunchStrategyE2ETest is Test {
     using StateLibrary for IPoolManager;
 
@@ -126,7 +116,8 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             address(POSITION_MANAGER)
         );
 
-        feeModule = new DutchDecayFeeModule();
+        feeModule = new DutchDecayFeeModule(990_000, 0, 5, true);
+
         address predictedStrategy = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         uint160 flags = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             | Hooks.AFTER_SWAP_FLAG;
@@ -152,7 +143,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         vm.deal(address(this), 100_000 ether);
     }
 
-    function test_initializeDistribution_mintsFiniteCurveAndReservesMatchingSupply() public {
+    function test_launch_mintsFiniteCurveAndReservesMatchingSupply() public {
         (MockERC20 token, PoolKey memory key, uint256 curveTokenId) = _launch();
 
         assertApproxEqRel(strategy.curveSupply(), strategy.TOTAL_SUPPLY() * 80 / 100, 6e15);
@@ -168,7 +159,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
 
     function test_swap_revertsWhenExactOutputExceedsRemainingCurve() public {
         (, PoolKey memory key,) = _launch();
-        vm.roll(block.number + strategy.DECAY_BLOCKS());
+        vm.roll(block.number + feeModule.decayBlocks());
         int256 requestedOutput = int256(strategy.curveSupply() + 1);
 
         vm.expectRevert();
@@ -184,7 +175,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
 
     function test_swapExactOutput_succeedsAtInitialCurveBoundary() public {
         (MockERC20 token, PoolKey memory key,) = _launch();
-        vm.roll(block.number + strategy.DECAY_BLOCKS());
+        vm.roll(block.number + feeModule.decayBlocks());
         uint256 requestedOutput = 1 ether;
         uint256 balanceBefore = token.balanceOf(address(this));
 
@@ -206,7 +197,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
 
     function test_swapExactInput_partiallyFillsAndGraduatesAtomically() public {
         (MockERC20 token, PoolKey memory key, uint256 curveTokenId) = _launch();
-        vm.roll(block.number + strategy.DECAY_BLOCKS());
+        vm.roll(block.number + feeModule.decayBlocks());
         uint256 forcedTokenAmount = 123;
         deal(address(token), address(launchHook), token.balanceOf(address(launchHook)) + forcedTokenAmount, false);
         address finalPositionRecipient = launchHook.bondingCurveConfig(key.toId()).finalPositionRecipient;
@@ -240,7 +231,7 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
             hooks: IHooks(address(0))
         });
         POOL_MANAGER.initialize(sideKey, TickMath.getSqrtPriceAtTick(0));
-        vm.roll(block.number + strategy.DECAY_BLOCKS());
+        vm.roll(block.number + feeModule.decayBlocks());
 
         SharedDeltaAttacker attacker = new SharedDeltaAttacker(POOL_MANAGER, POSITION_MANAGER);
         vm.expectRevert();

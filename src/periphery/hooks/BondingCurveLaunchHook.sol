@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity 0.8.26;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -8,13 +8,14 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -22,9 +23,10 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
-import {LaunchHook} from "./LaunchHook.sol";
-import {LaunchConfig} from "../../interfaces/ILaunchHook.sol";
+import {InitializerHook} from "./InitializerHook.sol";
+import {IDynamicFeeModule} from "../../interfaces/IDynamicFeeModule.sol";
 import {
     IBondingCurveLaunchHook,
     BondingCurveHookConfig,
@@ -34,35 +36,63 @@ import {PositionPlanner} from "../../libraries/PositionPlanner.sol";
 import {Position, CurrencyAmounts} from "../../types/PositionPlannerTypes.sol";
 
 /// @title BondingCurveLaunchHook
-/// @notice Atomically replaces a completed finite curve with full-range liquidity
-contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
+/// @notice Single-purpose v4 hook for a native-ETH bonding-curve launch that graduates in place.
+/// @dev Native ETH is always currency0 and the token always currency1, so buys are `zeroForOne` and
+///      walk the price DOWN from the initial tick to the graduation tick. The hook owns the curve NFT
+///      and the graduation reserve, gates liquidity by phase, applies a baked-in decaying launch fee,
+///      and — on the swap that completes the curve — atomically burns the curve position and mints a
+///      permanent full-range position pairing the accumulated ETH with the reserve.
+/// @custom:security-contact security@uniswap.org
+contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurveLaunchHook {
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeERC20 for IERC20;
 
+    /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
+
+    /// @notice LP fee applied when no fee module is configured and after graduation, in pips.
+    /// @dev Matches the pre-rearch `baseFee: 0`.
+    uint24 public constant BASE_FEE = 0;
 
     /// @inheritdoc IBondingCurveLaunchHook
     IPositionManager public immutable override positionManager;
 
-    mapping(PoolId poolId => BondingCurveHookConfig config) internal _bondingCurveConfigs;
+    /// @notice The curve configuration registered for each pool.
+    mapping(PoolId poolId => BondingCurveHookConfig config) internal _launchConfigs;
+    /// @inheritdoc IBondingCurveLaunchHook
     mapping(PoolId poolId => BondingCurvePhase phase) public override bondingCurvePhase;
+    /// @inheritdoc IBondingCurveLaunchHook
     mapping(PoolId poolId => uint256 tokenId) public override curveTokenId;
 
     constructor(IPoolManager _poolManager, IPositionManager _positionManager, address _authorized)
-        LaunchHook(_poolManager, _authorized)
+        InitializerHook(_poolManager, _authorized)
     {
-        // The hook must use the same PositionManager that mints the launch positions.
         if (address(_positionManager) == address(0)) revert ZeroAddress();
         positionManager = _positionManager;
     }
 
     /// @inheritdoc IBondingCurveLaunchHook
-    function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory) {
-        return _bondingCurveConfigs[poolId];
+    function configure(PoolId poolId, BondingCurveHookConfig calldata config) external override {
+        if (msg.sender != authorized) revert NotAuthorized(msg.sender, authorized);
+        if (bondingCurvePhase[poolId] != BondingCurvePhase.Unconfigured) revert AlreadyConfigured(poolId);
+        if (
+            config.reserveTokenAmount == 0 || config.finalPositionRecipient == address(0)
+                || config.curveTickLower >= config.curveTickUpper
+                || config.graduationSqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickLower)
+        ) revert InvalidBondingCurveConfig();
+
+        _launchConfigs[poolId] = config;
+        bondingCurvePhase[poolId] = BondingCurvePhase.Seeding;
+        emit BondingCurveConfigured(poolId, config);
     }
 
-    /// @inheritdoc LaunchHook
+    /// @inheritdoc IBondingCurveLaunchHook
+    function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory) {
+        return _launchConfigs[poolId];
+    }
+
+    /// @inheritdoc InitializerHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
@@ -82,23 +112,8 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         });
     }
 
-    function _afterSetLaunchConfig(PoolId poolId, LaunchConfig calldata launchConfig) internal override {
-        if (launchConfig.hookConfig.length == 0) revert InvalidBondingCurveConfig();
-        BondingCurveHookConfig memory config = abi.decode(launchConfig.hookConfig, (BondingCurveHookConfig));
-        if (
-            config.reserveTokenAmount == 0 || config.finalPositionRecipient == address(0)
-                || config.curveTickLower >= config.curveTickUpper
-                || config.graduationSqrtPriceX96
-                    != TickMath.getSqrtPriceAtTick(
-                        launchConfig.tokenIsCurrency0 ? config.curveTickUpper : config.curveTickLower
-                    )
-        ) revert InvalidBondingCurveConfig();
-
-        _bondingCurveConfigs[poolId] = config;
-        bondingCurvePhase[poolId] = BondingCurvePhase.Seeding;
-        emit BondingCurveConfigured(poolId, config);
-    }
-
+    /// @dev Restricts initialization to the authorized launcher (via InitializerHook) and pins the
+    ///      opening price to the curve's initial tick.
     function _beforeInitialize(address sender, PoolKey calldata key, uint160 sqrtPriceX96)
         internal
         view
@@ -106,14 +121,13 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         returns (bytes4)
     {
         bytes4 selector = super._beforeInitialize(sender, key, sqrtPriceX96);
-        PoolId poolId = key.toId();
-        BondingCurveHookConfig storage config = _bondingCurveConfigs[poolId];
-        bool tokenIsCurrency0 = _launchConfigs[poolId].tokenIsCurrency0;
-        int24 initialTick = tokenIsCurrency0 ? config.curveTickLower : config.curveTickUpper;
-        if (sqrtPriceX96 != TickMath.getSqrtPriceAtTick(initialTick)) revert InvalidBondingCurveConfig();
+        BondingCurveHookConfig storage config = _launchConfigs[key.toId()];
+        if (sqrtPriceX96 != TickMath.getSqrtPriceAtTick(config.curveTickUpper)) revert InvalidBondingCurveConfig();
         return selector;
     }
 
+    /// @dev Phase-gated liquidity. Only the hook-owned curve seed (Seeding) and the graduation
+    ///      full-range mint (Graduating) may add liquidity; post-graduation the pool is open.
     function _beforeAddLiquidity(
         address sender,
         PoolKey calldata key,
@@ -122,14 +136,13 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
     ) internal override returns (bytes4) {
         PoolId poolId = key.toId();
         BondingCurvePhase phase = bondingCurvePhase[poolId];
-        BondingCurveHookConfig storage config = _bondingCurveConfigs[poolId];
+        BondingCurveHookConfig storage config = _launchConfigs[poolId];
 
         if (phase == BondingCurvePhase.Seeding) {
             if (
                 params.liquidityDelta <= 0 || params.tickLower != config.curveTickLower
                     || params.tickUpper != config.curveTickUpper
             ) revert InvalidCurvePosition();
-            // Only a hook-owned NFT minted by the configured PositionManager can activate the curve.
             if (sender != address(positionManager)) revert InvalidPositionManager(sender);
             uint256 nextTokenId = positionManager.nextTokenId();
             if (nextTokenId == 0) revert InvalidCurvePositionOwner();
@@ -152,49 +165,71 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         return IHooks.beforeAddLiquidity.selector;
     }
 
-    function _beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
+    /// @dev Enforces the swap-start block, quotes the decaying launch fee, and bounds buys to the
+    ///      remaining curve. The hook's own graduation-normalization swap bypasses every gate.
+    function _beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
         view
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        (bytes4 selector, BeforeSwapDelta delta, uint24 fee) = super._beforeSwap(sender, key, params, hookData);
-        _validateBondingCurveSwap(key, params);
-        return (selector, delta, fee);
-    }
-
-    function _validateBondingCurveSwap(PoolKey calldata key, SwapParams calldata params) private view {
         PoolId poolId = key.toId();
         BondingCurvePhase phase = bondingCurvePhase[poolId];
-        if (phase == BondingCurvePhase.Graduated) return;
+        if (phase == BondingCurvePhase.Graduated) {
+            return
+                (
+                    IHooks.beforeSwap.selector,
+                    BeforeSwapDeltaLibrary.ZERO_DELTA,
+                    BASE_FEE | LPFeeLibrary.OVERRIDE_FEE_FLAG
+                );
+        }
         if (phase != BondingCurvePhase.Active) revert InvalidBondingCurvePhase(phase);
 
-        BondingCurveHookConfig storage config = _bondingCurveConfigs[poolId];
-        bool tokenIsCurrency0 = _launchConfigs[poolId].tokenIsCurrency0;
-        bool isBuy = params.zeroForOne != tokenIsCurrency0;
+        BondingCurveHookConfig storage config = _launchConfigs[poolId];
+        uint256 currentBlock = _getBlockNumberish();
+        if (currentBlock < config.swapStartBlock) revert SwapsNotStarted(config.swapStartBlock, currentBlock);
+
+        _validateBuyWithinCurve(poolId, params, config);
+
+        uint24 fee = _moduleFee(config.module, key, params.zeroForOne);
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
+    }
+
+    /// @notice Quotes the LP fee from the configured fee module for the swap's direction.
+    /// @dev A module failure reverts the swap. With no module, the base fee applies.
+    function _moduleFee(address module, PoolKey calldata key, bool zeroForOne) private view returns (uint24) {
+        if (module == address(0)) return BASE_FEE;
+        (uint24 zeroForOneFee, uint24 oneForZeroFee) = IDynamicFeeModule(module).getFee(key);
+        uint24 fee = zeroForOne ? zeroForOneFee : oneForZeroFee;
+        return fee > LPFeeLibrary.MAX_LP_FEE ? LPFeeLibrary.MAX_LP_FEE : fee;
+    }
+
+    /// @dev Bounds an exact-output buy so it cannot request more token than the curve still holds.
+    ///      Exact-input buys are left to v4's native partial-fill-at-boundary behavior.
+    function _validateBuyWithinCurve(PoolId poolId, SwapParams calldata params, BondingCurveHookConfig storage config)
+        private
+        view
+    {
+        // token is currency1, so a buy (ETH -> token) is zeroForOne.
+        bool isBuy = params.zeroForOne;
         if (!isBuy || params.amountSpecified <= 0) return;
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         uint128 liquidity = positionManager.getPositionLiquidity(curveTokenId[poolId]);
-        uint160 initialSqrtPriceX96 =
-            TickMath.getSqrtPriceAtTick(tokenIsCurrency0 ? config.curveTickLower : config.curveTickUpper);
-        uint256 available = tokenIsCurrency0
-            ? SqrtPriceMath.getAmount0Delta(
-                sqrtPriceX96 < initialSqrtPriceX96 ? initialSqrtPriceX96 : sqrtPriceX96,
-                config.graduationSqrtPriceX96,
-                liquidity,
-                false
-            )
-            : SqrtPriceMath.getAmount1Delta(
-                config.graduationSqrtPriceX96,
-                sqrtPriceX96 > initialSqrtPriceX96 ? initialSqrtPriceX96 : sqrtPriceX96,
-                liquidity,
-                false
-            );
-        uint256 requested = uint256(params.amountSpecified);
-        if (requested > available) revert ExactOutputExceedsCurve(requested, available);
+        uint160 initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(config.curveTickUpper);
+        // Clamp spot to the initial price so a mid-curve quote never counts token above the start.
+        uint256 available = SqrtPriceMath.getAmount1Delta(
+            config.graduationSqrtPriceX96,
+            sqrtPriceX96 > initialSqrtPriceX96 ? initialSqrtPriceX96 : sqrtPriceX96,
+            liquidity,
+            false
+        );
+        if (uint256(params.amountSpecified) > available) {
+            revert ExactOutputExceedsCurve(uint256(params.amountSpecified), available);
+        }
     }
 
+    /// @dev On the buy that completes the curve, graduate atomically inside the swapper's unlock.
     function _afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta, bytes calldata)
         internal
         override
@@ -202,17 +237,12 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
     {
         PoolId poolId = key.toId();
         if (bondingCurvePhase[poolId] != BondingCurvePhase.Active) return (IHooks.afterSwap.selector, 0);
+        // Only a buy (zeroForOne) can complete the curve by pushing price down to graduation.
+        if (!params.zeroForOne) return (IHooks.afterSwap.selector, 0);
 
-        bool tokenIsCurrency0 = _launchConfigs[poolId].tokenIsCurrency0;
-        bool isBuy = params.zeroForOne != tokenIsCurrency0;
-        if (!isBuy) return (IHooks.afterSwap.selector, 0);
-
-        BondingCurveHookConfig storage config = _bondingCurveConfigs[poolId];
+        BondingCurveHookConfig storage config = _launchConfigs[poolId];
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        bool completed = tokenIsCurrency0
-            ? sqrtPriceX96 >= config.graduationSqrtPriceX96
-            : sqrtPriceX96 <= config.graduationSqrtPriceX96;
-        if (!completed) return (IHooks.afterSwap.selector, 0);
+        if (sqrtPriceX96 > config.graduationSqrtPriceX96) return (IHooks.afterSwap.selector, 0);
 
         uint128 liquidity = poolManager.getLiquidity(poolId);
         if (liquidity != 0) revert InvalidGraduationLiquidity(liquidity);
@@ -220,82 +250,62 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         bondingCurvePhase[poolId] = BondingCurvePhase.Graduating;
         emit GraduationStarted(poolId);
 
+        // If the completing buy overshot the boundary, walk the (now empty) range back to grad price.
+        // This swap re-enters _beforeSwap as sender == address(this), which bypasses the phase gate.
         if (sqrtPriceX96 != config.graduationSqrtPriceX96) {
-            _normalizePrice(key, !params.zeroForOne, config.graduationSqrtPriceX96);
-        }
-
-        (sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        if (sqrtPriceX96 != config.graduationSqrtPriceX96) {
-            revert InvalidGraduationPrice(sqrtPriceX96, config.graduationSqrtPriceX96);
+            _normalizePrice(key, config.graduationSqrtPriceX96);
+            (sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+            if (sqrtPriceX96 != config.graduationSqrtPriceX96) {
+                revert InvalidGraduationPrice(sqrtPriceX96, config.graduationSqrtPriceX96);
+            }
         }
 
         _graduate(key, poolId, config);
-        if (bondingCurvePhase[poolId] != BondingCurvePhase.Graduated) revert GraduationIncomplete();
         return (IHooks.afterSwap.selector, 0);
     }
 
     function _graduate(PoolKey calldata key, PoolId poolId, BondingCurveHookConfig storage config) private {
         _assertPositionManagerDeltasCleared(key);
         uint256 tokenId = curveTokenId[poolId];
-        if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
-            revert InvalidCurvePositionOwner();
-        }
+        if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert InvalidCurvePositionOwner();
 
-        bool tokenIsCurrency0 = _launchConfigs[poolId].tokenIsCurrency0;
         uint128 curveLiquidity = positionManager.getPositionLiquidity(tokenId);
-        Position memory finalPosition = _resolveFinalPosition(key, config, tokenIsCurrency0, curveLiquidity);
+        Position memory finalPosition = _resolveFinalPosition(key, config, curveLiquidity);
         if (finalPosition.liquidity == 0) revert InvalidFinalPosition();
 
-        _replacePosition(key, poolId, tokenId, finalPosition, tokenIsCurrency0, config);
+        // token (currency1) is transferred into the PositionManager and settled inside the plan.
+        IERC20 token = IERC20(Currency.unwrap(key.currency1));
+        token.safeTransfer(address(positionManager), config.reserveTokenAmount);
+        uint256 finalTokenId = positionManager.nextTokenId();
+        (bytes memory actions, bytes[] memory params) =
+            _graduationPlan(key, tokenId, finalPosition, config.finalPositionRecipient);
+        positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+        _assertPositionManagerDeltasCleared(key);
+
+        uint256 remaining = token.balanceOf(address(this));
+        if (remaining != 0) token.safeTransfer(BURN_ADDRESS, remaining);
+        emit Graduated(poolId, tokenId, finalTokenId, finalPosition.liquidity);
     }
 
-    function _resolveFinalPosition(
-        PoolKey calldata key,
-        BondingCurveHookConfig storage config,
-        bool tokenIsCurrency0,
-        uint128 curveLiquidity
-    ) private view returns (Position memory) {
-        uint160 initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(
-            tokenIsCurrency0 ? config.curveTickLower : config.curveTickUpper
-        );
-        uint256 principal = tokenIsCurrency0
-            ? SqrtPriceMath.getAmount1Delta(initialSqrtPriceX96, config.graduationSqrtPriceX96, curveLiquidity, false)
-            : SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
-        CurrencyAmounts memory amounts = tokenIsCurrency0
-            ? CurrencyAmounts({amount0: config.reserveTokenAmount, amount1: principal})
-            : CurrencyAmounts({amount0: principal, amount1: config.reserveTokenAmount});
+    /// @dev The completed curve's ETH (currency0) principal is fixed by the burned position's
+    ///      liquidity, not spot price; it pairs with the reserve into a full-range position at grad.
+    function _resolveFinalPosition(PoolKey calldata key, BondingCurveHookConfig storage config, uint128 curveLiquidity)
+        private
+        view
+        returns (Position memory)
+    {
+        uint160 initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(config.curveTickUpper);
+        uint256 principal =
+            SqrtPriceMath.getAmount0Delta(config.graduationSqrtPriceX96, initialSqrtPriceX96, curveLiquidity, false);
         return PositionPlanner.resolvePosition(
             PositionPlanner.TickBounds({
                 lowerTick: TickMath.minUsableTick(key.tickSpacing), upperTick: TickMath.maxUsableTick(key.tickSpacing)
             }),
             config.graduationSqrtPriceX96,
             Pool.tickSpacingToMaxLiquidityPerTick(key.tickSpacing),
-            amounts,
+            CurrencyAmounts({amount0: principal, amount1: config.reserveTokenAmount}),
             config.finalPositionRecipient
         );
-    }
-
-    function _replacePosition(
-        PoolKey calldata key,
-        PoolId poolId,
-        uint256 tokenId,
-        Position memory finalPosition,
-        bool tokenIsCurrency0,
-        BondingCurveHookConfig storage config
-    ) private {
-        Currency tokenCurrency = tokenIsCurrency0 ? key.currency0 : key.currency1;
-        IERC20 token = IERC20(Currency.unwrap(tokenCurrency));
-        token.safeTransfer(address(positionManager), config.reserveTokenAmount);
-        uint256 finalTokenId = positionManager.nextTokenId();
-        (bytes memory actions, bytes[] memory params) =
-            _graduationPlan(key, tokenId, finalPosition, tokenIsCurrency0, config.finalPositionRecipient);
-        positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
-        _assertPositionManagerDeltasCleared(key);
-
-        // Forced token transfers and launch rounding dust never contribute to graduation.
-        uint256 remainingToken = token.balanceOf(address(this));
-        if (remainingToken != 0) token.safeTransfer(BURN_ADDRESS, remainingToken);
-        emit Graduated(poolId, tokenId, finalTokenId, finalPosition.liquidity);
     }
 
     function _assertPositionManagerDeltasCleared(PoolKey calldata key) private view {
@@ -308,13 +318,11 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         if (delta != 0) revert UnexpectedPositionManagerDelta(currency, delta);
     }
 
-    function _graduationPlan(
-        PoolKey calldata key,
-        uint256 tokenId,
-        Position memory finalPosition,
-        bool tokenIsCurrency0,
-        address finalPositionRecipient
-    ) private pure returns (bytes memory actions, bytes[] memory params) {
+    function _graduationPlan(PoolKey calldata key, uint256 tokenId, Position memory finalPosition, address recipient)
+        private
+        pure
+        returns (bytes memory actions, bytes[] memory params)
+    {
         actions = abi.encodePacked(
             uint8(Actions.BURN_POSITION),
             uint8(Actions.MINT_POSITION),
@@ -337,24 +345,24 @@ contract BondingCurveLaunchHook is LaunchHook, IBondingCurveLaunchHook {
         );
         params[2] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        Currency tokenCurrency = tokenIsCurrency0 ? key.currency0 : key.currency1;
-        Currency pairedCurrency = tokenIsCurrency0 ? key.currency1 : key.currency0;
-        params[4] = abi.encode(pairedCurrency, finalPositionRecipient, ActionConstants.OPEN_DELTA);
-        params[5] = abi.encode(tokenCurrency, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
+        // Surplus ETH (currency0) to the LP recipient; surplus token (currency1) is burned.
+        params[4] = abi.encode(key.currency0, recipient, ActionConstants.OPEN_DELTA);
+        params[5] = abi.encode(key.currency1, BURN_ADDRESS, ActionConstants.OPEN_DELTA);
     }
 
-    function _normalizePrice(PoolKey calldata key, bool zeroForOne, uint160 graduationSqrtPriceX96) private {
-        // Empty-range traversal restores the boundary without transferring either currency.
+    /// @dev Empty-range traversal to restore the boundary price without moving either currency.
+    function _normalizePrice(PoolKey calldata key, uint160 graduationSqrtPriceX96) private {
+        // Price is at/below grad with zero liquidity; a oneForZero (price up) empty swap pins it to grad.
         BalanceDelta delta = poolManager.swap(
             key,
-            SwapParams({zeroForOne: zeroForOne, amountSpecified: -1, sqrtPriceLimitX96: graduationSqrtPriceX96}),
+            SwapParams({zeroForOne: false, amountSpecified: -1, sqrtPriceLimitX96: graduationSqrtPriceX96}),
             bytes("")
         );
         if (BalanceDelta.unwrap(delta) != 0) revert NonzeroNormalizationDelta();
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) public pure override(LaunchHook, IERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public pure override(InitializerHook, IERC165) returns (bool) {
         return interfaceId == type(IBondingCurveLaunchHook).interfaceId || super.supportsInterface(interfaceId);
     }
 }

@@ -7,6 +7,7 @@ import {IBondingCurveLaunchHook} from "../../../../../src/interfaces/IBondingCur
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 
 /// @title ConstructorTest
 /// @notice BTT tests for BondingCurveLaunchStrategy.constructor
@@ -16,7 +17,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 /// │   └── it reverts with ZeroAddress
 /// ├── when either tick is not aligned
 /// │   └── it reverts with InvalidTickRange
-/// ├── when the terminal tick is outside the usable range
+/// ├── when the terminal tick is negative
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the usable range
 /// │   └── it reverts with InvalidTickRange
@@ -24,7 +25,8 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 /// │   └── it reverts with InvalidTickRange
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
-///     └── it derives a supply split that sums to the fixed supply
+///     ├── it derives a supply split that sums to the fixed supply
+///     └── it derives a curve liquidity that fits in a single position
 contract ConstructorTest is BondingCurveLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         zeroIndex = uint8(bound(zeroIndex, 0, 4));
@@ -49,16 +51,25 @@ contract ConstructorTest is BondingCurveLaunchTestBase {
         _deployStrategy(useInitialTick ? tick : INITIAL_TICK, useInitialTick ? GRADUATION_TICK : tick);
     }
 
-    function test_WhenGraduationTickIsMinimumUsableTick() public {
+    function test_WhenGraduationTickIsNegative() public {
         int24 tickSpacing = strategy.TICK_SPACING();
         vm.expectRevert(BondingCurveLaunchStrategy.InvalidTickRange.selector);
-        _deployStrategy(INITIAL_TICK, TickMath.minUsableTick(tickSpacing));
+        _deployStrategy(INITIAL_TICK, -tickSpacing);
     }
 
-    function test_WhenGraduationTickIsBelowMinimumUsableTick() public {
+    function test_fuzz_WhenGraduationTickIsNegative(int24 graduationTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
+        // Aligned negative ticks only, so the floor check is what reverts rather than alignment.
+        graduationTick =
+            int24(bound(graduationTick, TickMath.minUsableTick(tickSpacing) / tickSpacing, -1)) * tickSpacing;
+
         vm.expectRevert(BondingCurveLaunchStrategy.InvalidTickRange.selector);
-        _deployStrategy(INITIAL_TICK, TickMath.minUsableTick(tickSpacing) - tickSpacing);
+        _deployStrategy(INITIAL_TICK, graduationTick);
+    }
+
+    function test_WhenGraduationTickIsZero_deploys() public {
+        BondingCurveLaunchStrategy deployed = _deployStrategy(INITIAL_TICK, 0);
+        assertEq(deployed.graduationTick(), 0);
     }
 
     function test_WhenInitialTickExceedsMaximumUsableTick() public {
@@ -90,5 +101,20 @@ contract ConstructorTest is BondingCurveLaunchTestBase {
         assertEq(strategy.graduationSqrtPriceX96(), TickMath.getSqrtPriceAtTick(GRADUATION_TICK));
         assertEq(strategy.curveSupply() + strategy.reserveSupply(), TOTAL_SUPPLY);
         assertApproxEqRel(strategy.curveSupply(), TOTAL_SUPPLY * 80 / 100, 6e15);
+    }
+
+    function test_fuzz_WhenConfigurationIsValid_curveLiquidityFitsInSinglePosition(
+        int24 initialTick,
+        int24 graduationTick
+    ) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        // Bands beyond this domain can legitimately revert UnrealizableGraduation (zero ETH principal);
+        // within it every deployment must succeed with unclamped curve liquidity.
+        graduationTick = int24(bound(graduationTick, 0, 300_000 / tickSpacing)) * tickSpacing;
+        initialTick = int24(bound(initialTick, graduationTick / tickSpacing + 1, 600_000 / tickSpacing)) * tickSpacing;
+
+        BondingCurveLaunchStrategy deployed = _deployStrategy(initialTick, graduationTick);
+        assertGt(deployed.curveLiquidity(), 0);
+        assertLe(deployed.curveLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
     }
 }

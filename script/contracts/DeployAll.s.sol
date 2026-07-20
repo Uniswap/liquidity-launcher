@@ -7,9 +7,6 @@ import {DeployLBPStrategyScript} from "./DeployLBPStrategy.s.sol";
 import {DeployTokenSplitterScript} from "./DeployTokenSplitter.s.sol";
 import {IDistributorFactory} from "../../src/interfaces/IDistributorFactory.sol";
 import {DeployInitializerHookScript} from "./DeployInitializerHook.s.sol";
-import {DeployDirectLaunchStrategyScript} from "./DeployDirectLaunchStrategy.s.sol";
-import {DeployLaunchHookScript} from "./DeployLaunchHook.s.sol";
-import {DeployDutchDecayFeeModuleScript} from "./DeployDutchDecayFeeModule.s.sol";
 import {console} from "forge-std/console.sol";
 
 contract DeployAllScript is Script {
@@ -17,18 +14,12 @@ contract DeployAllScript is Script {
     DeployLBPStrategyScript public lbpStrategyDeployer;
     DeployTokenSplitterScript public tokenSplitterDeployer;
     DeployInitializerHookScript public initializerHookDeployer;
-    DeployDirectLaunchStrategyScript public directLaunchStrategyDeployer;
-    DeployLaunchHookScript public launchHookDeployer;
-    DeployDutchDecayFeeModuleScript public dutchDecayFeeModuleDeployer;
 
     constructor() {
         liquidityLauncherDeployer = new DeployLiquidityLauncherScript();
         lbpStrategyDeployer = new DeployLBPStrategyScript();
         tokenSplitterDeployer = new DeployTokenSplitterScript();
         initializerHookDeployer = new DeployInitializerHookScript();
-        directLaunchStrategyDeployer = new DeployDirectLaunchStrategyScript();
-        launchHookDeployer = new DeployLaunchHookScript();
-        dutchDecayFeeModuleDeployer = new DeployDutchDecayFeeModuleScript();
     }
 
     function run(IDistributorFactory initializerFactory) public {
@@ -38,8 +29,5 @@ contract DeployAllScript is Script {
         address lbpStrategyAddress = lbpStrategyDeployer.run(initializerFactory);
         tokenSplitterDeployer.run();
         initializerHookDeployer.run(lbpStrategyAddress);
-        address directLaunchStrategyAddress = directLaunchStrategyDeployer.run();
-        launchHookDeployer.run(directLaunchStrategyAddress);
-        dutchDecayFeeModuleDeployer.run();
     }
 }

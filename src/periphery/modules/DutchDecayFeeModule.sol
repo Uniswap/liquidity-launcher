@@ -1,45 +1,52 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity 0.8.26;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 import {IDynamicFeeModule} from "../../interfaces/IDynamicFeeModule.sol";
-import {ILaunchHook, LaunchConfig} from "../../interfaces/ILaunchHook.sol";
-
-/// @notice Parameters encoded in LaunchConfig.moduleConfig
-struct DutchDecayConfig {
-    uint24 startFee; // fee in pips at the swap start block
-    uint24 endFee; // fee in pips once decayBlocks have elapsed
-    uint48 decayBlocks; // number of blocks over which the fee interpolates linearly from startFee to endFee
-    bool taxBothDirections; // when false only token buys pay the decaying fee; token sells pay endFee
-}
+import {IBondingCurveLaunchHook} from "../../interfaces/IBondingCurveLaunchHook.sol";
 
 /// @title DutchDecayFeeModule
-/// @notice Linearly decays a launch pool's LP fee over a block window
-/// @dev Per-pool state is read from the launch hook at `key.hooks`.
+/// @notice Linearly decays a launch pool's LP fee from `startFee` to `endFee` over `decayBlocks` blocks,
+///         anchored on the pool's `swapStartBlock`. Its parameters are fixed at deployment; to change the
+///         fee curve, deploy a different module and point the strategy at it.
+/// @dev Reads only the per-pool `swapStartBlock` from the launch hook; all fee parameters are immutable here.
 contract DutchDecayFeeModule is IDynamicFeeModule, BlockNumberish {
-    /// @inheritdoc IDynamicFeeModule
-    function getFee(PoolKey calldata key) external view returns (uint24 zeroForOneFee, uint24 oneForZeroFee) {
-        LaunchConfig memory launch = ILaunchHook(address(key.hooks)).launchConfig(key.toId());
-        DutchDecayConfig memory config = abi.decode(launch.moduleConfig, (DutchDecayConfig));
+    /// @notice Fee in pips at `swapStartBlock`.
+    uint24 public immutable startFee;
+    /// @notice Fee in pips once `decayBlocks` have elapsed.
+    uint24 public immutable endFee;
+    /// @notice Number of blocks over which the fee interpolates from `startFee` to `endFee`.
+    uint48 public immutable decayBlocks;
+    /// @notice When false, only token buys pay the decaying fee; token sells pay `endFee`.
+    bool public immutable taxBothDirections;
 
-        uint24 buyFee = _decayedFee(config, launch.swapStartBlock);
-        uint24 sellFee = config.taxBothDirections ? buyFee : config.endFee;
-        // A token buy moves from the pool currency into the launched token.
-        return launch.tokenIsCurrency0 ? (sellFee, buyFee) : (buyFee, sellFee);
+    constructor(uint24 _startFee, uint24 _endFee, uint48 _decayBlocks, bool _taxBothDirections) {
+        startFee = _startFee;
+        endFee = _endFee;
+        decayBlocks = _decayBlocks;
+        taxBothDirections = _taxBothDirections;
     }
 
-    /// @notice Interpolates the fee over the configured decay period
-    function _decayedFee(DutchDecayConfig memory config, uint48 swapStartBlock) internal view returns (uint24) {
+    /// @inheritdoc IDynamicFeeModule
+    function getFee(PoolKey calldata key) external view returns (uint24 zeroForOneFee, uint24 oneForZeroFee) {
+        uint48 swapStartBlock =
+            IBondingCurveLaunchHook(address(key.hooks)).bondingCurveConfig(key.toId()).swapStartBlock;
+        uint24 buyFee = _decayedFee(swapStartBlock);
+        uint24 sellFee = taxBothDirections ? buyFee : endFee;
+        // Native ETH (currency0) pairs against the token (currency1), so a token buy is zeroForOne.
+        return (buyFee, sellFee);
+    }
+
+    /// @notice Interpolates the fee over the configured decay window.
+    function _decayedFee(uint48 swapStartBlock) internal view returns (uint24) {
         uint256 currentBlock = _getBlockNumberish();
-        if (currentBlock <= swapStartBlock) return config.startFee;
-
+        if (currentBlock <= swapStartBlock) return startFee;
         uint256 elapsed = currentBlock - swapStartBlock;
-        if (elapsed >= config.decayBlocks) return config.endFee;
-
-        // The elapsed block count is within the configured decay period.
-        int256 delta = (int256(uint256(config.endFee)) - int256(uint256(config.startFee))) * int256(elapsed)
-            / int256(uint256(config.decayBlocks));
-        return uint24(uint256(int256(uint256(config.startFee)) + delta));
+        if (elapsed >= decayBlocks) return endFee;
+        // elapsed is within the decay window.
+        int256 delta =
+            (int256(uint256(endFee)) - int256(uint256(startFee))) * int256(elapsed) / int256(uint256(decayBlocks));
+        return uint24(uint256(int256(uint256(startFee)) + delta));
     }
 }

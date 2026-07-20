@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.26;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title IDynamicFeeModule
-/// @notice Quotes directional LP fees for launch pools
+/// @notice Pluggable source of a launch pool's LP fee. The launch hook delegates the "what is the fee
+///         right now" decision to a module at an address it stores per pool, so the fee curve can be
+///         replaced with different logic without changing the hook.
 interface IDynamicFeeModule {
-    /// @notice Quotes the LP fee override for both swap directions of a launch pool
-    /// @dev The launch hook calls this function during pool initialization and each swap in the launch window.
-    ///      A revert blocks initialization or the swap. Module state is available from `key.hooks`.
+    /// @notice Quotes the current LP fee for both swap directions, in pips.
     /// @param key The pool being swapped
-    /// @return zeroForOneFee The fee in pips for currency0 -> currency1 swaps
-    /// @return oneForZeroFee The fee in pips for currency1 -> currency0 swaps
+    /// @return zeroForOneFee The fee for a zeroForOne swap
+    /// @return oneForZeroFee The fee for a oneForZero swap
     function getFee(PoolKey calldata key) external view returns (uint24 zeroForOneFee, uint24 oneForZeroFee);
 }
