@@ -63,6 +63,11 @@ interface IFeeSplitter {
     /// @param currency0 The unexpected currency0.
     error InvalidBaseCurrency(uint256 tokenId, Currency currency0);
 
+    /// @notice Thrown when a gas-capped token transfer fails, runs out of its gas budget, or returns false.
+    /// @param token The token whose transfer failed.
+    /// @param recipient The intended recipient.
+    error TokenTransferFailed(address token, address recipient);
+
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Each position is collected and distributed individually so fees are
     ///      attributed to that pool's token and creator. Positions must be native-ETH pairs and be
