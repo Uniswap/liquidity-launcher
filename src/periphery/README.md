@@ -1,6 +1,6 @@
 # Periphery
 
-Peripheral contracts used alongside LBP strategies.
+Peripheral contracts used alongside launch strategies.
 
 ## Contents
 
@@ -9,6 +9,7 @@ Peripheral contracts used alongside LBP strategies.
 | [`TimelockedPositionRecipient`](./TimelockedPositionRecipient.sol) | Holds one or more v4 LP positions until a timelock block is reached, then approves a configured operator to transfer them. Base contract for the two recipients below. |
 | [`PositionFeesForwarder`](./PositionFeesForwarder.sol) | Adds a permissionless `collectFees(tokenId)` entrypoint that collects LP fees from a held position and forwards both sides to an immutable recipient. |
 | [`BuybackAndBurnPositionRecipient`](./BuybackAndBurnPositionRecipient.sol) | Adds a permissionless `collectFees(tokenId, minCurrency)` entrypoint that (a) pulls a minimum amount of `token` from the caller and burns it, (b) collects LP fees, (c) forwards the `token` side to the burn address, (d) forwards the `currency` side to the caller. Designed so MEV searchers can profitably trigger buyback-and-burns. |
+| [`BondingCurveLaunchHook`](./hooks/BondingCurveLaunchHook.sol) | Holds each finite curve NFT and graduation reserve, restricts liquidity while the curve is active, and atomically replaces an exhausted curve with permanent full-range liquidity. The hook and strategy must use the same immutable v4 PositionManager. |
 | [`ProtocolFeeController`](./ProtocolFeeController.sol) | Governance-controlled source of truth for the protocol fee applied to currency raised by a launch. Integrators call it at fee-settlement time to discover the fee amount and recipient. See below. |
 | [`SelfInitializerMixin`](../strategies/lbp/SelfInitializerMixin.sol) | Abstract mixin for v4 hooks that may only initialize their own pools (restricts `beforeInitialize` to self-calls). Used by strategies that must deterministically control the initial pool state. |
 
@@ -125,3 +126,14 @@ The fee can be enabled or updated at any time after deployment.
 
 - **Always forward fees to the returned `recipient`.** The recipient is the *global* recipient; per-currency configs do not override it.
 - **Events.** `ProtocolFeeRecipientUpdated`, `GlobalProtocolFeePipsUpdated`, and `ProtocolFeeBracketsForCurrencyUpdated` let off-chain indexers reconstruct the current schedule. `getProtocolFeeBracketsForCurrency(currency)` returns the full tier array for a given currency.
+
+## BondingCurveLaunchHook: swap and router semantics
+
+The curve pool is a dynamic-fee, native-ETH (`currency0`) / token (`currency1`) v4 pool. A buy (ETH → token) is `zeroForOne` and walks the price down from the initial tick to the terminal (graduation) tick. Integrators routing swaps through it should note:
+
+- **Launch fee is time-varying.** While the curve is active, the LP fee is quoted per block by the dynamic fee module (Dutch decay). A quote is valid only for the block it was made in. After graduation the fee is overridden to 0.
+- **Exact-output buys are bounded.** Requesting more token than the curve holds reverts with `ExactOutputExceedsCurve`. Clamp to the remaining curve or use exact-input for the final buy.
+- **The completing buy partial-fills.** An exact-input buy that crosses the terminal tick spends only the input needed to exhaust the curve and refunds the rest; the buyer gets the curve remainder only, not post-graduation liquidity. Don't assume the full `amountSpecified` is spent, and compute minimum-output against the remainder.
+- **Overshoot is safe.** A low `sqrtPriceLimitX96` (e.g. `MIN_SQRT_PRICE + 1`) is fine — `afterSwap` restores the terminal price with a zero-delta swap before graduating. This relies on v4 skipping the hook's own `beforeSwap`/`afterSwap` on self-calls.
+- **The graduating swap costs extra gas.** Burn + full-range mint + price normalization run in `afterSwap` of the buy that exhausts the curve; leave gas headroom on swaps that may complete it, since a graduation revert reverts the whole swap.
+- **No swaps in the graduation block.** Any swap after the graduating one, in the same block, reverts with `SwapsBlockedInGraduationBlock` (both directions). Swaps resume the next block. `graduationBlock(poolId)` returns the stamped block (0 before graduation).

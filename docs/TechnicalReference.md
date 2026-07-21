@@ -7,6 +7,8 @@
         - [UERC20Factory](#uerc20factory)
         - [USUPERC20Factory](#usuperc20factory)
     - [Distribution Strategies](#distribution-strategies)
+        - [DirectLaunchStrategy](#directlaunchstrategy)
+        - [BondingCurveLaunchStrategy](#bondingcurvelaunchstrategy)
         - [FullRangeLBPStrategy](#fullrangelbpstrategy)
         - [AdvancedLBPStrategy](#advancedlbpstrategy)
         - [GovernedLBPStrategy](#governedlbpstrategy)
@@ -43,9 +45,59 @@ Creates standard ERC20 tokens with extended metadata. These tokens support Permi
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
-The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy.migrate()` is a one-shot action: if the internal migration attempt succeeds, liquidity is deployed to V4; if it reverts, the strategy immediately sweeps the held LP token reserves and any raised currency back to the initializer's configured `recipient`.
+The distribution system is modular and supports direct-to-pool launches and auction-based launches.
 
-They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
+#### DirectLaunchStrategy
+
+`DirectLaunchStrategy` creates a v4 pool and token-side LP positions in one call. It has no auction or graduation step. The caller approves `totalSupply`, then calls `initializeDistribution` with ABI-encoded `DirectLaunchParameters`. The strategy pulls the tokens, registers any launch-hook configuration, initializes the pool, and mints the positions.
+
+The caller configures:
+
+- The paired currency, initial price, fee, tick spacing, and hook.
+- Weighted `PositionDefinition[]` data. Weights MUST total `1e7`, and every resolved range MUST be entirely on the token side of the initial price.
+- The LP NFT recipient and optional per-position recipient overrides.
+- A recipient for rounding dust and tokens that cannot be placed because of per-tick liquidity limits.
+- Optional `LaunchConfig` data when the hook implements `ILaunchHook`.
+
+The launched token MUST be a standard ERC20, MUST differ from the paired currency, and MUST transfer exactly `totalSupply`. Fee-on-transfer and rebasing tokens are not supported. Position definitions allocate the full token budget, but the strategy does not guarantee that all tokens become liquidity: rounding and v4 liquidity limits can leave tokens for the configured sweep recipient. LP NFTs are owned and controlled by their configured recipients.
+
+Hooks are trusted launch inputs. Every direct launch MUST configure an `IInitializerHook` that authorizes the calling strategy and has the required v4 permission bits. This gate prevents third parties from initializing the configured pool key first. An `ILaunchHook` also requires a nonempty `LaunchConfig`; other hooks reject launch configuration. `DirectLaunchStrategy` derives the token's currency ordering and overwrites `LaunchConfig.tokenIsCurrency0` before registration.
+
+`DirectLaunchStrategy` is inheritable. Derived strategies can reuse exact token intake and the full launch sequence, or override launch, position-planning, hook-registration, and sweep steps when their constraints allow a smaller implementation.
+
+`LaunchHook` restricts initialization to the strategy, rejects static-fee pools, blocks swaps before `swapStartBlock`, and applies `baseFee` at or after `windowEndBlock`. During the launch window, it uses the configured `IDynamicFeeModule` quote for the swap direction, or `baseFee` if no module is set. Module calls fail closed: a failed or malformed quote blocks initialization or reverts the affected swap. Preflight does not guarantee future quotes or economic behavior.
+
+`TokenLaunched` records the pool key, initial price, and executed PositionManager plan. `TokensSwept` records tokens sent to the sweep recipient.
+
+#### BondingCurveLaunchStrategy
+
+`BondingCurveLaunchStrategy` is a standalone `IStrategy` for a finite, single-position bonding curve. Only its immutable `launcher` may call `initializeDistribution`, `configData` MUST be empty, and each launch MUST supply the token's full 1 billion token supply. The token MUST report 18 decimals and a total supply of 1 billion tokens. Every pool parameter is fixed at deployment: native ETH is always `currency0` and the launched token always `currency1`, so a buy (ETH → token) is always `zeroForOne` and walks the price down from the initial tick to the terminal tick.
+
+The deployment configures an initial tick and a lower terminal tick. Both MUST align to tick spacing 200. These ticks determine the price multiple and the exact split between tokens sold through the curve and tokens reserved for graduation. The split is derived so the completed curve proceeds and token reserve pair into one full-range position; neither an absolute starting valuation nor an 80/20 split is hardcoded. A roughly 16x price range produces an approximately 80/20 split, subject to tick granularity and the finite minimum and maximum v4 ticks.
+
+Each launch creates one token-side position between the terminal and initial ticks. Buys move toward the terminal tick and sells can move back down the curve. Exact-output buys that exceed the remaining curve revert. An oversized exact-input buy consumes only the input required to exhaust the curve; any unused input remains with the caller.
+
+`BondingCurveLaunchHook` holds the curve NFT and the token reserve used for graduation. The hook is deployed with one immutable v4 PositionManager, and the strategy MUST use that PositionManager to mint the curve position. During seeding, the hook only accepts the configured range from that PositionManager and records the NFT after verifying ownership.
+
+`BondingCurveLaunchHook.afterSwap` graduates the pool in the transaction that exhausts the curve. If an exact-input swap traverses beyond the terminal tick through the empty range, the hook restores the terminal price with a zero-delta swap. It then burns the finite curve NFT and mints one full-range NFT in the same PoolManager unlock. Graduation requires the shared PositionManager to have no preexisting pool-currency deltas and verifies that its plan leaves none. The final NFT is permanently held by a per-launch `BuybackAndBurnPositionRecipient`. Curve token fees, rounding excess, and tokens sent directly to the hook are burned; native-currency fees and excess are sent to the same buyback-and-burn recipient. Native currency sent directly to the shared hook is not used for graduation and cannot be recovered. There is no creator fee. The hook uses `beforeInitialize`, `beforeAddLiquidity`, `beforeSwap`, and `afterSwap`; it does not use return deltas or a custom curve.
+
+Graduation is atomic with the boundary-crossing swap and adds its gas cost to that transaction. A graduation failure reverts the entire swap. The launcher, token implementation, PositionManager, hook, and dynamic fee module are trust assumptions. Fee-on-transfer, rebasing, or otherwise nonstandard tokens are not supported.
+
+`BondingCurveTokenLaunched` records the pool ID, token, permanent position recipient, curve supply, and reserve supply. `Graduated` records the pool ID, burned curve NFT, final NFT, and final liquidity.
+
+##### Partial fills and router integration
+
+The curve pool is a dynamic-fee, native-ETH (`currency0`) / token (`currency1`) v4 pool. Integrators buying through the curve MUST account for the following, which differ from an ordinary pool:
+
+- **Time-varying launch fee.** While the curve is active the LP fee comes from the dynamic fee module (Dutch decay, high at the swap-start block, falling over the decay window). The quoted fee changes block-to-block, so a quote is only valid for the block it was produced in. After graduation the hook overrides the fee to 0.
+- **Exact-output buys are bounded to the curve.** An exact-output buy for more token than the curve still holds reverts with `ExactOutputExceedsCurve`. Clamp the requested output to the remaining curve, or size the last buy as exact-input.
+- **The completing buy partial-fills.** An exact-input buy that would cross the terminal tick consumes only the input needed to exhaust the curve; the unused input is refunded to the caller. The buyer receives ONLY the curve's remaining token — they do NOT continue into post-graduation liquidity in the same swap. Do not assume the full `amountSpecified` is spent, and set the minimum-output against the curve remainder, not the requested amount.
+- **A low `sqrtPriceLimitX96` is safe.** An overshooting exact-input buy (e.g. limit at `MIN_SQRT_PRICE + 1`) is expected: `afterSwap` internally restores the terminal price with a zero-delta swap before graduating, and the swap's returned delta reflects only the curve fill.
+- **Budget extra gas for the graduating swap.** The buy that exhausts the curve also pays for the burn, full-range mint, and price normalization inside `afterSwap`. A gas estimate tuned to an ordinary swap can leave that one transaction short and revert it; leave headroom on swaps that may complete the curve.
+- **No swaps in the graduation block.** Every swap in the same block the pool graduates in reverts with `SwapsBlockedInGraduationBlock` (both directions), so a completed curve cannot be graduated and traded against in the same block. The graduating buy itself is unaffected; swaps resume the next block. `graduationBlock(poolId)` exposes the stamped block (0 before graduation).
+- **After graduation the pool is ordinary.** From the block after graduation, liquidity is open to all, the fee is 0, and swaps behave with no hook-imposed bounds.
+
+The LBP strategies below create a Continuous Clearing Auction and later migrate liquidity to v4. `LBPStrategy.migrate()` is a one-shot action: if migration succeeds, liquidity is deployed to v4; if it reverts, the strategy sweeps the held LP token reserves and raised currency to the initializer's configured `recipient`.
 
 #### FullRangeLBPStrategy
 A simple implementation that migrates raised funds to Uniswap V4 as a single full-range position. It is the simplest strategy and is suitable for most use cases.
@@ -59,7 +111,7 @@ A strategy that lets a trusted entity restrict swapping on the liquidity pool.
 #### VirtualLBPStrategy
 A strategy that implements a virtual token backed by an underlying token. This is useful for tokens with complex vesting or lockup schedules.
 
-All of the above strategies are provided as-is, and custom strategies can be implemented by extending the `LBPStrategyBase` contract.
+The LBP strategies are provided as-is. Custom auction strategies can extend `LBPStrategyBase`.
 
 ### Warnings
 
