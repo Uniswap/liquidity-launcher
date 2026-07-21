@@ -5,8 +5,7 @@ out = "out"
 libs = ["lib"]
 bytecode_hash = "none"
 fs_permissions = [
-  { access = "read", path = "script/" },
-  { access = "read", path = "out" }
+  { access = "read", path = "script/" }
 ]
 ffi = true
 # Suppress third-party deprecated memory-safe-assembly NatSpec warnings from dependencies.

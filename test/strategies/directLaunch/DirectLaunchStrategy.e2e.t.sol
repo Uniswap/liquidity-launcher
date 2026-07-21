@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-// Mirrors BondingCurveLaunchStrategy.e2e.t.sol for the hookless direct launch. Curve-lifecycle
-// assertions (graduation, phase gating, shared-delta attack on the graduating hook) have no
-// equivalent here: the pool has no hook, so the launch position is permanent and swaps are
-// ungated from the first block. Fee collection runs through BuybackAndBurnPositionRecipient
-// instead of the launch hook.
+// End-to-end coverage for the hookless direct launch. The launch position is permanent, swaps are
+// ungated from the first block, and fee collection runs through BuybackAndBurnPositionRecipient.
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -133,8 +130,8 @@ contract DirectLaunchStrategyE2ETest is Test {
         (MockERC20 token, PoolKey memory key,,) = _launch();
         vm.deal(address(this), 101_000 ether);
 
-        // A buy the size of a whole bonding-curve graduation: no terminal tick, no phase change —
-        // the price just walks down the single position and the pool keeps trading in the same block.
+        // A large buy has no terminal tick or phase change: the price walks down the single position
+        // and the pool keeps trading in the same block.
         BalanceDelta delta = swapRouter.swap{value: 100_000 ether}(
             key,
             SwapParams({
