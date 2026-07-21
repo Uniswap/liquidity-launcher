@@ -24,15 +24,3 @@ contract MockRevertingCreatorToken is MockERC20 {
         revert("no creator");
     }
 }
-
-/// @notice Token whose `creator()` burns all forwarded gas, for gas-cap testing.
-contract MockGasBurningCreatorToken is MockERC20 {
-    constructor(string memory name, string memory symbol, uint256 initialSupply, address recipient)
-        MockERC20(name, symbol, initialSupply, recipient)
-    {}
-
-    function creator() external pure returns (address) {
-        while (true) {}
-        return address(0);
-    }
-}

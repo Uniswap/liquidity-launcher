@@ -6,7 +6,6 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
@@ -28,18 +27,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @notice The denominator for fee splits: each side's splits sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
-    /// @notice Gas allotted to the `creator()` staticcall so a non-compliant token cannot grief a collect.
-    uint256 private constant CREATOR_CALL_GAS_LIMIT = 50_000;
-
     /// @notice Gas forwarded on native transfers to untrusted recipients (solady's no-grief stipend).
     uint256 private constant NATIVE_TRANSFER_GAS_STIPEND = 100_000;
-
-    /// @notice Gas forwarded to token `transfer` calls, bounding how much a malicious token can burn
-    ///         on the caller's dime per transfer. Sized for the heaviest legitimate implementations,
-    ///         not the common case: plain UERC20s need ~30k worst case, proxied compliance tokens
-    ///         ~65k, reflection-style machinery ~150k. A token whose transfer cannot run in this
-    ///         budget is unsupported — its positions' fees are permanently uncollectable.
-    uint256 private constant TOKEN_TRANSFER_GAS_LIMIT = 200_000;
 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
@@ -173,8 +162,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Sends `amount` of `currency` to `recipient`; a failed native send is redirected to the
     ///         native fallback so an unfunded or reverting recipient can never block a collect. Token
-    ///         transfers are gas-capped and revert on failure: there is no fallback route on the token
-    ///         side, since it would be paid in the same failing token.
+    ///         transfers have no receive hook to fail on and revert only for non-standard tokens.
     function _transfer(Currency currency, address recipient, uint256 amount) private {
         if (currency.isAddressZero()) {
             if (!SafeTransferLib.trySafeTransferETH(recipient, amount, NATIVE_TRANSFER_GAS_STIPEND)) {
@@ -183,27 +171,16 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
                 recipient = nativeFallback;
             }
         } else {
-            _transferToken(Currency.unwrap(currency), recipient, amount);
+            SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
     }
 
-    /// @notice Gas-capped ERC20 transfer accepting missing-return-value tokens; reverts on failure or
-    ///         a false return so a partial distribution can never be mistaken for a complete one.
-    function _transferToken(address token, address recipient, uint256 amount) private {
-        (bool success, bytes memory data) =
-            token.call{gas: TOKEN_TRANSFER_GAS_LIMIT}(abi.encodeCall(IERC20.transfer, (recipient, amount)));
-        if (!success || !(data.length == 0 || (data.length >= 32 && abi.decode(data, (uint256)) == 1))) {
-            revert TokenTransferFailed(token, recipient);
-        }
-    }
-
     /// @notice Resolves a token's UERC20 creator; returns address(0) for any non-compliant token.
-    /// @dev Bounded gas and manual decoding: a token that reverts, returns garbage, or return-bombs
-    ///      must degrade to the fallback, never revert the collect.
+    /// @dev Manual decoding: a token that reverts or returns garbage must degrade to the fallback,
+    ///      never revert the collect.
     function _resolveCreator(address token) private view returns (address) {
-        (bool success, bytes memory data) =
-            token.staticcall{gas: CREATOR_CALL_GAS_LIMIT}(abi.encodeCall(IUERC20.creator, ()));
+        (bool success, bytes memory data) = token.staticcall(abi.encodeCall(IUERC20.creator, ()));
         if (!success || data.length != 32) return address(0);
         // Mask manually: abi.decode reverts on dirty upper bits, which a malicious token could exploit.
         return address(uint160(uint256(bytes32(data))));

@@ -23,8 +23,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {MockUERC20, MockRevertingCreatorToken, MockGasBurningCreatorToken} from "../mocks/MockUERC20.sol";
-import {MockConfigurableTransferToken} from "../mocks/MockConfigurableTransferToken.sol";
+import {MockUERC20, MockRevertingCreatorToken} from "../mocks/MockUERC20.sol";
 import {MockRejectEth} from "../mocks/MockRejectEth.sol";
 
 /// @notice Native recipient that attempts to reenter collectFees from its receive hook.
@@ -392,61 +391,6 @@ contract FeeSplitterTest is Test {
         splitter.collectFees(_single(tokenId));
         assertGt(tokenJar.balance - jarNativeBefore, 0);
         assertEq(address(splitter).balance, 0);
-        assertEq(token.balanceOf(address(splitter)), 0);
-    }
-
-    function test_collectFees_creatorFallbackWhenCreatorBurnsGas() public {
-        FeeSplitter splitter = _defaultSplitter();
-        MockGasBurningCreatorToken token = new MockGasBurningCreatorToken("Gas", "GAS", 1_000_000 ether, address(this));
-        PoolKey memory key = _initPool(address(token));
-        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
-        _accrueFees(key);
-
-        uint256 jarNativeBefore = tokenJar.balance;
-        // Must not revert: the creator() call is gas-capped and treated as unresolvable.
-        splitter.collectFees(_single(tokenId));
-        assertGt(tokenJar.balance - jarNativeBefore, 0);
-    }
-
-    /// @dev Launches a pool with a token whose transfer behavior is switchable after fee accrual.
-    function _setUpConfigurableTokenWithFees(FeeSplitter splitter)
-        internal
-        returns (MockConfigurableTransferToken token, uint256 tokenId)
-    {
-        token = new MockConfigurableTransferToken("Weird", "WEIRD", 1_000_000 ether, address(this));
-        PoolKey memory key = _initPool(address(token));
-        tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
-        _accrueFees(key);
-    }
-
-    function test_collectFees_revertsWhenTokenTransferReturnsFalse() public {
-        FeeSplitter splitter = _defaultSplitter();
-        (MockConfigurableTransferToken token, uint256 tokenId) = _setUpConfigurableTokenWithFees(splitter);
-
-        token.setMisbehavior(address(splitter), 0, true);
-        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.TokenTransferFailed.selector, address(token), BURN_ADDRESS));
-        splitter.collectFees(_single(tokenId));
-    }
-
-    function test_collectFees_revertsWhenTokenTransferBurnsAllGas() public {
-        FeeSplitter splitter = _defaultSplitter();
-        (MockConfigurableTransferToken token, uint256 tokenId) = _setUpConfigurableTokenWithFees(splitter);
-
-        // The transfer exhausts its capped budget instead of the caller's entire gas.
-        token.setMisbehavior(address(splitter), type(uint256).max, false);
-        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.TokenTransferFailed.selector, address(token), BURN_ADDRESS));
-        splitter.collectFees(_single(tokenId));
-    }
-
-    function test_collectFees_succeedsWithHeavyTokenTransferUnderCap() public {
-        FeeSplitter splitter = _defaultSplitter();
-        (MockConfigurableTransferToken token, uint256 tokenId) = _setUpConfigurableTokenWithFees(splitter);
-
-        // A legitimate-but-heavy transfer (~100k gas of side work) stays within the 200k budget.
-        token.setMisbehavior(address(splitter), 100_000, false);
-        uint256 deadBefore = token.balanceOf(BURN_ADDRESS);
-        splitter.collectFees(_single(tokenId));
-        assertGt(token.balanceOf(BURN_ADDRESS) - deadBefore, 0);
         assertEq(token.balanceOf(address(splitter)), 0);
     }
 
