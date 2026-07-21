@@ -81,29 +81,6 @@ library PositionPlanner {
         }
     }
 
-    /// @notice Validates that every definition resolves entirely to the token side of the price
-    /// @dev Bounds at the price are token-side. Invalid or currency-side ranges revert.
-    /// @param _definitions The weighted position definitions to validate
-    /// @param _sqrtPriceX96 The pool initialization price
-    /// @param _tickSpacing The pool tick spacing
-    /// @param _tokenIsCurrency0 Whether the token providing the liquidity is currency0
-    function validateSingleSided(
-        PositionDefinition[] memory _definitions,
-        uint160 _sqrtPriceX96,
-        int24 _tickSpacing,
-        bool _tokenIsCurrency0
-    ) internal pure {
-        TickBounds[] memory ticks = resolveTicks(_definitions, TickMath.getTickAtSqrtPrice(_sqrtPriceX96), _tickSpacing);
-        for (uint256 i; i < ticks.length; i++) {
-            TickBounds memory bounds = ticks[i];
-            if (!bounds.isValid()) revert InvalidTickBounds(bounds.lowerTick, bounds.upperTick);
-            bool tokenSide = _tokenIsCurrency0
-                ? TickMath.getSqrtPriceAtTick(bounds.lowerTick) >= _sqrtPriceX96
-                : TickMath.getSqrtPriceAtTick(bounds.upperTick) <= _sqrtPriceX96;
-            if (!tokenSide) revert PositionNotSingleSided(bounds.lowerTick, bounds.upperTick);
-        }
-    }
-
     /// @notice Converts each definition's relative offsets into absolute tick bounds snapped to `_tickSpacing`
     /// @notice MAY return invalid tick ranges which MUST be checked by the caller
     /// @param _definitions The weighted position definitions to resolve
