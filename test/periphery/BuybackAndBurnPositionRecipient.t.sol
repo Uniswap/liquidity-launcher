@@ -8,8 +8,10 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TimelockedPositionRecipient} from "../../src/periphery/TimelockedPositionRecipient.sol";
 import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
+import {MockLPFeesExecutor, ILPFeesPositionRecipient} from "./MockLPFeesExecutor.sol";
 import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
 
 // Minimal interfaces for testing
@@ -22,6 +24,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     using CurrencyLibrary for Currency;
 
     BuybackAndBurnPositionRecipient internal positionRecipient;
+    MockLPFeesExecutor internal executor;
 
     // Fork testing vars
     // Position created here: https://etherscan.io/tx/0x03dafd828c6b47362b1f53d7a692f8f52b8bc44b513f8c9caa9195e1061113a4
@@ -39,6 +42,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
         token = new MockERC20("Test Token", "TEST", 1_000e18, address(this));
         currency = new MockERC20("Test Currency", "TESTC", 1_000e18, address(this));
+        executor = new MockLPFeesExecutor();
     }
 
     // Return a basic BuybackAndBurnPositionRecipient for compatibility with TimelockedPositionRecipientTest
@@ -108,7 +112,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     }
 
     function test_RevertsIfMinTokenBurnAmountIsZero(uint256 _timelockBlockNumber) public {
-        vm.expectRevert(BaseBuybackAndBurnPositionRecipient.InvalidMinTokenBurnAmount.selector);
+        vm.expectRevert(BuybackAndBurnPositionRecipient.InvalidMinTokenBurnAmount.selector);
         new BuybackAndBurnPositionRecipient(
             address(token), address(currency), operator, IPositionManager(POSITION_MANAGER), _timelockBlockNumber, 0
         );
@@ -121,7 +125,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         _dealUSDCFromPoolManager(address(this), 1);
         IERC20(USDC).approve(address(positionRecipient), 1);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
-        positionRecipient.collectFees(FORK_TOKEN_ID, 0);
+        positionRecipient.collectFees(FORK_TOKEN_ID, 0, 0);
     }
 
     function test_collectFees_revertsIfPositionIsInvalid() public {
@@ -131,7 +135,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         vm.expectRevert(
             abi.encodeWithSelector(BaseBuybackAndBurnPositionRecipient.InvalidPosition.selector, type(uint256).max)
         );
-        positionRecipient.collectFees(type(uint256).max, 0);
+        positionRecipient.collectFees(type(uint256).max, 0, 0);
     }
 
     function test_collectFees_revertsIfPoolDoesNotMatchConfiguredPair() public {
@@ -146,7 +150,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
                 BuybackAndBurnPositionRecipient.InvalidPool.selector, Currency.wrap(NATIVE), Currency.wrap(USDC)
             )
         );
-        positionRecipient.collectFees(FORK_TOKEN_ID, 0);
+        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, 0, 0);
     }
 
     function test_collectFees_revertsIfMinimumBurnAmountIsNotMet(uint256 _minTokenBurnAmount) public {
@@ -156,15 +160,13 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
             USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, _minTokenBurnAmount
         );
 
-        vm.prank(searcher);
-        IERC20(USDC).approve(address(positionRecipient), type(uint256).max);
-        _dealUSDCFromPoolManager(address(searcher), _minTokenBurnAmount - 1);
+        executor.approveToken(USDC, address(positionRecipient), _minTokenBurnAmount - 1);
+        _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount - 1);
 
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
 
         vm.expectRevert(abi.encodeWithSelector(SafeTransferLib.TransferFromFailed.selector));
-        vm.prank(searcher);
-        positionRecipient.collectFees(FORK_TOKEN_ID, 0);
+        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, 0, 0);
     }
 
     function test_collectFees_revertsIfInsufficientCurrencyReceived(
@@ -177,21 +179,20 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         positionRecipient = new BuybackAndBurnPositionRecipient(
             USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, _minTokenBurnAmount
         );
-        vm.prank(searcher);
-        IERC20(USDC).approve(address(positionRecipient), type(uint256).max);
-        _dealUSDCFromPoolManager(address(searcher), _minTokenBurnAmount);
+        executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
+        _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
 
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
 
-        vm.prank(searcher);
         vm.expectRevert(
             abi.encodeWithSelector(
-                BaseBuybackAndBurnPositionRecipient.InsufficientCurrencyReceived.selector,
+                BaseBuybackAndBurnPositionRecipient.InsufficientAmountReceived.selector,
+                Currency.wrap(NATIVE),
                 FORK_CURRENCY_FEES_AMOUNT,
                 _minCurrencyAmount
             )
         );
-        positionRecipient.collectFees(FORK_TOKEN_ID, _minCurrencyAmount);
+        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, _minCurrencyAmount, 0);
     }
 
     function test_collectFees_transfersCurrencyFeesToCaller(uint256 _minTokenBurnAmount, uint256 _minCurrencyAmount)
@@ -203,9 +204,8 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         positionRecipient = new BuybackAndBurnPositionRecipient(
             USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, _minTokenBurnAmount
         );
-        vm.prank(searcher);
-        IERC20(USDC).approve(address(positionRecipient), type(uint256).max);
-        _dealUSDCFromPoolManager(address(searcher), _minTokenBurnAmount);
+        executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
+        _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
 
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
 
@@ -213,16 +213,17 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
 
         vm.expectEmit(true, true, true, true);
         emit BuybackAndBurnPositionRecipient.TokensBurned(_minTokenBurnAmount);
-        uint256 searcherCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(searcher);
+        uint256 executorCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(address(executor));
 
-        vm.prank(searcher);
-        vm.expectEmit(true, true, true, true);
-        emit BuybackAndBurnPositionRecipient.FeesCollected(searcher);
-        positionRecipient.collectFees(FORK_TOKEN_ID, _minCurrencyAmount);
+        vm.expectEmit(true, false, false, false, address(positionRecipient));
+        emit BaseBuybackAndBurnPositionRecipient.FeesCollected(
+            FORK_TOKEN_ID, FORK_CURRENCY_FEES_AMOUNT, 0, positionRecipientPoolKey()
+        );
+        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, _minCurrencyAmount, 0);
         assertGt(
-            Currency.wrap(NATIVE).balanceOf(searcher),
-            searcherCurrencyBalanceBefore,
-            "Searcher currency balance did not increase"
+            Currency.wrap(NATIVE).balanceOf(address(executor)),
+            executorCurrencyBalanceBefore,
+            "Executor currency balance did not increase"
         );
         assertEq(
             Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0, "Position recipient token balance is not 0"
@@ -232,10 +233,10 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
             0,
             "Position recipient currency balance is not 0"
         );
-        assertGt(
+        assertEq(
             Currency.wrap(USDC).balanceOf(address(0xdead)),
             deadAddressTokenBalanceBefore + _minTokenBurnAmount,
-            "Dead address token balance did not increase by more than the minimum burn amount"
+            "Dead address token balance did not increase by the minimum burn amount"
         );
     }
 
@@ -248,22 +249,24 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         positionRecipient = new BuybackAndBurnPositionRecipient(
             USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, minTokenBurnAmount
         );
-        vm.prank(searcher);
-        IERC20(USDC).approve(address(positionRecipient), type(uint256).max);
-        _dealUSDCFromPoolManager(address(searcher), minTokenBurnAmount);
+        executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
+        _dealUSDCFromPoolManager(address(executor), minTokenBurnAmount);
 
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
 
         uint256 deadAddressTokenBalanceBefore = Currency.wrap(USDC).balanceOf(address(0xdead));
-        uint256 searcherCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(searcher);
+        uint256 executorCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(address(executor));
 
-        vm.prank(searcher);
-        positionRecipient.collectFees(FORK_TOKEN_ID, minCurrencyAmount);
+        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, minCurrencyAmount, 0);
         vm.snapshotGasLastCall("buybackAndBurn collectFees");
 
-        assertGt(Currency.wrap(NATIVE).balanceOf(searcher), searcherCurrencyBalanceBefore);
+        assertGt(Currency.wrap(NATIVE).balanceOf(address(executor)), executorCurrencyBalanceBefore);
         assertEq(Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0);
         assertEq(Currency.wrap(NATIVE).balanceOf(address(positionRecipient)), 0);
-        assertGt(Currency.wrap(USDC).balanceOf(address(0xdead)), deadAddressTokenBalanceBefore + minTokenBurnAmount);
+        assertEq(Currency.wrap(USDC).balanceOf(address(0xdead)), deadAddressTokenBalanceBefore + minTokenBurnAmount);
+    }
+
+    function positionRecipientPoolKey() internal view returns (PoolKey memory poolKey) {
+        (poolKey,) = IPositionManager(POSITION_MANAGER).getPoolAndPositionInfo(FORK_TOKEN_ID);
     }
 }

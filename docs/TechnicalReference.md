@@ -17,6 +17,7 @@
         - [PositionFeesForwarder](#positionfeesforwarder)
         - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
         - [CanonicalBuybackAndBurnPositionRecipient](#canonicalbuybackandburnpositionrecipient)
+        - [CompoundingPositionRecipient](#compoundingpositionrecipient)
 - [Contract Interactions](#contract-interactions)
 - [Key Interfaces](#key-interfaces)
 - [Important Safety Notes](#important-safety-notes)
@@ -82,10 +83,13 @@ A deployed instance can be used as a `PositionDefinition.recipient` when using a
 The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract and forwards all collected fees to a recipient.
 
 #### BuybackAndBurnPositionRecipient
-The `BuybackAndBurnPositionRecipient` holds positions for one configured token/currency pair. It validates each position against that pair, requires callers to send a configured amount of the token to the burn address, burns token-side LP fees, and pays only the currency fees collected by that call to the caller.
+The `BuybackAndBurnPositionRecipient` holds positions for one configured token/currency pair. An `ILPFeesExecutor` calls `collectFees(tokenId, minCurrency0, minCurrency1)` and receives both newly collected currencies. During the callback the executor may perform a buyback; after it returns, the recipient pulls the configured token amount from the executor and sends it to the burn address. The full transaction reverts if either fee minimum or the burn requirement is not met.
 
 #### CanonicalBuybackAndBurnPositionRecipient
-The `CanonicalBuybackAndBurnPositionRecipient` is a singleton flavor for canonical 18-decimal token/ETH launches. It requires native ETH as `currency0`, derives the token from each position's `currency1`, and applies one minimum burn amount, operator, and timelock to every position it holds.
+The `CanonicalBuybackAndBurnPositionRecipient` is a singleton flavor for canonical token/ETH launches. It requires native ETH as `currency0`, derives the burn token from each position's `currency1`, and applies one minimum currency1 burn amount, operator, and timelock to every position it holds.
+
+#### CompoundingPositionRecipient
+The `CompoundingPositionRecipient` uses the same executor callback flow. The executor deposits ERC20 proceeds directly into PositionManager; for native pools it deposits WETH instead. After the callback, the recipient unwraps PositionManager's WETH balance, settles the available pool currencies, increases liquidity from the resulting deltas, and returns unused dust to the executor. The executor never receives approval over the position, and the transaction reverts unless the position's liquidity increases by at least `MIN_LIQUIDITY_INCREASE`.
 
 ## Contract Interactions
 

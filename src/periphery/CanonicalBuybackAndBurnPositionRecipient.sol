@@ -5,6 +5,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {BaseBuybackAndBurnPositionRecipient} from "./BaseBuybackAndBurnPositionRecipient.sol";
 
 /// @title CanonicalBuybackAndBurnPositionRecipient
@@ -23,42 +24,46 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
     /// @notice Emitted when caller-provided tokens are sent to the burn address
     event TokensBurned(uint256 indexed tokenId, Currency indexed token, uint256 amount);
 
-    /// @notice Emitted when position fees are collected
-    event FeesCollected(
-        uint256 indexed tokenId, address indexed caller, Currency indexed token, uint256 currencyAmount
-    );
-
     /// @notice Emitted when a non-conforming position is rescued to the operator
     event InvalidPositionWithdrawn(uint256 indexed tokenId, Currency currency0);
+
+    /// @notice Thrown when the minimum currency1 burn amount is 0
+    error InvalidMinCurrency1BurnAmount();
+
+    uint256 public immutable minCurrency1BurnAmount;
 
     constructor(
         IPositionManager _positionManager,
         address _operator,
         uint256 _timelockBlockNumber,
-        uint256 _minTokenBurnAmount
-    ) BaseBuybackAndBurnPositionRecipient(_positionManager, _operator, _timelockBlockNumber, _minTokenBurnAmount) {}
+        uint256 _minCurrency1BurnAmount
+    ) BaseBuybackAndBurnPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+        if (_minCurrency1BurnAmount == 0) revert InvalidMinCurrency1BurnAmount();
+        minCurrency1BurnAmount = _minCurrency1BurnAmount;
+    }
 
-    /// @notice Collects fees from a canonical token/ETH position and burns its token fees
-    /// @param _tokenId The token ID of the position
-    /// @param _minCurrencyAmount The minimum ETH fees the caller will accept
-    function collectFees(uint256 _tokenId, uint256 _minCurrencyAmount) external nonReentrant {
-        PoolKey memory poolKey = _getPoolKey(_tokenId);
-        if (!(poolKey.currency0 == currency)) revert InvalidCurrency(poolKey.currency0, currency);
+    /// @inheritdoc BaseBuybackAndBurnPositionRecipient
+    /// @dev Validates that the currency0 is native ETH
+    function _beforeCallback(PoolKey memory _poolKey, uint256, uint256, uint256) internal pure override {
+        if (!(_poolKey.currency0 == Currency.wrap(address(0)))) {
+            revert InvalidCurrency(_poolKey.currency0, Currency.wrap(address(0)));
+        }
+    }
 
-        Currency token = poolKey.currency1;
-        _burnCallerTokens(token);
-        emit TokensBurned(_tokenId, token, minTokenBurnAmount);
-
-        uint256 currencyReceived = _collectAndPayFees(_tokenId, _minCurrencyAmount, token, currency);
-
-        emit FeesCollected(_tokenId, msg.sender, token, currencyReceived);
+    /// @inheritdoc BaseBuybackAndBurnPositionRecipient
+    /// @dev Burns `minCurrency1BurnAmount` of `_poolKey.currency1` tokens
+    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256, uint256) internal override {
+        SafeTransferLib.safeTransferFrom(
+            Currency.unwrap(_poolKey.currency1), msg.sender, BURN_ADDRESS, minCurrency1BurnAmount
+        );
+        emit TokensBurned(_tokenId, _poolKey.currency1, minCurrency1BurnAmount);
     }
 
     /// @notice Transfers a position that does not pair native ETH as currency0 to the operator
     /// @param _tokenId The token ID of the invalid position
     function withdrawInvalidPosition(uint256 _tokenId) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
-        if (poolKey.currency0 == currency) revert PositionConforming(_tokenId);
+        if (poolKey.currency0 == Currency.wrap(address(0))) revert PositionConforming(_tokenId);
 
         IERC721(address(positionManager)).transferFrom(address(this), operator, _tokenId);
 

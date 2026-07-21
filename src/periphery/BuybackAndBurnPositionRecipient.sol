@@ -5,6 +5,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BaseBuybackAndBurnPositionRecipient} from "./BaseBuybackAndBurnPositionRecipient.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
@@ -16,19 +17,19 @@ contract BuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionRecipient 
     error TokenAndCurrencyCannotBeTheSame();
     /// @notice Thrown when the position does not use the configured token and currency
     error InvalidPool(Currency currency0, Currency currency1);
+    /// @notice Thrown when the minimum token burn amount is zero
+    error InvalidMinTokenBurnAmount();
 
     /// @notice Emitted when tokens are burned
     /// @param amount The amount of tokens burned
     event TokensBurned(uint256 amount);
 
-    /// @notice Emitted when fees are collected
-    /// @param caller The caller of the collectFees function
-    event FeesCollected(address indexed caller);
-
     /// @notice The token that will be burned
     address public immutable token;
     /// @notice The currency that will be used to collect fees
     address public immutable currency;
+    /// @notice The minimum amount of token that the executor must burn
+    uint256 public immutable minTokenBurnAmount;
 
     constructor(
         address _token,
@@ -37,30 +38,30 @@ contract BuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionRecipient 
         IPositionManager _positionManager,
         uint256 _timelockBlockNumber,
         uint256 _minTokenBurnAmount
-    ) BaseBuybackAndBurnPositionRecipient(_positionManager, _operator, _timelockBlockNumber, _minTokenBurnAmount) {
+    ) BaseBuybackAndBurnPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
         if (_token == address(0)) revert InvalidToken();
         if (_token == _currency) revert TokenAndCurrencyCannotBeTheSame();
+        if (_minTokenBurnAmount == 0) revert InvalidMinTokenBurnAmount();
         token = _token;
         currency = _currency;
+        minTokenBurnAmount = _minTokenBurnAmount;
     }
 
-    /// @notice Claim any fees from the position and burn the `tokens` portion
-    /// @param _tokenId The token ID of the position
-    function collectFees(uint256 _tokenId, uint256 _minCurrencyAmount) external nonReentrant {
-        PoolKey memory poolKey = _getPoolKey(_tokenId);
+    /// @inheritdoc BaseBuybackAndBurnPositionRecipient
+    /// @dev Requires that the position uses the configured pair
+    function _beforeCallback(PoolKey memory _poolKey, uint256, uint256, uint256) internal view override {
         Currency configuredToken = Currency.wrap(token);
         Currency configuredCurrency = Currency.wrap(currency);
-        if (!((poolKey.currency0 == configuredToken && poolKey.currency1 == configuredCurrency)
-                    || (poolKey.currency0 == configuredCurrency && poolKey.currency1 == configuredToken))) {
-            revert InvalidPool(poolKey.currency0, poolKey.currency1);
+        if (!((_poolKey.currency0 == configuredToken && _poolKey.currency1 == configuredCurrency)
+                    || (_poolKey.currency0 == configuredCurrency && _poolKey.currency1 == configuredToken))) {
+            revert InvalidPool(_poolKey.currency0, _poolKey.currency1);
         }
+    }
 
-        // Require the caller to burn at least the minimum amount of `token`
-        _burnCallerTokens(configuredToken);
+    /// @inheritdoc BaseBuybackAndBurnPositionRecipient
+    /// @dev Always burns the specified token
+    function _afterCallback(PoolKey memory, uint256, uint256, uint256) internal override {
+        SafeTransferLib.safeTransferFrom(token, msg.sender, BURN_ADDRESS, minTokenBurnAmount);
         emit TokensBurned(minTokenBurnAmount);
-
-        _collectAndPayFees(_tokenId, _minCurrencyAmount, configuredToken, configuredCurrency);
-
-        emit FeesCollected(msg.sender);
     }
 }

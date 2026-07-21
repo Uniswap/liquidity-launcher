@@ -1,0 +1,35 @@
+PositionRecipientsBTTTest
+├── TimelockedPositionRecipient
+│   ├── when the timelock has not passed
+│   │   └── it reverts
+│   └── when the timelock has passed
+│       └── it approves the operator
+├── PositionFeesForwarder
+│   └── when fees are collected
+│       └── it forwards both currencies
+├── BaseBuybackAndBurnPositionRecipient
+│   ├── when currency0 minimum is not met
+│   │   └── it reverts for currency0
+│   ├── when currency1 minimum is not met
+│   │   └── it reverts for currency1
+│   ├── when the executor callback reverts
+│   │   └── it rolls back the collection
+│   ├── when the executor callback reenters
+│   │   └── it reverts
+│   └── when both minimums are met
+│       └── it transfers both fees and invokes the executor
+├── BuybackAndBurnPositionRecipient
+│   ├── when the pool does not match
+│   │   └── it reverts
+│   └── when the executor satisfies the burn
+│       └── it burns the configured amount
+├── CanonicalBuybackAndBurnPositionRecipient
+│   ├── when currency0 is not native
+│   │   └── it reverts
+│   └── when currency0 is native
+│       └── it burns currency1
+└── CompoundingPositionRecipient
+    ├── when the liquidity increase is below the minimum
+    │   └── it reverts
+    └── when the executor deposits both currencies
+        └── it increases liquidity
