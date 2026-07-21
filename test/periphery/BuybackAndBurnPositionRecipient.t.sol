@@ -54,11 +54,12 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
             operator,
             IPositionManager(POSITION_MANAGER),
             _timelockBlockNumber,
-            0 // 0 as min token burn amount, doesn't matter
+            1 // nonzero min token burn amount, exact value doesn't matter for these tests
         );
     }
 
     function test_CanBeConstructed(uint256 _timelockBlockNumber, uint256 _minTokenBurnAmount) public {
+        vm.assume(_minTokenBurnAmount > 0);
         positionRecipient = new BuybackAndBurnPositionRecipient(
             address(token),
             address(currency),
@@ -77,6 +78,8 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     }
 
     function test_RevertsIfTokenIsZeroAddress(uint256 _timelockBlockNumber, uint256 _minTokenBurnAmount) public {
+        // the base constructor's burn-amount check runs before the child constructor body
+        vm.assume(_minTokenBurnAmount > 0);
         vm.expectRevert(BuybackAndBurnPositionRecipient.InvalidToken.selector);
         new BuybackAndBurnPositionRecipient(
             address(0),
@@ -91,6 +94,8 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
     function test_RevertsIfTokenAndCurrencyAreTheSame(uint256 _timelockBlockNumber, uint256 _minTokenBurnAmount)
         public
     {
+        // the base constructor's burn-amount check runs before the child constructor body
+        vm.assume(_minTokenBurnAmount > 0);
         vm.expectRevert(BuybackAndBurnPositionRecipient.TokenAndCurrencyCannotBeTheSame.selector);
         new BuybackAndBurnPositionRecipient(
             address(token),
@@ -102,21 +107,46 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         );
     }
 
+    function test_RevertsIfMinTokenBurnAmountIsZero(uint256 _timelockBlockNumber) public {
+        vm.expectRevert(BaseBuybackAndBurnPositionRecipient.InvalidMinTokenBurnAmount.selector);
+        new BuybackAndBurnPositionRecipient(
+            address(token), address(currency), operator, IPositionManager(POSITION_MANAGER), _timelockBlockNumber, 0
+        );
+    }
+
     function test_collectFees_revertsIfPositionIsNotOwner() public {
         positionRecipient =
-            new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 0);
+            new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 1);
+        // fund the caller-side burn so the revert under test (position authorization) is reached
+        _dealUSDCFromPoolManager(address(this), 1);
+        IERC20(USDC).approve(address(positionRecipient), 1);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
         positionRecipient.collectFees(FORK_TOKEN_ID, 0);
     }
 
     function test_collectFees_revertsIfPositionIsInvalid() public {
         positionRecipient =
-            new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 0);
+            new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 1);
 
         vm.expectRevert(
             abi.encodeWithSelector(BaseBuybackAndBurnPositionRecipient.InvalidPosition.selector, type(uint256).max)
         );
         positionRecipient.collectFees(type(uint256).max, 0);
+    }
+
+    function test_collectFees_revertsIfPoolDoesNotMatchConfiguredPair() public {
+        // Configured for MockERC20/NATIVE, but FORK_TOKEN_ID belongs to the NATIVE/USDC pool
+        positionRecipient = new BuybackAndBurnPositionRecipient(
+            address(token), NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 1
+        );
+        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                BuybackAndBurnPositionRecipient.InvalidPool.selector, Currency.wrap(NATIVE), Currency.wrap(USDC)
+            )
+        );
+        positionRecipient.collectFees(FORK_TOKEN_ID, 0);
     }
 
     function test_collectFees_revertsIfMinimumBurnAmountIsNotMet(uint256 _minTokenBurnAmount) public {
@@ -156,7 +186,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         vm.prank(searcher);
         vm.expectRevert(
             abi.encodeWithSelector(
-                BuybackAndBurnPositionRecipient.InsufficientCurrencyReceived.selector,
+                BaseBuybackAndBurnPositionRecipient.InsufficientCurrencyReceived.selector,
                 FORK_CURRENCY_FEES_AMOUNT,
                 _minCurrencyAmount
             )

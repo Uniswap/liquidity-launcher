@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {BaseBuybackAndBurnPositionRecipient} from "./BaseBuybackAndBurnPositionRecipient.sol";
 
 /// @title CanonicalBuybackAndBurnPositionRecipient
@@ -16,8 +17,8 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
 
     /// @notice Thrown when the position's currency is not native ETH
     error InvalidCurrency(Currency received, Currency expected);
-    /// @notice Thrown when the received currency fees amount is less than expected
-    error InsufficientCurrencyReceived(uint256 received, uint256 expected);
+    /// @notice Thrown when trying to rescue a conforming ETH-paired position
+    error PositionConforming(uint256 tokenId);
 
     /// @notice Emitted when caller-provided tokens are sent to the burn address
     event TokensBurned(uint256 indexed tokenId, Currency indexed token, uint256 amount);
@@ -26,6 +27,9 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
     event FeesCollected(
         uint256 indexed tokenId, address indexed caller, Currency indexed token, uint256 currencyAmount
     );
+
+    /// @notice Emitted when a non-conforming position is rescued to the operator
+    event NonConformingPositionRescued(uint256 indexed tokenId, Currency currency0);
 
     constructor(
         IPositionManager _positionManager,
@@ -48,5 +52,16 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
         uint256 currencyReceived = _collectAndPayFees(_tokenId, _minCurrencyAmount, token, currency);
 
         emit FeesCollected(_tokenId, msg.sender, token, currencyReceived);
+    }
+
+    /// @notice Transfers a position that does not pair native ETH as currency0 to the operator
+    /// @param _tokenId The token ID of the invalid position
+    function withdrawInvalidPosition(uint256 _tokenId) external {
+        PoolKey memory poolKey = _getPoolKey(_tokenId);
+        if (poolKey.currency0 == currency) revert PositionConforming(_tokenId);
+
+        IERC721(address(positionManager)).transferFrom(address(this), operator, _tokenId);
+
+        emit NonConformingPositionRescued(_tokenId, poolKey.currency0);
     }
 }
