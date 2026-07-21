@@ -16,6 +16,7 @@
         - [TimelockedPositionRecipient](#timelockedpositionrecipient)
         - [PositionFeesForwarder](#positionfeesforwarder)
         - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
+        - [CanonicalBuybackAndBurnPositionRecipient](#canonicalbuybackandburnpositionrecipient)
 - [Contract Interactions](#contract-interactions)
 - [Key Interfaces](#key-interfaces)
 - [Important Safety Notes](#important-safety-notes)
@@ -81,7 +82,10 @@ A deployed instance can be used as a `PositionDefinition.recipient` when using a
 The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract and forwards all collected fees to a recipient.
 
 #### BuybackAndBurnPositionRecipient
-The `BuybackAndBurnPositionRecipient` extends the `TimelockedPositionRecipient` contract and facilitates burning the collected fees and tokens from the position.
+The `BuybackAndBurnPositionRecipient` holds positions for one configured token/currency pair. It validates each position against that pair, requires callers to send a configured amount of the token to the burn address, burns token-side LP fees, and pays only the currency fees collected by that call to the caller.
+
+#### CanonicalBuybackAndBurnPositionRecipient
+The `CanonicalBuybackAndBurnPositionRecipient` is a singleton flavor for canonical 18-decimal token/ETH launches. It requires native ETH as `currency0`, derives the token from each position's `currency1`, and applies one minimum burn amount, operator, and timelock to every position it holds.
 
 ## Contract Interactions
 

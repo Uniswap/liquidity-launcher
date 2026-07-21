@@ -6,9 +6,10 @@ Peripheral contracts used alongside LBP strategies.
 
 | Contract | Purpose |
 | --- | --- |
-| [`TimelockedPositionRecipient`](./TimelockedPositionRecipient.sol) | Holds one or more v4 LP positions until a timelock block is reached, then approves a configured operator to transfer them. Base contract for the two recipients below. |
+| [`TimelockedPositionRecipient`](./TimelockedPositionRecipient.sol) | Holds one or more v4 LP positions until a timelock block is reached, then approves a configured operator to transfer them. Base contract for the recipients below. |
 | [`PositionFeesForwarder`](./PositionFeesForwarder.sol) | Adds a permissionless `collectFees(tokenId)` entrypoint that collects LP fees from a held position and forwards both sides to an immutable recipient. |
-| [`BuybackAndBurnPositionRecipient`](./BuybackAndBurnPositionRecipient.sol) | Adds a permissionless `collectFees(tokenId, minCurrency)` entrypoint that (a) pulls a minimum amount of `token` from the caller and burns it, (b) collects LP fees, (c) forwards the `token` side to the burn address, (d) forwards the `currency` side to the caller. Designed so MEV searchers can profitably trigger buyback-and-burns. |
+| [`BuybackAndBurnPositionRecipient`](./BuybackAndBurnPositionRecipient.sol) | Holds positions for one configured token/currency pair. Its permissionless `collectFees(tokenId, minCurrency)` entrypoint pulls and burns the caller's configured token amount, burns token-side LP fees, and pays newly collected currency-side fees to the caller. |
+| [`CanonicalBuybackAndBurnPositionRecipient`](./CanonicalBuybackAndBurnPositionRecipient.sol) | Singleton flavor for canonical 18-decimal token/ETH launches. It derives the token from each position's `currency1`, requires native ETH as `currency0`, and applies one burn threshold, operator, and timelock to every position it holds. |
 | [`ProtocolFeeController`](./ProtocolFeeController.sol) | Governance-controlled source of truth for the protocol fee applied to currency raised by a launch. Integrators call it at fee-settlement time to discover the fee amount and recipient. See below. |
 | [`SelfInitializerMixin`](../strategies/lbp/SelfInitializerMixin.sol) | Abstract mixin for v4 hooks that may only initialize their own pools (restricts `beforeInitialize` to self-calls). Used by strategies that must deterministically control the initial pool state. |
 
