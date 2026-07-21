@@ -29,6 +29,8 @@ import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20Metada
 import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
 import {DirectLaunchStrategy} from "../src/strategies/DirectLaunchStrategy.sol";
+import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
+import {FeeSplit, CREATOR_SENTINEL} from "../src/interfaces/IFeeSplitter.sol";
 
 contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -36,13 +38,15 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
-    int24 internal constant INITIAL_TICK = 122_000;
+    int24 internal constant INITIAL_TICK = 121_980;
     uint128 internal constant TOTAL_SUPPLY = 1_000_000_000 ether;
 
     LiquidityLauncher internal launcher;
     IAllowanceTransfer internal permit2;
     UERC20Factory internal factory;
+    FeeSplitter internal feeSplitter;
     DirectLaunchStrategy internal strategy;
+    address internal tokenJar = makeAddr("tokenJar");
 
     function setUp() public {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -55,8 +59,19 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         launcher = new LiquidityLauncher(permit2);
         factory = new UERC20Factory();
 
+        // The intended product configuration: ETH fees to the tokenJar, token fees burned,
+        // both with a 20% creator share.
+        FeeSplit[] memory nativeSplits = new FeeSplit[](2);
+        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
+        nativeSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        FeeSplit[] memory tokenSplits = new FeeSplit[](2);
+        tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000});
+        tokenSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), nativeSplits, tokenSplits);
+
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
-        strategy = new DirectLaunchStrategy(address(launcher), POSITION_MANAGER, POOL_MANAGER, INITIAL_TICK);
+        strategy =
+            new DirectLaunchStrategy(address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, INITIAL_TICK);
     }
 
     function test_e2e_launchThroughLiquidityLauncher() public {
@@ -68,7 +83,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")});
 
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
-        address recipient = vm.computeCreateAddress(address(strategy), vm.getNonce(address(strategy)));
+        address recipient = address(feeSplitter);
 
         // The canonical fresh-mint flow, atomically: mint 1B into the launcher, then hand off to the strategy.
         launcher.multicall(_buildCalls(distribution));

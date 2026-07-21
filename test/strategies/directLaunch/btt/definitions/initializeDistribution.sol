@@ -7,7 +7,6 @@ import {
     MockDirectSixDecimalToken
 } from "../../base/DirectLaunchTestBase.sol";
 import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
-import {BuybackAndBurnPositionRecipient} from "../../../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
 import {IStrategy} from "../../../../../src/interfaces/IStrategy.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -40,7 +39,7 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 ///     ├── it preserves preexisting balances
 ///     ├── it opens the pool at the initial price
 ///     ├── it mints one single-sided position holding the full supply
-///     ├── it custodies the position in a permanently timelocked recipient
+///     ├── it custodies the position in the fee splitter
 ///     ├── it retains no tokens and burns only dust
 ///     └── it emits the launch events
 contract InitializeDistributionTest is DirectLaunchTestBase {
@@ -127,7 +126,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
     function test_WhenLaunchIsValid_mintsSingleSidedPositionWithFullSupply() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
-        address recipient = _predictRecipient();
+        address recipient = address(feeSplitter);
 
         _initialize(token, TOTAL_SUPPLY, bytes(""));
 
@@ -140,18 +139,15 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
     }
 
-    function test_WhenLaunchIsValid_custodiesPositionInPermanentRecipient() public {
+    function test_WhenLaunchIsValid_custodiesPositionInFeeSplitter() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        address predicted = _predictRecipient();
+        uint256 tokenId = POSITION_MANAGER.nextTokenId();
 
         _initialize(token, TOTAL_SUPPLY, bytes(""));
 
-        BuybackAndBurnPositionRecipient recipient = BuybackAndBurnPositionRecipient(payable(predicted));
-        assertEq(recipient.token(), address(token));
-        assertEq(recipient.currency(), address(0));
-        assertEq(recipient.operator(), address(0));
-        assertEq(recipient.timelockBlockNumber(), type(uint256).max);
-        assertEq(recipient.minTokenBurnAmount(), strategy.MIN_TOKEN_BURN());
+        // The singleton splitter holds the position permanently; it has no exit path for it.
+        assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
+        assertEq(address(feeSplitter.positionManager()), address(POSITION_MANAGER));
     }
 
     function test_WhenLaunchIsValid_retainsNoTokensAndBurnsOnlyDust() public {
@@ -169,7 +165,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
     function test_WhenLaunchIsValid_emitsLaunchEvents() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         PoolKey memory key = _key(address(token));
-        address recipient = _predictRecipient();
+        address recipient = address(feeSplitter);
         token.approve(address(strategy), TOTAL_SUPPLY);
 
         vm.expectEmit(true, true, false, true, address(strategy));
