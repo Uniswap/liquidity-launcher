@@ -9,14 +9,17 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 
-/// @notice Thrown when the received currency fees amount is less than expected
-error InsufficientCurrencyReceived(uint256 received, uint256 expected);
-
 /// @title BaseBuybackAndBurnPositionRecipient
 /// @notice Shared fee collection and burn mechanics for buyback-and-burn position recipients
 abstract contract BaseBuybackAndBurnPositionRecipient is TimelockedPositionRecipient {
     /// @notice Thrown when the position does not exist or has been burned
     error InvalidPosition(uint256 tokenId);
+
+    /// @notice Thrown when the received currency fees amount is less than expected
+    error InsufficientCurrencyReceived(uint256 received, uint256 expected);
+
+    /// @notice Thrown when the minimum token burn amount is zero
+    error InvalidMinTokenBurnAmount();
 
     /// @notice The address to send tokens to be burned
     address internal constant BURN_ADDRESS = address(0xdead);
@@ -30,6 +33,7 @@ abstract contract BaseBuybackAndBurnPositionRecipient is TimelockedPositionRecip
         uint256 _timelockBlockNumber,
         uint256 _minTokenBurnAmount
     ) TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+        if (_minTokenBurnAmount == 0) revert InvalidMinTokenBurnAmount();
         minTokenBurnAmount = _minTokenBurnAmount;
     }
 

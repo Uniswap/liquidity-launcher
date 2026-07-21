@@ -16,8 +16,6 @@ contract BuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionRecipient 
     error TokenAndCurrencyCannotBeTheSame();
     /// @notice Thrown when the position does not use the configured token and currency
     error InvalidPool(Currency currency0, Currency currency1);
-    /// @notice Thrown when the received currency fees amount is less than expected
-    error InsufficientCurrencyReceived(uint256 received, uint256 expected);
 
     /// @notice Emitted when tokens are burned
     /// @param amount The amount of tokens burned
