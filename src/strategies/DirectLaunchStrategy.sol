@@ -216,4 +216,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
         if (received != amount) revert TokenAmountMismatch(received, amount);
     }
+
+    /// @notice Accepts ETH so a launch cannot be griefed from leftover ETH in the PositionManager
+    receive() external payable {}
 }
