@@ -6,11 +6,11 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BaseBuybackAndBurnPositionRecipient} from "./BaseBuybackAndBurnPositionRecipient.sol";
+import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
 
 /// @title CompoundingPositionRecipient
 /// @notice Collects LP fees through an executor and compounds assets deposited into PositionManager
-contract CompoundingPositionRecipient is BaseBuybackAndBurnPositionRecipient {
+contract CompoundingPositionRecipient is BaseLPFeesPositionRecipient {
     /// @notice Thrown when the minimum liquidity increase is zero
     error MinLiquidityIncreaseIsZero();
 
@@ -20,26 +20,25 @@ contract CompoundingPositionRecipient is BaseBuybackAndBurnPositionRecipient {
     /// @notice The minimum liquidity increase required to be compounded
     uint128 public immutable MIN_LIQUIDITY_INCREASE;
 
-    /// @notice Cached liquidity amounts of the position
-    mapping(uint256 tokenId => uint128) public liquidityAmounts;
-
     constructor(
         IPositionManager _positionManager,
         address _operator,
         uint256 _timelockBlockNumber,
         uint128 _minLiquidityIncrease
-    ) BaseBuybackAndBurnPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+    ) BaseLPFeesPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
         if (_minLiquidityIncrease == 0) revert MinLiquidityIncreaseIsZero();
         MIN_LIQUIDITY_INCREASE = _minLiquidityIncrease;
     }
 
-    /// @inheritdoc BaseBuybackAndBurnPositionRecipient
-    function _beforeCallback(PoolKey memory, uint256 _tokenId, uint256, uint256) internal override {
-        liquidityAmounts[_tokenId] = positionManager.getPositionLiquidity(_tokenId);
+    /// @inheritdoc BaseLPFeesPositionRecipient
+    /// @dev Snapshots the position's liquidity before the executor callback
+    function _beforeCallback(PoolKey memory, uint256 _tokenId) internal view override returns (uint256) {
+        return positionManager.getPositionLiquidity(_tokenId);
     }
 
-    /// @inheritdoc BaseBuybackAndBurnPositionRecipient
-    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256, uint256) internal override {
+    /// @inheritdoc BaseLPFeesPositionRecipient
+    /// @param _liquidityBefore The position's liquidity snapshotted by `_beforeCallback`
+    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _liquidityBefore) internal override {
         bool hasNativeCurrency = _poolKey.currency0.isAddressZero();
         uint256 offset = hasNativeCurrency ? 1 : 0;
         bytes memory actions;
@@ -72,7 +71,7 @@ contract CompoundingPositionRecipient is BaseBuybackAndBurnPositionRecipient {
 
         // Require that the liquidity of the position increased by at least the required liquidity amount
         uint128 actualLiquidityAmount = positionManager.getPositionLiquidity(_tokenId);
-        uint256 requiredLiquidityAmount = uint256(liquidityAmounts[_tokenId]) + MIN_LIQUIDITY_INCREASE;
+        uint256 requiredLiquidityAmount = _liquidityBefore + MIN_LIQUIDITY_INCREASE;
         if (actualLiquidityAmount < requiredLiquidityAmount) {
             revert NotEnoughLiquidityAdded(requiredLiquidityAmount, actualLiquidityAmount);
         }

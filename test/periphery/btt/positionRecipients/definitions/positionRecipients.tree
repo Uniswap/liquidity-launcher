@@ -7,7 +7,7 @@ PositionRecipientsBTTTest
 ├── PositionFeesForwarder
 │   └── when fees are collected
 │       └── it forwards both currencies
-├── BaseBuybackAndBurnPositionRecipient
+├── BaseLPFeesPositionRecipient
 │   ├── when currency0 minimum is not met
 │   │   └── it reverts for currency0
 │   ├── when currency1 minimum is not met

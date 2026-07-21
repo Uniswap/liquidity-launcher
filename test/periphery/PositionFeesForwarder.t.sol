@@ -23,12 +23,6 @@ contract PositionFeesForwarderTest is TimelockedPositionRecipientTest {
 
     PositionFeesForwarder internal positionRecipient;
 
-    // Fork testing vars
-    // Position created here: https://etherscan.io/tx/0x03dafd828c6b47362b1f53d7a692f8f52b8bc44b513f8c9caa9195e1061113a4
-    // And the fork block is a few blocks after, allowing the position to have non zero fees
-    uint256 constant FORK_BLOCK = 23936030;
-    uint256 constant FORK_TOKEN_ID = 107192;
-
     MockERC20 token;
     MockERC20 currency;
 

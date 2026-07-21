@@ -5,16 +5,13 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
-import {BaseBuybackAndBurnPositionRecipient} from "../../src/periphery/BaseBuybackAndBurnPositionRecipient.sol";
+import {ILPFeesPositionRecipient} from "../../src/interfaces/ILPFeesPositionRecipient.sol";
 import {CompoundingPositionRecipient} from "../../src/periphery/CompoundingPositionRecipient.sol";
-import {ILPFeesPositionRecipient, MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
+import {MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
 import {MockCompoundingLPFeesExecutor} from "./MockCompoundingLPFeesExecutor.sol";
 import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
 
 contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
-    uint256 internal constant FORK_BLOCK = 23936030;
-    uint256 internal constant FORK_TOKEN_ID = 107192;
-    uint256 internal constant FORK_CURRENCY0_FEES_AMOUNT = 709706242928;
     address internal constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     CompoundingPositionRecipient internal positionRecipient;
@@ -57,17 +54,15 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
     function test_CollectFees_WhenPositionDoesNotExist_Reverts() public {
         positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(BaseBuybackAndBurnPositionRecipient.InvalidPosition.selector, type(uint256).max)
-        );
-        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), type(uint256).max, 0, 0);
+        vm.expectRevert(abi.encodeWithSelector(ILPFeesPositionRecipient.InvalidPosition.selector, type(uint256).max));
+        executor.execute(positionRecipient, type(uint256).max, 0, 0);
     }
 
     function test_CollectFees_WhenPositionIsNotOwned_Reverts() public {
         positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
 
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
-        executor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, 0, 0);
+        executor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
     }
 
     function test_CollectFees_WhenLiquidityIncreaseIsInsufficient_Reverts() public {
@@ -84,7 +79,7 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
                 liquidityBefore
             )
         );
-        noopExecutor.execute(ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, 0, 0);
+        noopExecutor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
     }
 
     function test_CollectFees_WhenExecutorDepositsFees_IncreasesLiquidity() public {
@@ -94,9 +89,7 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
         uint256 recipientCurrency0Before = Currency.wrap(NATIVE).balanceOf(address(positionRecipient));
         uint256 recipientCurrency1Before = Currency.wrap(USDC).balanceOf(address(positionRecipient));
 
-        executor.execute(
-            ILPFeesPositionRecipient(address(positionRecipient)), FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0
-        );
+        executor.execute(positionRecipient, FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
 
         uint128 liquidityAfter = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);
         assertGt(liquidityAfter, liquidityBefore);
