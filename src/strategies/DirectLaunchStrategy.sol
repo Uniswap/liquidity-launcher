@@ -39,11 +39,11 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     using PositionPlanner for *;
 
     /// @notice Total token supply required for every launch.
-    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
-    /// @notice Static LP fee for direct-launch pools, in pips — the standard 1% tier.
-    uint24 public constant LP_FEE = 10_000;
-    /// @notice Tick spacing used by direct-launch pools, matching the standard 1% fee tier.
-    int24 public constant TICK_SPACING = 200;
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 e18;
+    /// @notice Static LP fee of 25 bps
+    uint24 public constant LP_FEE = 2_500;
+    /// @notice Tick spacing
+    int24 public constant TICK_SPACING = 60;
     /// @notice Minimum token burn required to harvest fees from the permanent position.
     uint256 public constant MIN_TOKEN_BURN = TOTAL_SUPPLY / 2_000;
     /// @notice Sink for burned tokens (unrecoverable).
