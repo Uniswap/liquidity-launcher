@@ -27,19 +27,18 @@ import {BuybackAndBurnPositionRecipient} from "../periphery/BuybackAndBurnPositi
 ///         with the entire supply in a single-sided LP position. Plugs into `LiquidityLauncher.distributeToken`:
 ///         the launcher approves this strategy and calls `initializeDistribution`, and the strategy pulls
 ///         the full supply from it.
-/// @dev Standalone and single-purpose — no bonding-curve section, no graduation, and no hook. Every pool
-///      parameter is fixed at deployment; one instance launches every token at the same price band.
-///      Pairs 1B-supply / 18-decimal tokens against native ETH (currency0); the token is always currency1.
-///      The position spans from the min usable tick up to the initial tick — the token (currency1) side of
-///      the opening price — so buys walk the price downward through the supply exactly like the sibling
-///      bonding curve, just without a terminal tick.
+/// @dev Standalone and single-purpose, with no graduation or hook. Every pool parameter is fixed at
+///      deployment; one instance launches every token at the same price band. Pairs 1B-supply /
+///      18-decimal tokens against native ETH (currency0); the token is always currency1. The position spans
+///      from the min usable tick up to the initial tick — the token side of the opening price — so buys walk
+///      the price downward through the available supply.
 /// @custom:security-contact security@uniswap.org
 contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using PositionPlanner for *;
 
     /// @notice Total token supply required for every launch.
-    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 e18;
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
     /// @notice Static LP fee of 25 bps
     uint24 public constant LP_FEE = 2_500;
     /// @notice Tick spacing
