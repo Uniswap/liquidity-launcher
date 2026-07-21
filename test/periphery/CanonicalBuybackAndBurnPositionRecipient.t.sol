@@ -205,7 +205,7 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         assertLt(block.number, positionRecipient.timelockBlockNumber());
 
         vm.expectEmit(true, false, false, true);
-        emit CanonicalBuybackAndBurnPositionRecipient.NonConformingPositionRescued(
+        emit CanonicalBuybackAndBurnPositionRecipient.InvalidPositionWithdrawn(
             NON_ETH_FORK_TOKEN_ID, Currency.wrap(NON_ETH_FORK_CURRENCY0)
         );
         vm.prank(searcher);

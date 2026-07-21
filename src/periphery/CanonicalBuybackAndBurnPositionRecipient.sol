@@ -29,7 +29,7 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
     );
 
     /// @notice Emitted when a non-conforming position is rescued to the operator
-    event NonConformingPositionRescued(uint256 indexed tokenId, Currency currency0);
+    event InvalidPositionWithdrawn(uint256 indexed tokenId, Currency currency0);
 
     constructor(
         IPositionManager _positionManager,
@@ -62,6 +62,6 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
 
         IERC721(address(positionManager)).transferFrom(address(this), operator, _tokenId);
 
-        emit NonConformingPositionRescued(_tokenId, poolKey.currency0);
+        emit InvalidPositionWithdrawn(_tokenId, poolKey.currency0);
     }
 }
