@@ -17,7 +17,7 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 /// ├── when a required address is zero
 /// │   └── it reverts with ZeroAddress
 /// ├── when the fee splitter uses a different PositionManager
-/// │   └── it reverts with FeeSplitterMismatch
+/// │   └── it reverts with PositionManagerMismatch
 /// ├── when the initial tick is not aligned
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the maximum usable tick
@@ -47,11 +47,11 @@ contract ConstructorTest is DirectLaunchTestBase {
         // A splitter bound to a foreign PositionManager could never collect the launch positions.
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
         FeeSplitter mismatched = new FeeSplitter(
-            otherPositionManager, tokenJar, address(0xdead), feeSplitter.nativeSplits(), feeSplitter.tokenSplits()
+            otherPositionManager, tokenJar, address(0xdead), feeSplitter.getNativeSplits(), feeSplitter.getTokenSplits()
         );
 
         vm.expectRevert(
-            abi.encodeWithSelector(DirectLaunchStrategy.FeeSplitterMismatch.selector, address(otherPositionManager))
+            abi.encodeWithSelector(DirectLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))
         );
         new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, INITIAL_TICK);
     }

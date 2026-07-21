@@ -208,18 +208,18 @@ contract FeeSplitterTest is Test {
         assertEq(splitter.nativeFallback(), tokenJar);
         assertEq(splitter.tokenFallback(), BURN_ADDRESS);
 
-        FeeSplit[] memory native = splitter.nativeSplits();
+        FeeSplit[] memory native = splitter.getNativeSplits();
         assertEq(native.length, 2);
         assertEq(native[0].recipient, tokenJar);
         assertEq(native[0].bps, 8_000);
-        assertEq(native[1].recipient, splitter.CREATOR());
+        assertEq(native[1].recipient, CREATOR_SENTINEL);
         assertEq(native[1].bps, 2_000);
 
-        FeeSplit[] memory tokenSide = splitter.tokenSplits();
+        FeeSplit[] memory tokenSide = splitter.getTokenSplits();
         assertEq(tokenSide.length, 2);
         assertEq(tokenSide[0].recipient, BURN_ADDRESS);
         assertEq(tokenSide[0].bps, 8_000);
-        assertEq(tokenSide[1].recipient, splitter.CREATOR());
+        assertEq(tokenSide[1].recipient, CREATOR_SENTINEL);
         assertEq(tokenSide[1].bps, 2_000);
     }
 
@@ -328,8 +328,8 @@ contract FeeSplitterTest is Test {
         assertGt(nativeTotal, 0, "no native fees collected");
         assertGt(tokenTotal, 0, "no token fees collected");
 
-        uint256[] memory expectedNative = _expectedAmounts(nativeTotal, splitter.nativeSplits());
-        uint256[] memory expectedToken = _expectedAmounts(tokenTotal, splitter.tokenSplits());
+        uint256[] memory expectedNative = _expectedAmounts(nativeTotal, splitter.getNativeSplits());
+        uint256[] memory expectedToken = _expectedAmounts(tokenTotal, splitter.getTokenSplits());
         assertEq(tokenJar.balance - jarNativeBefore, expectedNative[0], "tokenJar native share");
         assertEq(creator.balance - creatorNativeBefore, expectedNative[1], "creator native share");
         assertEq(token.balanceOf(BURN_ADDRESS) - deadTokenBefore, expectedToken[0], "burn token share");

@@ -79,9 +79,15 @@ interface IFeeSplitter {
     /// @notice Receives any token share whose CREATOR recipient cannot be resolved.
     function tokenFallback() external view returns (address);
 
-    /// @notice The configured native ETH (currency0) splits.
-    function nativeSplits() external view returns (FeeSplit[] memory);
+    /// @notice The native ETH (currency0) split at `index`.
+    function nativeSplits(uint256 index) external view returns (address recipient, uint16 bps);
 
-    /// @notice The configured token (currency1) splits.
-    function tokenSplits() external view returns (FeeSplit[] memory);
+    /// @notice The token (currency1) split at `index`.
+    function tokenSplits(uint256 index) external view returns (address recipient, uint16 bps);
+
+    /// @notice The full configured native ETH (currency0) splits.
+    function getNativeSplits() external view returns (FeeSplit[] memory);
+
+    /// @notice The full configured token (currency1) splits.
+    function getTokenSplits() external view returns (FeeSplit[] memory);
 }

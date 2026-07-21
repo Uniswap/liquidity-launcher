@@ -27,9 +27,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @notice The denominator for fee splits: each side's splits sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
-    /// @notice Sentinel recipient that resolves, per pool, to the UERC20 `creator()` of the pool's token.
-    address public constant CREATOR = CREATOR_SENTINEL;
-
     /// @notice Gas allotted to the `creator()` staticcall so a non-compliant token cannot grief a collect.
     uint256 private constant CREATOR_CALL_GAS_LIMIT = 50_000;
 
@@ -45,12 +42,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @inheritdoc IFeeSplitter
     address public immutable override tokenFallback;
 
-    /// @dev True when any split on either side uses the CREATOR sentinel; skips resolution otherwise.
-    bool private immutable hasCreatorSplit;
-
-    /// @dev Written once in the constructor, never mutated.
-    FeeSplit[] private _nativeSplits;
-    FeeSplit[] private _tokenSplits;
+    /// @inheritdoc IFeeSplitter
+    FeeSplit[] public override nativeSplits;
+    /// @inheritdoc IFeeSplitter
+    FeeSplit[] public override tokenSplits;
 
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param _nativeFallback Trusted receiver for undeliverable native ETH shares; must accept plain sends.
@@ -64,10 +59,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         FeeSplit[] memory nativeSplits_,
         FeeSplit[] memory tokenSplits_
     ) {
-        if (_nativeFallback == address(0) || _nativeFallback == CREATOR || _nativeFallback == address(this)) {
+        if (_nativeFallback == address(0) || _nativeFallback == CREATOR_SENTINEL || _nativeFallback == address(this)) {
             revert InvalidFallback(_nativeFallback);
         }
-        if (_tokenFallback == address(0) || _tokenFallback == CREATOR || _tokenFallback == address(this)) {
+        if (_tokenFallback == address(0) || _tokenFallback == CREATOR_SENTINEL || _tokenFallback == address(this)) {
             revert InvalidFallback(_tokenFallback);
         }
 
@@ -75,30 +70,32 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         nativeFallback = _nativeFallback;
         tokenFallback = _tokenFallback;
 
-        bool nativeHasCreator = _storeSplits(_nativeSplits, nativeSplits_);
-        bool tokenHasCreator = _storeSplits(_tokenSplits, tokenSplits_);
-        hasCreatorSplit = nativeHasCreator || tokenHasCreator;
+        _validateAndStoreSplits(nativeSplits, nativeSplits_);
+        _validateAndStoreSplits(tokenSplits, tokenSplits_);
     }
 
     /// @inheritdoc IFeeSplitter
-    function nativeSplits() external view override returns (FeeSplit[] memory) {
-        return _nativeSplits;
+    function getNativeSplits() external view override returns (FeeSplit[] memory) {
+        return nativeSplits;
     }
 
     /// @inheritdoc IFeeSplitter
-    function tokenSplits() external view override returns (FeeSplit[] memory) {
-        return _tokenSplits;
+    function getTokenSplits() external view override returns (FeeSplit[] memory) {
+        return tokenSplits;
     }
 
     /// @inheritdoc IFeeSplitter
     function collectFees(uint256[] calldata tokenIds) external override nonReentrant {
-        if (tokenIds.length == 0) revert NoTokenIds();
-        for (uint256 i; i < tokenIds.length; i++) {
+        uint256 count = tokenIds.length;
+        if (count == 0) revert NoTokenIds();
+        for (uint256 i; i < count; i++) {
             _collect(tokenIds[i]);
         }
     }
 
-    /// @notice Accepts safe transfers of position NFTs.
+    /// @notice Accepts safe transfers of position NFTs, so safeTransferFrom-based flows can move
+    ///         positions into the splitter (solmate's safeTransferFrom reverts on contract receivers
+    ///         that do not return this selector).
     /// @dev Cannot gate inbound positions: the PositionManager mints with solmate `_mint`, which
     ///      performs no receiver callback, and plain `transferFrom` does not either. Foreign NFTs
     ///      sent here are inert — `collectFees` only interacts with the immutable PositionManager.
@@ -129,26 +126,26 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        address creator;
-        if (hasCreatorSplit) creator = _resolveCreator(token);
-
+        // Resolve the pool's creator once; an unresolvable creator degrades to the per-side fallback.
+        address creator = _resolveCreator(token);
         if (nativeAmount != 0) {
-            _distribute(_nativeSplits, CurrencyLibrary.ADDRESS_ZERO, nativeAmount, creator, nativeFallback);
+            _distribute(
+                nativeSplits,
+                CurrencyLibrary.ADDRESS_ZERO,
+                nativeAmount,
+                creator == address(0) ? nativeFallback : creator
+            );
         }
         if (tokenAmount != 0) {
-            _distribute(_tokenSplits, poolKey.currency1, tokenAmount, creator, tokenFallback);
+            _distribute(tokenSplits, poolKey.currency1, tokenAmount, creator == address(0) ? tokenFallback : creator);
         }
     }
 
     /// @notice Pushes one side's splits of `amount`. Cumulative allocation assigns all rounding dust to
     ///         later recipients so the full amount is always forwarded.
-    function _distribute(
-        FeeSplit[] storage splits,
-        Currency currency,
-        uint256 amount,
-        address creator,
-        address fallbackRecipient
-    ) private {
+    function _distribute(FeeSplit[] storage splits, Currency currency, uint256 amount, address creatorRecipient)
+        private
+    {
         uint256 cumulativeBps;
         uint256 distributed;
         uint256 count = splits.length;
@@ -161,19 +158,20 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             if (recipientAmount == 0) continue;
 
             address recipient = split.recipient;
-            if (recipient == CREATOR) recipient = creator == address(0) ? fallbackRecipient : creator;
-            _transfer(currency, recipient, recipientAmount, fallbackRecipient);
+            if (recipient == CREATOR_SENTINEL) recipient = creatorRecipient;
+            _transfer(currency, recipient, recipientAmount);
         }
     }
 
     /// @notice Sends `amount` of `currency` to `recipient`; a failed native send is redirected to the
-    ///         fallback so an unfunded or reverting recipient can never block a collect.
-    function _transfer(Currency currency, address recipient, uint256 amount, address fallbackRecipient) private {
+    ///         native fallback so an unfunded or reverting recipient can never block a collect. Token
+    ///         transfers have no receive hook to fail on and revert only for non-standard tokens.
+    function _transfer(Currency currency, address recipient, uint256 amount) private {
         if (currency.isAddressZero()) {
             if (!SafeTransferLib.trySafeTransferETH(recipient, amount, NATIVE_TRANSFER_GAS_STIPEND)) {
                 // The fallback is trusted at deploy time to accept native transfers.
-                SafeTransferLib.safeTransferETH(fallbackRecipient, amount);
-                recipient = fallbackRecipient;
+                SafeTransferLib.safeTransferETH(nativeFallback, amount);
+                recipient = nativeFallback;
             }
         } else {
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
@@ -192,8 +190,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         return address(uint160(uint256(bytes32(data))));
     }
 
-    /// @notice Validates and stores one side's splits; returns whether the side uses the CREATOR sentinel.
-    function _storeSplits(FeeSplit[] storage store, FeeSplit[] memory splits) private returns (bool hasCreator) {
+    /// @notice Validates and stores one side's splits.
+    function _validateAndStoreSplits(FeeSplit[] storage store, FeeSplit[] memory splits) private {
         uint256 count = splits.length;
         if (count == 0) revert NoSplits();
 
@@ -207,7 +205,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             for (uint256 j; j < i; j++) {
                 if (splits[j].recipient == split.recipient) revert DuplicateRecipient(split.recipient);
             }
-            if (split.recipient == CREATOR) hasCreator = true;
             totalBps += split.bps;
             store.push(split);
         }

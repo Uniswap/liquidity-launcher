@@ -77,7 +77,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     error InvalidTickRange();
     /// @notice Thrown when the fee splitter is not bound to the same PositionManager as this strategy.
     /// @param splitterPositionManager The fee splitter's PositionManager
-    error FeeSplitterMismatch(address splitterPositionManager);
+    error PositionManagerMismatch(address splitterPositionManager);
     /// @notice Thrown at deployment when the full supply does not fit in a single position.
     error UnrealizableLaunch();
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
@@ -112,7 +112,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         // The splitter collects through its own PositionManager; a mismatch would leave every
         // launch position's fees permanently uncollectable.
         if (_feeSplitter.positionManager() != _positionManager) {
-            revert FeeSplitterMismatch(address(_feeSplitter.positionManager()));
+            revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
         }
         // The tick must be aligned and leave a non-empty usable range below it: the launch position spans
         // [minUsableTick, initialTick] on the token side of the price.
