@@ -49,6 +49,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     UERC20Factory internal factory;
     BondingCurveLaunchHook internal hook;
     BondingCurveLaunchStrategy internal strategy;
+    address internal tokenJar = makeAddr("tokenJar");
 
     function setUp() public {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -70,7 +71,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             address(this),
             flags,
             type(BondingCurveLaunchHook).creationCode,
-            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy)
+            abi.encode(POOL_MANAGER, POSITION_MANAGER, predictedStrategy, tokenJar)
         );
         strategy = new BondingCurveLaunchStrategy(
             address(launcher),
@@ -81,7 +82,7 @@ contract BondingCurveLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             GRADUATION_TICK
         );
         assertEq(address(strategy), predictedStrategy);
-        hook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy));
+        hook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(strategy), tokenJar);
         assertEq(address(hook), hookAddress);
     }
 

@@ -51,6 +51,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     /// @inheritdoc IBondingCurveLaunchHook
     IPositionManager public immutable override positionManager;
 
+    /// @inheritdoc IBondingCurveLaunchHook
+    address public immutable override tokenJar;
+
     /// @notice Per-pool curve lifecycle state. All three fields are 1:1 with the pool's single curve and
     ///         are packed into one storage slot (8 + 48 + 96 = 152 bits): the hot swap paths read
     ///         phase+tokenId (Active) and phase+graduationBlock (Graduated) in a single SLOAD.
@@ -68,11 +71,12 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     /// @notice Packed lifecycle state for each pool.
     mapping(PoolId poolId => CurveState state) internal _curveState;
 
-    constructor(IPoolManager _poolManager, IPositionManager _positionManager, address _authorized)
+    constructor(IPoolManager _poolManager, IPositionManager _positionManager, address _authorized, address _tokenJar)
         InitializerHook(_poolManager, _authorized)
     {
-        if (address(_positionManager) == address(0)) revert ZeroAddress();
+        if (address(_positionManager) == address(0) || _tokenJar == address(0)) revert ZeroAddress();
         positionManager = _positionManager;
+        tokenJar = _tokenJar;
     }
 
     /// @inheritdoc IBondingCurveLaunchHook
@@ -298,7 +302,9 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
         token.safeTransfer(address(positionManager), positions[0].amount1);
         uint256 finalTokenId = positionManager.nextTokenId();
 
-        Plan memory plan = PositionPlanner.toPlan(positions, key, config.finalPositionRecipient);
+        // The final position is minted to the recipient; the swept surplus — the curve's accrued
+        // fees plus rounding dust — goes to the tokenJar.
+        Plan memory plan = PositionPlanner.toPlan(positions, key, tokenJar);
 
         // prepend the plan with a burn of the initial LP position
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), plan.actions);

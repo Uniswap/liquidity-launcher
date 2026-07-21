@@ -32,6 +32,7 @@ contract BondingCurveLaunchHookTest is Test {
 
     BondingCurveLaunchHook internal hook;
     PoolId internal poolId = PoolId.wrap(keccak256("pool"));
+    address internal tokenJar = makeAddr("tokenJar");
 
     function setUp() public {
         // Authorized is this test, so it can call configure() directly.
@@ -39,9 +40,9 @@ contract BondingCurveLaunchHookTest is Test {
             address(this),
             HOOK_FLAGS,
             type(BondingCurveLaunchHook).creationCode,
-            abi.encode(POOL_MANAGER, POSITION_MANAGER, address(this))
+            abi.encode(POOL_MANAGER, POSITION_MANAGER, address(this), tokenJar)
         );
-        hook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(this));
+        hook = new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(this), tokenJar);
         assertEq(address(hook), hookAddress);
     }
 
@@ -61,11 +62,23 @@ contract BondingCurveLaunchHookTest is Test {
             address(this),
             HOOK_FLAGS,
             type(BondingCurveLaunchHook).creationCode,
-            abi.encode(POOL_MANAGER, IPositionManager(address(0)), address(this))
+            abi.encode(POOL_MANAGER, IPositionManager(address(0)), address(this), tokenJar)
         );
         addr; // silence unused
         vm.expectRevert(IBondingCurveLaunchHook.ZeroAddress.selector);
-        new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, IPositionManager(address(0)), address(this));
+        new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, IPositionManager(address(0)), address(this), tokenJar);
+    }
+
+    function test_constructor_revertsOnZeroTokenJar() public {
+        (address addr, bytes32 salt) = HookMiner.find(
+            address(this),
+            HOOK_FLAGS,
+            type(BondingCurveLaunchHook).creationCode,
+            abi.encode(POOL_MANAGER, POSITION_MANAGER, address(this), address(0))
+        );
+        addr; // silence unused
+        vm.expectRevert(IBondingCurveLaunchHook.ZeroAddress.selector);
+        new BondingCurveLaunchHook{salt: salt}(POOL_MANAGER, POSITION_MANAGER, address(this), address(0));
     }
 
     function test_permissions() public view {
