@@ -200,4 +200,11 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
         if (received != amount) revert TokenAmountMismatch(received, amount);
     }
+
+    /// @notice Accepts ETH so a launch cannot be griefed. The single-sided token launch supplies no ETH,
+    ///         but the plan settles currency0 (ETH) with CONTRACT_BALANCE and takes any credit here; an
+    ///         attacker can force ETH onto the shared PositionManager (e.g. via SELFDESTRUCT), which that
+    ///         settle would otherwise route to this contract and — without this receiver — revert every
+    ///         launch. Any ETH received this way is inert (the strategy never spends ETH).
+    receive() external payable {}
 }
