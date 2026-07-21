@@ -16,6 +16,7 @@
         - [TimelockedPositionRecipient](#timelockedpositionrecipient)
         - [PositionFeesForwarder](#positionfeesforwarder)
         - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
+        - [AutoCompoundPositionRecipient](#autocompoundpositionrecipient)
 - [Contract Interactions](#contract-interactions)
 - [Key Interfaces](#key-interfaces)
 - [Important Safety Notes](#important-safety-notes)
@@ -82,6 +83,9 @@ The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract a
 
 #### BuybackAndBurnPositionRecipient
 The `BuybackAndBurnPositionRecipient` extends the `TimelockedPositionRecipient` contract and facilitates burning the collected fees and tokens from the position.
+
+#### AutoCompoundPositionRecipient
+The `AutoCompoundPositionRecipient` extends the `TimelockedPositionRecipient` contract and lets anyone compound a held position's accrued fees back into the position, paying the caller a configured share of the collected fees. Fees are only ever added in kind at the current pool price (never swapped), each compound is capped to a configured fraction of the position's liquidity, and only one compound can execute per block, bounding what a price manipulator can extract from a compound. See [AutoCompoundPositionRecipient.md](./AutoCompoundPositionRecipient.md) for the full design rationale.
 
 ## Contract Interactions
 

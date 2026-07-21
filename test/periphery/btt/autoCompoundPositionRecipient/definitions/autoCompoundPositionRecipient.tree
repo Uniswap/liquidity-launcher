@@ -1,0 +1,42 @@
+AutoCompoundPositionRecipientTest
+├── constructor
+│   ├── when the currencies are out of order or equal
+│   │   └── it reverts with CurrenciesOutOfOrderOrEqual
+│   ├── when the caller reward exceeds the maximum
+│   │   └── it reverts with InvalidCallerRewardBps
+│   ├── when the compound cap is zero
+│   │   └── it reverts with InvalidMaxCompoundBps
+│   ├── when the compound cap exceeds 100%
+│   │   └── it reverts with InvalidMaxCompoundBps
+│   └── when the parameters are valid
+│       └── it sets the configuration
+├── compound
+│   ├── when a compound already executed in the current block
+│   │   └── it reverts with AlreadyCompoundedThisBlock
+│   ├── when the position does not exist
+│   │   └── it reverts with CurrencyMismatch
+│   ├── when the position pool currencies do not match
+│   │   └── it reverts with CurrencyMismatch
+│   ├── when the position is not owned by the recipient
+│   │   └── it reverts with NotApproved
+│   └── when the position is owned and the currencies match
+│       ├── given the position has no fees and no rollover
+│       │   └── it adds zero liquidity and succeeds
+│       ├── given the position has accrued fees
+│       │   ├── it pays the caller reward share of collected fees
+│       │   ├── it adds liquidity to the position
+│       │   ├── it stores the unspent budget as rollover
+│       │   ├── it emits {Compounded}
+│       │   └── given the budget exceeds the per-compound cap
+│       │       ├── it adds exactly the capped liquidity
+│       │       └── it rolls the excess budget over
+│       └── given rollover exists from a previous compound
+│           └── it deploys the rollover budget
+└── sweep
+    ├── when the timelock has not passed
+    │   └── it reverts with Timelocked
+    ├── when the caller is not the operator
+    │   └── it reverts with NotOperator
+    └── when the operator calls after the timelock
+        ├── it transfers the full currency balance
+        └── it emits {Swept}
