@@ -195,7 +195,7 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         assertEq(address(positionRecipient).balance, recipientETHBefore);
     }
 
-    function test_rescueNonConformingPosition_transfersToOperatorBeforeTimelock() public {
+    function test_withdrawInvalidPosition_transfersToOperatorBeforeTimelock() public {
         positionRecipient = new CanonicalBuybackAndBurnPositionRecipient(
             IPositionManager(POSITION_MANAGER), operator, type(uint64).max, 1
         );
@@ -209,12 +209,12 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
             NON_ETH_FORK_TOKEN_ID, Currency.wrap(NON_ETH_FORK_CURRENCY0)
         );
         vm.prank(searcher);
-        positionRecipient.rescueNonConformingPosition(NON_ETH_FORK_TOKEN_ID);
+        positionRecipient.withdrawInvalidPosition(NON_ETH_FORK_TOKEN_ID);
 
         assertEq(IERC721(POSITION_MANAGER).ownerOf(NON_ETH_FORK_TOKEN_ID), operator);
     }
 
-    function test_rescueNonConformingPosition_revertsIfPositionIsConforming() public {
+    function test_withdrawInvalidPosition_revertsIfPositionIsConforming() public {
         positionRecipient = new CanonicalBuybackAndBurnPositionRecipient(
             IPositionManager(POSITION_MANAGER), operator, type(uint64).max, 1
         );
@@ -223,12 +223,12 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         vm.expectRevert(
             abi.encodeWithSelector(CanonicalBuybackAndBurnPositionRecipient.PositionConforming.selector, FORK_TOKEN_ID)
         );
-        positionRecipient.rescueNonConformingPosition(FORK_TOKEN_ID);
+        positionRecipient.withdrawInvalidPosition(FORK_TOKEN_ID);
 
         assertEq(IERC721(POSITION_MANAGER).ownerOf(FORK_TOKEN_ID), address(positionRecipient));
     }
 
-    function test_rescueNonConformingPosition_revertsIfPositionIsInvalid() public {
+    function test_withdrawInvalidPosition_revertsIfPositionIsInvalid() public {
         positionRecipient = new CanonicalBuybackAndBurnPositionRecipient(
             IPositionManager(POSITION_MANAGER), operator, type(uint64).max, 1
         );
@@ -236,16 +236,16 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         vm.expectRevert(
             abi.encodeWithSelector(BaseBuybackAndBurnPositionRecipient.InvalidPosition.selector, type(uint256).max)
         );
-        positionRecipient.rescueNonConformingPosition(type(uint256).max);
+        positionRecipient.withdrawInvalidPosition(type(uint256).max);
     }
 
-    function test_rescueNonConformingPosition_revertsIfPositionIsNotOwned() public {
+    function test_withdrawInvalidPosition_revertsIfPositionIsNotOwned() public {
         positionRecipient = new CanonicalBuybackAndBurnPositionRecipient(
             IPositionManager(POSITION_MANAGER), operator, type(uint64).max, 1
         );
 
         // The recipient neither owns nor is approved for the position
         vm.expectRevert(bytes("WRONG_FROM"));
-        positionRecipient.rescueNonConformingPosition(NON_ETH_FORK_TOKEN_ID);
+        positionRecipient.withdrawInvalidPosition(NON_ETH_FORK_TOKEN_ID);
     }
 }

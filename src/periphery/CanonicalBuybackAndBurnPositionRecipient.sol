@@ -55,14 +55,8 @@ contract CanonicalBuybackAndBurnPositionRecipient is BaseBuybackAndBurnPositionR
     }
 
     /// @notice Transfers a position that does not pair native ETH as currency0 to the operator
-    /// @dev Positions are expected to arrive here only through canonical ETH-paired launches; a
-    ///      non-conforming position can never be collected via collectFees and would otherwise be
-    ///      frozen until the timelock passes. Such positions were never legitimately locked, and the
-    ///      operator already gains control of every held position once the timelock passes, so routing
-    ///      them to the operator immediately adds no new trust. Conforming ETH-paired positions revert,
-    ///      keeping the permanent lock intact.
-    /// @param _tokenId The token ID of the non-conforming position
-    function rescueNonConformingPosition(uint256 _tokenId) external {
+    /// @param _tokenId The token ID of the invalid position
+    function withdrawInvalidPosition(uint256 _tokenId) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
         if (poolKey.currency0 == currency) revert PositionConforming(_tokenId);
 
