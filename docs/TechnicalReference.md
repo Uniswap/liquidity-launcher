@@ -15,7 +15,7 @@
     - [Warnings](#warnings)
     - [Periphery contracts](#periphery-contracts)
         - [TimelockedPositionRecipient](#timelockedpositionrecipient)
-        - [PositionFeesForwarder](#positionfeesforwarder)
+        - [FeeSplitter](#feesplitter)
         - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
 - [Contract Interactions](#contract-interactions)
 - [Key Interfaces](#key-interfaces)
@@ -100,8 +100,8 @@ The `TimelockedPositionRecipient` contract is a utility contract for holding a v
 
 A deployed instance can be used as a `PositionDefinition.recipient` when using an LBPStrategy.
 
-#### PositionFeesForwarder
-The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract and forwards all collected fees to a recipient.
+#### FeeSplitter
+The `FeeSplitter` is a singleton custodian of native-ETH v4 LP positions with immutable, deploy-time fee splits. `collectFees(uint256[] tokenIds)` permissionlessly collects each position's accrued fees and pushes independent basis-point splits of the native ETH side (`currency0`) and the token side (`currency1`) to fixed recipients. A `CREATOR` sentinel recipient resolves per pool to the UERC20 `creator()` of the pool's token; if the token is not UERC20-compliant or a native send to the creator fails, that share is routed to an immutable per-side fallback so a collect can never be blocked. Positions held by the splitter are irrecoverable by design — there is no owner, operator, or exit path.
 
 #### BuybackAndBurnPositionRecipient
 The `BuybackAndBurnPositionRecipient` extends the `TimelockedPositionRecipient` contract and facilitates burning the collected fees and tokens from the position.
