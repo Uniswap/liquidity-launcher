@@ -95,6 +95,22 @@ contract BondingCurveLaunchHook is InitializerHook, BlockNumberish, IBondingCurv
     }
 
     /// @inheritdoc IBondingCurveLaunchHook
+    function collectFees(PoolKey calldata key) external {
+        PoolId poolId = key.toId();
+        CurveState storage state = _curveState[poolId];
+        if (state.phase != BondingCurvePhase.Active) revert InvalidBondingCurvePhase(state.phase);
+
+        // A zero-liquidity decrease collects fees only, so curve liquidity and price are untouched.
+        bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(uint256(state.curveTokenId), uint256(0), uint128(0), uint128(0), bytes(""));
+        params[1] = abi.encode(key.currency0, key.currency1, tokenJar);
+        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+
+        emit CurveFeesCollected(poolId, msg.sender);
+    }
+
+    /// @inheritdoc IBondingCurveLaunchHook
     function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory) {
         return _launchConfigs[poolId];
     }

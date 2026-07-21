@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IInitializerHook} from "./IInitializerHook.sol";
@@ -47,6 +48,8 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     event Graduated(
         PoolId indexed poolId, uint256 indexed curveTokenId, uint256 indexed finalTokenId, uint256 liquidity
     );
+    /// @notice Emitted when the active curve's accrued LP fees are collected to the tokenJar.
+    event CurveFeesCollected(PoolId indexed poolId, address indexed caller);
 
     /// @notice Thrown when a caller other than the authorized launcher configures a pool.
     /// @param caller The address that attempted the call
@@ -101,6 +104,13 @@ interface IBondingCurveLaunchHook is IInitializerHook {
     /// @param poolId The pool the configuration applies to
     /// @param config The curve configuration to register
     function configure(PoolId poolId, BondingCurveHookConfig calldata config) external;
+
+    /// @notice Collects the curve position's accrued LP fees and sends both currencies to the tokenJar.
+    ///         Permissionless, so fees from pools that trade heavily but never graduate are not stranded.
+    ///         Only fee revenue moves — curve liquidity, price, and phase are untouched.
+    /// @dev Only callable while the pool's curve is Active; reverts with InvalidBondingCurvePhase otherwise.
+    /// @param key The pool whose curve fees to collect
+    function collectFees(PoolKey calldata key) external;
 
     /// @notice Returns the curve configuration registered for a pool.
     function bondingCurveConfig(PoolId poolId) external view returns (BondingCurveHookConfig memory);

@@ -331,6 +331,124 @@ contract BondingCurveLaunchStrategyE2ETest is Test {
         assertEq(uint256(launchHook.bondingCurvePhase(curveKey.toId())), uint256(BondingCurvePhase.Active));
     }
 
+    function test_collectFees_sendsAccruedFeesToTokenJar() public {
+        (MockERC20 token, PoolKey memory key, uint256 curveTokenId) = _launch();
+
+        // Accrue fees on both sides: a buy pays its LP fee in ETH (currency0), a sell in token (currency1).
+        swapRouter.swap{value: 10 ether}(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+        token.approve(address(swapRouter), type(uint256).max);
+        swapRouter.swap(
+            key,
+            SwapParams({
+                zeroForOne: false, amountSpecified: -1_000 ether, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(curveTokenId);
+        (uint160 priceBefore,,,) = POOL_MANAGER.getSlot0(key.toId());
+        uint256 jarEthBefore = tokenJar.balance;
+        uint256 jarTokenBefore = token.balanceOf(tokenJar);
+
+        address rando = makeAddr("rando");
+        vm.expectEmit(true, true, false, true, address(launchHook));
+        emit IBondingCurveLaunchHook.CurveFeesCollected(key.toId(), rando);
+        vm.prank(rando);
+        launchHook.collectFees(key);
+
+        assertGt(tokenJar.balance, jarEthBefore);
+        assertGt(token.balanceOf(tokenJar), jarTokenBefore);
+        // Collection moves fee revenue only: curve liquidity, price, and phase are untouched.
+        assertEq(POSITION_MANAGER.getPositionLiquidity(curveTokenId), liquidityBefore);
+        (uint160 priceAfter,,,) = POOL_MANAGER.getSlot0(key.toId());
+        assertEq(priceAfter, priceBefore);
+        assertEq(uint256(launchHook.bondingCurvePhase(key.toId())), uint256(BondingCurvePhase.Active));
+
+        // The pool keeps trading normally after a collection.
+        swapRouter.swap{value: 1 ether}(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+    }
+
+    function test_collectFees_secondCollectTransfersNothing() public {
+        (MockERC20 token, PoolKey memory key,) = _launch();
+        swapRouter.swap{value: 10 ether}(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+
+        launchHook.collectFees(key);
+        uint256 jarEthAfterFirst = tokenJar.balance;
+        uint256 jarTokenAfterFirst = token.balanceOf(tokenJar);
+        assertGt(jarEthAfterFirst, 0);
+
+        // No trading in between, so a second collect finds nothing to sweep.
+        launchHook.collectFees(key);
+        assertEq(tokenJar.balance, jarEthAfterFirst);
+        assertEq(token.balanceOf(tokenJar), jarTokenAfterFirst);
+    }
+
+    function test_collectFees_revertsWhenUnconfigured() public {
+        MockERC20 unlaunched = new MockERC20("Unlaunched", "NOPE", 1 ether, address(this));
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(unlaunched)),
+            fee: strategy.LP_FEE(),
+            tickSpacing: strategy.TICK_SPACING(),
+            hooks: IHooks(address(launchHook))
+        });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBondingCurveLaunchHook.InvalidBondingCurvePhase.selector, BondingCurvePhase.Unconfigured
+            )
+        );
+        launchHook.collectFees(key);
+    }
+
+    function test_collectFees_revertsAfterGraduation() public {
+        (, PoolKey memory key,) = _launch();
+        _swapThroughGraduation(key);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBondingCurveLaunchHook.InvalidBondingCurvePhase.selector, BondingCurvePhase.Graduated
+            )
+        );
+        launchHook.collectFees(key);
+    }
+
+    function test_collectFees_thenGraduationStillSweepsRemainder() public {
+        (, PoolKey memory key,) = _launch();
+        swapRouter.swap{value: 10 ether}(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
+
+        launchHook.collectFees(key);
+        uint256 jarEthAfterCollect = tokenJar.balance;
+        assertGt(jarEthAfterCollect, 0);
+
+        vm.deal(address(this), 100_000 ether);
+        _swapThroughGraduation(key);
+        assertEq(uint256(launchHook.bondingCurvePhase(key.toId())), uint256(BondingCurvePhase.Graduated));
+        // Fees accrued after the mid-life collect (plus rounding dust) are still swept at graduation.
+        assertGt(tokenJar.balance, jarEthAfterCollect);
+    }
+
     function _swapThroughGraduation(PoolKey memory key) private {
         int256 amountSpecified = -100_000 ether;
         BalanceDelta delta = swapRouter.swap{value: uint256(-amountSpecified)}(
