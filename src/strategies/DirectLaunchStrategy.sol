@@ -18,9 +18,9 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {IStrategy} from "../interfaces/IStrategy.sol";
+import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
-import {BuybackAndBurnPositionRecipient} from "../periphery/BuybackAndBurnPositionRecipient.sol";
 
 /// @title DirectLaunchStrategy
 /// @notice `IStrategy` that launches a fixed-supply token directly into a hookless native-ETH v4 pool,
@@ -43,8 +43,6 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     uint24 public constant LP_FEE = 2_500;
     /// @notice Tick spacing
     int24 public constant TICK_SPACING = 60;
-    /// @notice Minimum token burn required to harvest fees from the permanent position.
-    uint256 public constant MIN_TOKEN_BURN = TOTAL_SUPPLY / 2_000;
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -55,6 +53,9 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     IPositionManager public immutable positionManager;
     /// @notice The v4 pool manager.
     IPoolManager public immutable poolManager;
+    /// @notice The singleton fee splitter that permanently holds every launch position and
+    ///         permissionlessly distributes its fees.
+    IFeeSplitter public immutable feeSplitter;
     /// @notice Aligned tick at which the pool opens (highest price); the position's upper bound.
     int24 public immutable initialTick;
     /// @notice Initial pool square-root price.
@@ -74,6 +75,9 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     error InvalidTokenDecimals();
     /// @notice Thrown when the configured tick cannot define the launch range.
     error InvalidTickRange();
+    /// @notice Thrown when the fee splitter is not bound to the same PositionManager as this strategy.
+    /// @param splitterPositionManager The fee splitter's PositionManager
+    error PositionManagerMismatch(address splitterPositionManager);
     /// @notice Thrown at deployment when the full supply does not fit in a single position.
     error UnrealizableLaunch();
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
@@ -92,9 +96,23 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         PoolId indexed poolId, address indexed token, address indexed finalPositionRecipient, PoolKey key
     );
 
-    constructor(address _launcher, IPositionManager _positionManager, IPoolManager _poolManager, int24 _initialTick) {
-        if (_launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)) {
+    constructor(
+        address _launcher,
+        IPositionManager _positionManager,
+        IPoolManager _poolManager,
+        IFeeSplitter _feeSplitter,
+        int24 _initialTick
+    ) {
+        if (
+            _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
+                || address(_feeSplitter) == address(0)
+        ) {
             revert ZeroAddress();
+        }
+        // The splitter collects through its own PositionManager; a mismatch would leave every
+        // launch position's fees permanently uncollectable.
+        if (_feeSplitter.positionManager() != _positionManager) {
+            revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
         }
         // The tick must be aligned and leave a non-empty usable range below it: the launch position spans
         // [minUsableTick, initialTick] on the token side of the price.
@@ -106,6 +124,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         launcher = _launcher;
         poolManager = _poolManager;
         positionManager = _positionManager;
+        feeSplitter = _feeSplitter;
         initialTick = _initialTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
 
@@ -138,11 +157,6 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
         uint256 balanceBefore = _pull(token, totalSupply);
 
-        // Permanent, per-token custodian of the launch LP (timelocked forever; fees harvest-and-burn only).
-        BuybackAndBurnPositionRecipient recipient = new BuybackAndBurnPositionRecipient(
-            token, address(0), address(0), positionManager, type(uint256).max, MIN_TOKEN_BURN
-        );
-
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(token),
@@ -168,11 +182,13 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             });
 
             definitions.validate();
+            // The position is minted to the fee splitter: permanent custody, permissionless
+            // per-pool fee distribution (see FeeSplitter).
             (Position[] memory positions,) = definitions.resolve(
                 initialSqrtPriceX96,
                 TICK_SPACING,
                 CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}),
-                address(recipient)
+                address(feeSplitter)
             );
             // Exactly the precomputed uncapped position: anything else means part of the supply
             // was left unplaced, and the sub-liquidity-unit rounding dust is burned below.
@@ -189,7 +205,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
         emit DistributionInitialized(address(this), token, totalSupply);
-        emit TokenLaunched(poolId, token, address(recipient), key);
+        emit TokenLaunched(poolId, token, address(feeSplitter), key);
     }
 
     /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens

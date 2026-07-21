@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-// End-to-end coverage for the hookless direct launch. The launch position is permanent, swaps are
-// ungated from the first block, and fee collection runs through BuybackAndBurnPositionRecipient.
+// End-to-end coverage for the hookless direct launch. The launch position is permanently held by
+// the singleton FeeSplitter, swaps are ungated from the first block, and fee collection runs
+// permissionlessly through FeeSplitter.collectFees.
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -21,8 +22,10 @@ import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {DirectLaunchStrategy} from "../../../src/strategies/DirectLaunchStrategy.sol";
-import {BuybackAndBurnPositionRecipient} from "../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
+import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
+import {FeeSplit, CREATOR_SENTINEL} from "../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
+import {MockUERC20} from "../../mocks/MockUERC20.sol";
 
 contract DirectLaunchStrategyE2ETest is Test {
     using StateLibrary for IPoolManager;
@@ -30,8 +33,13 @@ contract DirectLaunchStrategyE2ETest is Test {
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
-    int24 internal constant INITIAL_TICK = 122_000;
+    int24 internal constant INITIAL_TICK = 121_980;
+    address internal constant BURN_ADDRESS = address(0xdead);
 
+    address internal tokenJar = makeAddr("tokenJar");
+    address internal creator = makeAddr("creator");
+
+    FeeSplitter internal feeSplitter;
     DirectLaunchStrategy internal strategy;
     PoolSwapTest internal swapRouter;
 
@@ -43,13 +51,23 @@ contract DirectLaunchStrategyE2ETest is Test {
             address(POSITION_MANAGER)
         );
 
-        strategy = new DirectLaunchStrategy(address(this), POSITION_MANAGER, POOL_MANAGER, INITIAL_TICK);
+        // The intended product configuration: ETH fees to the tokenJar, token fees burned,
+        // both with a 20% creator share.
+        FeeSplit[] memory nativeSplits = new FeeSplit[](2);
+        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
+        nativeSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        FeeSplit[] memory tokenSplits = new FeeSplit[](2);
+        tokenSplits[0] = FeeSplit({recipient: BURN_ADDRESS, bps: 8_000});
+        tokenSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, nativeSplits, tokenSplits);
+
+        strategy = new DirectLaunchStrategy(address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, INITIAL_TICK);
         swapRouter = new PoolSwapTest(POOL_MANAGER);
         vm.deal(address(this), 100_000 ether);
     }
 
     function test_launch_mintsSingleSidedPositionWithFullSupply() public {
-        (MockERC20 token, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
+        (MockUERC20 token, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
 
         // The pool opens at the configured price with the full supply on the token side of it.
         (uint160 sqrtPriceX96, int24 tick,,) = POOL_MANAGER.getSlot0(key.toId());
@@ -63,18 +81,16 @@ contract DirectLaunchStrategyE2ETest is Test {
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
 
         // Whole supply accounted for: everything is in the pool except burned rounding dust.
-        assertEq(token.balanceOf(address(POOL_MANAGER)) + token.balanceOf(address(0xdead)), strategy.TOTAL_SUPPLY());
-        assertLt(token.balanceOf(address(0xdead)), 1 ether);
+        assertEq(token.balanceOf(address(POOL_MANAGER)) + token.balanceOf(BURN_ADDRESS), strategy.TOTAL_SUPPLY());
+        assertLt(token.balanceOf(BURN_ADDRESS), 1 ether);
         assertEq(token.balanceOf(address(strategy)), 0);
 
-        // The custodian is permanently timelocked with no operator: the LP can never be withdrawn.
-        BuybackAndBurnPositionRecipient custodian = BuybackAndBurnPositionRecipient(payable(recipient));
-        assertEq(custodian.operator(), address(0));
-        assertEq(custodian.timelockBlockNumber(), type(uint256).max);
+        // The custodian is the singleton fee splitter: no operator, no exit path.
+        assertEq(recipient, address(feeSplitter));
     }
 
     function test_swapExactOutput_succeedsAtInitialBoundary() public {
-        (MockERC20 token, PoolKey memory key,,) = _launch();
+        (MockUERC20 token, PoolKey memory key,,) = _launch();
         uint256 requestedOutput = 1 ether;
         uint256 balanceBefore = token.balanceOf(address(this));
 
@@ -127,7 +143,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_swapExactInput_largeBuyMovesPriceDownAndPoolKeepsTrading() public {
-        (MockERC20 token, PoolKey memory key,,) = _launch();
+        (MockUERC20 token, PoolKey memory key,,) = _launch();
         vm.deal(address(this), 101_000 ether);
 
         // A large buy has no terminal tick or phase change: the price walks down the single position
@@ -168,7 +184,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_swap_sellAfterBuyReturnsEth() public {
-        (MockERC20 token, PoolKey memory key,,) = _launch();
+        (MockUERC20 token, PoolKey memory key,,) = _launch();
 
         swapRouter.swap{value: 10 ether}(
             key,
@@ -198,8 +214,8 @@ contract DirectLaunchStrategyE2ETest is Test {
         assertEq(token.balanceOf(address(this)), 0);
     }
 
-    function test_collectFees_burnsMinimumAndPaysEthFeesToCaller() public {
-        (MockERC20 token, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
+    function test_collectFees_distributesBothSidesToConfiguredRecipients() public {
+        (MockUERC20 token, PoolKey memory key, uint256 tokenId,) = _launch();
 
         // Accrue fees on both sides: a buy pays its LP fee in ETH (currency0), a sell in token (currency1).
         swapRouter.swap{value: 10 ether}(
@@ -220,17 +236,22 @@ contract DirectLaunchStrategyE2ETest is Test {
 
         uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
         (uint160 priceBefore,,,) = POOL_MANAGER.getSlot0(key.toId());
-        uint256 burnedBefore = token.balanceOf(address(0xdead));
-        uint256 ethBefore = address(this).balance;
-        uint256 minBurn = strategy.MIN_TOKEN_BURN();
+        uint256 burnedBefore = token.balanceOf(BURN_ADDRESS);
 
-        // Harvesting is permissionless but costs the caller the minimum token burn.
-        token.approve(recipient, minBurn);
-        BuybackAndBurnPositionRecipient(payable(recipient)).collectFees(tokenId, 0);
+        // Harvesting is permissionless and free: any caller can trigger the distribution.
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
+        vm.prank(makeAddr("keeper"));
+        feeSplitter.collectFees(tokenIds);
 
-        // Caller receives the ETH fees; the mandatory burn plus the token-side fees hit the sink.
-        assertGt(address(this).balance, ethBefore);
-        assertGt(token.balanceOf(address(0xdead)) - burnedBefore, minBurn);
+        // ETH fees split to the tokenJar and the token's UERC20 creator; token fees burn and creator.
+        assertGt(tokenJar.balance, 0);
+        assertGt(creator.balance, 0);
+        assertGt(token.balanceOf(BURN_ADDRESS) - burnedBefore, 0);
+        assertGt(token.balanceOf(creator), 0);
+        // Nothing sticks to the splitter.
+        assertEq(address(feeSplitter).balance, 0);
+        assertEq(token.balanceOf(address(feeSplitter)), 0);
         // Collection moves fee revenue only: position liquidity and pool price are untouched.
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore);
         (uint160 priceAfter,,,) = POOL_MANAGER.getSlot0(key.toId());
@@ -245,8 +266,8 @@ contract DirectLaunchStrategyE2ETest is Test {
         );
     }
 
-    function test_collectFees_secondCollectTransfersOnlyTheBurn() public {
-        (MockERC20 token, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
+    function test_collectFees_secondCollectDistributesNothing() public {
+        (, PoolKey memory key, uint256 tokenId,) = _launch();
         swapRouter.swap{value: 10 ether}(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
@@ -254,34 +275,20 @@ contract DirectLaunchStrategyE2ETest is Test {
             bytes("")
         );
 
-        token.approve(recipient, type(uint256).max);
-        BuybackAndBurnPositionRecipient(payable(recipient)).collectFees(tokenId, 0);
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
+        feeSplitter.collectFees(tokenIds);
 
-        // No trading in between, so a second collect burns the caller's tokens for nothing.
-        uint256 ethBefore = address(this).balance;
-        uint256 burnedBefore = token.balanceOf(address(0xdead));
-        BuybackAndBurnPositionRecipient(payable(recipient)).collectFees(tokenId, 0);
-        assertEq(address(this).balance, ethBefore);
-        assertEq(token.balanceOf(address(0xdead)) - burnedBefore, strategy.MIN_TOKEN_BURN());
+        // No trading in between, so a second collect has nothing to distribute.
+        uint256 jarBefore = tokenJar.balance;
+        uint256 creatorBefore = creator.balance;
+        feeSplitter.collectFees(tokenIds);
+        assertEq(tokenJar.balance, jarBefore);
+        assertEq(creator.balance, creatorBefore);
     }
 
-    function test_collectFees_revertsWhenCallerCannotBurn() public {
-        (, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
-        swapRouter.swap{value: 10 ether}(
-            key,
-            SwapParams({zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            bytes("")
-        );
-
-        // A caller without tokens (or approval) cannot pay the mandatory burn.
-        vm.prank(makeAddr("freeloader"));
-        vm.expectRevert();
-        BuybackAndBurnPositionRecipient(payable(recipient)).collectFees(tokenId, 0);
-    }
-
-    function _launch() private returns (MockERC20 token, PoolKey memory key, uint256 tokenId, address recipient) {
-        token = new MockERC20("Direct Token", "DIRECT", strategy.TOTAL_SUPPLY(), address(this));
+    function _launch() private returns (MockUERC20 token, PoolKey memory key, uint256 tokenId, address recipient) {
+        token = new MockUERC20("Direct Token", "DIRECT", strategy.TOTAL_SUPPLY(), address(this), creator);
         token.approve(address(strategy), strategy.TOTAL_SUPPLY());
         key = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -291,7 +298,7 @@ contract DirectLaunchStrategyE2ETest is Test {
             hooks: IHooks(address(0))
         });
         tokenId = POSITION_MANAGER.nextTokenId();
-        recipient = vm.computeCreateAddress(address(strategy), vm.getNonce(address(strategy)));
+        recipient = address(feeSplitter);
         strategy.initializeDistribution(address(token), strategy.TOTAL_SUPPLY(), bytes(""), bytes32(0));
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
     }

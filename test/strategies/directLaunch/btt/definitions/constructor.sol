@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import {DirectLaunchTestBase} from "../../base/DirectLaunchTestBase.sol";
 import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
+import {FeeSplitter} from "../../../../../src/periphery/FeeSplitter.sol";
+import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -14,6 +16,8 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 /// constructor
 /// ├── when a required address is zero
 /// │   └── it reverts with ZeroAddress
+/// ├── when the fee splitter uses a different PositionManager
+/// │   └── it reverts with PositionManagerMismatch
 /// ├── when the initial tick is not aligned
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the maximum usable tick
@@ -27,15 +31,29 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 ///     └── it derives a position liquidity that fits in a single position
 contract ConstructorTest is DirectLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
-        zeroIndex = uint8(bound(zeroIndex, 0, 2));
+        zeroIndex = uint8(bound(zeroIndex, 0, 3));
 
         vm.expectRevert(DirectLaunchStrategy.ZeroAddress.selector);
         new DirectLaunchStrategy(
             zeroIndex == 0 ? address(0) : launcher,
             zeroIndex == 1 ? IPositionManager(address(0)) : IPositionManager(address(positionManager)),
             zeroIndex == 2 ? IPoolManager(address(0)) : poolManager,
+            zeroIndex == 3 ? IFeeSplitter(address(0)) : feeSplitter,
             INITIAL_TICK
         );
+    }
+
+    function test_WhenFeeSplitterUsesDifferentPositionManager() public {
+        // A splitter bound to a foreign PositionManager could never collect the launch positions.
+        IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
+        FeeSplitter mismatched = new FeeSplitter(
+            otherPositionManager, tokenJar, address(0xdead), feeSplitter.getNativeSplits(), feeSplitter.getTokenSplits()
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(DirectLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))
+        );
+        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, INITIAL_TICK);
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
@@ -106,6 +124,7 @@ contract ConstructorTest is DirectLaunchTestBase {
         assertEq(strategy.launcher(), launcher);
         assertEq(address(strategy.positionManager()), address(positionManager));
         assertEq(address(strategy.poolManager()), address(poolManager));
+        assertEq(address(strategy.feeSplitter()), address(feeSplitter));
         assertEq(strategy.initialTick(), INITIAL_TICK);
         assertEq(strategy.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
         assertGt(strategy.positionLiquidity(), 0);
