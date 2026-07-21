@@ -9,15 +9,8 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {IFeeSplitter, FeeSplit, CREATOR_SENTINEL} from "../interfaces/IFeeSplitter.sol";
 import {IUERC20} from "../interfaces/external/IUERC20.sol";
-
-/// @notice A single fee allocation: `bps` of one currency side to `recipient`.
-/// @param recipient The receiver of this share; may be the `CREATOR` sentinel.
-/// @param bps The share in basis points. Each side's splits sum to 10,000.
-struct FeeSplit {
-    address recipient;
-    uint16 bps;
-}
 
 /// @title FeeSplitter
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
@@ -28,14 +21,14 @@ struct FeeSplit {
 /// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
 ///      and no code path that transfers or approves a position out.
 /// @custom:security-contact security@uniswap.org
-contract FeeSplitter is IERC721Receiver, ReentrancyGuardTransient {
+contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
 
     /// @notice The denominator for fee splits: each side's splits sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
     /// @notice Sentinel recipient that resolves, per pool, to the UERC20 `creator()` of the pool's token.
-    address public constant CREATOR = address(uint160(uint256(keccak256("FeeSplitter.CREATOR"))));
+    address public constant CREATOR = CREATOR_SENTINEL;
 
     /// @notice Gas allotted to the `creator()` staticcall so a non-compliant token cannot grief a collect.
     uint256 private constant CREATOR_CALL_GAS_LIMIT = 50_000;
@@ -43,14 +36,14 @@ contract FeeSplitter is IERC721Receiver, ReentrancyGuardTransient {
     /// @notice Gas forwarded on native transfers to untrusted recipients (solady's no-grief stipend).
     uint256 private constant NATIVE_TRANSFER_GAS_STIPEND = 100_000;
 
-    /// @notice The canonical v4 PositionManager holding the LP positions.
-    IPositionManager public immutable positionManager;
+    /// @inheritdoc IFeeSplitter
+    IPositionManager public immutable override positionManager;
 
-    /// @notice Receives any native ETH share that cannot be delivered (unresolvable creator, failed send).
-    address public immutable nativeFallback;
+    /// @inheritdoc IFeeSplitter
+    address public immutable override nativeFallback;
 
-    /// @notice Receives any token share whose CREATOR recipient cannot be resolved.
-    address public immutable tokenFallback;
+    /// @inheritdoc IFeeSplitter
+    address public immutable override tokenFallback;
 
     /// @dev True when any split on either side uses the CREATOR sentinel; skips resolution otherwise.
     bool private immutable hasCreatorSplit;
@@ -58,50 +51,6 @@ contract FeeSplitter is IERC721Receiver, ReentrancyGuardTransient {
     /// @dev Written once in the constructor, never mutated.
     FeeSplit[] private _nativeSplits;
     FeeSplit[] private _tokenSplits;
-
-    /// @notice Emitted once per collected position.
-    /// @param tokenId The position collected.
-    /// @param token The pool's currency1.
-    /// @param nativeAmount The native ETH fees collected.
-    /// @param tokenAmount The token fees collected.
-    event FeesCollected(uint256 indexed tokenId, address indexed token, uint256 nativeAmount, uint256 tokenAmount);
-
-    /// @notice Emitted for each nonzero amount pushed to a recipient.
-    /// @param recipient The actual receiver (post CREATOR/fallback resolution).
-    /// @param currency The currency sent; address(0) is native ETH.
-    /// @param amount The amount sent.
-    event FeesForwarded(address indexed recipient, Currency indexed currency, uint256 amount);
-
-    /// @notice Thrown when a fallback address is zero, the CREATOR sentinel, or this contract.
-    /// @param fallbackRecipient The invalid fallback.
-    error InvalidFallback(address fallbackRecipient);
-
-    /// @notice Thrown when a side is configured with no splits.
-    error NoSplits();
-
-    /// @notice Thrown when a split recipient is the zero address or this contract.
-    /// @param recipient The invalid recipient.
-    error InvalidRecipient(address recipient);
-
-    /// @notice Thrown when a split has zero basis points.
-    /// @param recipient The recipient of the empty split.
-    error ZeroSplitBps(address recipient);
-
-    /// @notice Thrown when a recipient appears twice on the same side.
-    /// @param recipient The duplicated recipient.
-    error DuplicateRecipient(address recipient);
-
-    /// @notice Thrown when a side's splits do not sum to `BPS_DENOMINATOR`.
-    /// @param totalBps The invalid total.
-    error InvalidSplitTotal(uint256 totalBps);
-
-    /// @notice Thrown when collectFees is called with no token IDs.
-    error NoTokenIds();
-
-    /// @notice Thrown when a position's currency0 is not native ETH.
-    /// @param tokenId The offending position.
-    /// @param currency0 The unexpected currency0.
-    error InvalidBaseCurrency(uint256 tokenId, Currency currency0);
 
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param _nativeFallback Trusted receiver for undeliverable native ETH shares; must accept plain sends.
@@ -131,22 +80,18 @@ contract FeeSplitter is IERC721Receiver, ReentrancyGuardTransient {
         hasCreatorSplit = nativeHasCreator || tokenHasCreator;
     }
 
-    /// @notice The configured native ETH (currency0) splits.
-    function nativeSplits() external view returns (FeeSplit[] memory) {
+    /// @inheritdoc IFeeSplitter
+    function nativeSplits() external view override returns (FeeSplit[] memory) {
         return _nativeSplits;
     }
 
-    /// @notice The configured token (currency1) splits.
-    function tokenSplits() external view returns (FeeSplit[] memory) {
+    /// @inheritdoc IFeeSplitter
+    function tokenSplits() external view override returns (FeeSplit[] memory) {
         return _tokenSplits;
     }
 
-    /// @notice Collects the accrued fees of each position and pushes the configured splits.
-    /// @dev Permissionless. Each position is collected and distributed individually so fees are
-    ///      attributed to that pool's token and creator. Positions must be native-ETH pairs and be
-    ///      owned by (or approved to) this contract, otherwise the PositionManager reverts.
-    /// @param tokenIds The position token IDs to collect.
-    function collectFees(uint256[] calldata tokenIds) external nonReentrant {
+    /// @inheritdoc IFeeSplitter
+    function collectFees(uint256[] calldata tokenIds) external override nonReentrant {
         if (tokenIds.length == 0) revert NoTokenIds();
         for (uint256 i; i < tokenIds.length; i++) {
             _collect(tokenIds[i]);

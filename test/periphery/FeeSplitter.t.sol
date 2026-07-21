@@ -20,7 +20,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {FeeSplitter, FeeSplit} from "../../src/periphery/FeeSplitter.sol";
+import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
+import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockUERC20, MockRevertingCreatorToken, MockGasBurningCreatorToken} from "../mocks/MockUERC20.sol";
 import {MockRejectEth} from "../mocks/MockRejectEth.sol";
@@ -226,44 +227,44 @@ contract FeeSplitterTest is Test {
         FeeSplit[] memory splits = _splits(tokenJar);
         address creatorSentinel = address(uint160(uint256(keccak256("FeeSplitter.CREATOR"))));
 
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.InvalidFallback.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidFallback.selector, address(0)));
         new FeeSplitter(POSITION_MANAGER, address(0), BURN_ADDRESS, splits, splits);
 
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.InvalidFallback.selector, creatorSentinel));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidFallback.selector, creatorSentinel));
         new FeeSplitter(POSITION_MANAGER, tokenJar, creatorSentinel, splits, splits);
 
         // A fallback equal to the splitter itself would loop failed sends back into distribution.
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.InvalidFallback.selector, predicted));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidFallback.selector, predicted));
         new FeeSplitter(POSITION_MANAGER, predicted, BURN_ADDRESS, splits, splits);
     }
 
     function test_constructor_revertsOnEmptySplits() public {
-        vm.expectRevert(FeeSplitter.NoSplits.selector);
+        vm.expectRevert(IFeeSplitter.NoSplits.selector);
         new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, new FeeSplit[](0), _splits(BURN_ADDRESS));
     }
 
     function test_constructor_revertsOnInvalidRecipient() public {
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.InvalidRecipient.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, address(0)));
         new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, _splits(address(0)), _splits(BURN_ADDRESS));
     }
 
     function test_constructor_revertsOnZeroBps() public {
         FeeSplit[] memory splits = _splits(tokenJar, 10_000, makeAddr("empty"), 0);
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.ZeroSplitBps.selector, makeAddr("empty")));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.ZeroSplitBps.selector, makeAddr("empty")));
         new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, splits, _splits(BURN_ADDRESS));
     }
 
     function test_constructor_revertsOnDuplicateRecipient() public {
         FeeSplit[] memory splits = _splits(tokenJar, 5_000, tokenJar, 5_000);
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.DuplicateRecipient.selector, tokenJar));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.DuplicateRecipient.selector, tokenJar));
         new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, splits, _splits(BURN_ADDRESS));
     }
 
     function test_constructor_revertsOnInvalidTotal(uint16 _bps) public {
         _bps = uint16(bound(_bps, 1, 20_000));
         vm.assume(_bps != 10_000);
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.InvalidSplitTotal.selector, _bps));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidSplitTotal.selector, _bps));
         FeeSplit[] memory splits = new FeeSplit[](1);
         splits[0] = FeeSplit({recipient: tokenJar, bps: _bps});
         new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, splits, _splits(BURN_ADDRESS));
@@ -275,7 +276,7 @@ contract FeeSplitterTest is Test {
 
     function test_collectFees_revertsOnEmptyTokenIds() public {
         FeeSplitter splitter = _defaultSplitter();
-        vm.expectRevert(FeeSplitter.NoTokenIds.selector);
+        vm.expectRevert(IFeeSplitter.NoTokenIds.selector);
         splitter.collectFees(new uint256[](0));
     }
 
@@ -303,7 +304,7 @@ contract FeeSplitterTest is Test {
         POOL_MANAGER.initialize(key, SQRT_PRICE_1_1);
         uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(FeeSplitter.InvalidBaseCurrency.selector, tokenId, c0));
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidBaseCurrency.selector, tokenId, c0));
         splitter.collectFees(_single(tokenId));
     }
 
@@ -352,8 +353,8 @@ contract FeeSplitterTest is Test {
         uint256 forwarded;
         for (uint256 i; i < logs.length; i++) {
             if (logs[i].emitter != address(splitter)) continue;
-            if (logs[i].topics[0] == FeeSplitter.FeesCollected.selector) collected++;
-            if (logs[i].topics[0] == FeeSplitter.FeesForwarded.selector) forwarded++;
+            if (logs[i].topics[0] == IFeeSplitter.FeesCollected.selector) collected++;
+            if (logs[i].topics[0] == IFeeSplitter.FeesForwarded.selector) forwarded++;
         }
         assertEq(collected, 1, "one FeesCollected");
         // Two recipients per side, both sides nonzero.
