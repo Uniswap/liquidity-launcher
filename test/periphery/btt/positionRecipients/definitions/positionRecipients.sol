@@ -20,7 +20,6 @@ import {
     CanonicalBuybackAndBurnPositionRecipient
 } from "../../../../../src/periphery/CanonicalBuybackAndBurnPositionRecipient.sol";
 import {CompoundingPositionRecipient} from "../../../../../src/periphery/CompoundingPositionRecipient.sol";
-import {PositionFeesForwarder} from "../../../../../src/periphery/PositionFeesForwarder.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
 import {MockLPFeesExecutor} from "../../../MockLPFeesExecutor.sol";
 import {MockCompoundingLPFeesExecutor} from "../../../MockCompoundingLPFeesExecutor.sol";
@@ -126,10 +125,6 @@ contract ReentrantLPFeesExecutor is ILPFeesExecutor {
 /// └── when the timelock has passed
 ///     └── it approves the operator
 ///
-/// PositionFeesForwarder
-/// └── when fees are collected
-///     └── it forwards both currencies
-///
 /// BaseLPFeesPositionRecipient
 /// ├── when either minimum is not met
 /// │   └── it reverts for the corresponding currency
@@ -203,16 +198,6 @@ contract PositionRecipientsBTTTest is Test {
 
         assertEq(manager.approvedOperator(), operator);
         assertTrue(manager.operatorApproved());
-    }
-
-    function test_PositionFeesForwarder_WhenFeesAreCollected_ForwardsBothCurrencies() public {
-        PositionFeesForwarder recipient =
-            new PositionFeesForwarder(IPositionManager(address(manager)), operator, 0, feeRecipient);
-
-        recipient.collectFees(TOKEN_ID);
-
-        assertEq(currency0.balanceOf(feeRecipient), FEES_0);
-        assertEq(currency1.balanceOf(feeRecipient), FEES_1);
     }
 
     function test_BaseRecipient_WhenCurrency0MinimumIsNotMet_Reverts(uint256 minimum) public {

@@ -4,9 +4,6 @@ PositionRecipientsBTTTest
 │   │   └── it reverts
 │   └── when the timelock has passed
 │       └── it approves the operator
-├── PositionFeesForwarder
-│   └── when fees are collected
-│       └── it forwards both currencies
 ├── BaseLPFeesPositionRecipient
 │   ├── when currency0 minimum is not met
 │   │   └── it reverts for currency0

@@ -7,6 +7,7 @@
         - [UERC20Factory](#uerc20factory)
         - [USUPERC20Factory](#usuperc20factory)
     - [Distribution Strategies](#distribution-strategies)
+        - [DirectLaunchStrategy](#directlaunchstrategy)
         - [FullRangeLBPStrategy](#fullrangelbpstrategy)
         - [AdvancedLBPStrategy](#advancedlbpstrategy)
         - [GovernedLBPStrategy](#governedlbpstrategy)
@@ -14,7 +15,7 @@
     - [Warnings](#warnings)
     - [Periphery contracts](#periphery-contracts)
         - [TimelockedPositionRecipient](#timelockedpositionrecipient)
-        - [PositionFeesForwarder](#positionfeesforwarder)
+        - [FeeSplitter](#feesplitter)
         - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
         - [CanonicalBuybackAndBurnPositionRecipient](#canonicalbuybackandburnpositionrecipient)
         - [CompoundingPositionRecipient](#compoundingpositionrecipient)
@@ -45,9 +46,31 @@ Creates standard ERC20 tokens with extended metadata. These tokens support Permi
 Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
 
 ### Distribution Strategies
-The distribution system is modular, allowing different strategies to be implemented. The main class of strategies is `LBPStrategy` and its subclasses. At a high level, these contracts are responsible for the creation of a Continuous Clearing Auction, the initialization of a Uniswap V4 pool, and the migration of the liquidity to V4. `LBPStrategy.migrate()` is a one-shot action: if the internal migration attempt succeeds, liquidity is deployed to V4; if it reverts, the strategy immediately sweeps the held LP token reserves and any raised currency back to the initializer's configured `recipient`.
+The distribution system is modular and supports direct-to-pool launches and auction-based launches.
 
-They all inherit from the `LBPStrategyBase` contract, which provides the core functionality for the strategy.
+#### DirectLaunchStrategy
+
+`DirectLaunchStrategy` creates a v4 pool and token-side LP positions in one call. It has no auction or graduation step. The caller approves `totalSupply`, then calls `initializeDistribution` with ABI-encoded `DirectLaunchParameters`. The strategy pulls the tokens, registers any launch-hook configuration, initializes the pool, and mints the positions.
+
+The caller configures:
+
+- The paired currency, initial price, fee, tick spacing, and hook.
+- Weighted `PositionDefinition[]` data. Weights MUST total `1e7`, and every resolved range MUST be entirely on the token side of the initial price.
+- The LP NFT recipient and optional per-position recipient overrides.
+- A recipient for rounding dust and tokens that cannot be placed because of per-tick liquidity limits.
+- Optional `LaunchConfig` data when the hook implements `ILaunchHook`.
+
+The launched token MUST be a standard ERC20, MUST differ from the paired currency, and MUST transfer exactly `totalSupply`. Fee-on-transfer and rebasing tokens are not supported. Position definitions allocate the full token budget, but the strategy does not guarantee that all tokens become liquidity: rounding and v4 liquidity limits can leave tokens for the configured sweep recipient. LP NFTs are owned and controlled by their configured recipients.
+
+Hooks are trusted launch inputs. Every direct launch MUST configure an `IInitializerHook` that authorizes the calling strategy and has the required v4 permission bits. This gate prevents third parties from initializing the configured pool key first. An `ILaunchHook` also requires a nonempty `LaunchConfig`; other hooks reject launch configuration. `DirectLaunchStrategy` derives the token's currency ordering and overwrites `LaunchConfig.tokenIsCurrency0` before registration.
+
+`DirectLaunchStrategy` is inheritable. Derived strategies can reuse exact token intake and the full launch sequence, or override launch, position-planning, hook-registration, and sweep steps when their constraints allow a smaller implementation.
+
+`LaunchHook` restricts initialization to the strategy, rejects static-fee pools, blocks swaps before `swapStartBlock`, and applies `baseFee` at or after `windowEndBlock`. During the launch window, it uses the configured `IDynamicFeeModule` quote for the swap direction, or `baseFee` if no module is set. Module calls fail closed: a failed or malformed quote blocks initialization or reverts the affected swap. Preflight does not guarantee future quotes or economic behavior.
+
+`TokenLaunched` records the pool key, initial price, and executed PositionManager plan. `TokensSwept` records tokens sent to the sweep recipient.
+
+The LBP strategies below create a Continuous Clearing Auction and later migrate liquidity to v4. `LBPStrategy.migrate()` is a one-shot action: if migration succeeds, liquidity is deployed to v4; if it reverts, the strategy sweeps the held LP token reserves and raised currency to the initializer's configured `recipient`.
 
 #### FullRangeLBPStrategy
 A simple implementation that migrates raised funds to Uniswap V4 as a single full-range position. It is the simplest strategy and is suitable for most use cases.
@@ -61,7 +84,7 @@ A strategy that lets a trusted entity restrict swapping on the liquidity pool.
 #### VirtualLBPStrategy
 A strategy that implements a virtual token backed by an underlying token. This is useful for tokens with complex vesting or lockup schedules.
 
-All of the above strategies are provided as-is, and custom strategies can be implemented by extending the `LBPStrategyBase` contract.
+The LBP strategies are provided as-is. Custom auction strategies can extend `LBPStrategyBase`.
 
 ### Warnings
 
@@ -79,8 +102,8 @@ The `TimelockedPositionRecipient` contract is a utility contract for holding a v
 
 A deployed instance can be used as a `PositionDefinition.recipient` when using an LBPStrategy.
 
-#### PositionFeesForwarder
-The `PositionFeesForwarder` extends the `TimelockedPositionRecipient` contract and forwards all collected fees to a recipient.
+#### FeeSplitter
+The `FeeSplitter` is a singleton custodian of native-ETH v4 LP positions with immutable, deploy-time fee splits. `collectFees(uint256[] tokenIds)` permissionlessly collects each position's accrued fees and pushes independent basis-point splits of the native ETH side (`currency0`) and the token side (`currency1`) to fixed recipients. A `CREATOR` sentinel recipient resolves per pool to the UERC20 `creator()` of the pool's token; if the token is not UERC20-compliant or a native send to the creator fails, that share is routed to an immutable per-side fallback so a collect can never be blocked. Positions held by the splitter are irrecoverable by design — there is no owner, operator, or exit path.
 
 #### BuybackAndBurnPositionRecipient
 The `BuybackAndBurnPositionRecipient` holds positions for one configured token/currency pair. An `ILPFeesExecutor` calls `collectFees(tokenId, minCurrency0, minCurrency1)` and receives both newly collected currencies. During the callback the executor may perform a buyback; after it returns, the recipient pulls the configured token amount from the executor and sends it to the burn address. The full transaction reverts if either fee minimum or the burn requirement is not met.

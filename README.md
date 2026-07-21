@@ -18,6 +18,12 @@ Liquidity Launcher provides a streamlined approach for projects to:
 
 The primary strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
+The repository also includes a direct-launch strategy:
+
+- `DirectLaunchStrategy` creates a v4 pool and one or more token-side positions from caller-supplied configuration. Each launch uses an initializer hook that reserves the pool key for the strategy.
+
+See the [Technical Reference](./docs/TechnicalReference.md#directlaunchstrategy) for configuration, lifecycle, and trust assumptions.
+
 ## Installation
 This project uses Foundry for development and testing. To get started:
 

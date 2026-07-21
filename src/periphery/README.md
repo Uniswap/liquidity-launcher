@@ -1,14 +1,12 @@
 # Periphery
 
-Peripheral contracts used alongside LBP strategies.
+Peripheral contracts used alongside launch strategies.
 
 ## Contents
 
 | Contract | Purpose |
 | --- | --- |
 | [`TimelockedPositionRecipient`](./TimelockedPositionRecipient.sol) | Holds one or more v4 LP positions until a timelock block is reached, then approves a configured operator to transfer them. Base contract for the recipients below. |
-| [`PositionFeesForwarder`](./PositionFeesForwarder.sol) | Adds a permissionless `collectFees(tokenId)` entrypoint that collects LP fees from a held position and forwards both sides to an immutable recipient. |
-| [`BuybackAndBurnPositionRecipient`](./BuybackAndBurnPositionRecipient.sol) | Holds positions for one configured token/currency pair. An executor calls `collectFees(tokenId, minCurrency0, minCurrency1)`, receives both fee currencies, performs the buyback in its callback, and must approve the configured burn amount before the call completes. |
 | [`CanonicalBuybackAndBurnPositionRecipient`](./CanonicalBuybackAndBurnPositionRecipient.sol) | Singleton flavor for canonical token/ETH launches. It requires native ETH as `currency0`, derives the burn token from `currency1`, and enforces one minimum currency1 burn amount across every position it holds. |
 | [`CompoundingPositionRecipient`](./CompoundingPositionRecipient.sol) | Sends collected fees to an executor, then compounds assets the executor deposits into PositionManager. ERC20s are deposited directly; native ETH is deposited as WETH and unwrapped by the recipient. The call reverts unless liquidity grows by the configured minimum. |
 | [`ProtocolFeeController`](./ProtocolFeeController.sol) | Governance-controlled source of truth for the protocol fee applied to currency raised by a launch. Integrators call it at fee-settlement time to discover the fee amount and recipient. See below. |
