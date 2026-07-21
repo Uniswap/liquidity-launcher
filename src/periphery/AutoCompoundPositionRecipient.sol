@@ -7,6 +7,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
@@ -17,13 +18,12 @@ import {CurrencyAmounts} from "../types/PositionPlannerTypes.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 
 /// @title AutoCompoundPositionRecipient
-/// @notice Utility contract for holding v4 LP positions and permissionlessly compounding their accrued fees back
-///         into the position
+/// @notice Singleton for holding arbitrary v4 LP positions and permissionlessly compounding their accrued fees
 /// @dev Fees are only ever added in kind at the pool's current price — the contract never swaps, so compounding
 ///      creates no price impact and nothing to backrun. Budget that does not fit the current ratio is stored and
 ///      deployed by later compounds. Two guards bound what a price manipulator can extract from a compound:
 ///      each compound grows the position by at most `maxCompoundBps` of its current liquidity, and only one
-///      compound can execute per block. A manipulate-compound-unwind bundle therefore extracts at most the
+///      compound can execute per pool per block. A manipulate-compound-unwind bundle therefore extracts at most the
 ///      capped add's repricing loss, and repeating it requires holding the skewed price across blocks against
 ///      arbitrage while paying pool swap fees on the manipulation volume both ways (v4 flash accounting makes
 ///      the manipulation capital free, but not the swap fees, which remain the binding cost).
@@ -34,22 +34,17 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
     using PositionInfoLibrary for PositionInfo;
     using SafeCast for uint256;
 
-    /// @notice Thrown when the currencies are not in v4 pool order
-    /// @param currency0 The provided currency0
-    /// @param currency1 The provided currency1
-    error CurrenciesOutOfOrderOrEqual(address currency0, address currency1);
     /// @notice Thrown when the caller reward exceeds the maximum
     /// @param callerRewardBps The invalid caller reward
     error InvalidCallerRewardBps(uint16 callerRewardBps);
     /// @notice Thrown when the compound cap is zero or exceeds 100%
     /// @param maxCompoundBps The invalid compound cap
     error InvalidMaxCompoundBps(uint16 maxCompoundBps);
-    /// @notice Thrown when a compound has already executed in the current block
+    /// @notice Thrown when a compound has already executed for the pool in the current block
     error AlreadyCompoundedThisBlock();
-    /// @notice Thrown when a position's pool currencies do not match the configured currencies
-    /// @param currency0 The position pool's currency0
-    /// @param currency1 The position pool's currency1
-    error CurrencyMismatch(Currency currency0, Currency currency1);
+    /// @notice Thrown when the position does not exist or has been burned
+    /// @param tokenId The invalid position token ID
+    error InvalidPosition(uint256 tokenId);
     /// @notice Thrown when the caller is not the operator
     /// @param caller The invalid caller
     error NotOperator(address caller);
@@ -77,61 +72,49 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
 
     /// @notice The canonical v4 pool manager
     IPoolManager public immutable poolManager;
-    /// @notice The pool currency with the lower address
-    Currency public immutable currency0;
-    /// @notice The pool currency with the higher address
-    Currency public immutable currency1;
     /// @notice The share of collected fees paid to the compound caller, in bps
     uint16 public immutable callerRewardBps;
     /// @notice The maximum position liquidity growth per compound, in bps of the position's current liquidity
     uint16 public immutable maxCompoundBps;
 
-    /// @notice The block number (blocknumberish) of the last compound
-    uint256 public lastCompoundBlock;
+    /// @notice The block number (blocknumberish) of the last compound for each pool
+    mapping(PoolId poolId => uint256 blockNumber) public lastCompoundBlock;
     /// @notice Collected but not yet deployed budget per position
-    /// @dev Budgets are tracked per token ID so a foreign position transferred to this contract can never deploy
-    ///      another position's balance into its own pool
+    /// @dev Amounts are interpreted using the token ID's immutable PoolKey and spent only for that position
     mapping(uint256 tokenId => CurrencyAmounts) public rollover;
 
     constructor(
-        Currency _currency0,
-        Currency _currency1,
         address _operator,
         IPositionManager _positionManager,
-        IPoolManager _poolManager,
         uint256 _timelockBlockNumber,
         uint16 _callerRewardBps,
         uint16 _maxCompoundBps
     ) TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
-        if (Currency.unwrap(_currency0) >= Currency.unwrap(_currency1)) {
-            revert CurrenciesOutOfOrderOrEqual(Currency.unwrap(_currency0), Currency.unwrap(_currency1));
+        if (_callerRewardBps > MAX_CALLER_REWARD_BPS) {
+            revert InvalidCallerRewardBps(_callerRewardBps);
         }
-        if (_callerRewardBps > MAX_CALLER_REWARD_BPS) revert InvalidCallerRewardBps(_callerRewardBps);
         if (_maxCompoundBps == 0 || _maxCompoundBps > MAX_BPS) revert InvalidMaxCompoundBps(_maxCompoundBps);
-        poolManager = _poolManager;
-        currency0 = _currency0;
-        currency1 = _currency1;
+        poolManager = _positionManager.poolManager();
         callerRewardBps = _callerRewardBps;
         maxCompoundBps = _maxCompoundBps;
     }
 
     /// @notice Collect any fees from the position and compound them back into the position
-    /// @dev Callable by anyone, at most once per block across all positions held by this contract. The caller
+    /// @dev Callable by anyone, at most once per pool per block across all positions held by this contract. The caller
     ///      receives `callerRewardBps` of the collected fees. The remainder joins the position's rollover budget,
     ///      from which liquidity is added at the pool's current price up to the per-compound cap.
     /// @param _tokenId The token ID of the position
     /// @return liquidityAdded The liquidity added to the position
     function compound(uint256 _tokenId) external nonReentrant returns (uint128 liquidityAdded) {
-        uint256 blockNumber = _getBlockNumberish();
-        if (blockNumber == lastCompoundBlock) revert AlreadyCompoundedThisBlock();
-        lastCompoundBlock = blockNumber;
-
         (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(_tokenId);
-        if (!(poolKey.currency0 == currency0 && poolKey.currency1 == currency1)) {
-            revert CurrencyMismatch(poolKey.currency0, poolKey.currency1);
-        }
+        if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
 
-        (uint256 collected0, uint256 collected1) = _collectFees(_tokenId);
+        PoolId poolId = poolKey.toId();
+        uint256 blockNumber = _getBlockNumberish();
+        if (blockNumber == lastCompoundBlock[poolId]) revert AlreadyCompoundedThisBlock();
+        lastCompoundBlock[poolId] = blockNumber;
+
+        (uint256 collected0, uint256 collected1) = _collectFees(_tokenId, poolKey.currency0, poolKey.currency1);
 
         // The reward is a share of freshly collected fees only, never of held rollover budgets, so repeated
         // compounding can never pay out more than callerRewardBps of the fees the position actually earned
@@ -150,8 +133,8 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
 
         emit Compounded(msg.sender, _tokenId, liquidityAdded, collected0, collected1);
 
-        if (reward0 > 0) currency0.transfer(msg.sender, reward0);
-        if (reward1 > 0) currency1.transfer(msg.sender, reward1);
+        if (reward0 > 0) poolKey.currency0.transfer(msg.sender, reward0);
+        if (reward1 > 0) poolKey.currency1.transfer(msg.sender, reward1);
     }
 
     /// @notice Transfer this contract's full balance of a currency to a recipient
@@ -172,21 +155,24 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
     /// @notice Collects the position's accrued fees into this contract
     /// @return collected0 The amount of currency0 collected
     /// @return collected1 The amount of currency1 collected
-    function _collectFees(uint256 _tokenId) private returns (uint256 collected0, uint256 collected1) {
-        uint256 balance0Before = currency0.balanceOfSelf();
-        uint256 balance1Before = currency1.balanceOfSelf();
+    function _collectFees(uint256 _tokenId, Currency _currency0, Currency _currency1)
+        private
+        returns (uint256 collected0, uint256 collected1)
+    {
+        uint256 balance0Before = _currency0.balanceOfSelf();
+        uint256 balance1Before = _currency1.balanceOfSelf();
 
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
         // Call DECREASE_LIQUIDITY with a liquidity of 0 to collect fees
         params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
         // Call TAKE_PAIR to send the collected fees to this contract
-        params[1] = abi.encode(currency0, currency1, address(this));
+        params[1] = abi.encode(_currency0, _currency1, address(this));
 
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
-        collected0 = currency0.balanceOfSelf() - balance0Before;
-        collected1 = currency1.balanceOfSelf() - balance1Before;
+        collected0 = _currency0.balanceOfSelf() - balance0Before;
+        collected1 = _currency1.balanceOfSelf() - balance1Before;
     }
 
     /// @notice Adds as much of the budget as the current price ratio and per-compound cap allow to the position
@@ -204,13 +190,13 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
         (liquidity, amount0, amount1) = _quoteAdd(_tokenId, _poolKey, _info, _budget);
         if (liquidity == 0) return (0, 0, 0);
 
-        uint256 balance0Before = currency0.balanceOfSelf();
-        uint256 balance1Before = currency1.balanceOfSelf();
+        uint256 balance0Before = _poolKey.currency0.balanceOfSelf();
+        uint256 balance1Before = _poolKey.currency1.balanceOfSelf();
 
-        _executeIncrease(_tokenId, liquidity, amount0, amount1);
+        _executeIncrease(_tokenId, _poolKey, liquidity, amount0, amount1);
 
-        spent0 = balance0Before - currency0.balanceOfSelf();
-        spent1 = balance1Before - currency1.balanceOfSelf();
+        spent0 = balance0Before - _poolKey.currency0.balanceOfSelf();
+        spent1 = balance1Before - _poolKey.currency1.balanceOfSelf();
     }
 
     /// @notice Quotes the capped liquidity addable from the budget and the exact amounts owed for it
@@ -230,7 +216,7 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
         // Cap the add so a single compound at a manipulated price bounds the extractable value. The product of
         // two values below type(uint128).max cannot overflow uint256 and the cap keeps the result in uint128.
         uint256 maxLiquidity = uint256(positionManager.getPositionLiquidity(_tokenId)) * maxCompoundBps / MAX_BPS;
-        if (liquidity > maxLiquidity) liquidity = uint128(maxLiquidity);
+        if (liquidity > maxLiquidity) liquidity = maxLiquidity.toUint128();
         if (liquidity == 0) return (0, 0, 0);
 
         // Quote the exact amounts owed for the liquidity with v4 core rounding so the transferred balances always
@@ -239,25 +225,31 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
     }
 
     /// @notice Transfers the owed amounts to the PositionManager and executes the increase
-    function _executeIncrease(uint256 _tokenId, uint128 _liquidity, uint256 _amount0, uint256 _amount1) private {
+    function _executeIncrease(
+        uint256 _tokenId,
+        PoolKey memory _poolKey,
+        uint128 _liquidity,
+        uint256 _amount0,
+        uint256 _amount1
+    ) private {
         bytes memory actions = abi.encodePacked(
             uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
         );
         bytes[] memory params = new bytes[](4);
         params[0] = abi.encode(_tokenId, _liquidity, _amount0.toUint128(), _amount1.toUint128(), bytes(""));
         // Settle both currencies from the balances transferred to the PositionManager below
-        params[1] = abi.encode(currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[2] = abi.encode(currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[1] = abi.encode(_poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(_poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
         // Call TAKE_PAIR to return any unconsumed dust to this contract
-        params[3] = abi.encode(currency0, currency1, address(this));
+        params[3] = abi.encode(_poolKey.currency0, _poolKey.currency1, address(this));
         bytes memory unlockData = abi.encode(actions, params);
 
-        if (currency0.isAddressZero()) {
-            if (_amount1 > 0) currency1.transfer(address(positionManager), _amount1);
+        if (_poolKey.currency0.isAddressZero()) {
+            if (_amount1 > 0) _poolKey.currency1.transfer(address(positionManager), _amount1);
             positionManager.modifyLiquidities{value: _amount0}(unlockData, block.timestamp);
         } else {
-            if (_amount0 > 0) currency0.transfer(address(positionManager), _amount0);
-            if (_amount1 > 0) currency1.transfer(address(positionManager), _amount1);
+            if (_amount0 > 0) _poolKey.currency0.transfer(address(positionManager), _amount0);
+            if (_amount1 > 0) _poolKey.currency1.transfer(address(positionManager), _amount1);
             positionManager.modifyLiquidities(unlockData, block.timestamp);
         }
     }

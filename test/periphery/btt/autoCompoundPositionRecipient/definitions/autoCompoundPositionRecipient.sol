@@ -23,8 +23,6 @@ import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimel
 /// @notice BTT tests for AutoCompoundPositionRecipient, run against both a native and an ERC20 currency0 fixture
 ///
 /// constructor
-/// ├── when the currencies are out of order or equal
-/// │   └── it reverts with CurrenciesOutOfOrderOrEqual
 /// ├── when the caller reward exceeds the maximum
 /// │   └── it reverts with InvalidCallerRewardBps
 /// ├── when the compound cap is zero
@@ -35,15 +33,15 @@ import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimel
 ///     └── it sets the configuration
 ///
 /// compound
-/// ├── when a compound already executed in the current block
+/// ├── when a compound already executed for the pool in the current block
 /// │   └── it reverts with AlreadyCompoundedThisBlock
 /// ├── when the position does not exist
-/// │   └── it reverts with CurrencyMismatch
-/// ├── when the position pool currencies do not match
-/// │   └── it reverts with CurrencyMismatch
+/// │   └── it reverts with InvalidPosition
 /// ├── when the position is not owned by the recipient
 /// │   └── it reverts with NotApproved
-/// └── when the position is owned and the currencies match
+/// ├── when positions belong to different pools
+/// │   └── it compounds both in the same block
+/// └── when the position is owned
 ///     ├── given the position has no fees and no rollover
 ///     │   └── it adds zero liquidity and succeeds
 ///     ├── given the position has accrued fees
@@ -54,6 +52,11 @@ import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimel
 ///     │   └── given the budget exceeds the per-compound cap
 ///     │       ├── it adds exactly the capped liquidity
 ///     │       └── it rolls the excess budget over
+///     ├── given two positions use the same pool
+///     │   ├── it limits the pool to one compound per block
+///     │   └── it keeps rollover isolated by token ID
+///     ├── given two pools share a currency
+///     │   └── it keeps the aggregate rollover fully collateralized
 ///     └── given rollover exists from a previous compound
 ///         └── it deploys the rollover budget
 ///
@@ -114,12 +117,9 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         });
         POOL_MANAGER.initialize(poolKey, SQRT_PRICE_1_1);
 
-        if (!currency0.isAddressZero()) {
-            MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), type(uint256).max);
-        }
-        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), type(uint256).max);
+        _approvePoolCurrenciesForSwap(poolKey);
 
-        recipient = _newRecipient(currency0, currency1, CALLER_REWARD_BPS, MAX_COMPOUND_BPS, 0);
+        recipient = _newRecipient(CALLER_REWARD_BPS, MAX_COMPOUND_BPS, 0);
         tokenId = _mintPosition(poolKey, address(recipient), POSITION_LIQUIDITY);
     }
 
@@ -132,13 +132,18 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         return Currency.wrap(address(new MockERC20("Token", "TKN", 1e30, address(this))));
     }
 
-    function _newRecipient(Currency _c0, Currency _c1, uint16 _rewardBps, uint16 _compoundBps, uint256 _timelock)
+    function _newRecipient(uint16 _rewardBps, uint16 _compoundBps, uint256 _timelock)
         internal
         returns (AutoCompoundPositionRecipient)
     {
-        return new AutoCompoundPositionRecipient(
-            _c0, _c1, operator, POSITION_MANAGER, POOL_MANAGER, _timelock, _rewardBps, _compoundBps
-        );
+        return new AutoCompoundPositionRecipient(operator, POSITION_MANAGER, _timelock, _rewardBps, _compoundBps);
+    }
+
+    function _approvePoolCurrenciesForSwap(PoolKey memory _key) internal {
+        if (!_key.currency0.isAddressZero()) {
+            MockERC20(Currency.unwrap(_key.currency0)).approve(address(swapRouter), type(uint256).max);
+        }
+        MockERC20(Currency.unwrap(_key.currency1)).approve(address(swapRouter), type(uint256).max);
     }
 
     /// @notice Mints a full range position funded from this contract's balances
@@ -178,10 +183,27 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
             Currency.unwrap(tokenA) < Currency.unwrap(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
         _key = PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(0))});
         POOL_MANAGER.initialize(_key, SQRT_PRICE_1_1);
+        _approvePoolCurrenciesForSwap(_key);
         _tokenId = _mintPosition(_key, _owner, POSITION_LIQUIDITY);
     }
 
-    function _swap(bool _zeroForOne, uint256 _amountIn) internal {
+    /// @notice Creates a second pool sharing currency1 with the default pool
+    function _mintSharedCurrencyPoolPosition(address _owner)
+        internal
+        returns (uint256 _tokenId, PoolKey memory _key, Currency _sharedCurrency)
+    {
+        _sharedCurrency = currency1;
+        Currency other = _newToken();
+        (Currency c0, Currency c1) = Currency.unwrap(_sharedCurrency) < Currency.unwrap(other)
+            ? (_sharedCurrency, other)
+            : (other, _sharedCurrency);
+        _key = PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(0))});
+        POOL_MANAGER.initialize(_key, SQRT_PRICE_1_1);
+        _approvePoolCurrenciesForSwap(_key);
+        _tokenId = _mintPosition(_key, _owner, POSITION_LIQUIDITY);
+    }
+
+    function _swap(PoolKey memory _key, bool _zeroForOne, uint256 _amountIn) internal {
         SwapParams memory params = SwapParams({
             zeroForOne: _zeroForOne,
             amountSpecified: -int256(_amountIn),
@@ -189,17 +211,21 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         });
         PoolSwapTest.TestSettings memory settings =
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        if (_zeroForOne && currency0.isAddressZero()) {
-            swapRouter.swap{value: _amountIn}(poolKey, params, settings, "");
+        if (_zeroForOne && _key.currency0.isAddressZero()) {
+            swapRouter.swap{value: _amountIn}(_key, params, settings, "");
         } else {
-            swapRouter.swap(poolKey, params, settings, "");
+            swapRouter.swap(_key, params, settings, "");
         }
     }
 
     /// @notice Accrues fees to in-range positions in both currencies by swapping back and forth
     function _generateFees(uint256 _amountIn) internal {
-        _swap(true, _amountIn);
-        _swap(false, _amountIn);
+        _generateFees(poolKey, _amountIn);
+    }
+
+    function _generateFees(PoolKey memory _key, uint256 _amountIn) internal {
+        _swap(_key, true, _amountIn);
+        _swap(_key, false, _amountIn);
     }
 
     /// @notice Calls compound as `_caller` and decodes the emitted Compounded event
@@ -224,38 +250,18 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
 
     // constructor
 
-    function test_Constructor_WhenCurrenciesOutOfOrderOrEqual_Reverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AutoCompoundPositionRecipient.CurrenciesOutOfOrderOrEqual.selector,
-                Currency.unwrap(currency1),
-                Currency.unwrap(currency0)
-            )
-        );
-        _newRecipient(currency1, currency0, CALLER_REWARD_BPS, MAX_COMPOUND_BPS, 0);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AutoCompoundPositionRecipient.CurrenciesOutOfOrderOrEqual.selector,
-                Currency.unwrap(currency1),
-                Currency.unwrap(currency1)
-            )
-        );
-        _newRecipient(currency1, currency1, CALLER_REWARD_BPS, MAX_COMPOUND_BPS, 0);
-    }
-
     function test_Constructor_WhenCallerRewardExceedsMaximum_Reverts(uint16 _callerRewardBps) public {
         _callerRewardBps = uint16(bound(_callerRewardBps, 1_001, type(uint16).max));
 
         vm.expectRevert(
             abi.encodeWithSelector(AutoCompoundPositionRecipient.InvalidCallerRewardBps.selector, _callerRewardBps)
         );
-        _newRecipient(currency0, currency1, _callerRewardBps, MAX_COMPOUND_BPS, 0);
+        _newRecipient(_callerRewardBps, MAX_COMPOUND_BPS, 0);
     }
 
     function test_Constructor_WhenCompoundCapIsZero_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(AutoCompoundPositionRecipient.InvalidMaxCompoundBps.selector, 0));
-        _newRecipient(currency0, currency1, CALLER_REWARD_BPS, 0, 0);
+        _newRecipient(CALLER_REWARD_BPS, 0, 0);
     }
 
     function test_Constructor_WhenCompoundCapExceedsMaximum_Reverts(uint16 _maxCompoundBps) public {
@@ -264,7 +270,7 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         vm.expectRevert(
             abi.encodeWithSelector(AutoCompoundPositionRecipient.InvalidMaxCompoundBps.selector, _maxCompoundBps)
         );
-        _newRecipient(currency0, currency1, CALLER_REWARD_BPS, _maxCompoundBps, 0);
+        _newRecipient(CALLER_REWARD_BPS, _maxCompoundBps, 0);
     }
 
     function test_Constructor_WhenParametersValid_SetsConfiguration(
@@ -275,11 +281,8 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         _callerRewardBps = uint16(bound(_callerRewardBps, 0, 1_000));
         _maxCompoundBps = uint16(bound(_maxCompoundBps, 1, 10_000));
 
-        AutoCompoundPositionRecipient created =
-            _newRecipient(currency0, currency1, _callerRewardBps, _maxCompoundBps, _timelockBlockNumber);
+        AutoCompoundPositionRecipient created = _newRecipient(_callerRewardBps, _maxCompoundBps, _timelockBlockNumber);
 
-        assertEq(Currency.unwrap(created.currency0()), Currency.unwrap(currency0));
-        assertEq(Currency.unwrap(created.currency1()), Currency.unwrap(currency1));
         assertEq(created.operator(), operator);
         assertEq(address(created.positionManager()), address(POSITION_MANAGER));
         assertEq(address(created.poolManager()), address(POOL_MANAGER));
@@ -299,22 +302,31 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
     }
 
     function test_Compound_WhenPositionDoesNotExist_Reverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(AutoCompoundPositionRecipient.CurrencyMismatch.selector, address(0), address(0))
-        );
+        vm.expectRevert(abi.encodeWithSelector(AutoCompoundPositionRecipient.InvalidPosition.selector, uint256(424242)));
         recipient.compound(424242);
     }
 
-    function test_Compound_WhenPoolCurrenciesDoNotMatch_Reverts() public {
-        // A position in another pool transferred to the recipient must never deploy the recipient's balances
+    function test_Compound_WhenDifferentPoolsCompoundInSameBlock_Succeeds() public {
         (uint256 foreignTokenId, PoolKey memory foreignKey) = _mintForeignPoolPosition(address(recipient));
+        _generateFees(SWAP_AMOUNT);
+        _generateFees(foreignKey, SWAP_AMOUNT);
+        uint128 defaultLiquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        uint128 foreignLiquidityBefore = POSITION_MANAGER.getPositionLiquidity(foreignTokenId);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AutoCompoundPositionRecipient.CurrencyMismatch.selector, foreignKey.currency0, foreignKey.currency1
-            )
-        );
+        recipient.compound(tokenId);
         recipient.compound(foreignTokenId);
+
+        assertGt(POSITION_MANAGER.getPositionLiquidity(tokenId), defaultLiquidityBefore);
+        assertGt(POSITION_MANAGER.getPositionLiquidity(foreignTokenId), foreignLiquidityBefore);
+    }
+
+    function test_Compound_WhenSecondPositionInSamePoolCompoundsThisBlock_Reverts() public {
+        uint256 secondTokenId = _mintPosition(poolKey, address(recipient), POSITION_LIQUIDITY);
+
+        recipient.compound(tokenId);
+
+        vm.expectRevert(AutoCompoundPositionRecipient.AlreadyCompoundedThisBlock.selector);
+        recipient.compound(secondTokenId);
     }
 
     function test_Compound_WhenPositionNotOwned_Reverts() public {
@@ -373,6 +385,47 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         assertEq(rollover1, currency1.balanceOf(address(recipient)));
     }
 
+    function test_Compound_GivenTwoPositionsInSamePool_KeepsRolloverIsolated() public {
+        uint256 secondTokenId = _mintPosition(poolKey, address(recipient), POSITION_LIQUIDITY);
+        uint128 secondLiquidityBefore = POSITION_MANAGER.getPositionLiquidity(secondTokenId);
+        _generateFees(SWAP_AMOUNT);
+
+        _compoundAndDecode(recipient, searcher, tokenId);
+
+        (uint256 secondRollover0, uint256 secondRollover1) = recipient.rollover(secondTokenId);
+        assertEq(secondRollover0, 0);
+        assertEq(secondRollover1, 0);
+        assertEq(POSITION_MANAGER.getPositionLiquidity(secondTokenId), secondLiquidityBefore);
+    }
+
+    function test_Compound_GivenPoolsShareCurrency_KeepsAggregateRolloverSolvent() public {
+        AutoCompoundPositionRecipient capped = _newRecipient(CALLER_REWARD_BPS, 1, 0);
+        uint256 defaultTokenId = _mintPosition(poolKey, address(capped), POSITION_LIQUIDITY);
+        (uint256 sharedTokenId, PoolKey memory sharedKey, Currency sharedCurrency) =
+            _mintSharedCurrencyPoolPosition(address(capped));
+        _generateFees(poolKey, SWAP_AMOUNT * 4);
+        _generateFees(sharedKey, SWAP_AMOUNT * 4);
+
+        capped.compound(defaultTokenId);
+        capped.compound(sharedTokenId);
+
+        (uint256 defaultRollover0, uint256 defaultRollover1) = capped.rollover(defaultTokenId);
+        (uint256 sharedRollover0, uint256 sharedRollover1) = capped.rollover(sharedTokenId);
+        uint256 sharedPoolLiability = sharedKey.currency0 == sharedCurrency ? sharedRollover0 : sharedRollover1;
+        Currency sharedPoolOther = sharedKey.currency0 == sharedCurrency ? sharedKey.currency1 : sharedKey.currency0;
+        uint256 sharedPoolOtherLiability = sharedKey.currency0 == sharedCurrency ? sharedRollover1 : sharedRollover0;
+
+        assertGt(defaultRollover0 + defaultRollover1, 0);
+        assertGt(sharedRollover0 + sharedRollover1, 0);
+        assertEq(
+            sharedCurrency.balanceOf(address(capped)),
+            defaultRollover1 + sharedPoolLiability,
+            "shared currency is not fully collateralized"
+        );
+        assertEq(poolKey.currency0.balanceOf(address(capped)), defaultRollover0);
+        assertEq(sharedPoolOther.balanceOf(address(capped)), sharedPoolOtherLiability);
+    }
+
     function test_Compound_GivenAccruedFees_EmitsCompounded() public {
         _generateFees(SWAP_AMOUNT);
 
@@ -384,7 +437,7 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
 
     function test_Compound_GivenBudgetExceedsCap_AddsExactlyTheCappedLiquidity() public {
         // A dedicated recipient with a 0.01% growth cap and its own equally sized position
-        AutoCompoundPositionRecipient capped = _newRecipient(currency0, currency1, CALLER_REWARD_BPS, 1, 0);
+        AutoCompoundPositionRecipient capped = _newRecipient(CALLER_REWARD_BPS, 1, 0);
         uint256 cappedTokenId = _mintPosition(poolKey, address(capped), POSITION_LIQUIDITY);
         _generateFees(SWAP_AMOUNT * 4);
 
@@ -399,7 +452,7 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
     }
 
     function test_Compound_GivenRolloverFromPreviousCompound_DeploysTheRolloverBudget() public {
-        AutoCompoundPositionRecipient capped = _newRecipient(currency0, currency1, CALLER_REWARD_BPS, 1, 0);
+        AutoCompoundPositionRecipient capped = _newRecipient(CALLER_REWARD_BPS, 1, 0);
         uint256 cappedTokenId = _mintPosition(poolKey, address(capped), POSITION_LIQUIDITY);
         _generateFees(SWAP_AMOUNT * 4);
         _compoundAndDecode(capped, searcher, cappedTokenId);
@@ -421,8 +474,7 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
     // sweep
 
     function test_Sweep_WhenTimelockHasNotPassed_Reverts() public {
-        AutoCompoundPositionRecipient locked =
-            _newRecipient(currency0, currency1, CALLER_REWARD_BPS, MAX_COMPOUND_BPS, block.number + 1_000);
+        AutoCompoundPositionRecipient locked = _newRecipient(CALLER_REWARD_BPS, MAX_COMPOUND_BPS, block.number + 1_000);
 
         vm.expectRevert(ITimelockedPositionRecipient.Timelocked.selector);
         vm.prank(operator);

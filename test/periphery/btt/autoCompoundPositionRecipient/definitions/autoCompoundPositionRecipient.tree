@@ -1,7 +1,5 @@
 AutoCompoundPositionRecipientTest
 ├── constructor
-│   ├── when the currencies are out of order or equal
-│   │   └── it reverts with CurrenciesOutOfOrderOrEqual
 │   ├── when the caller reward exceeds the maximum
 │   │   └── it reverts with InvalidCallerRewardBps
 │   ├── when the compound cap is zero
@@ -11,15 +9,15 @@ AutoCompoundPositionRecipientTest
 │   └── when the parameters are valid
 │       └── it sets the configuration
 ├── compound
-│   ├── when a compound already executed in the current block
+│   ├── when a compound already executed for the pool in the current block
 │   │   └── it reverts with AlreadyCompoundedThisBlock
 │   ├── when the position does not exist
-│   │   └── it reverts with CurrencyMismatch
-│   ├── when the position pool currencies do not match
-│   │   └── it reverts with CurrencyMismatch
+│   │   └── it reverts with InvalidPosition
 │   ├── when the position is not owned by the recipient
 │   │   └── it reverts with NotApproved
-│   └── when the position is owned and the currencies match
+│   ├── when positions belong to different pools
+│   │   └── it compounds both in the same block
+│   └── when the position is owned
 │       ├── given the position has no fees and no rollover
 │       │   └── it adds zero liquidity and succeeds
 │       ├── given the position has accrued fees
@@ -30,6 +28,11 @@ AutoCompoundPositionRecipientTest
 │       │   └── given the budget exceeds the per-compound cap
 │       │       ├── it adds exactly the capped liquidity
 │       │       └── it rolls the excess budget over
+│       ├── given two positions use the same pool
+│       │   ├── it limits the pool to one compound per block
+│       │   └── it keeps rollover isolated by token ID
+│       ├── given two pools share a currency
+│       │   └── it keeps the aggregate rollover fully collateralized
 │       └── given rollover exists from a previous compound
 │           └── it deploys the rollover budget
 └── sweep
