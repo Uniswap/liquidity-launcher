@@ -89,7 +89,9 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @param token The launched token.
     /// @param finalPositionRecipient The permanent recipient of the launch LP position.
     /// @param key The initialized pool key.
-    event TokenLaunched(PoolId indexed poolId, address indexed token, address indexed finalPositionRecipient, PoolKey key);
+    event TokenLaunched(
+        PoolId indexed poolId, address indexed token, address indexed finalPositionRecipient, PoolKey key
+    );
 
     constructor(address _launcher, IPositionManager _positionManager, IPoolManager _poolManager, int24 _initialTick) {
         if (_launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)) {
