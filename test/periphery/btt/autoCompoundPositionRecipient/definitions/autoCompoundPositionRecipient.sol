@@ -109,8 +109,9 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         vm.deal(address(this), 1_000_000e18);
 
         (currency0, currency1) = _createCurrencies();
-        poolKey =
-            PoolKey({currency0: currency0, currency1: currency1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(0))});
+        poolKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(0))
+        });
         POOL_MANAGER.initialize(poolKey, SQRT_PRICE_1_1);
 
         if (!currency0.isAddressZero()) {
@@ -141,15 +142,19 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
     }
 
     /// @notice Mints a full range position funded from this contract's balances
-    function _mintPosition(PoolKey memory _key, address _owner, uint128 _liquidity) internal returns (uint256 _tokenId) {
+    function _mintPosition(PoolKey memory _key, address _owner, uint128 _liquidity)
+        internal
+        returns (uint256 _tokenId)
+    {
         _tokenId = POSITION_MANAGER.nextTokenId();
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
         );
         bytes[] memory params = new bytes[](4);
-        params[0] =
-            abi.encode(_key, TICK_LOWER, TICK_UPPER, _liquidity, type(uint128).max, type(uint128).max, _owner, bytes(""));
+        params[0] = abi.encode(
+            _key, TICK_LOWER, TICK_UPPER, _liquidity, type(uint128).max, type(uint128).max, _owner, bytes("")
+        );
         params[1] = abi.encode(_key.currency0, ActionConstants.CONTRACT_BALANCE, false);
         params[2] = abi.encode(_key.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(_key.currency0, _key.currency1, address(this));
@@ -182,7 +187,8 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
             amountSpecified: -int256(_amountIn),
             sqrtPriceLimitX96: _zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         });
-        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
         if (_zeroForOne && currency0.isAddressZero()) {
             swapRouter.swap{value: _amountIn}(poolKey, params, settings, "");
         } else {
@@ -382,8 +388,7 @@ abstract contract AutoCompoundPositionRecipientTestBase is Test {
         uint256 cappedTokenId = _mintPosition(poolKey, address(capped), POSITION_LIQUIDITY);
         _generateFees(SWAP_AMOUNT * 4);
 
-        uint128 maxLiquidity =
-            uint128(uint256(POSITION_MANAGER.getPositionLiquidity(cappedTokenId)) * 1 / MAX_BPS);
+        uint128 maxLiquidity = uint128(uint256(POSITION_MANAGER.getPositionLiquidity(cappedTokenId)) * 1 / MAX_BPS);
         (uint128 liquidityAdded,,) = _compoundAndDecode(capped, searcher, cappedTokenId);
 
         // it adds exactly the capped liquidity

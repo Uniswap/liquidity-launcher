@@ -193,10 +193,12 @@ contract AutoCompoundPositionRecipient is TimelockedPositionRecipient {
     /// @return liquidity The liquidity added
     /// @return spent0 The amount of currency0 consumed from the budget
     /// @return spent1 The amount of currency1 consumed from the budget
-    function _increaseLiquidity(uint256 _tokenId, PoolKey memory _poolKey, PositionInfo _info, CurrencyAmounts memory _budget)
-        private
-        returns (uint128 liquidity, uint256 spent0, uint256 spent1)
-    {
+    function _increaseLiquidity(
+        uint256 _tokenId,
+        PoolKey memory _poolKey,
+        PositionInfo _info,
+        CurrencyAmounts memory _budget
+    ) private returns (uint128 liquidity, uint256 spent0, uint256 spent1) {
         uint256 amount0;
         uint256 amount1;
         (liquidity, amount0, amount1) = _quoteAdd(_tokenId, _poolKey, _info, _budget);
