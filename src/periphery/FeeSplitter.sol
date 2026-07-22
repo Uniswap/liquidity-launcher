@@ -102,13 +102,11 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Accepts positions safe-transferred through the PositionManager and registers the
     ///         transfer data, when present, as the position's fee beneficiary.
-    /// @dev A genuine PositionManager callback proves the sender owned the position and consented to
-    ///      the deposit, and owning a position carries the right to name its fee beneficiary — the
-    ///      owner could have kept 100% of the fees by not depositing. The registration is immutable
-    ///      by construction: positions never leave the splitter, so this callback cannot fire twice
-    ///      for the same tokenId. Adding fee beneficiaries is NOT supported for positions minted or
-    ///      sent to this contract without triggering this callback. Other NFTs are rejected: they
-    ///      would be irrecoverably stuck, since collectFees only interacts with the PositionManager.
+    /// @dev Only PositionManager callbacks are accepted, so a registration verifiably comes from the
+    ///      position's owner, and it never changes: positions cannot leave the splitter. Adding fee
+    ///      beneficiaries is NOT supported for positions minted or sent to this contract without
+    ///      triggering this callback. Other NFTs are rejected: they would be irrecoverably stuck,
+    ///      since collectFees only interacts with the PositionManager.
     function onERC721Received(address, address, uint256 tokenId, bytes calldata data) external returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         if (data.length != 0) {
