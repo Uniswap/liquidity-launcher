@@ -3,12 +3,19 @@ pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
 
@@ -23,6 +30,7 @@ import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IF
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
+    using StateLibrary for IPoolManager;
 
     /// @notice The denominator for fee splits: each side's splits sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
@@ -97,8 +105,53 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTr
         uint256 count = tokenIds.length;
         if (count == 0) revert NoTokenIds();
         for (uint256 i; i < count; i++) {
-            _collect(tokenIds[i]);
+            _collect(tokenIds[i], 0);
         }
+    }
+
+    /// @inheritdoc IFeeSplitter
+    function increasePosition(uint256 tokenId, uint256 tokenAmount) external payable override nonReentrant {
+        // Collect and distribute pending fees first: a v4 liquidity increase credits accrued fees
+        // toward the payment, so increasing without collecting would silently convert everyone's
+        // undistributed shares into locked liquidity. msg.value is the caller's funding, not fees,
+        // and is excluded from the distribution.
+        (PoolKey memory poolKey, PositionInfo info) = _collect(tokenId, msg.value);
+        address token = Currency.unwrap(poolKey.currency1);
+        if (tokenAmount != 0) {
+            SafeTransferLib.safeTransferFrom(token, msg.sender, address(this), tokenAmount);
+            // The collect above zeroed the token balance, so the pull must deliver exactly
+            // tokenAmount — fee-on-transfer tokens are unsupported (as everywhere in this system)
+            // and would otherwise revert opaquely when the nominal amount is forwarded below.
+            uint256 received = poolKey.currency1.balanceOfSelf();
+            if (received != tokenAmount) revert TokenAmountMismatch(received, tokenAmount);
+        }
+
+        (uint160 sqrtPriceX96,,,) = positionManager.poolManager().getSlot0(poolKey.toId());
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(info.tickLower()),
+            TickMath.getSqrtPriceAtTick(info.tickUpper()),
+            msg.value,
+            tokenAmount
+        );
+        if (liquidity == 0) revert ZeroLiquidity();
+
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
+        );
+        bytes[] memory params = new bytes[](4);
+        params[0] = abi.encode(
+            tokenId, liquidity, SafeCastLib.toUint128(msg.value), SafeCastLib.toUint128(tokenAmount), bytes("")
+        );
+        params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        // Unused remainder returns here and is flushed through the split by a future collect.
+        params[3] = abi.encode(poolKey.currency0, poolKey.currency1, address(this));
+
+        SafeTransferLib.safeTransfer(token, address(positionManager), tokenAmount);
+        positionManager.modifyLiquidities{value: msg.value}(abi.encode(actions, params), block.timestamp);
+
+        emit PositionIncreased(tokenId, liquidity, msg.value, tokenAmount);
     }
 
     /// @notice Accepts positions safe-transferred through the PositionManager and mints this
@@ -126,8 +179,13 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTr
     receive() external payable {}
 
     /// @notice Collects one position's fees to this contract and distributes both sides.
-    function _collect(uint256 tokenId) private {
-        (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
+    /// @param reservedNative Native balance that is NOT fees (a caller's increase funding) and must
+    ///        be excluded from the distribution.
+    function _collect(uint256 tokenId, uint256 reservedNative)
+        private
+        returns (PoolKey memory poolKey, PositionInfo info)
+    {
+        (poolKey, info) = positionManager.getPoolAndPositionInfo(tokenId);
         if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
         address token = Currency.unwrap(poolKey.currency1);
 
@@ -141,7 +199,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTr
         // Distribute the full standing balances: every collect ends at zero, so outside the
         // (pointless) donation case these equal the fees just collected — and donations are
         // simply flushed through the split instead of being stuck here forever.
-        uint256 nativeAmount = address(this).balance;
+        uint256 nativeAmount = address(this).balance - reservedNative;
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 

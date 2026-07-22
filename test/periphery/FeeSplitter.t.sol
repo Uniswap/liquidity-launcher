@@ -24,6 +24,7 @@ import {ERC721} from "solady/tokens/ERC721.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
+import {MockDirectShortTransferToken} from "../strategies/directLaunch/base/DirectLaunchTestBase.sol";
 import {MockRejectEth} from "../mocks/MockRejectEth.sol";
 
 /// @notice Native recipient that attempts to reenter collectFees from its receive hook.
@@ -514,6 +515,86 @@ contract FeeSplitterTest is Test {
         splitter.collectFees(_single(tokenId));
         assertGt(beneficiary.balance, 0);
         assertGt(token.balanceOf(beneficiary), 0);
+    }
+
+    /* ///////////////////////////////////////////////////////////////////////
+                                INCREASE POSITION
+    /////////////////////////////////////////////////////////////////////// */
+
+    function test_increasePosition_addsLiquidityAndDistributesPendingFeesFirst() public {
+        FeeSplitter splitter = _defaultSplitter();
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+
+        // Pending fees exist; the increase must distribute them before adding liquidity.
+        token.approve(address(splitter), 50 ether);
+        splitter.increasePosition{value: 50 ether}(tokenId, 50 ether);
+
+        assertGt(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore, "liquidity did not grow");
+        // The fee split was honored: the beneficiary received their fee share.
+        assertGt(creator.balance, 0, "pending native fees not distributed");
+        assertGt(token.balanceOf(creator), 0, "pending token fees not distributed");
+    }
+
+    function test_increasePosition_excludesCallerFundsFromDistribution() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(creator));
+
+        // No fees have accrued: nothing must be distributed, msg.value is purely funding.
+        token.approve(address(splitter), 10 ether);
+        splitter.increasePosition{value: 10 ether}(tokenId, 10 ether);
+        assertEq(creator.balance, 0, "caller funding leaked into distribution");
+        assertEq(tokenJar.balance, 0, "caller funding leaked to the jar");
+    }
+
+    function test_increasePosition_revertsWhenFundsMintNoLiquidity() public {
+        FeeSplitter splitter = _defaultSplitter();
+        (,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+
+        // The zero-funds griefing attempt: pending fees must not be compounded into liquidity.
+        vm.expectRevert(IFeeSplitter.ZeroLiquidity.selector);
+        splitter.increasePosition(tokenId, 0);
+
+        // The revert also undid nothing: fees remain collectable through the split.
+        splitter.collectFees(_single(tokenId));
+        assertGt(creator.balance, 0);
+    }
+
+    function test_increasePosition_revertsOnFeeOnTransferPull() public {
+        FeeSplitter splitter = _defaultSplitter();
+        // Shorts transferFrom by one wei; plain transfer (used by the mint path) is unaffected.
+        MockDirectShortTransferToken token = new MockDirectShortTransferToken(1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(creator));
+
+        token.approve(address(splitter), 10 ether);
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.TokenAmountMismatch.selector, 10 ether - 1, 10 ether));
+        splitter.increasePosition{value: 10 ether}(tokenId, 10 ether);
+    }
+
+    function test_increasePosition_leftoverStaysAndFlushesThroughNextCollect() public {
+        FeeSplitter splitter = _defaultSplitter();
+        (MockERC20 token, PoolKey memory key, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        splitter.collectFees(_single(tokenId)); // start clean
+
+        // Deliberately token-heavy ratio: part of the token amount cannot become liquidity.
+        token.approve(address(splitter), 100 ether);
+        splitter.increasePosition{value: 0.01 ether}(tokenId, 100 ether);
+        uint256 leftover = token.balanceOf(address(splitter));
+        assertGt(leftover, 0, "expected a token leftover");
+
+        // The leftover is flushed through the split by the next collect.
+        _accrueFees(key);
+        uint256 deadBefore = token.balanceOf(BURN_ADDRESS);
+        splitter.collectFees(_single(tokenId));
+        assertEq(token.balanceOf(address(splitter)), 0);
+        assertGt(token.balanceOf(BURN_ADDRESS) - deadBefore, leftover * 8_000 / 10_000);
     }
 
     function test_beneficiaryNft_transferMovesTheFeeStream() public {
