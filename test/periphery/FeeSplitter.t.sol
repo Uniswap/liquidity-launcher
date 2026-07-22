@@ -23,7 +23,6 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {MockUERC20, MockRevertingCreatorToken} from "../mocks/MockUERC20.sol";
 import {MockRejectEth} from "../mocks/MockRejectEth.sol";
 
 /// @notice Native recipient that attempts to reenter collectFees from its receive hook.
@@ -54,7 +53,8 @@ contract FeeSplitterTest is Test {
     uint24 internal constant FEE = 10_000;
     int24 internal constant TICK_SPACING = 200;
 
-    address internal constant CREATOR_SENTINEL = address(uint160(uint256(keccak256("FeeSplitter.CREATOR"))));
+    address internal constant FEE_BENEFICIARY_SENTINEL =
+        address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
     PoolSwapTest internal swapRouter;
     address internal tokenJar = makeAddr("tokenJar");
@@ -97,8 +97,8 @@ contract FeeSplitterTest is Test {
             POSITION_MANAGER,
             tokenJar,
             BURN_ADDRESS,
-            _splits(tokenJar, 8_000, CREATOR_SENTINEL, 2_000),
-            _splits(BURN_ADDRESS, 8_000, CREATOR_SENTINEL, 2_000)
+            _splits(tokenJar, 8_000, FEE_BENEFICIARY_SENTINEL, 2_000),
+            _splits(BURN_ADDRESS, 8_000, FEE_BENEFICIARY_SENTINEL, 2_000)
         );
     }
 
@@ -168,14 +168,17 @@ contract FeeSplitterTest is Test {
         );
     }
 
-    /// @dev Launches a fresh token + pool + splitter-owned position with accrued fees.
-    function _setUpPositionWithFees(FeeSplitter splitter, address tokenCreator)
+    /// @dev Launches a fresh token + pool + position deposited into the splitter with the given
+    ///      registered beneficiary, with accrued fees.
+    function _setUpPositionWithFees(FeeSplitter splitter, address beneficiary)
         internal
-        returns (MockUERC20 token, PoolKey memory key, uint256 tokenId)
+        returns (MockERC20 token, PoolKey memory key, uint256 tokenId)
     {
-        token = new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), tokenCreator);
+        token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
         key = _initPool(address(token));
-        tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(beneficiary));
         _accrueFees(key);
     }
 
@@ -212,20 +215,20 @@ contract FeeSplitterTest is Test {
         assertEq(native.length, 2);
         assertEq(native[0].recipient, tokenJar);
         assertEq(native[0].bps, 8_000);
-        assertEq(native[1].recipient, CREATOR_SENTINEL);
+        assertEq(native[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(native[1].bps, 2_000);
 
         FeeSplit[] memory tokenSide = splitter.getTokenSplits();
         assertEq(tokenSide.length, 2);
         assertEq(tokenSide[0].recipient, BURN_ADDRESS);
         assertEq(tokenSide[0].bps, 8_000);
-        assertEq(tokenSide[1].recipient, CREATOR_SENTINEL);
+        assertEq(tokenSide[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(tokenSide[1].bps, 2_000);
     }
 
     function test_constructor_revertsOnInvalidFallback() public {
         FeeSplit[] memory splits = _splits(tokenJar);
-        address creatorSentinel = address(uint160(uint256(keccak256("FeeSplitter.CREATOR"))));
+        address creatorSentinel = address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidFallback.selector, address(0)));
         new FeeSplitter(POSITION_MANAGER, address(0), BURN_ADDRESS, splits, splits);
@@ -282,7 +285,7 @@ contract FeeSplitterTest is Test {
 
     function test_collectFees_revertsIfNotOwner() public {
         FeeSplitter splitter = _defaultSplitter();
-        MockUERC20 token = new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), creator);
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
         PoolKey memory key = _initPool(address(token));
         // Position owned by the test contract, not the splitter.
         uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
@@ -310,9 +313,9 @@ contract FeeSplitterTest is Test {
 
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_collectFees_distributesBothSidesWithCreator() public {
+    function test_collectFees_distributesBothSidesToRegisteredBeneficiary() public {
         FeeSplitter splitter = _defaultSplitter();
-        (MockUERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
 
         uint256 jarNativeBefore = tokenJar.balance;
         uint256 creatorNativeBefore = creator.balance;
@@ -361,13 +364,15 @@ contract FeeSplitterTest is Test {
         assertEq(forwarded, 4, "four FeesForwarded");
     }
 
-    function test_collectFees_creatorFallbackWhenNotUERC20() public {
+    function test_collectFees_unregisteredPositionFallsBackPerSide() public {
         FeeSplitter splitter = _defaultSplitter();
-        // Plain ERC20: creator() does not exist, both CREATOR shares must fall back.
+        // Minted directly to the splitter: no receiver callback, so no registered beneficiary —
+        // the sentinel shares go straight to the per-side fallbacks.
         MockERC20 token = new MockERC20("Plain", "PLAIN", 1_000_000 ether, address(this));
         PoolKey memory key = _initPool(address(token));
         uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
         _accrueFees(key);
+        assertEq(splitter.feeBeneficiary(tokenId), address(0));
 
         uint256 jarNativeBefore = tokenJar.balance;
         uint256 deadTokenBefore = token.balanceOf(BURN_ADDRESS);
@@ -380,25 +385,11 @@ contract FeeSplitterTest is Test {
         assertEq(token.balanceOf(address(splitter)), 0);
     }
 
-    function test_collectFees_creatorFallbackWhenCreatorReverts() public {
-        FeeSplitter splitter = _defaultSplitter();
-        MockRevertingCreatorToken token = new MockRevertingCreatorToken("Rev", "REV", 1_000_000 ether, address(this));
-        PoolKey memory key = _initPool(address(token));
-        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
-        _accrueFees(key);
-
-        uint256 jarNativeBefore = tokenJar.balance;
-        splitter.collectFees(_single(tokenId));
-        assertGt(tokenJar.balance - jarNativeBefore, 0);
-        assertEq(address(splitter).balance, 0);
-        assertEq(token.balanceOf(address(splitter)), 0);
-    }
-
     function test_collectFees_nativeSendFailureRoutesToFallback() public {
         FeeSplitter splitter = _defaultSplitter();
         // The creator rejects ETH but accepts ERC20s.
         address rejector = address(new MockRejectEth());
-        (MockUERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, rejector);
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, rejector);
 
         uint256 jarNativeBefore = tokenJar.balance;
         splitter.collectFees(_single(tokenId));
@@ -415,7 +406,7 @@ contract FeeSplitterTest is Test {
         FeeSplitter splitter = _defaultSplitter();
         uint256 predictedTokenId = POSITION_MANAGER.nextTokenId();
         address reentrant = address(new MockReentrantFeeRecipient(splitter, predictedTokenId));
-        (MockUERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, reentrant);
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, reentrant);
         assertEq(tokenId, predictedTokenId);
 
         uint256 jarNativeBefore = tokenJar.balance;
@@ -432,8 +423,8 @@ contract FeeSplitterTest is Test {
         FeeSplitter splitter = _defaultSplitter();
         address creatorA = makeAddr("creatorA");
         address creatorB = makeAddr("creatorB");
-        (MockUERC20 tokenA,, uint256 tokenIdA) = _setUpPositionWithFees(splitter, creatorA);
-        (MockUERC20 tokenB,, uint256 tokenIdB) = _setUpPositionWithFees(splitter, creatorB);
+        (MockERC20 tokenA,, uint256 tokenIdA) = _setUpPositionWithFees(splitter, creatorA);
+        (MockERC20 tokenB,, uint256 tokenIdB) = _setUpPositionWithFees(splitter, creatorB);
 
         uint256[] memory tokenIds = new uint256[](2);
         tokenIds[0] = tokenIdA;
@@ -454,7 +445,7 @@ contract FeeSplitterTest is Test {
 
     function test_collectFees_distributesDonatedBalances() public {
         FeeSplitter splitter = _defaultSplitter();
-        (MockUERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
 
         vm.deal(address(splitter), 5 ether);
         token.transfer(address(splitter), 7 ether);
@@ -473,7 +464,7 @@ contract FeeSplitterTest is Test {
 
     function test_collectFees_secondCollectDistributesNewFeesOnly() public {
         FeeSplitter splitter = _defaultSplitter();
-        (MockUERC20 token, PoolKey memory key, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        (MockERC20 token, PoolKey memory key, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
 
         splitter.collectFees(_single(tokenId));
         uint256 creatorNativeAfterFirst = creator.balance;
@@ -496,12 +487,53 @@ contract FeeSplitterTest is Test {
 
     function test_onERC721Received_acceptsSafeTransfers() public {
         FeeSplitter splitter = _defaultSplitter();
-        MockUERC20 token = new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), creator);
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
         PoolKey memory key = _initPool(address(token));
         uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
 
         IERC721(address(POSITION_MANAGER)).safeTransferFrom(address(this), address(splitter), tokenId);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(splitter));
+        // No transfer data: nothing registered, resolution falls back to the token's creator().
+        assertEq(splitter.feeBeneficiary(tokenId), address(0));
+    }
+
+    function test_onERC721Received_registersBeneficiaryFromTransferData() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        _accrueFees(key);
+
+        address beneficiary = makeAddr("beneficiary");
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(beneficiary));
+        assertEq(splitter.feeBeneficiary(tokenId), beneficiary);
+
+        // The registered beneficiary receives the sentinel shares on both sides.
+        splitter.collectFees(_single(tokenId));
+        assertGt(beneficiary.balance, 0);
+        assertGt(token.balanceOf(beneficiary), 0);
+    }
+
+    function test_onERC721Received_revertsOnZeroBeneficiary() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, address(0)));
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(address(0)));
+    }
+
+    function test_onERC721Received_revertsForNonPositionManagerNFTs() public {
+        FeeSplitter splitter = _defaultSplitter();
+        // Foreign NFTs would be irrecoverably stuck: the splitter only interacts with the canonical
+        // PositionManager, so their safe transfers are rejected at the callback.
+        address impostor = makeAddr("impostorNFT");
+        vm.prank(impostor);
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.NotPositionManager.selector, impostor));
+        splitter.onERC721Received(address(this), address(this), 1, bytes(""));
     }
 
     function test_canReceiveEth() public {

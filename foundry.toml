@@ -16,6 +16,11 @@ auto_detect_solc = true
 [profile.default.fuzz]
 runs = 1000
 
+# Named profiles do not inherit [profile.default]: mirror the settings that change build
+# output, so CI bytecode (and thus CREATE2 addresses and gas snapshots) matches local builds.
+[profile.ci]
+bytecode_hash = "none"
+
 [profile.ci.fuzz]
 runs = 2500
 

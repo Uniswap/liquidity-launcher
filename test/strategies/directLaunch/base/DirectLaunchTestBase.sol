@@ -8,9 +8,9 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {DirectLaunchStrategy} from "../../../../src/strategies/DirectLaunchStrategy.sol";
+import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
-import {IFeeSplitter, FeeSplit, CREATOR_SENTINEL} from "../../../../src/interfaces/IFeeSplitter.sol";
+import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 
 /// @notice A launched token with 6 decimals, used to exercise the decimals guard.
@@ -52,6 +52,7 @@ abstract contract DirectLaunchTestBase is Test {
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");
+    address internal launchFeeBeneficiary = makeAddr("launchFeeBeneficiary");
     IPoolManager internal poolManager = POOL_MANAGER;
     IPositionManager internal positionManager = POSITION_MANAGER;
     FeeSplitter internal feeSplitter;
@@ -75,7 +76,7 @@ abstract contract DirectLaunchTestBase is Test {
     function _deployFeeSplitter() internal returns (FeeSplitter) {
         FeeSplit[] memory nativeSplits = new FeeSplit[](2);
         nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
-        nativeSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
         FeeSplit[] memory tokenSplits = new FeeSplit[](2);
         tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000});
         tokenSplits[1] = FeeSplit({recipient: nativeSplits[1].recipient, bps: 2_000});
@@ -96,6 +97,11 @@ abstract contract DirectLaunchTestBase is Test {
     function _initialize(IERC20 token, uint256 totalSupply, bytes memory configData) internal {
         token.approve(address(strategy), totalSupply);
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+    }
+
+    /// @notice The default launch configuration naming the fee beneficiary.
+    function _defaultConfig() internal view returns (bytes memory) {
+        return abi.encode(DirectLaunchConfig({feeBeneficiary: launchFeeBeneficiary}));
     }
 
     receive() external payable {}

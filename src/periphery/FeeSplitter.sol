@@ -9,14 +9,13 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {IFeeSplitter, FeeSplit, CREATOR_SENTINEL} from "../interfaces/IFeeSplitter.sol";
-import {IUERC20} from "../interfaces/external/IUERC20.sol";
+import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
 
 /// @title FeeSplitter
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
 ///         their fees and pushes them to fixed recipients. Native ETH (currency0) and token (currency1)
-///         fees are split independently. The `CREATOR` sentinel in a split resolves per pool to the
-///         UERC20 `creator()` of that pool's token; unresolvable or undeliverable shares go to the
+///         fees are split independently. The fee-beneficiary sentinel in a split resolves per position
+///         to the beneficiary registered at deposit; unregistered or undeliverable shares go to the
 ///         per-side fallback so a collect can never be bricked by a recipient.
 /// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
 ///      and no code path that transfers or approves a position out.
@@ -44,9 +43,12 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @inheritdoc IFeeSplitter
     FeeSplit[] public override tokenSplits;
 
+    /// @inheritdoc IFeeSplitter
+    mapping(uint256 tokenId => address beneficiary) public override feeBeneficiary;
+
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param _nativeFallback Trusted receiver for undeliverable native ETH shares; must accept plain sends.
-    /// @param _tokenFallback Receiver for token shares whose CREATOR cannot be resolved.
+    /// @param _tokenFallback Receiver for token shares whose beneficiary cannot be resolved.
     /// @param nativeSplits_ The native ETH (currency0) fee splits; must sum to 10,000 bps.
     /// @param tokenSplits_ The token (currency1) fee splits; must sum to 10,000 bps.
     constructor(
@@ -56,12 +58,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         FeeSplit[] memory nativeSplits_,
         FeeSplit[] memory tokenSplits_
     ) {
-        if (_nativeFallback == address(0) || _nativeFallback == CREATOR_SENTINEL || _nativeFallback == address(this)) {
-            revert InvalidFallback(_nativeFallback);
-        }
-        if (_tokenFallback == address(0) || _tokenFallback == CREATOR_SENTINEL || _tokenFallback == address(this)) {
-            revert InvalidFallback(_tokenFallback);
-        }
+        if (!_isValidFeeRecipient(_nativeFallback)) revert InvalidFallback(_nativeFallback);
+        if (!_isValidFeeRecipient(_tokenFallback)) revert InvalidFallback(_tokenFallback);
 
         positionManager = _positionManager;
         nativeFallback = _nativeFallback;
@@ -90,13 +88,21 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         }
     }
 
-    /// @notice Accepts safe transfers of position NFTs, so safeTransferFrom-based flows can move
-    ///         positions into the splitter (solmate's safeTransferFrom reverts on contract receivers
-    ///         that do not return this selector).
-    /// @dev Cannot gate inbound positions: the PositionManager mints with solmate `_mint`, which
-    ///      performs no receiver callback, and plain `transferFrom` does not either. Foreign NFTs
-    ///      sent here are inert — `collectFees` only interacts with the immutable PositionManager.
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+    /// @notice Accepts positions safe-transferred through the PositionManager and registers the
+    ///         transfer data, when present, as the position's fee beneficiary.
+    /// @dev Only PositionManager callbacks are accepted, so a registration verifiably comes from the
+    ///      position's owner, and it never changes: positions cannot leave the splitter. Adding fee
+    ///      beneficiaries is NOT supported for positions minted or sent to this contract without
+    ///      triggering this callback. Other NFTs are rejected: they would be irrecoverably stuck,
+    ///      since collectFees only interacts with the PositionManager.
+    function onERC721Received(address, address, uint256 tokenId, bytes calldata data) external returns (bytes4) {
+        if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
+        if (data.length != 0) {
+            address beneficiary = abi.decode(data, (address));
+            if (!_isValidFeeRecipient(beneficiary)) revert InvalidRecipient(beneficiary);
+            feeBeneficiary[tokenId] = beneficiary;
+            emit FeeBeneficiarySet(tokenId, beneficiary);
+        }
         return IERC721Receiver.onERC721Received.selector;
     }
 
@@ -123,26 +129,27 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        // Resolve the pool's creator once; an unresolvable creator degrades to the per-side fallback.
-        address creator = _resolveCreator(token);
+        // Resolution order: the beneficiary registered at deposit, else the per-side fallback. A
+        // registered beneficiary that cannot receive a native send also falls back (see _transfer).
+        address beneficiary = feeBeneficiary[tokenId];
         if (nativeAmount != 0) {
             _distribute(
                 nativeSplits,
                 CurrencyLibrary.ADDRESS_ZERO,
                 nativeAmount,
-                creator == address(0) ? nativeFallback : creator
+                beneficiary == address(0) ? nativeFallback : beneficiary
             );
         }
         if (tokenAmount != 0) {
-            _distribute(tokenSplits, poolKey.currency1, tokenAmount, creator == address(0) ? tokenFallback : creator);
+            _distribute(
+                tokenSplits, poolKey.currency1, tokenAmount, beneficiary == address(0) ? tokenFallback : beneficiary
+            );
         }
     }
 
     /// @notice Pushes one side's splits of `amount`. Cumulative allocation assigns all rounding dust to
     ///         later recipients so the full amount is always forwarded.
-    function _distribute(FeeSplit[] storage splits, Currency currency, uint256 amount, address creatorRecipient)
-        private
-    {
+    function _distribute(FeeSplit[] storage splits, Currency currency, uint256 amount, address beneficiary) private {
         uint256 cumulativeBps;
         uint256 distributed;
         uint256 count = splits.length;
@@ -155,7 +162,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             if (recipientAmount == 0) continue;
 
             address recipient = split.recipient;
-            if (recipient == CREATOR_SENTINEL) recipient = creatorRecipient;
+            if (recipient == FEE_BENEFICIARY_SENTINEL) recipient = beneficiary;
             _transfer(currency, recipient, recipientAmount);
         }
     }
@@ -176,14 +183,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesForwarded(recipient, currency, amount);
     }
 
-    /// @notice Resolves a token's UERC20 creator; returns address(0) for any non-compliant token.
-    /// @dev Manual decoding: a token that reverts or returns garbage must degrade to the fallback,
-    ///      never revert the collect.
-    function _resolveCreator(address token) private view returns (address) {
-        (bool success, bytes memory data) = token.staticcall(abi.encodeCall(IUERC20.creator, ()));
-        if (!success || data.length != 32) return address(0);
-        // Mask manually: abi.decode reverts on dirty upper bits, which a malicious token could exploit.
-        return address(uint160(uint256(bytes32(data))));
+    /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and
+    ///         the sentinel would burn or recycle the share instead of paying anyone.
+    function _isValidFeeRecipient(address recipient) private view returns (bool) {
+        return recipient != address(0) && recipient != address(this) && recipient != FEE_BENEFICIARY_SENTINEL;
     }
 
     /// @notice Validates and stores one side's splits.
