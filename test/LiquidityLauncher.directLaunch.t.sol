@@ -30,7 +30,7 @@ import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
 import {DirectLaunchStrategy} from "../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
-import {FeeSplit, CREATOR_SENTINEL} from "../src/interfaces/IFeeSplitter.sol";
+import {FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../src/interfaces/IFeeSplitter.sol";
 
 contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -63,10 +63,10 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // both with a 20% creator share.
         FeeSplit[] memory nativeSplits = new FeeSplit[](2);
         nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
-        nativeSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
         FeeSplit[] memory tokenSplits = new FeeSplit[](2);
         tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000});
-        tokenSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        tokenSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), nativeSplits, tokenSplits);
 
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.

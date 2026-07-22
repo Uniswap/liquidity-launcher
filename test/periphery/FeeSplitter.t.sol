@@ -54,7 +54,8 @@ contract FeeSplitterTest is Test {
     uint24 internal constant FEE = 10_000;
     int24 internal constant TICK_SPACING = 200;
 
-    address internal constant CREATOR_SENTINEL = address(uint160(uint256(keccak256("FeeSplitter.CREATOR"))));
+    address internal constant FEE_BENEFICIARY_SENTINEL =
+        address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
     PoolSwapTest internal swapRouter;
     address internal tokenJar = makeAddr("tokenJar");
@@ -97,8 +98,8 @@ contract FeeSplitterTest is Test {
             POSITION_MANAGER,
             tokenJar,
             BURN_ADDRESS,
-            _splits(tokenJar, 8_000, CREATOR_SENTINEL, 2_000),
-            _splits(BURN_ADDRESS, 8_000, CREATOR_SENTINEL, 2_000)
+            _splits(tokenJar, 8_000, FEE_BENEFICIARY_SENTINEL, 2_000),
+            _splits(BURN_ADDRESS, 8_000, FEE_BENEFICIARY_SENTINEL, 2_000)
         );
     }
 
@@ -212,20 +213,20 @@ contract FeeSplitterTest is Test {
         assertEq(native.length, 2);
         assertEq(native[0].recipient, tokenJar);
         assertEq(native[0].bps, 8_000);
-        assertEq(native[1].recipient, CREATOR_SENTINEL);
+        assertEq(native[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(native[1].bps, 2_000);
 
         FeeSplit[] memory tokenSide = splitter.getTokenSplits();
         assertEq(tokenSide.length, 2);
         assertEq(tokenSide[0].recipient, BURN_ADDRESS);
         assertEq(tokenSide[0].bps, 8_000);
-        assertEq(tokenSide[1].recipient, CREATOR_SENTINEL);
+        assertEq(tokenSide[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(tokenSide[1].bps, 2_000);
     }
 
     function test_constructor_revertsOnInvalidFallback() public {
         FeeSplit[] memory splits = _splits(tokenJar);
-        address creatorSentinel = address(uint160(uint256(keccak256("FeeSplitter.CREATOR"))));
+        address creatorSentinel = address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidFallback.selector, address(0)));
         new FeeSplitter(POSITION_MANAGER, address(0), BURN_ADDRESS, splits, splits);

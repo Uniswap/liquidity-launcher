@@ -10,7 +10,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {DirectLaunchStrategy} from "../../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
-import {IFeeSplitter, FeeSplit, CREATOR_SENTINEL} from "../../../../src/interfaces/IFeeSplitter.sol";
+import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 
 /// @notice A launched token with 6 decimals, used to exercise the decimals guard.
@@ -75,7 +75,7 @@ abstract contract DirectLaunchTestBase is Test {
     function _deployFeeSplitter() internal returns (FeeSplitter) {
         FeeSplit[] memory nativeSplits = new FeeSplit[](2);
         nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
-        nativeSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
         FeeSplit[] memory tokenSplits = new FeeSplit[](2);
         tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000});
         tokenSplits[1] = FeeSplit({recipient: nativeSplits[1].recipient, bps: 2_000});

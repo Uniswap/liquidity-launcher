@@ -23,7 +23,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {DirectLaunchStrategy} from "../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
-import {FeeSplit, CREATOR_SENTINEL} from "../../../src/interfaces/IFeeSplitter.sol";
+import {FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {MockUERC20} from "../../mocks/MockUERC20.sol";
 
@@ -55,10 +55,10 @@ contract DirectLaunchStrategyE2ETest is Test {
         // both with a 20% creator share.
         FeeSplit[] memory nativeSplits = new FeeSplit[](2);
         nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
-        nativeSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
         FeeSplit[] memory tokenSplits = new FeeSplit[](2);
         tokenSplits[0] = FeeSplit({recipient: BURN_ADDRESS, bps: 8_000});
-        tokenSplits[1] = FeeSplit({recipient: CREATOR_SENTINEL, bps: 2_000});
+        tokenSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, nativeSplits, tokenSplits);
 
         strategy = new DirectLaunchStrategy(address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, INITIAL_TICK);

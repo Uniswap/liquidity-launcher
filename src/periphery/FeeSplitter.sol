@@ -9,14 +9,15 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {IFeeSplitter, FeeSplit, CREATOR_SENTINEL} from "../interfaces/IFeeSplitter.sol";
+import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
 import {IUERC20} from "../interfaces/external/IUERC20.sol";
 
 /// @title FeeSplitter
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
 ///         their fees and pushes them to fixed recipients. Native ETH (currency0) and token (currency1)
-///         fees are split independently. The `CREATOR` sentinel in a split resolves per pool to the
-///         UERC20 `creator()` of that pool's token; unresolvable or undeliverable shares go to the
+///         fees are split independently. The fee-beneficiary sentinel in a split resolves per position
+///         to its registered beneficiary, falling back to the UERC20 `creator()` of the pool's token;
+///         unresolvable or undeliverable shares go to the
 ///         per-side fallback so a collect can never be bricked by a recipient.
 /// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
 ///      and no code path that transfers or approves a position out.
@@ -46,7 +47,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param _nativeFallback Trusted receiver for undeliverable native ETH shares; must accept plain sends.
-    /// @param _tokenFallback Receiver for token shares whose CREATOR cannot be resolved.
+    /// @param _tokenFallback Receiver for token shares whose beneficiary cannot be resolved.
     /// @param nativeSplits_ The native ETH (currency0) fee splits; must sum to 10,000 bps.
     /// @param tokenSplits_ The token (currency1) fee splits; must sum to 10,000 bps.
     constructor(
@@ -56,10 +57,16 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         FeeSplit[] memory nativeSplits_,
         FeeSplit[] memory tokenSplits_
     ) {
-        if (_nativeFallback == address(0) || _nativeFallback == CREATOR_SENTINEL || _nativeFallback == address(this)) {
+        if (
+            _nativeFallback == address(0) || _nativeFallback == FEE_BENEFICIARY_SENTINEL
+                || _nativeFallback == address(this)
+        ) {
             revert InvalidFallback(_nativeFallback);
         }
-        if (_tokenFallback == address(0) || _tokenFallback == CREATOR_SENTINEL || _tokenFallback == address(this)) {
+        if (
+            _tokenFallback == address(0) || _tokenFallback == FEE_BENEFICIARY_SENTINEL
+                || _tokenFallback == address(this)
+        ) {
             revert InvalidFallback(_tokenFallback);
         }
 
@@ -123,26 +130,26 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        // Resolve the pool's creator once; an unresolvable creator degrades to the per-side fallback.
-        address creator = _resolveCreator(token);
+        // Resolve the fee beneficiary once; unresolvable degrades to the per-side fallback.
+        address beneficiary = _resolveTokenCreator(token);
         if (nativeAmount != 0) {
             _distribute(
                 nativeSplits,
                 CurrencyLibrary.ADDRESS_ZERO,
                 nativeAmount,
-                creator == address(0) ? nativeFallback : creator
+                beneficiary == address(0) ? nativeFallback : beneficiary
             );
         }
         if (tokenAmount != 0) {
-            _distribute(tokenSplits, poolKey.currency1, tokenAmount, creator == address(0) ? tokenFallback : creator);
+            _distribute(
+                tokenSplits, poolKey.currency1, tokenAmount, beneficiary == address(0) ? tokenFallback : beneficiary
+            );
         }
     }
 
     /// @notice Pushes one side's splits of `amount`. Cumulative allocation assigns all rounding dust to
     ///         later recipients so the full amount is always forwarded.
-    function _distribute(FeeSplit[] storage splits, Currency currency, uint256 amount, address creatorRecipient)
-        private
-    {
+    function _distribute(FeeSplit[] storage splits, Currency currency, uint256 amount, address beneficiary) private {
         uint256 cumulativeBps;
         uint256 distributed;
         uint256 count = splits.length;
@@ -155,7 +162,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             if (recipientAmount == 0) continue;
 
             address recipient = split.recipient;
-            if (recipient == CREATOR_SENTINEL) recipient = creatorRecipient;
+            if (recipient == FEE_BENEFICIARY_SENTINEL) recipient = beneficiary;
             _transfer(currency, recipient, recipientAmount);
         }
     }
@@ -176,10 +183,11 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesForwarded(recipient, currency, amount);
     }
 
-    /// @notice Resolves a token's UERC20 creator; returns address(0) for any non-compliant token.
+    /// @notice Resolves a token's UERC20 creator as the default beneficiary; returns address(0) for
+    ///         any non-compliant token.
     /// @dev Manual decoding: a token that reverts or returns garbage must degrade to the fallback,
     ///      never revert the collect.
-    function _resolveCreator(address token) private view returns (address) {
+    function _resolveTokenCreator(address token) private view returns (address) {
         (bool success, bytes memory data) = token.staticcall(abi.encodeCall(IUERC20.creator, ()));
         if (!success || data.length != 32) return address(0);
         // Mask manually: abi.decode reverts on dirty upper bits, which a malicious token could exploit.
