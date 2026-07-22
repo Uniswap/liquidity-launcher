@@ -67,21 +67,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTr
         _validateAndStoreSplits(tokenSplits, tokenSplits_);
     }
 
-    /// @inheritdoc ERC721
-    function name() public pure override returns (string memory) {
-        return "FeeSplitter Beneficiary";
-    }
-
-    /// @inheritdoc ERC721
-    function symbol() public pure override returns (string memory) {
-        return "FSB";
-    }
-
-    /// @inheritdoc ERC721
-    function tokenURI(uint256) public pure override returns (string memory) {
-        return "";
-    }
-
     /// @inheritdoc IFeeSplitter
     function getNativeSplits() external view override returns (FeeSplit[] memory) {
         return nativeSplits;
@@ -225,5 +210,20 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTr
             store.push(split);
         }
         if (totalBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalBps);
+    }
+
+    /// @inheritdoc ERC721
+    function name() public pure override returns (string memory) {
+        return "FeeSplitter Beneficiary";
+    }
+
+    /// @inheritdoc ERC721
+    function symbol() public pure override returns (string memory) {
+        return "FSB";
+    }
+
+    /// @inheritdoc ERC721
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "";
     }
 }
