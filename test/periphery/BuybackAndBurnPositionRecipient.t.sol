@@ -98,11 +98,14 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         );
     }
 
-    function test_collectFees_revertsIfPositionIsNotOwner() public {
+    function test_onFeesReceived_recordsFeesWithoutPositionOwnership() public {
         positionRecipient =
             new BuybackAndBurnPositionRecipient(USDC, NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 1);
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
-        positionRecipient.collectFees(FORK_TOKEN_ID, 0, 0);
+        _notifyForkFees();
+
+        (uint256 currency0Fees, uint256 currency1Fees) = positionRecipient.fees(FORK_TOKEN_ID);
+        assertEq(currency0Fees, FORK_CURRENCY0_FEES_AMOUNT);
+        assertEq(currency1Fees, 0);
     }
 
     function test_collectFees_revertsIfPositionIsInvalid() public {
@@ -118,7 +121,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         positionRecipient = new BuybackAndBurnPositionRecipient(
             address(token), NATIVE, operator, IPositionManager(POSITION_MANAGER), 0, 1
         );
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+        _notifyForkFees();
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -138,7 +141,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         executor.approveToken(USDC, address(positionRecipient), _minTokenBurnAmount - 1);
         _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount - 1);
 
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+        _notifyForkFees();
 
         vm.expectRevert(abi.encodeWithSelector(SafeTransferLib.TransferFromFailed.selector));
         executor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
@@ -157,7 +160,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
 
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+        _notifyForkFees();
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -182,7 +185,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
 
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+        _notifyForkFees();
 
         uint256 deadAddressTokenBalanceBefore = Currency.wrap(USDC).balanceOf(address(0xdead));
 
@@ -227,7 +230,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), minTokenBurnAmount);
 
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+        _notifyForkFees();
 
         uint256 deadAddressTokenBalanceBefore = Currency.wrap(USDC).balanceOf(address(0xdead));
         uint256 executorCurrencyBalanceBefore = Currency.wrap(NATIVE).balanceOf(address(executor));
@@ -239,5 +242,10 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         assertEq(Currency.wrap(USDC).balanceOf(address(positionRecipient)), 0);
         assertEq(Currency.wrap(NATIVE).balanceOf(address(positionRecipient)), 0);
         assertEq(Currency.wrap(USDC).balanceOf(address(0xdead)), deadAddressTokenBalanceBefore + minTokenBurnAmount);
+    }
+
+    function _notifyForkFees() internal {
+        vm.deal(address(positionRecipient), address(positionRecipient).balance + FORK_CURRENCY0_FEES_AMOUNT);
+        positionRecipient.onFeesReceived(FORK_TOKEN_ID, Currency.wrap(NATIVE), FORK_CURRENCY0_FEES_AMOUNT);
     }
 }

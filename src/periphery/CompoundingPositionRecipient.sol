@@ -2,9 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
 
@@ -38,38 +35,7 @@ contract CompoundingPositionRecipient is BaseLPFeesPositionRecipient {
 
     /// @inheritdoc BaseLPFeesPositionRecipient
     /// @param _liquidityBefore The position's liquidity snapshotted by `_beforeCallback`
-    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _liquidityBefore) internal override {
-        bool hasNativeCurrency = _poolKey.currency0.isAddressZero();
-        uint256 offset = hasNativeCurrency ? 1 : 0;
-        bytes memory actions;
-        bytes[] memory params = new bytes[](4 + offset);
-
-        if (hasNativeCurrency) {
-            actions = abi.encodePacked(
-                uint8(Actions.UNWRAP),
-                uint8(Actions.SETTLE),
-                uint8(Actions.SETTLE),
-                uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS),
-                uint8(Actions.TAKE_PAIR)
-            );
-            params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
-        } else {
-            actions = abi.encodePacked(
-                uint8(Actions.SETTLE),
-                uint8(Actions.SETTLE),
-                uint8(Actions.INCREASE_LIQUIDITY_FROM_DELTAS),
-                uint8(Actions.TAKE_PAIR)
-            );
-        }
-
-        params[offset] = abi.encode(_poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[offset + 1] = abi.encode(_poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[offset + 2] = abi.encode(_tokenId, type(uint128).max, type(uint128).max, bytes(""));
-        params[offset + 3] = abi.encode(_poolKey.currency0, _poolKey.currency1, msg.sender);
-
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
-
-        // Require that the liquidity of the position increased by at least the required liquidity amount
+    function _afterCallback(PoolKey memory, uint256 _tokenId, uint256 _liquidityBefore) internal view override {
         uint128 actualLiquidityAmount = positionManager.getPositionLiquidity(_tokenId);
         uint256 requiredLiquidityAmount = _liquidityBefore + MIN_LIQUIDITY_INCREASE;
         if (actualLiquidityAmount < requiredLiquidityAmount) {

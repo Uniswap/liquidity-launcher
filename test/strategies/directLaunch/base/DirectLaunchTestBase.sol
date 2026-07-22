@@ -75,11 +75,11 @@ abstract contract DirectLaunchTestBase is Test {
     ///         token fees burned, both with a 20% creator share.
     function _deployFeeSplitter() internal returns (FeeSplitter) {
         FeeSplit[] memory nativeSplits = new FeeSplit[](2);
-        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
-        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
+        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000, useCallback: false});
+        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000, useCallback: false});
         FeeSplit[] memory tokenSplits = new FeeSplit[](2);
-        tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000});
-        tokenSplits[1] = FeeSplit({recipient: nativeSplits[1].recipient, bps: 2_000});
+        tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000, useCallback: false});
+        tokenSplits[1] = FeeSplit({recipient: nativeSplits[1].recipient, bps: 2_000, useCallback: false});
         return new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), nativeSplits, tokenSplits);
     }
 

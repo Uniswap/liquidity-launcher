@@ -5,16 +5,24 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
+import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 
 /// @title MockCompoundingLPFeesExecutor
 /// @notice Deposits callback proceeds into PositionManager for compounding tests
 contract MockCompoundingLPFeesExecutor is MockLPFeesExecutor {
     IPositionManager public immutable positionManager;
     IWETH9 public immutable weth9;
+    IFeeSplitter public feeSplitter;
+    uint256 public liquidityIncrease;
 
     constructor(IPositionManager _positionManager, IWETH9 _weth9) {
         positionManager = _positionManager;
         weth9 = _weth9;
+    }
+
+    function setFeeSplitter(IFeeSplitter _feeSplitter, uint256 _liquidityIncrease) external {
+        feeSplitter = _feeSplitter;
+        liquidityIncrease = _liquidityIncrease;
     }
 
     function callback(PoolKey memory poolKey, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
@@ -34,6 +42,10 @@ contract MockCompoundingLPFeesExecutor is MockLPFeesExecutor {
 
         if (currency1Received != 0) {
             poolKey.currency1.transfer(address(positionManager), currency1Received);
+        }
+
+        if (address(feeSplitter) != address(0)) {
+            feeSplitter.increaseLiquidity(tokenId, liquidityIncrease, type(uint128).max, type(uint128).max, bytes(""));
         }
     }
 }

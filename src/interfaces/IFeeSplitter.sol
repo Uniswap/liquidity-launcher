@@ -108,10 +108,10 @@ interface IFeeSplitter {
     function tokenFallback() external view returns (address);
 
     /// @notice The native ETH (currency0) split at `index`.
-    function nativeSplits(uint256 index) external view returns (address recipient, uint16 bps);
+    function nativeSplits(uint256 index) external view returns (address recipient, uint16 bps, bool useCallback);
 
     /// @notice The token (currency1) split at `index`.
-    function tokenSplits(uint256 index) external view returns (address recipient, uint16 bps);
+    function tokenSplits(uint256 index) external view returns (address recipient, uint16 bps, bool useCallback);
 
     /// @notice The full configured native ETH (currency0) splits.
     function getNativeSplits() external view returns (FeeSplit[] memory);

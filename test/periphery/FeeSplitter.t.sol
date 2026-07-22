@@ -42,6 +42,28 @@ contract MockReentrantFeeRecipient {
     }
 }
 
+contract MockFeeCallback {
+    error CallbackFailed();
+
+    bool internal immutable shouldRevert;
+    uint256 public callbackCount;
+    uint256 public lastTokenId;
+    mapping(Currency currency => uint256 amount) public notified;
+
+    constructor(bool _shouldRevert) {
+        shouldRevert = _shouldRevert;
+    }
+
+    function onFeesReceived(uint256 tokenId, Currency currency, uint256 amount) external {
+        if (shouldRevert) revert CallbackFailed();
+        callbackCount++;
+        lastTokenId = tokenId;
+        notified[currency] += amount;
+    }
+
+    receive() external payable {}
+}
+
 contract FeeSplitterTest is Test {
     using CurrencyLibrary for Currency;
 
@@ -76,8 +98,12 @@ contract FeeSplitterTest is Test {
     /////////////////////////////////////////////////////////////////////// */
 
     function _splits(address recipient) internal pure returns (FeeSplit[] memory splits) {
+        return _splits(recipient, false);
+    }
+
+    function _splits(address recipient, bool useCallback) internal pure returns (FeeSplit[] memory splits) {
         splits = new FeeSplit[](1);
-        splits[0] = FeeSplit({recipient: recipient, bps: 10_000});
+        splits[0] = FeeSplit({recipient: recipient, bps: 10_000, useCallback: useCallback});
     }
 
     function _splits(address recipientA, uint16 bpsA, address recipientB, uint16 bpsB)
@@ -86,8 +112,8 @@ contract FeeSplitterTest is Test {
         returns (FeeSplit[] memory splits)
     {
         splits = new FeeSplit[](2);
-        splits[0] = FeeSplit({recipient: recipientA, bps: bpsA});
-        splits[1] = FeeSplit({recipient: recipientB, bps: bpsB});
+        splits[0] = FeeSplit({recipient: recipientA, bps: bpsA, useCallback: false});
+        splits[1] = FeeSplit({recipient: recipientB, bps: bpsB, useCallback: false});
     }
 
     /// @dev The default product configuration: ETH fees to the tokenJar, token fees burned, both with
@@ -215,15 +241,19 @@ contract FeeSplitterTest is Test {
         assertEq(native.length, 2);
         assertEq(native[0].recipient, tokenJar);
         assertEq(native[0].bps, 8_000);
+        assertFalse(native[0].useCallback);
         assertEq(native[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(native[1].bps, 2_000);
+        assertFalse(native[1].useCallback);
 
         FeeSplit[] memory tokenSide = splitter.getTokenSplits();
         assertEq(tokenSide.length, 2);
         assertEq(tokenSide[0].recipient, BURN_ADDRESS);
         assertEq(tokenSide[0].bps, 8_000);
+        assertFalse(tokenSide[0].useCallback);
         assertEq(tokenSide[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(tokenSide[1].bps, 2_000);
+        assertFalse(tokenSide[1].useCallback);
     }
 
     function test_constructor_revertsOnInvalidFallback() public {
@@ -269,7 +299,7 @@ contract FeeSplitterTest is Test {
         vm.assume(_bps != 10_000);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidSplitTotal.selector, _bps));
         FeeSplit[] memory splits = new FeeSplit[](1);
-        splits[0] = FeeSplit({recipient: tokenJar, bps: _bps});
+        splits[0] = FeeSplit({recipient: tokenJar, bps: _bps, useCallback: false});
         new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, splits, _splits(BURN_ADDRESS));
     }
 
@@ -479,6 +509,123 @@ contract FeeSplitterTest is Test {
         assertGt(creator.balance, creatorNativeAfterFirst);
         assertEq(address(splitter).balance, 0);
         assertEq(token.balanceOf(address(splitter)), 0);
+    }
+
+    function test_collectFees_notifiesCallbackRecipients() public {
+        MockFeeCallback recipient = new MockFeeCallback(false);
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER,
+            tokenJar,
+            BURN_ADDRESS,
+            _splits(address(recipient), true),
+            _splits(address(recipient), true)
+        );
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+
+        splitter.collectFees(_single(tokenId));
+
+        assertEq(recipient.callbackCount(), 2);
+        assertEq(recipient.lastTokenId(), tokenId);
+        assertEq(recipient.notified(CurrencyLibrary.ADDRESS_ZERO), address(recipient).balance);
+        assertEq(recipient.notified(Currency.wrap(address(token))), token.balanceOf(address(recipient)));
+        assertGt(address(recipient).balance, 0);
+        assertGt(token.balanceOf(address(recipient)), 0);
+    }
+
+    function test_collectFees_notifiesResolvedBeneficiary() public {
+        MockFeeCallback beneficiary = new MockFeeCallback(false);
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER,
+            tokenJar,
+            BURN_ADDRESS,
+            _splits(FEE_BENEFICIARY_SENTINEL, true),
+            _splits(FEE_BENEFICIARY_SENTINEL, true)
+        );
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, address(beneficiary));
+
+        splitter.collectFees(_single(tokenId));
+
+        assertEq(beneficiary.callbackCount(), 2);
+        assertEq(beneficiary.lastTokenId(), tokenId);
+        assertEq(beneficiary.notified(CurrencyLibrary.ADDRESS_ZERO), address(beneficiary).balance);
+        assertEq(beneficiary.notified(Currency.wrap(address(token))), token.balanceOf(address(beneficiary)));
+    }
+
+    function test_collectFees_ignoresFailedCallback() public {
+        MockFeeCallback recipient = new MockFeeCallback(true);
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER,
+            tokenJar,
+            BURN_ADDRESS,
+            _splits(address(recipient), true),
+            _splits(address(recipient), true)
+        );
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+
+        splitter.collectFees(_single(tokenId));
+
+        assertEq(recipient.callbackCount(), 0);
+        assertGt(address(recipient).balance, 0);
+        assertGt(token.balanceOf(address(recipient)), 0);
+        assertEq(address(splitter).balance, 0);
+        assertEq(token.balanceOf(address(splitter)), 0);
+    }
+
+    function test_collectFees_skipsDisabledCallback() public {
+        MockFeeCallback recipient = new MockFeeCallback(false);
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, tokenJar, BURN_ADDRESS, _splits(address(recipient)), _splits(address(recipient))
+        );
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+
+        splitter.collectFees(_single(tokenId));
+
+        assertEq(recipient.callbackCount(), 0);
+        assertGt(address(recipient).balance, 0);
+        assertGt(token.balanceOf(address(recipient)), 0);
+    }
+
+    function test_increaseLiquidity_usesPositionManagerBalancesAndRefundsExcess() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 tokenA = new MockERC20("Token A", "A", 1_000_000 ether, address(this));
+        MockERC20 tokenB = new MockERC20("Token B", "B", 1_000_000 ether, address(this));
+        (MockERC20 token0, MockERC20 token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+        POOL_MANAGER.initialize(key, SQRT_PRICE_1_1);
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        uint256 liquidityIncrease = 1 ether;
+        uint128 amount0Max = 10 ether;
+        uint128 amount1Max = 10 ether;
+
+        token0.transfer(address(POSITION_MANAGER), amount0Max);
+        token1.transfer(address(POSITION_MANAGER), amount1Max);
+        uint256 token0Before = token0.balanceOf(address(this));
+        uint256 token1Before = token1.balanceOf(address(this));
+
+        splitter.increaseLiquidity(tokenId, liquidityIncrease, amount0Max, amount1Max, bytes(""));
+
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore + liquidityIncrease);
+        assertGt(token0.balanceOf(address(this)), token0Before);
+        assertGt(token1.balanceOf(address(this)), token1Before);
+        assertEq(token0.balanceOf(address(POSITION_MANAGER)), 0);
+        assertEq(token1.balanceOf(address(POSITION_MANAGER)), 0);
+    }
+
+    function test_increaseLiquidity_revertsIfSplitterDoesNotOwnPosition() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.NotOwner.selector, tokenId));
+        splitter.increaseLiquidity(tokenId, 1, 1, 1, bytes(""));
     }
 
     /* ///////////////////////////////////////////////////////////////////////

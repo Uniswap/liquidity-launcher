@@ -70,12 +70,14 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         positionRecipient.collectFees(type(uint256).max, 0, 0);
     }
 
-    function test_collectFees_revertsIfPositionIsNotOwner() public {
+    function test_onFeesReceived_recordsFeesWithoutPositionOwnership() public {
         positionRecipient =
             new CanonicalBuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
+        _notifyNativeFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
 
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
-        positionRecipient.collectFees(FORK_TOKEN_ID, 0, 0);
+        (uint256 currency0Fees, uint256 currency1Fees) = positionRecipient.fees(FORK_TOKEN_ID);
+        assertEq(currency0Fees, FORK_CURRENCY0_FEES_AMOUNT);
+        assertEq(currency1Fees, 0);
     }
 
     function test_collectFees_derivesTokenAndPreservesExistingETH(uint256 _minTokenBurnAmount) public {
@@ -86,10 +88,9 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
-
         uint256 existingETH = 1 ether;
         vm.deal(address(positionRecipient), existingETH);
+        _notifyNativeFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
         uint256 executorETHBefore = address(executor).balance;
         uint256 burnAddressTokenBefore = IERC20(USDC).balanceOf(address(0xdead));
 
@@ -111,7 +112,6 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
     function test_collectFees_revertsIfCurrencyIsNotNative() public {
         positionRecipient =
             new CanonicalBuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
-        _yoinkPosition(NON_ETH_FORK_TOKEN_ID, address(positionRecipient));
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -130,7 +130,7 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
             new CanonicalBuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), 1);
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
+        _notifyNativeFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -149,8 +149,8 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
 
         // One singleton instance holds positions from two different ETH-paired pools,
         // one of them with an 18-decimal token (UNI)
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
-        _yoinkPosition(UNI_FORK_TOKEN_ID, address(positionRecipient));
+        _notifyNativeFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
+        _notifyNativeFees(UNI_FORK_TOKEN_ID, UNI_FORK_CURRENCY_FEES_AMOUNT);
 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         executor.approveToken(UNI, address(positionRecipient), type(uint256).max);
@@ -165,7 +165,7 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         executor.execute(positionRecipient, UNI_FORK_TOKEN_ID, UNI_FORK_CURRENCY_FEES_AMOUNT, 0);
 
         assertEq(address(executor).balance - executorETHBefore, UNI_FORK_CURRENCY_FEES_AMOUNT);
-        assertEq(address(positionRecipient).balance, recipientETHBefore);
+        assertEq(address(positionRecipient).balance, recipientETHBefore - UNI_FORK_CURRENCY_FEES_AMOUNT);
         assertGt(IERC20(UNI).balanceOf(address(0xdead)), burnAddressUNIBefore);
 
         // The other pool's position is untouched and still collectable for its exact amount
@@ -174,7 +174,7 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         assertEq(
             address(executor).balance - executorETHBefore, UNI_FORK_CURRENCY_FEES_AMOUNT + FORK_CURRENCY0_FEES_AMOUNT
         );
-        assertEq(address(positionRecipient).balance, recipientETHBefore);
+        assertEq(address(positionRecipient).balance, 0);
     }
 
     function test_withdrawInvalidPosition_transfersToOperatorBeforeTimelock() public {
@@ -227,5 +227,10 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         // The recipient neither owns nor is approved for the position
         vm.expectRevert(bytes("WRONG_FROM"));
         positionRecipient.withdrawInvalidPosition(NON_ETH_FORK_TOKEN_ID);
+    }
+
+    function _notifyNativeFees(uint256 tokenId, uint256 amount) internal {
+        vm.deal(address(positionRecipient), address(positionRecipient).balance + amount);
+        positionRecipient.onFeesReceived(tokenId, Currency.wrap(NATIVE), amount);
     }
 }

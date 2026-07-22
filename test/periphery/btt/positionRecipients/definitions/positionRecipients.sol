@@ -13,6 +13,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
 import {ILPFeesExecutor} from "../../../../../src/interfaces/ILPFeesExecutor.sol";
 import {ILPFeesPositionRecipient} from "../../../../../src/interfaces/ILPFeesPositionRecipient.sol";
+import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimelockedPositionRecipient.sol";
 import {BaseLPFeesPositionRecipient} from "../../../../../src/periphery/BaseLPFeesPositionRecipient.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
@@ -77,6 +78,10 @@ contract MockPositionManager {
         } else {
             liquidity += liquidityIncrease;
         }
+    }
+
+    function increaseLiquidity(uint256, uint256, uint128, uint128, bytes calldata) external {
+        liquidity += liquidityIncrease;
     }
 
     function setApprovalForAll(address operator, bool approved) external {
@@ -200,10 +205,41 @@ contract PositionRecipientsBTTTest is Test {
         assertTrue(manager.operatorApproved());
     }
 
+    function test_BaseRecipient_WhenFeeCurrencyIsInvalid_Reverts() public {
+        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        Currency invalidCurrency = Currency.wrap(makeAddr("invalidCurrency"));
+
+        vm.expectRevert(abi.encodeWithSelector(ILPFeesPositionRecipient.InvalidFeeCurrency.selector, invalidCurrency));
+        recipient.onFeesReceived(TOKEN_ID, invalidCurrency, 1);
+    }
+
+    function test_BaseRecipient_WhenNotifiedAmountWasNotReceived_Reverts() public {
+        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ILPFeesPositionRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0)
+        );
+        recipient.onFeesReceived(TOKEN_ID, currency0, FEES_0);
+    }
+
+    function test_BaseRecipient_WhenBalanceIsAlreadyAttributed_CannotAttributeItAgain() public {
+        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        MockERC20(Currency.unwrap(currency0)).transfer(address(recipient), FEES_0);
+        recipient.onFeesReceived(TOKEN_ID, currency0, FEES_0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILPFeesPositionRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, FEES_0 * 2
+            )
+        );
+        recipient.onFeesReceived(TOKEN_ID, currency0, FEES_0);
+    }
+
     function test_BaseRecipient_WhenCurrency0MinimumIsNotMet_Reverts(uint256 minimum) public {
         minimum = bound(minimum, FEES_0 + 1, type(uint128).max);
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
         MockLPFeesExecutor executor = new MockLPFeesExecutor();
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -217,6 +253,7 @@ contract PositionRecipientsBTTTest is Test {
         minimum = bound(minimum, FEES_1 + 1, type(uint128).max);
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
         MockLPFeesExecutor executor = new MockLPFeesExecutor();
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -234,6 +271,7 @@ contract PositionRecipientsBTTTest is Test {
         minimum1 = bound(minimum1, 0, FEES_1);
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
         MockLPFeesExecutor executor = new MockLPFeesExecutor();
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         executor.execute(recipient, TOKEN_ID, minimum0, minimum1);
 
@@ -242,22 +280,32 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(executor.lastCurrency1Received(), FEES_1);
         assertEq(currency0.balanceOf(address(executor)), FEES_0);
         assertEq(currency1.balanceOf(address(executor)), FEES_1);
+        (uint256 fees0, uint256 fees1) = recipient.fees(TOKEN_ID);
+        assertEq(fees0, 0);
+        assertEq(fees1, 0);
+        assertEq(recipient.totalFees(currency0), 0);
+        assertEq(recipient.totalFees(currency1), 0);
     }
 
     function test_BaseRecipient_WhenExecutorCallbackReverts_RollsBackCollection() public {
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
         RevertingLPFeesExecutor executor = new RevertingLPFeesExecutor();
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(RevertingLPFeesExecutor.CallbackFailed.selector);
         executor.execute(recipient, TOKEN_ID, 0, 0);
 
         assertEq(currency0.balanceOf(address(executor)), 0);
         assertEq(currency1.balanceOf(address(executor)), 0);
+        (uint256 fees0, uint256 fees1) = recipient.fees(TOKEN_ID);
+        assertEq(fees0, FEES_0);
+        assertEq(fees1, FEES_1);
     }
 
     function test_BaseRecipient_WhenExecutorCallbackReenters_Reverts() public {
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
         ReentrantLPFeesExecutor executor = new ReentrantLPFeesExecutor();
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
         executor.execute(recipient, TOKEN_ID);
@@ -286,6 +334,7 @@ contract PositionRecipientsBTTTest is Test {
         MockBuybackAndBurnLPFeesExecutor executor = new MockBuybackAndBurnLPFeesExecutor(burnToken, burnAmount);
         MockERC20(burnToken).transfer(address(executor), burnAmount);
         uint256 burnedBefore = MockERC20(burnToken).balanceOf(address(0xdead));
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         executor.execute(recipient, TOKEN_ID, 0, 0);
 
@@ -317,6 +366,7 @@ contract PositionRecipientsBTTTest is Test {
             new MockBuybackAndBurnLPFeesExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
         uint256 burnedBefore = currency1.balanceOf(address(0xdead));
+        _notifyFees(recipient, nativePool, FEES_0, FEES_1);
 
         executor.execute(recipient, TOKEN_ID, 0, 0);
 
@@ -346,6 +396,8 @@ contract PositionRecipientsBTTTest is Test {
             new CompoundingPositionRecipient(IPositionManager(address(manager)), operator, 0, liquidityIncrease);
         MockCompoundingLPFeesExecutor executor =
             new MockCompoundingLPFeesExecutor(IPositionManager(address(manager)), IWETH9(address(0)));
+        executor.setFeeSplitter(IFeeSplitter(address(manager)), liquidityIncrease);
+        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
 
         executor.execute(recipient, TOKEN_ID, 0, 0);
 
@@ -360,5 +412,18 @@ contract PositionRecipientsBTTTest is Test {
             MockERC20(Currency.unwrap(key.currency0)).transfer(address(manager), fee0);
         }
         MockERC20(Currency.unwrap(key.currency1)).transfer(address(manager), fee1);
+    }
+
+    function _notifyFees(ILPFeesPositionRecipient recipient, PoolKey memory key, uint256 amount0, uint256 amount1)
+        internal
+    {
+        if (key.currency0.isAddressZero()) {
+            vm.deal(address(recipient), address(recipient).balance + amount0);
+        } else {
+            MockERC20(Currency.unwrap(key.currency0)).transfer(address(recipient), amount0);
+        }
+        MockERC20(Currency.unwrap(key.currency1)).transfer(address(recipient), amount1);
+        recipient.onFeesReceived(TOKEN_ID, key.currency0, amount0);
+        recipient.onFeesReceived(TOKEN_ID, key.currency1, amount1);
     }
 }

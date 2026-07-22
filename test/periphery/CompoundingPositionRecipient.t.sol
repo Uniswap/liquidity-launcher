@@ -7,6 +7,8 @@ import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
 import {ILPFeesPositionRecipient} from "../../src/interfaces/ILPFeesPositionRecipient.sol";
 import {CompoundingPositionRecipient} from "../../src/periphery/CompoundingPositionRecipient.sol";
+import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
+import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
 import {MockCompoundingLPFeesExecutor} from "./MockCompoundingLPFeesExecutor.sol";
 import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
@@ -58,11 +60,15 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
         executor.execute(positionRecipient, type(uint256).max, 0, 0);
     }
 
-    function test_CollectFees_WhenPositionIsNotOwned_Reverts() public {
+    function test_OnFeesReceived_WhenPositionIsNotOwned_RecordsFees() public {
         positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
+        vm.deal(address(positionRecipient), FORK_CURRENCY0_FEES_AMOUNT);
 
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(positionRecipient)));
-        executor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
+        positionRecipient.onFeesReceived(FORK_TOKEN_ID, Currency.wrap(NATIVE), FORK_CURRENCY0_FEES_AMOUNT);
+
+        (uint256 currency0Fees, uint256 currency1Fees) = positionRecipient.fees(FORK_TOKEN_ID);
+        assertEq(currency0Fees, FORK_CURRENCY0_FEES_AMOUNT);
+        assertEq(currency1Fees, 0);
     }
 
     function test_CollectFees_WhenLiquidityIncreaseIsInsufficient_Reverts() public {
@@ -84,10 +90,13 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
 
     function test_CollectFees_WhenExecutorDepositsFees_IncreasesLiquidity() public {
         positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
-        _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
-        uint128 liquidityBefore = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);
+        FeeSplitter splitter = _callbackSplitter(address(positionRecipient));
         uint256 recipientCurrency0Before = Currency.wrap(NATIVE).balanceOf(address(positionRecipient));
         uint256 recipientCurrency1Before = Currency.wrap(USDC).balanceOf(address(positionRecipient));
+        _yoinkPosition(FORK_TOKEN_ID, address(splitter));
+        splitter.collectFees(_single(FORK_TOKEN_ID));
+        executor.setFeeSplitter(IFeeSplitter(address(splitter)), 1);
+        uint128 liquidityBefore = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);
 
         executor.execute(positionRecipient, FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
 
@@ -98,5 +107,20 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
         assertGt(executor.lastCurrency1Received(), 0);
         assertEq(Currency.wrap(NATIVE).balanceOf(address(positionRecipient)), recipientCurrency0Before);
         assertEq(Currency.wrap(USDC).balanceOf(address(positionRecipient)), recipientCurrency1Before);
+    }
+
+    function _callbackSplitter(address recipient) internal returns (FeeSplitter splitter) {
+        FeeSplit[] memory nativeSplits = new FeeSplit[](1);
+        nativeSplits[0] = FeeSplit({recipient: recipient, bps: 10_000, useCallback: true});
+        FeeSplit[] memory tokenSplits = new FeeSplit[](1);
+        tokenSplits[0] = FeeSplit({recipient: recipient, bps: 10_000, useCallback: true});
+        splitter = new FeeSplitter(
+            IPositionManager(POSITION_MANAGER), address(this), address(this), nativeSplits, tokenSplits
+        );
+    }
+
+    function _single(uint256 tokenId) internal pure returns (uint256[] memory tokenIds) {
+        tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
     }
 }

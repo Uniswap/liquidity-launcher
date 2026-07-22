@@ -13,6 +13,9 @@ interface ILPFeesPositionRecipient {
     /// @notice Thrown when the received amounts are less than expected
     error InsufficientAmountReceived(Currency currency, uint256 received, uint256 expected);
 
+    /// @notice Thrown when notified about fees in a currency outside the position's pool
+    error InvalidFeeCurrency(Currency currency);
+
     /// @notice Emitted after fees are collected and processed by an executor
     event FeesCollected(uint256 indexed tokenId, uint256 currency0Received, uint256 currency1Received, PoolKey poolKey);
 
@@ -22,6 +25,9 @@ interface ILPFeesPositionRecipient {
     /// @param minCurrency0Amount The minimum acceptable currency0 fees
     /// @param minCurrency1Amount The minimum acceptable currency1 fees
     function collectFees(uint256 tokenId, uint256 minCurrency0Amount, uint256 minCurrency1Amount) external;
+
+    /// @notice Returns the fees attributed to a position and available for collection
+    function fees(uint256 tokenId) external view returns (uint256 currency0Fees, uint256 currency1Fees);
 
     /// @notice Called when fees are received from a position
     /// @param tokenId The token ID of the position

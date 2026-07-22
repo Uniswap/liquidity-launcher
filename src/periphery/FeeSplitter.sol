@@ -104,15 +104,29 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert NotOwner(tokenId);
 
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR)
-        );
-        bytes[] memory params = new bytes[](4);
+        bool hasNativeCurrency = poolKey.currency0.isAddressZero();
+        uint256 offset = hasNativeCurrency ? 1 : 0;
+        bytes memory actions = hasNativeCurrency
+            ? abi.encodePacked(
+                uint8(Actions.UNWRAP),
+                uint8(Actions.SETTLE),
+                uint8(Actions.SETTLE),
+                uint8(Actions.INCREASE_LIQUIDITY),
+                uint8(Actions.TAKE_PAIR)
+            )
+            : abi.encodePacked(
+                uint8(Actions.SETTLE),
+                uint8(Actions.SETTLE),
+                uint8(Actions.INCREASE_LIQUIDITY),
+                uint8(Actions.TAKE_PAIR)
+            );
+        bytes[] memory params = new bytes[](4 + offset);
         // Require the balance to already exist in PositionManager
-        params[0] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[2] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
-        params[3] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
+        if (hasNativeCurrency) params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
+        params[offset] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[offset + 1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[offset + 2] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
+        params[offset + 3] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
     }
 
@@ -203,15 +217,15 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             address recipient = split.recipient;
             if (recipient == FEE_BENEFICIARY_SENTINEL) recipient = beneficiary;
 
-            _transfer(currency, recipient, recipientAmount);
-            if (split.useCallback) _tryCallback(tokenId, currency, recipientAmount, split.recipient);
+            recipient = _transfer(currency, recipient, recipientAmount);
+            if (split.useCallback) _tryCallback(tokenId, currency, recipientAmount, recipient);
         }
     }
 
     /// @notice Sends `amount` of `currency` to `recipient`; a failed native send is redirected to the
     ///         native fallback so an unfunded or reverting recipient can never block a collect. Token
     ///         transfers have no receive hook to fail on and revert only for non-standard tokens.
-    function _transfer(Currency currency, address recipient, uint256 amount) private {
+    function _transfer(Currency currency, address recipient, uint256 amount) private returns (address actualRecipient) {
         if (currency.isAddressZero()) {
             if (!SafeTransferLib.trySafeTransferETH(recipient, amount, NATIVE_TRANSFER_GAS_STIPEND)) {
                 // The fallback is trusted at deploy time to accept native transfers.
@@ -222,12 +236,13 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
+        actualRecipient = recipient;
     }
 
     /// @notice Tries to call the onFeesReceived callback on the recipient
     /// @dev Does NOT revert if the callback fails
     function _tryCallback(uint256 tokenId, Currency currency, uint256 amount, address recipient) private {
-        try (ILPFeesPositionRecipient(recipient)).onFeesReceived(tokenId, currency, amount) returns (bool) {} catch {}
+        try ILPFeesPositionRecipient(recipient).onFeesReceived(tokenId, currency, amount) {} catch {}
     }
 
     /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and

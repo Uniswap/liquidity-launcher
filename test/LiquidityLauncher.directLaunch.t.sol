@@ -62,11 +62,11 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // The intended product configuration: ETH fees to the tokenJar, token fees burned,
         // both with a 20% creator share.
         FeeSplit[] memory nativeSplits = new FeeSplit[](2);
-        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000});
-        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
+        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000, useCallback: false});
+        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000, useCallback: false});
         FeeSplit[] memory tokenSplits = new FeeSplit[](2);
-        tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000});
-        tokenSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000});
+        tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000, useCallback: false});
+        tokenSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000, useCallback: false});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), nativeSplits, tokenSplits);
 
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.

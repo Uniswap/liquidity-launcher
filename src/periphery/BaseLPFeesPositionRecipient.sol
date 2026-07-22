@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ILPFeesExecutor} from "../interfaces/ILPFeesExecutor.sol";
@@ -16,13 +15,12 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber)
     {}
 
-    error InvalidCurrency(Currency currency);
-
     struct Fees {
         uint256 currency0Fees;
         uint256 currency1Fees;
     }
     mapping(uint256 tokenId => Fees fees) public override fees;
+    mapping(Currency currency => uint256 amount) public totalFees;
 
     /// @notice Returns the pool key for an existing position
     function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
@@ -35,22 +33,19 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         PoolKey memory poolKey = _getPoolKey(_tokenId);
         Currency currency0 = poolKey.currency0;
         Currency currency1 = poolKey.currency1;
-        if (_currency != currency0 && _currency != currency1) revert InvalidCurrency(_currency);
-        Fees storage fees = fees[_tokenId];
+        if (!(_currency == currency0) && !(_currency == currency1)) revert InvalidFeeCurrency(_currency);
 
+        uint256 balance = _currency.balanceOfSelf();
+        uint256 expectedTotalFees = totalFees[_currency] + _amount;
+        if (balance < expectedTotalFees) revert InsufficientAmountReceived(_currency, balance, expectedTotalFees);
+
+        Fees storage positionFees = fees[_tokenId];
         if (_currency == currency0) {
-            uint256 expectedCurrency0Fees = fees.currency0Fees + _amount;
-            if (currency0.balanceOfSelf() < expectedCurrency0Fees) {
-                revert InsufficientAmountReceived(currency0, currency0.balanceOfSelf(), expectedCurrency0Fees);
-            }
-            fees.currency0Fees += _amount;
+            positionFees.currency0Fees += _amount;
         } else {
-            uint256 expectedCurrency1Fees = fees.currency1Fees + _amount;
-            if (currency1.balanceOfSelf() < expectedCurrency1Fees) {
-                revert InsufficientAmountReceived(currency1, currency1.balanceOfSelf(), expectedCurrency1Fees);
-            }
-            fees.currency1Fees += _amount;
+            positionFees.currency1Fees += _amount;
         }
+        totalFees[_currency] = expectedTotalFees;
     }
 
     /// @inheritdoc ILPFeesPositionRecipient
@@ -64,6 +59,18 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         Currency currency1 = poolKey.currency1;
         uint256 currency0Fees = fees[_tokenId].currency0Fees;
         uint256 currency1Fees = fees[_tokenId].currency1Fees;
+
+        if (currency0Fees < _minCurrency0Amount) {
+            revert InsufficientAmountReceived(currency0, currency0Fees, _minCurrency0Amount);
+        }
+        if (currency1Fees < _minCurrency1Amount) {
+            revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
+        }
+
+        delete fees[_tokenId];
+        totalFees[currency0] -= currency0Fees;
+        totalFees[currency1] -= currency1Fees;
+
         if (currency0Fees != 0) currency0.transfer(msg.sender, currency0Fees);
         if (currency1Fees != 0) currency1.transfer(msg.sender, currency1Fees);
 
