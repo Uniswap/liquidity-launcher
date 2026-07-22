@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -19,6 +20,8 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {IStrategy} from "../interfaces/IStrategy.sol";
 import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
+import {ILiquidityLauncher} from "../interfaces/ILiquidityLauncher.sol";
+import {IUERC20} from "../interfaces/external/IUERC20.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
 
@@ -82,6 +85,10 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     error UnrealizableLaunch();
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
+    /// @notice Thrown when a launcher-created token is launched without a fee beneficiary, or the
+    ///         proposed beneficiary does not hash to the token's graffiti.
+    /// @param feeBeneficiary The invalid proposed beneficiary
+    error InvalidFeeBeneficiary(address feeBeneficiary);
     /// @notice Thrown when the amount received differs from the amount pulled (fee-on-transfer guard).
     /// @param received The amount actually received
     /// @param expected The amount expected
@@ -142,8 +149,10 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @inheritdoc IStrategy
     /// @dev Called by `LiquidityLauncher.distributeToken`, which approves `totalSupply` to this strategy
     ///      first. Pulls exactly `totalSupply` from `msg.sender` (fully consuming the allowance, as the
-    ///      launcher's post-call guard requires), then builds the launch pool. `configData` must be empty
-    ///      and `salt` is unused — this singleton strategy uses fixed parameters.
+    ///      launcher's post-call guard requires), then builds the launch pool. For launcher-created
+    ///      tokens `configData` must carry the abi-encoded original creator, verified against the
+    ///      token's graffiti; for any other token it must be empty. `salt` is unused — this singleton
+    ///      strategy uses fixed parameters.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
         external
         override
@@ -151,7 +160,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     {
         // Only accept distributions routed through the configured launcher.
         if (msg.sender != launcher) revert OnlyLauncher();
-        if (configData.length != 0) revert UnexpectedConfigData();
+        address feeBeneficiary = _verifyFeeBeneficiary(token, configData);
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
@@ -182,13 +191,12 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             });
 
             definitions.validate();
-            // The position is minted to the fee splitter: permanent custody, permissionless
+            // The position is minted to this strategy and handed to the fee splitter below through
+            // the PositionManager's safeTransferFrom, whose receiver callback verifiably delivers
+            // the fee beneficiary. The splitter provides permanent custody and permissionless
             // per-pool fee distribution (see FeeSplitter).
             (Position[] memory positions,) = definitions.resolve(
-                initialSqrtPriceX96,
-                TICK_SPACING,
-                CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}),
-                address(feeSplitter)
+                initialSqrtPriceX96, TICK_SPACING, CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}), address(this)
             );
             // Exactly the precomputed uncapped position: anything else means part of the supply
             // was left unplaced, and the sub-liquidity-unit rounding dust is burned below.
@@ -198,6 +206,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         }
 
         IERC20(token).safeTransfer(address(positionManager), TOTAL_SUPPLY);
+        uint256 tokenId = positionManager.nextTokenId();
         positionManager.modifyLiquidities(abi.encode(plan.actions, plan.params), block.timestamp);
 
         // Burn any dust from creating the initial position
@@ -206,6 +215,42 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
         emit DistributionInitialized(address(this), token, totalSupply);
         emit TokenLaunched(poolId, token, address(feeSplitter), key);
+        IERC721(address(positionManager))
+            .safeTransferFrom(
+                address(this),
+                address(feeSplitter),
+                tokenId,
+                feeBeneficiary == address(0) ? bytes("") : abi.encode(feeBeneficiary)
+            );
+    }
+
+    /// @notice Resolves and verifies the fee beneficiary for the launch.
+    /// @dev Launcher-created tokens report the launcher itself as `creator()`; the original creator
+    ///      only exists on the token as the graffiti — the hash of their address, committed by the
+    ///      launcher at token creation. The beneficiary is therefore supplied via `configData` and
+    ///      proven by revealing the graffiti preimage: it is required for launcher-created tokens and
+    ///      rejected for any other token, where the claim would be unverifiable. A foreign token can
+    ///      fake `creator() == launcher` with a graffiti it chose itself, but that only redirects its
+    ///      own fee stream. Note the proof binds the beneficiary to the launcher's `createToken`
+    ///      caller: tokens created through an intermediary (e.g. a generic multicall aggregator) can
+    ///      only prove the intermediary — creators must call the launcher directly to receive fees.
+    function _verifyFeeBeneficiary(address token, bytes calldata configData) private view returns (address) {
+        bool isLauncherToken;
+        try IUERC20(token).creator() returns (address tokenCreator) {
+            isLauncherToken = tokenCreator == launcher;
+        } catch {}
+
+        if (!isLauncherToken) {
+            if (configData.length != 0) revert UnexpectedConfigData();
+            return address(0);
+        }
+
+        if (configData.length == 0) revert InvalidFeeBeneficiary(address(0));
+        address feeBeneficiary = abi.decode(configData, (address));
+        if (IUERC20(token).graffiti() != ILiquidityLauncher(launcher).getGraffiti(feeBeneficiary)) {
+            revert InvalidFeeBeneficiary(feeBeneficiary);
+        }
+        return feeBeneficiary;
     }
 
     /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens

@@ -45,6 +45,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @inheritdoc IFeeSplitter
     FeeSplit[] public override tokenSplits;
 
+    /// @inheritdoc IFeeSplitter
+    mapping(uint256 tokenId => address beneficiary) public override feeBeneficiary;
+
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param _nativeFallback Trusted receiver for undeliverable native ETH shares; must accept plain sends.
     /// @param _tokenFallback Receiver for token shares whose beneficiary cannot be resolved.
@@ -97,13 +100,27 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         }
     }
 
-    /// @notice Accepts safe transfers of position NFTs, so safeTransferFrom-based flows can move
-    ///         positions into the splitter (solmate's safeTransferFrom reverts on contract receivers
-    ///         that do not return this selector).
-    /// @dev Cannot gate inbound positions: the PositionManager mints with solmate `_mint`, which
-    ///      performs no receiver callback, and plain `transferFrom` does not either. Foreign NFTs
-    ///      sent here are inert — `collectFees` only interacts with the immutable PositionManager.
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+    /// @notice Accepts positions safe-transferred through the PositionManager and registers the
+    ///         transfer data, when present, as the position's fee beneficiary.
+    /// @dev A genuine PositionManager callback proves the sender owned the position and consented to
+    ///      the deposit, and owning a position carries the right to name its fee beneficiary — the
+    ///      owner could have kept 100% of the fees by not depositing. The registration is immutable
+    ///      by construction: positions never leave the splitter, so this callback cannot fire twice
+    ///      for the same tokenId. Positions arriving via mint or plain transferFrom skip the callback
+    ///      and simply have no registered beneficiary. Other NFTs are rejected outright; they would
+    ///      be irrecoverably stuck, since collectFees only interacts with the PositionManager.
+    function onERC721Received(address, address, uint256 tokenId, bytes calldata data) external returns (bytes4) {
+        if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
+        if (data.length != 0) {
+            address beneficiary = abi.decode(data, (address));
+            // Mirrors the constructor's recipient hygiene: zero, this contract, and the sentinel
+            // would burn or recycle the share instead of paying a beneficiary.
+            if (beneficiary == address(0) || beneficiary == address(this) || beneficiary == FEE_BENEFICIARY_SENTINEL) {
+                revert InvalidRecipient(beneficiary);
+            }
+            feeBeneficiary[tokenId] = beneficiary;
+            emit FeeBeneficiarySet(tokenId, beneficiary);
+        }
         return IERC721Receiver.onERC721Received.selector;
     }
 
@@ -130,8 +147,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        // Resolve the fee beneficiary once; unresolvable degrades to the per-side fallback.
-        address beneficiary = _resolveTokenCreator(token);
+        // The beneficiary registered at deposit wins; the token-reported creator is the fallback
+        // for positions deposited without a registration. Unresolvable degrades per side.
+        address beneficiary = feeBeneficiary[tokenId];
+        if (beneficiary == address(0)) beneficiary = _resolveTokenCreator(token);
         if (nativeAmount != 0) {
             _distribute(
                 nativeSplits,

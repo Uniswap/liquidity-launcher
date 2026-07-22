@@ -80,7 +80,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         PoolKey memory key = _poolKeyFor(token);
 
         Distribution memory distribution =
-            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")});
+            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: abi.encode(address(this))});
 
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
         address recipient = address(feeSplitter);
@@ -96,6 +96,8 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // Launcher handed everything off; strategy retains nothing.
         assertEq(IERC20(token).balanceOf(address(launcher)), 0);
         assertEq(IERC20(token).balanceOf(address(strategy)), 0);
+        // The graffiti-verified original creator is registered as the position's fee beneficiary.
+        assertEq(feeSplitter.feeBeneficiary(tokenId), address(this));
     }
 
     /// @notice A creator can launch and buy in one transaction today only through a generic
@@ -161,7 +163,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     function _quoteExactOutputBuy(PoolSwapTest swapRouter, uint256 buyAmount) internal returns (uint256 ethIn) {
         uint256 snapshot = vm.snapshotState();
         Distribution memory distribution =
-            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")});
+            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: abi.encode(address(this))});
         launcher.multicall(_buildCalls(distribution));
         address token =
             factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(address(this)));
@@ -210,7 +212,13 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
                 LiquidityLauncher.distributeToken,
                 (
                     token,
-                    Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")}),
+                    // The aggregator is the createToken caller, so its graffiti is the only provable
+                    // beneficiary: launch-and-buy through a generic aggregator forfeits creator fees.
+                    Distribution({
+                        strategy: address(strategy),
+                        amount: TOTAL_SUPPLY,
+                        configData: abi.encode(Preinstalls.MultiCall3)
+                    }),
                     bytes32(0)
                 )
             )
@@ -256,7 +264,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     /// forge-config: ci.isolate = true
     function test_e2e_launchThroughLiquidityLauncher_gas() public {
         Distribution memory distribution =
-            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: bytes("")});
+            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: abi.encode(address(this))});
 
         launcher.multicall(_buildCalls(distribution));
         vm.snapshotGasLastCall("DirectLaunch launch: LiquidityLauncher multicall");

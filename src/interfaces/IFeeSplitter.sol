@@ -33,6 +33,11 @@ interface IFeeSplitter {
     /// @param amount The amount sent.
     event FeesForwarded(address indexed recipient, Currency indexed currency, uint256 amount);
 
+    /// @notice Emitted when a deposited position registers its fee beneficiary.
+    /// @param tokenId The position registered.
+    /// @param feeBeneficiary The beneficiary receiving the sentinel fee share.
+    event FeeBeneficiarySet(uint256 indexed tokenId, address indexed feeBeneficiary);
+
     /// @notice Thrown when a fallback address is zero, the beneficiary sentinel, or this contract.
     /// @param fallbackRecipient The invalid fallback.
     error InvalidFallback(address fallbackRecipient);
@@ -64,6 +69,10 @@ interface IFeeSplitter {
     /// @param currency0 The unexpected currency0.
     error InvalidBaseCurrency(uint256 tokenId, Currency currency0);
 
+    /// @notice Thrown when an NFT other than a canonical PositionManager position is safe-transferred in.
+    /// @param sender The rejected caller of onERC721Received.
+    error NotPositionManager(address sender);
+
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Each position is collected and distributed individually so fees are
     ///      attributed to that pool's token and fee beneficiary. Positions must be native-ETH pairs and be
@@ -73,6 +82,10 @@ interface IFeeSplitter {
 
     /// @notice The canonical v4 PositionManager holding the LP positions.
     function positionManager() external view returns (IPositionManager);
+
+    /// @notice The registered fee beneficiary of a position; zero when none was registered at deposit.
+    /// @param tokenId The position token ID.
+    function feeBeneficiary(uint256 tokenId) external view returns (address);
 
     /// @notice Receives any native ETH share that cannot be delivered (unresolvable beneficiary, failed send).
     function nativeFallback() external view returns (address);

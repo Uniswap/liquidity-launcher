@@ -503,6 +503,50 @@ contract FeeSplitterTest is Test {
 
         IERC721(address(POSITION_MANAGER)).safeTransferFrom(address(this), address(splitter), tokenId);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(splitter));
+        // No transfer data: nothing registered, resolution falls back to the token's creator().
+        assertEq(splitter.feeBeneficiary(tokenId), address(0));
+    }
+
+    function test_onERC721Received_registersBeneficiaryFromTransferData() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockUERC20 token = new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), creator);
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        _accrueFees(key);
+
+        // The position owner names a beneficiary that differs from the token's creator().
+        address beneficiary = makeAddr("beneficiary");
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(beneficiary));
+        assertEq(splitter.feeBeneficiary(tokenId), beneficiary);
+
+        // The registered beneficiary takes priority over the token-reported creator.
+        splitter.collectFees(_single(tokenId));
+        assertGt(beneficiary.balance, 0);
+        assertGt(token.balanceOf(beneficiary), 0);
+        assertEq(creator.balance, 0);
+        assertEq(token.balanceOf(creator), 0);
+    }
+
+    function test_onERC721Received_revertsOnZeroBeneficiary() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockUERC20 token = new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), creator);
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, address(0)));
+        IERC721(address(POSITION_MANAGER))
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(address(0)));
+    }
+
+    function test_onERC721Received_revertsForNonPositionManagerNFTs() public {
+        FeeSplitter splitter = _defaultSplitter();
+        // Foreign NFTs would be irrecoverably stuck: the splitter only interacts with the canonical
+        // PositionManager, so their safe transfers are rejected at the callback.
+        address impostor = makeAddr("impostorNFT");
+        vm.prank(impostor);
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.NotPositionManager.selector, impostor));
+        splitter.onERC721Received(address(this), address(this), 1, bytes(""));
     }
 
     function test_canReceiveEth() public {

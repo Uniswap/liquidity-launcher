@@ -8,7 +8,9 @@ import {
 } from "../../base/DirectLaunchTestBase.sol";
 import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
 import {IStrategy} from "../../../../../src/interfaces/IStrategy.sol";
+import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
+import {MockLauncherUERC20} from "../../../../mocks/MockUERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -25,8 +27,14 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 /// initializeDistribution
 /// ├── when the caller is not the launcher
 /// │   └── it reverts with OnlyLauncher
-/// ├── when configData is not empty
+/// ├── when configData is not empty for a non-launcher token
 /// │   └── it reverts with UnexpectedConfigData
+/// ├── when a launcher token is launched without a beneficiary
+/// │   └── it reverts with InvalidFeeBeneficiary
+/// ├── when the proposed beneficiary does not match the token's graffiti
+/// │   └── it reverts with InvalidFeeBeneficiary
+/// ├── when the proposed beneficiary matches the token's graffiti
+/// │   └── it registers the beneficiary with the fee splitter
 /// ├── when either supply is not the fixed supply
 /// │   └── it reverts with InvalidSupply
 /// ├── when the token does not use 18 decimals
@@ -65,6 +73,42 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         vm.expectRevert(DirectLaunchStrategy.UnexpectedConfigData.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, hex"01", bytes32(0));
+    }
+
+    function test_WhenLauncherTokenIsLaunchedWithoutBeneficiary() public {
+        MockLauncherUERC20 token = _deployLauncherToken(makeAddr("originalCreator"));
+        token.approve(address(strategy), TOTAL_SUPPLY);
+        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.InvalidFeeBeneficiary.selector, address(0)));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+    }
+
+    function test_WhenProposedBeneficiaryDoesNotMatchGraffiti() public {
+        MockLauncherUERC20 token = _deployLauncherToken(makeAddr("originalCreator"));
+        token.approve(address(strategy), TOTAL_SUPPLY);
+        address impostor = makeAddr("impostor");
+        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.InvalidFeeBeneficiary.selector, impostor));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, abi.encode(impostor), bytes32(0));
+    }
+
+    function test_WhenProposedBeneficiaryMatchesGraffiti_registersWithFeeSplitter() public {
+        address originalCreator = makeAddr("originalCreator");
+        MockLauncherUERC20 token = _deployLauncherToken(originalCreator);
+        uint256 tokenId = POSITION_MANAGER.nextTokenId();
+
+        token.approve(address(strategy), TOTAL_SUPPLY);
+        vm.expectEmit(true, true, true, true, address(feeSplitter));
+        emit IFeeSplitter.FeeBeneficiarySet(tokenId, originalCreator);
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, abi.encode(originalCreator), bytes32(0));
+
+        // The graffiti-verified creator is registered and the splitter holds the position.
+        assertEq(feeSplitter.feeBeneficiary(tokenId), originalCreator);
+        assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
+    }
+
+    /// @notice Mints a launcher-created token: creator() reports the launcher (this test contract),
+    ///         the original creator exists only as the graffiti hash.
+    function _deployLauncherToken(address originalCreator) internal returns (MockLauncherUERC20) {
+        return new MockLauncherUERC20("Direct Token", "DIRECT", TOTAL_SUPPLY, address(this), launcher, originalCreator);
     }
 
     function test_WhenDistributionAmountIsNotFixedSupply() public {

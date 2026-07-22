@@ -98,5 +98,11 @@ abstract contract DirectLaunchTestBase is Test {
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
+    /// @notice The strategy verifies beneficiaries against the launcher's graffiti scheme; this test
+    ///         contract acts as the launcher, so it mirrors LiquidityLauncher.getGraffiti.
+    function getGraffiti(address originalCreator) external pure returns (bytes32) {
+        return keccak256(abi.encode(originalCreator));
+    }
+
     receive() external payable {}
 }

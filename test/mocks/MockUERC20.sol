@@ -24,3 +24,22 @@ contract MockRevertingCreatorToken is MockERC20 {
         revert("no creator");
     }
 }
+
+/// @notice Mock of a launcher-created UERC20: `creator()` reports the launcher and the original
+///         creator exists only as the graffiti hash, mirroring the canonical createToken flow.
+contract MockLauncherUERC20 is MockERC20 {
+    address public immutable creator;
+    bytes32 public immutable graffiti;
+
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 initialSupply,
+        address recipient,
+        address _launcher,
+        address _originalCreator
+    ) MockERC20(name, symbol, initialSupply, recipient) {
+        creator = _launcher;
+        graffiti = keccak256(abi.encode(_originalCreator));
+    }
+}
