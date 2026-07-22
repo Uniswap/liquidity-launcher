@@ -58,18 +58,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         FeeSplit[] memory nativeSplits_,
         FeeSplit[] memory tokenSplits_
     ) {
-        if (
-            _nativeFallback == address(0) || _nativeFallback == FEE_BENEFICIARY_SENTINEL
-                || _nativeFallback == address(this)
-        ) {
-            revert InvalidFallback(_nativeFallback);
-        }
-        if (
-            _tokenFallback == address(0) || _tokenFallback == FEE_BENEFICIARY_SENTINEL
-                || _tokenFallback == address(this)
-        ) {
-            revert InvalidFallback(_tokenFallback);
-        }
+        if (!_isValidFeeRecipient(_nativeFallback)) revert InvalidFallback(_nativeFallback);
+        if (!_isValidFeeRecipient(_tokenFallback)) revert InvalidFallback(_tokenFallback);
 
         positionManager = _positionManager;
         nativeFallback = _nativeFallback;
@@ -109,11 +99,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         if (data.length != 0) {
             address beneficiary = abi.decode(data, (address));
-            // Mirrors the constructor's recipient hygiene: zero, this contract, and the sentinel
-            // would burn or recycle the share instead of paying a beneficiary.
-            if (beneficiary == address(0) || beneficiary == address(this) || beneficiary == FEE_BENEFICIARY_SENTINEL) {
-                revert InvalidRecipient(beneficiary);
-            }
+            if (!_isValidFeeRecipient(beneficiary)) revert InvalidRecipient(beneficiary);
             feeBeneficiary[tokenId] = beneficiary;
             emit FeeBeneficiarySet(tokenId, beneficiary);
         }
@@ -195,6 +181,12 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
+    }
+
+    /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and
+    ///         the sentinel would burn or recycle the share instead of paying anyone.
+    function _isValidFeeRecipient(address recipient) private view returns (bool) {
+        return recipient != address(0) && recipient != address(this) && recipient != FEE_BENEFICIARY_SENTINEL;
     }
 
     /// @notice Validates and stores one side's splits.
