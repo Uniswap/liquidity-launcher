@@ -10,14 +10,12 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
-import {IUERC20} from "../interfaces/external/IUERC20.sol";
 
 /// @title FeeSplitter
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
 ///         their fees and pushes them to fixed recipients. Native ETH (currency0) and token (currency1)
 ///         fees are split independently. The fee-beneficiary sentinel in a split resolves per position
-///         to its registered beneficiary, falling back to the UERC20 `creator()` of the pool's token;
-///         unresolvable or undeliverable shares go to the
+///         to the beneficiary registered at deposit; unregistered or undeliverable shares go to the
 ///         per-side fallback so a collect can never be bricked by a recipient.
 /// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
 ///      and no code path that transfers or approves a position out.
@@ -145,11 +143,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        // Resolution order: the beneficiary registered at deposit, else the token's own creator(),
-        // else the per-side fallback. A resolved beneficiary that cannot receive a native send is
-        // redirected to the native fallback in _transfer.
+        // Resolution order: the beneficiary registered at deposit, else the per-side fallback. A
+        // registered beneficiary that cannot receive a native send also falls back (see _transfer).
         address beneficiary = feeBeneficiary[tokenId];
-        if (beneficiary == address(0)) beneficiary = _resolveTokenCreator(token);
         if (nativeAmount != 0) {
             _distribute(
                 nativeSplits,
@@ -199,17 +195,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
-    }
-
-    /// @notice Resolves a token's UERC20 creator as the default beneficiary; returns address(0) for
-    ///         any non-compliant token.
-    /// @dev Manual decoding: a token that reverts or returns garbage must degrade to the fallback,
-    ///      never revert the collect.
-    function _resolveTokenCreator(address token) private view returns (address) {
-        (bool success, bytes memory data) = token.staticcall(abi.encodeCall(IUERC20.creator, ()));
-        if (!success || data.length != 32) return address(0);
-        // Mask manually: abi.decode reverts on dirty upper bits, which a malicious token could exploit.
-        return address(uint160(uint256(bytes32(data))));
     }
 
     /// @notice Validates and stores one side's splits.

@@ -6,11 +6,10 @@ import {
     MockDirectShortTransferToken,
     MockDirectSixDecimalToken
 } from "../../base/DirectLaunchTestBase.sol";
-import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
+import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
 import {IStrategy} from "../../../../../src/interfaces/IStrategy.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
-import {MockLauncherUERC20} from "../../../../mocks/MockUERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -27,13 +26,13 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 /// initializeDistribution
 /// ├── when the caller is not the launcher
 /// │   └── it reverts with OnlyLauncher
-/// ├── when configData is not empty for a non-launcher token
-/// │   └── it reverts with UnexpectedConfigData
-/// ├── when a launcher token is launched without a beneficiary
+/// ├── when configData is empty
+/// │   └── it reverts with InvalidConfigData
+/// ├── when configData is malformed
+/// │   └── it reverts in the decode
+/// ├── when the fee beneficiary is the zero address or the launcher
 /// │   └── it reverts with InvalidFeeBeneficiary
-/// ├── when the proposed beneficiary does not match the token's graffiti
-/// │   └── it reverts with InvalidFeeBeneficiary
-/// ├── when the proposed beneficiary matches the token's graffiti
+/// ├── when the configuration is valid
 /// │   └── it registers the beneficiary with the fee splitter
 /// ├── when either supply is not the fixed supply
 /// │   └── it reverts with InvalidSupply
@@ -66,67 +65,63 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
     function test_WhenCallerIsNotLauncher() public {
         vm.expectRevert(DirectLaunchStrategy.OnlyLauncher.selector);
         vm.prank(makeAddr("unauthorized"));
-        strategy.initializeDistribution(address(1), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(1), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
-    function test_WhenConfigDataIsNotEmpty() public {
+    function test_WhenConfigDataIsEmpty() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        vm.expectRevert(DirectLaunchStrategy.UnexpectedConfigData.selector);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, hex"01", bytes32(0));
-    }
-
-    function test_WhenLauncherTokenIsLaunchedWithoutBeneficiary() public {
-        MockLauncherUERC20 token = _deployLauncherToken(makeAddr("originalCreator"));
         token.approve(address(strategy), TOTAL_SUPPLY);
-        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.InvalidFeeBeneficiary.selector, address(0)));
+        vm.expectRevert(DirectLaunchStrategy.InvalidConfigData.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
     }
 
-    function test_WhenProposedBeneficiaryDoesNotMatchGraffiti() public {
-        MockLauncherUERC20 token = _deployLauncherToken(makeAddr("originalCreator"));
+    function test_WhenConfigDataIsMalformed() public {
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
         token.approve(address(strategy), TOTAL_SUPPLY);
-        address impostor = makeAddr("impostor");
-        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.InvalidFeeBeneficiary.selector, impostor));
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, abi.encode(impostor), bytes32(0));
+        vm.expectRevert();
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, hex"01", bytes32(0));
     }
 
-    function test_WhenProposedBeneficiaryMatchesGraffiti_registersWithFeeSplitter() public {
-        address originalCreator = makeAddr("originalCreator");
-        MockLauncherUERC20 token = _deployLauncherToken(originalCreator);
+    function test_fuzz_WhenFeeBeneficiaryIsInvalid(bool useLauncher) public {
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        token.approve(address(strategy), TOTAL_SUPPLY);
+        address invalid = useLauncher ? launcher : address(0);
+        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.InvalidFeeBeneficiary.selector, invalid));
+        strategy.initializeDistribution(
+            address(token), TOTAL_SUPPLY, abi.encode(DirectLaunchConfig({feeBeneficiary: invalid})), bytes32(0)
+        );
+    }
+
+    function test_WhenConfigurationIsValid_registersBeneficiaryWithFeeSplitter() public {
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
 
         token.approve(address(strategy), TOTAL_SUPPLY);
         vm.expectEmit(true, true, true, true, address(feeSplitter));
-        emit IFeeSplitter.FeeBeneficiarySet(tokenId, originalCreator);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, abi.encode(originalCreator), bytes32(0));
+        emit IFeeSplitter.FeeBeneficiarySet(tokenId, launchFeeBeneficiary);
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
 
-        // The graffiti-verified creator is registered and the splitter holds the position.
-        assertEq(feeSplitter.feeBeneficiary(tokenId), originalCreator);
+        // The configured beneficiary is registered and the splitter holds the position.
+        assertEq(feeSplitter.feeBeneficiary(tokenId), launchFeeBeneficiary);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
-    }
-
-    /// @notice Mints a launcher-created token: creator() reports the launcher (this test contract),
-    ///         the original creator exists only as the graffiti hash.
-    function _deployLauncherToken(address originalCreator) internal returns (MockLauncherUERC20) {
-        return new MockLauncherUERC20("Direct Token", "DIRECT", TOTAL_SUPPLY, address(this), launcher, originalCreator);
     }
 
     function test_WhenDistributionAmountIsNotFixedSupply() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         vm.expectRevert(DirectLaunchStrategy.InvalidSupply.selector);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY - 1, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY - 1, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenTokenSupplyIsNotFixedSupply() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY - 1);
         vm.expectRevert(DirectLaunchStrategy.InvalidSupply.selector);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenTokenDoesNotUse18Decimals() public {
         MockDirectSixDecimalToken token = new MockDirectSixDecimalToken(TOTAL_SUPPLY, address(this));
         vm.expectRevert(DirectLaunchStrategy.InvalidTokenDecimals.selector);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenReceivedTokenAmountIsNotExact() public {
@@ -135,7 +130,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(DirectLaunchStrategy.TokenAmountMismatch.selector, TOTAL_SUPPLY - 1, TOTAL_SUPPLY)
         );
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenPoolIsAlreadyInitialized() public {
@@ -146,7 +141,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
 
         token.approve(address(strategy), TOTAL_SUPPLY);
         vm.expectRevert(Pool.PoolAlreadyInitialized.selector);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenLaunchIsValid_preservesPreexistingBalance() public {
@@ -154,13 +149,13 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         // Strand a preexisting balance on the strategy (without changing total supply); the launch's
         // dust sweep must only burn what it added, leaving the preexisting balance intact.
         deal(address(token), address(strategy), 1 ether, false);
-        _initialize(token, TOTAL_SUPPLY, bytes(""));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
         assertEq(token.balanceOf(address(strategy)), 1 ether);
     }
 
     function test_WhenLaunchIsValid_opensPoolAtInitialPrice() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        _initialize(token, TOTAL_SUPPLY, bytes(""));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
 
         (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(_key(address(token)).toId());
         assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
@@ -172,7 +167,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
         address recipient = address(feeSplitter);
 
-        _initialize(token, TOTAL_SUPPLY, bytes(""));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
 
         // One position, spanning the token side of the price, holding the precomputed liquidity.
         assertEq(POSITION_MANAGER.nextTokenId(), tokenId + 1);
@@ -187,7 +182,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
 
-        _initialize(token, TOTAL_SUPPLY, bytes(""));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
 
         // The singleton splitter holds the position permanently; it has no exit path for it.
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
@@ -196,7 +191,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
 
     function test_WhenLaunchIsValid_retainsNoTokensAndBurnsOnlyDust() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        _initialize(token, TOTAL_SUPPLY, bytes(""));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
 
         uint256 burned = token.balanceOf(address(0xdead));
         // Everything not in the pool is burned rounding dust: less than one token out of a billion.
@@ -216,7 +211,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         emit IStrategy.DistributionInitialized(address(strategy), address(token), TOTAL_SUPPLY);
         vm.expectEmit(true, true, true, true, address(strategy));
         emit DirectLaunchStrategy.TokenLaunched(key.toId(), address(token), recipient, key);
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
     /// forge-config: default.isolate = true
@@ -225,7 +220,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         token.approve(address(strategy), TOTAL_SUPPLY);
 
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
         vm.snapshotGasLastCall("DirectLaunchStrategy initializeDistribution");
     }
 }

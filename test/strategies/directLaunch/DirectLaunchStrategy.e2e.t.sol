@@ -21,11 +21,10 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
-import {DirectLaunchStrategy} from "../../../src/strategies/DirectLaunchStrategy.sol";
+import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
 import {FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
-import {MockUERC20} from "../../mocks/MockUERC20.sol";
 
 contract DirectLaunchStrategyE2ETest is Test {
     using StateLibrary for IPoolManager;
@@ -37,7 +36,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     address internal constant BURN_ADDRESS = address(0xdead);
 
     address internal tokenJar = makeAddr("tokenJar");
-    address internal creator = makeAddr("creator");
+    address internal creator = makeAddr("creator"); // the launch-configured fee beneficiary
 
     FeeSplitter internal feeSplitter;
     DirectLaunchStrategy internal strategy;
@@ -67,7 +66,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_launch_mintsSingleSidedPositionWithFullSupply() public {
-        (MockUERC20 token, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
+        (MockERC20 token, PoolKey memory key, uint256 tokenId, address recipient) = _launch();
 
         // The pool opens at the configured price with the full supply on the token side of it.
         (uint160 sqrtPriceX96, int24 tick,,) = POOL_MANAGER.getSlot0(key.toId());
@@ -90,7 +89,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_swapExactOutput_succeedsAtInitialBoundary() public {
-        (MockUERC20 token, PoolKey memory key,,) = _launch();
+        (MockERC20 token, PoolKey memory key,,) = _launch();
         uint256 requestedOutput = 1 ether;
         uint256 balanceBefore = token.balanceOf(address(this));
 
@@ -143,7 +142,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_swapExactInput_largeBuyMovesPriceDownAndPoolKeepsTrading() public {
-        (MockUERC20 token, PoolKey memory key,,) = _launch();
+        (MockERC20 token, PoolKey memory key,,) = _launch();
         vm.deal(address(this), 101_000 ether);
 
         // A large buy has no terminal tick or phase change: the price walks down the single position
@@ -184,7 +183,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_swap_sellAfterBuyReturnsEth() public {
-        (MockUERC20 token, PoolKey memory key,,) = _launch();
+        (MockERC20 token, PoolKey memory key,,) = _launch();
 
         swapRouter.swap{value: 10 ether}(
             key,
@@ -215,7 +214,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     }
 
     function test_collectFees_distributesBothSidesToConfiguredRecipients() public {
-        (MockUERC20 token, PoolKey memory key, uint256 tokenId,) = _launch();
+        (MockERC20 token, PoolKey memory key, uint256 tokenId,) = _launch();
 
         // Accrue fees on both sides: a buy pays its LP fee in ETH (currency0), a sell in token (currency1).
         swapRouter.swap{value: 10 ether}(
@@ -287,8 +286,8 @@ contract DirectLaunchStrategyE2ETest is Test {
         assertEq(creator.balance, creatorBefore);
     }
 
-    function _launch() private returns (MockUERC20 token, PoolKey memory key, uint256 tokenId, address recipient) {
-        token = new MockUERC20("Direct Token", "DIRECT", strategy.TOTAL_SUPPLY(), address(this), creator);
+    function _launch() private returns (MockERC20 token, PoolKey memory key, uint256 tokenId, address recipient) {
+        token = new MockERC20("Direct Token", "DIRECT", strategy.TOTAL_SUPPLY(), address(this));
         token.approve(address(strategy), strategy.TOTAL_SUPPLY());
         key = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -299,7 +298,12 @@ contract DirectLaunchStrategyE2ETest is Test {
         });
         tokenId = POSITION_MANAGER.nextTokenId();
         recipient = address(feeSplitter);
-        strategy.initializeDistribution(address(token), strategy.TOTAL_SUPPLY(), bytes(""), bytes32(0));
+        strategy.initializeDistribution(
+            address(token),
+            strategy.TOTAL_SUPPLY(),
+            abi.encode(DirectLaunchConfig({feeBeneficiary: creator})),
+            bytes32(0)
+        );
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
     }
 

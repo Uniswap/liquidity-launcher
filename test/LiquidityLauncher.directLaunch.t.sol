@@ -28,7 +28,7 @@ import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
-import {DirectLaunchStrategy} from "../src/strategies/DirectLaunchStrategy.sol";
+import {DirectLaunchStrategy, DirectLaunchConfig} from "../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
 import {FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../src/interfaces/IFeeSplitter.sol";
 
@@ -79,8 +79,11 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(address(this)));
         PoolKey memory key = _poolKeyFor(token);
 
-        Distribution memory distribution =
-            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: abi.encode(address(this))});
+        Distribution memory distribution = Distribution({
+            strategy: address(strategy),
+            amount: TOTAL_SUPPLY,
+            configData: abi.encode(DirectLaunchConfig({feeBeneficiary: address(this)}))
+        });
 
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
         address recipient = address(feeSplitter);
@@ -96,7 +99,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // Launcher handed everything off; strategy retains nothing.
         assertEq(IERC20(token).balanceOf(address(launcher)), 0);
         assertEq(IERC20(token).balanceOf(address(strategy)), 0);
-        // The graffiti-verified original creator is registered as the position's fee beneficiary.
+        // The configured beneficiary is registered for the launch position.
         assertEq(feeSplitter.feeBeneficiary(tokenId), address(this));
     }
 
@@ -162,8 +165,11 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     ///      Multicall3 run despite the different token address.
     function _quoteExactOutputBuy(PoolSwapTest swapRouter, uint256 buyAmount) internal returns (uint256 ethIn) {
         uint256 snapshot = vm.snapshotState();
-        Distribution memory distribution =
-            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: abi.encode(address(this))});
+        Distribution memory distribution = Distribution({
+            strategy: address(strategy),
+            amount: TOTAL_SUPPLY,
+            configData: abi.encode(DirectLaunchConfig({feeBeneficiary: address(this)}))
+        });
         launcher.multicall(_buildCalls(distribution));
         address token =
             factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(address(this)));
@@ -212,12 +218,12 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
                 LiquidityLauncher.distributeToken,
                 (
                     token,
-                    // The aggregator is the createToken caller, so its graffiti is the only provable
-                    // beneficiary: launch-and-buy through a generic aggregator forfeits creator fees.
+                    // The beneficiary is freely configured, so launch-and-buy through a generic
+                    // aggregator pays the creator directly despite Multicall3 being the caller.
                     Distribution({
                         strategy: address(strategy),
                         amount: TOTAL_SUPPLY,
-                        configData: abi.encode(Preinstalls.MultiCall3)
+                        configData: abi.encode(DirectLaunchConfig({feeBeneficiary: creator}))
                     }),
                     bytes32(0)
                 )
@@ -263,8 +269,11 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
     function test_e2e_launchThroughLiquidityLauncher_gas() public {
-        Distribution memory distribution =
-            Distribution({strategy: address(strategy), amount: TOTAL_SUPPLY, configData: abi.encode(address(this))});
+        Distribution memory distribution = Distribution({
+            strategy: address(strategy),
+            amount: TOTAL_SUPPLY,
+            configData: abi.encode(DirectLaunchConfig({feeBeneficiary: address(this)}))
+        });
 
         launcher.multicall(_buildCalls(distribution));
         vm.snapshotGasLastCall("DirectLaunch launch: LiquidityLauncher multicall");

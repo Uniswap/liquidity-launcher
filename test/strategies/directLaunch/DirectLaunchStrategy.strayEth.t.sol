@@ -12,7 +12,7 @@ contract DirectLaunchStrategyStrayEthTest is DirectLaunchTestBase {
     function test_launch_succeedsWithoutStrayEth() public {
         assertEq(address(POSITION_MANAGER).balance, 0, "precondition: PM has no ETH");
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        _initialize(IERC20(address(token)), TOTAL_SUPPLY, bytes(""));
+        _initialize(IERC20(address(token)), TOTAL_SUPPLY, _defaultConfig());
         assertEq(address(strategy).balance, 0);
     }
 
@@ -21,7 +21,7 @@ contract DirectLaunchStrategyStrayEthTest is DirectLaunchTestBase {
     function test_launch_succeedsWithStrayEthOnPositionManager() public {
         vm.deal(address(POSITION_MANAGER), 1); // models ETH force-sent via SELFDESTRUCT
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        _initialize(IERC20(address(token)), TOTAL_SUPPLY, bytes("")); // no revert
+        _initialize(IERC20(address(token)), TOTAL_SUPPLY, _defaultConfig()); // no revert
 
         // The stray wei is swept through the plan into the strategy and left inert (never spent).
         assertEq(address(strategy).balance, 1, "stray ETH accepted by strategy");

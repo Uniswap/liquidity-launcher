@@ -8,7 +8,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {DirectLaunchStrategy} from "../../../../src/strategies/DirectLaunchStrategy.sol";
+import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
@@ -52,6 +52,7 @@ abstract contract DirectLaunchTestBase is Test {
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");
+    address internal launchFeeBeneficiary = makeAddr("launchFeeBeneficiary");
     IPoolManager internal poolManager = POOL_MANAGER;
     IPositionManager internal positionManager = POSITION_MANAGER;
     FeeSplitter internal feeSplitter;
@@ -98,10 +99,9 @@ abstract contract DirectLaunchTestBase is Test {
         strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
-    /// @notice The strategy verifies beneficiaries against the launcher's graffiti scheme; this test
-    ///         contract acts as the launcher, so it mirrors LiquidityLauncher.getGraffiti.
-    function getGraffiti(address originalCreator) external pure returns (bytes32) {
-        return keccak256(abi.encode(originalCreator));
+    /// @notice The default launch configuration naming the fee beneficiary.
+    function _defaultConfig() internal view returns (bytes memory) {
+        return abi.encode(DirectLaunchConfig({feeBeneficiary: launchFeeBeneficiary}));
     }
 
     receive() external payable {}
