@@ -162,7 +162,9 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     {
         // Only accept distributions routed through the configured launcher.
         if (msg.sender != launcher) revert OnlyLauncher();
-        address feeBeneficiary = _decodeFeeBeneficiary(configData);
+        if (configData.length == 0) revert InvalidConfigData();
+        DirectLaunchConfig memory config = abi.decode(configData, (DirectLaunchConfig));
+        _validateFeeBeneficiary(config.feeBeneficiary);
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
@@ -221,21 +223,18 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         // MUST be a safeTransferFrom: only the PositionManager's receiver callback lets the
         // splitter register the beneficiary carried in the transfer data.
         IERC721(address(positionManager))
-            .safeTransferFrom(address(this), address(feeSplitter), tokenId, abi.encode(feeBeneficiary));
+            .safeTransferFrom(address(this), address(feeSplitter), tokenId, abi.encode(config.feeBeneficiary));
     }
 
-    /// @notice Decodes and validates the launch's fee beneficiary.
+    /// @notice Validates a launch's fee beneficiary.
     /// @dev The beneficiary is freely chosen by the launch configuration; it carries no claim of
     ///      authorship. Zero is rejected, and so is the launcher: fees held by the launcher are
     ///      sweepable by anyone via distributeToken. The splitter additionally rejects itself and
-    ///      its sentinel at registration. Malformed configData reverts in the decode.
-    function _decodeFeeBeneficiary(bytes calldata configData) private view returns (address) {
-        if (configData.length == 0) revert InvalidConfigData();
-        address feeBeneficiary = abi.decode(configData, (DirectLaunchConfig)).feeBeneficiary;
+    ///      its sentinel at registration.
+    function _validateFeeBeneficiary(address feeBeneficiary) private view {
         if (feeBeneficiary == address(0) || feeBeneficiary == launcher) {
             revert InvalidFeeBeneficiary(feeBeneficiary);
         }
-        return feeBeneficiary;
     }
 
     /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens
