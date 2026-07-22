@@ -11,9 +11,11 @@ address constant FEE_BENEFICIARY_SENTINEL = address(uint160(uint256(keccak256("F
 /// @notice A single fee allocation: `bps` of one currency side to `recipient`.
 /// @param recipient The receiver of this share; may be the FEE_BENEFICIARY_SENTINEL.
 /// @param bps The share in basis points. Each side's splits sum to 10,000.
+/// @param useCallback Whether to call ILPFeesPositionRecipient.onFeesReceived callback
 struct FeeSplit {
     address recipient;
     uint16 bps;
+    bool useCallback;
 }
 
 /// @title IFeeSplitter
@@ -73,12 +75,24 @@ interface IFeeSplitter {
     /// @param sender The rejected caller of onERC721Received.
     error NotPositionManager(address sender);
 
+    /// @notice Thrown when a position is not owned by the FeeSplitter
+    error NotOwner(uint256 tokenId);
+
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Each position is collected and distributed individually so fees are
     ///      attributed to that pool's token and fee beneficiary. Positions must be native-ETH pairs and be
     ///      owned by (or approved to) the splitter, otherwise the PositionManager reverts.
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
+
+    /// @notice Increases the liquidity of a position
+    function increaseLiquidity(
+        uint256 tokenId,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        bytes calldata hookData
+    ) external;
 
     /// @notice The canonical v4 PositionManager holding the LP positions.
     function positionManager() external view returns (IPositionManager);

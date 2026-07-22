@@ -10,6 +10,9 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
+import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.sol";
 
 /// @title FeeSplitter
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
@@ -88,6 +91,31 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         }
     }
 
+    /// @inheritdoc IFeeSplitter
+    /// @notice Permissionlessly increase the liquidity of a position held in the FeeSplitter
+    /// @dev The PositionManager must already hold a balance of the tokens, and any excess will be taken back to the caller
+    function increaseLiquidity(
+        uint256 tokenId,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        bytes calldata hookData
+    ) external override nonReentrant {
+        (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
+        if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert NotOwner(tokenId);
+
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR)
+        );
+        bytes[] memory params = new bytes[](4);
+        // Require the balance to already exist in PositionManager
+        params[0] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
+        params[3] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
+        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+    }
+
     /// @notice Accepts positions safe-transferred through the PositionManager and registers the
     ///         transfer data, when present, as the position's fee beneficiary.
     /// @dev Only PositionManager callbacks are accepted, so a registration verifiably comes from the
@@ -134,6 +162,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         address beneficiary = feeBeneficiary[tokenId];
         if (nativeAmount != 0) {
             _distribute(
+                tokenId,
                 nativeSplits,
                 CurrencyLibrary.ADDRESS_ZERO,
                 nativeAmount,
@@ -142,14 +171,24 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         }
         if (tokenAmount != 0) {
             _distribute(
-                tokenSplits, poolKey.currency1, tokenAmount, beneficiary == address(0) ? tokenFallback : beneficiary
+                tokenId,
+                tokenSplits,
+                poolKey.currency1,
+                tokenAmount,
+                beneficiary == address(0) ? tokenFallback : beneficiary
             );
         }
     }
 
     /// @notice Pushes one side's splits of `amount`. Cumulative allocation assigns all rounding dust to
     ///         later recipients so the full amount is always forwarded.
-    function _distribute(FeeSplit[] storage splits, Currency currency, uint256 amount, address beneficiary) private {
+    function _distribute(
+        uint256 tokenId,
+        FeeSplit[] storage splits,
+        Currency currency,
+        uint256 amount,
+        address beneficiary
+    ) private {
         uint256 cumulativeBps;
         uint256 distributed;
         uint256 count = splits.length;
@@ -163,7 +202,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
             address recipient = split.recipient;
             if (recipient == FEE_BENEFICIARY_SENTINEL) recipient = beneficiary;
+
             _transfer(currency, recipient, recipientAmount);
+            if (split.useCallback) _tryCallback(tokenId, currency, recipientAmount, split.recipient);
         }
     }
 
@@ -181,6 +222,12 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
+    }
+
+    /// @notice Tries to call the onFeesReceived callback on the recipient
+    /// @dev Does NOT revert if the callback fails
+    function _tryCallback(uint256 tokenId, Currency currency, uint256 amount, address recipient) private {
+        try (ILPFeesPositionRecipient(recipient)).onFeesReceived(tokenId, currency, amount) returns (bool) {} catch {}
     }
 
     /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and

@@ -16,10 +16,41 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber)
     {}
 
+    error InvalidCurrency(Currency currency);
+
+    struct Fees {
+        uint256 currency0Fees;
+        uint256 currency1Fees;
+    }
+    mapping(uint256 tokenId => Fees fees) public override fees;
+
     /// @notice Returns the pool key for an existing position
     function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
         (poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
         if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
+    }
+
+    /// @inheritdoc ILPFeesPositionRecipient
+    function onFeesReceived(uint256 _tokenId, Currency _currency, uint256 _amount) external {
+        PoolKey memory poolKey = _getPoolKey(_tokenId);
+        Currency currency0 = poolKey.currency0;
+        Currency currency1 = poolKey.currency1;
+        if (_currency != currency0 && _currency != currency1) revert InvalidCurrency(_currency);
+        Fees storage fees = fees[_tokenId];
+
+        if (_currency == currency0) {
+            uint256 expectedCurrency0Fees = fees.currency0Fees + _amount;
+            if (currency0.balanceOfSelf() < expectedCurrency0Fees) {
+                revert InsufficientAmountReceived(currency0, currency0.balanceOfSelf(), expectedCurrency0Fees);
+            }
+            fees.currency0Fees += _amount;
+        } else {
+            uint256 expectedCurrency1Fees = fees.currency1Fees + _amount;
+            if (currency1.balanceOfSelf() < expectedCurrency1Fees) {
+                revert InsufficientAmountReceived(currency1, currency1.balanceOfSelf(), expectedCurrency1Fees);
+            }
+            fees.currency1Fees += _amount;
+        }
     }
 
     /// @inheritdoc ILPFeesPositionRecipient
@@ -31,37 +62,18 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
 
         Currency currency0 = poolKey.currency0;
         Currency currency1 = poolKey.currency1;
-
-        uint256 currency0BalanceBefore = currency0.balanceOfSelf();
-        uint256 currency1BalanceBefore = currency1.balanceOfSelf();
-
-        bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
-        bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(_tokenId, 0, 0, 0, bytes(""));
-        params[1] = abi.encode(currency0, currency1, address(this));
-
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
-
-        uint256 currency0Received = currency0.balanceOfSelf() - currency0BalanceBefore;
-        uint256 currency1Received = currency1.balanceOfSelf() - currency1BalanceBefore;
-
-        if (currency0Received < _minCurrency0Amount) {
-            revert InsufficientAmountReceived(currency0, currency0Received, _minCurrency0Amount);
-        }
-        if (currency1Received < _minCurrency1Amount) {
-            revert InsufficientAmountReceived(currency1, currency1Received, _minCurrency1Amount);
-        }
-
-        if (currency0Received != 0) currency0.transfer(msg.sender, currency0Received);
-        if (currency1Received != 0) currency1.transfer(msg.sender, currency1Received);
+        uint256 currency0Fees = fees[_tokenId].currency0Fees;
+        uint256 currency1Fees = fees[_tokenId].currency1Fees;
+        if (currency0Fees != 0) currency0.transfer(msg.sender, currency0Fees);
+        if (currency1Fees != 0) currency1.transfer(msg.sender, currency1Fees);
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
-        ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, currency0Received, currency1Received);
+        ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, currency0Fees, currency1Fees);
 
         _afterCallback(poolKey, _tokenId, context);
 
-        emit FeesCollected(_tokenId, currency0Received, currency1Received, poolKey);
+        emit FeesCollected(_tokenId, currency0Fees, currency1Fees, poolKey);
     }
 
     /// @notice Called before the callback is executed

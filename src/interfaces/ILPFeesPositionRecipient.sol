@@ -22,4 +22,10 @@ interface ILPFeesPositionRecipient {
     /// @param minCurrency0Amount The minimum acceptable currency0 fees
     /// @param minCurrency1Amount The minimum acceptable currency1 fees
     function collectFees(uint256 tokenId, uint256 minCurrency0Amount, uint256 minCurrency1Amount) external;
+
+    /// @notice Called when fees are received from a position
+    /// @param tokenId The token ID of the position
+    /// @param currency The currency of the fees received
+    /// @param amount The amount of fees received
+    function onFeesReceived(uint256 tokenId, Currency currency, uint256 amount) external;
 }
