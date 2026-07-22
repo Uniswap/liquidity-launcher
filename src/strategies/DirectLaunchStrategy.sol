@@ -215,6 +215,9 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
         emit DistributionInitialized(address(this), token, totalSupply);
         emit TokenLaunched(poolId, token, address(feeSplitter), key);
+
+        // MUST be a safeTransferFrom: only the PositionManager's receiver callback lets the
+        // splitter register the beneficiary carried in the transfer data.
         IERC721(address(positionManager))
             .safeTransferFrom(
                 address(this),
@@ -225,15 +228,13 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     }
 
     /// @notice Resolves and verifies the fee beneficiary for the launch.
-    /// @dev Launcher-created tokens report the launcher itself as `creator()`; the original creator
-    ///      only exists on the token as the graffiti — the hash of their address, committed by the
-    ///      launcher at token creation. The beneficiary is therefore supplied via `configData` and
-    ///      proven by revealing the graffiti preimage: it is required for launcher-created tokens and
-    ///      rejected for any other token, where the claim would be unverifiable. A foreign token can
-    ///      fake `creator() == launcher` with a graffiti it chose itself, but that only redirects its
-    ///      own fee stream. Note the proof binds the beneficiary to the launcher's `createToken`
-    ///      caller: tokens created through an intermediary (e.g. a generic multicall aggregator) can
-    ///      only prove the intermediary — creators must call the launcher directly to receive fees.
+    /// @dev Enforced below:
+    ///      - launcher-created token (`creator() == launcher`): `configData` MUST hold the abi-encoded
+    ///        original creator, proven by `token.graffiti == launcher.getGraffiti(claimed)`
+    ///      - any other token: `configData` MUST be empty
+    ///      The graffiti binds the beneficiary to the launcher's `createToken` caller, so tokens
+    ///      created through an intermediary (e.g. a multicall aggregator) can only prove the
+    ///      intermediary. A foreign token faking `creator() == launcher` only redirects its own fees.
     function _verifyFeeBeneficiary(address token, bytes calldata configData) private view returns (address) {
         bool isLauncherToken;
         try IUERC20(token).creator() returns (address tokenCreator) {
@@ -242,6 +243,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
         if (!isLauncherToken) {
             if (configData.length != 0) revert UnexpectedConfigData();
+            // No registration: the splitter resolves the sentinel share via the token's own creator().
             return address(0);
         }
 

@@ -106,9 +106,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     ///      the deposit, and owning a position carries the right to name its fee beneficiary — the
     ///      owner could have kept 100% of the fees by not depositing. The registration is immutable
     ///      by construction: positions never leave the splitter, so this callback cannot fire twice
-    ///      for the same tokenId. Positions arriving via mint or plain transferFrom skip the callback
-    ///      and simply have no registered beneficiary. Other NFTs are rejected outright; they would
-    ///      be irrecoverably stuck, since collectFees only interacts with the PositionManager.
+    ///      for the same tokenId. Adding fee beneficiaries is NOT supported for positions minted or
+    ///      sent to this contract without triggering this callback. Other NFTs are rejected: they
+    ///      would be irrecoverably stuck, since collectFees only interacts with the PositionManager.
     function onERC721Received(address, address, uint256 tokenId, bytes calldata data) external returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         if (data.length != 0) {
@@ -147,8 +147,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        // The beneficiary registered at deposit wins; the token-reported creator is the fallback
-        // for positions deposited without a registration. Unresolvable degrades per side.
+        // Resolution order: the beneficiary registered at deposit, else the token's own creator(),
+        // else the per-side fallback. A resolved beneficiary that cannot receive a native send is
+        // redirected to the native fallback in _transfer.
         address beneficiary = feeBeneficiary[tokenId];
         if (beneficiary == address(0)) beneficiary = _resolveTokenCreator(token);
         if (nativeAmount != 0) {
