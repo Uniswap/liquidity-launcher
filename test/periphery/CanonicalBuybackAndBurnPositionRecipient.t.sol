@@ -159,13 +159,14 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
 
         uint256 executorETHBefore = address(executor).balance;
         uint256 recipientETHBefore = address(positionRecipient).balance;
+        uint256 unattributedETH = recipientETHBefore - UNI_FORK_CURRENCY_FEES_AMOUNT - FORK_CURRENCY0_FEES_AMOUNT;
         uint256 burnAddressUNIBefore = IERC20(UNI).balanceOf(address(0xdead));
 
         // Collecting the ETH/UNI position pays out exactly its own fees; the min doubles as a floor
         executor.execute(positionRecipient, UNI_FORK_TOKEN_ID, UNI_FORK_CURRENCY_FEES_AMOUNT, 0);
 
         assertEq(address(executor).balance - executorETHBefore, UNI_FORK_CURRENCY_FEES_AMOUNT);
-        assertEq(address(positionRecipient).balance, recipientETHBefore - UNI_FORK_CURRENCY_FEES_AMOUNT);
+        assertEq(address(positionRecipient).balance, unattributedETH + FORK_CURRENCY0_FEES_AMOUNT);
         assertGt(IERC20(UNI).balanceOf(address(0xdead)), burnAddressUNIBefore);
 
         // The other pool's position is untouched and still collectable for its exact amount
@@ -174,7 +175,7 @@ contract CanonicalBuybackAndBurnPositionRecipientTest is TimelockedPositionRecip
         assertEq(
             address(executor).balance - executorETHBefore, UNI_FORK_CURRENCY_FEES_AMOUNT + FORK_CURRENCY0_FEES_AMOUNT
         );
-        assertEq(address(positionRecipient).balance, 0);
+        assertEq(address(positionRecipient).balance, unattributedETH);
     }
 
     function test_withdrawInvalidPosition_transfersToOperatorBeforeTimelock() public {

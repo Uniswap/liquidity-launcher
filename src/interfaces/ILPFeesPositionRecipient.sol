@@ -30,6 +30,8 @@ interface ILPFeesPositionRecipient {
     function fees(uint256 tokenId) external view returns (uint256 currency0Fees, uint256 currency1Fees);
 
     /// @notice Called when fees are received from a position
+    /// @dev Permissionless and balance-backed. Any balance not already attributed as fees can be
+    ///      attributed by a caller, so funds should be transferred and notified atomically.
     /// @param tokenId The token ID of the position
     /// @param currency The currency of the fees received
     /// @param amount The amount of fees received

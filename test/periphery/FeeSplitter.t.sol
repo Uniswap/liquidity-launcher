@@ -245,6 +245,10 @@ contract FeeSplitterTest is Test {
         assertEq(native[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(native[1].bps, 2_000);
         assertFalse(native[1].useCallback);
+        (address nativeRecipient, uint16 nativeBps, bool nativeCallback) = splitter.nativeSplits(0);
+        assertEq(nativeRecipient, tokenJar);
+        assertEq(nativeBps, 8_000);
+        assertFalse(nativeCallback);
 
         FeeSplit[] memory tokenSide = splitter.getTokenSplits();
         assertEq(tokenSide.length, 2);
@@ -254,6 +258,10 @@ contract FeeSplitterTest is Test {
         assertEq(tokenSide[1].recipient, FEE_BENEFICIARY_SENTINEL);
         assertEq(tokenSide[1].bps, 2_000);
         assertFalse(tokenSide[1].useCallback);
+        (address tokenRecipient, uint16 tokenBps, bool tokenCallback) = splitter.tokenSplits(0);
+        assertEq(tokenRecipient, BURN_ADDRESS);
+        assertEq(tokenBps, 8_000);
+        assertFalse(tokenCallback);
     }
 
     function test_constructor_revertsOnInvalidFallback() public {
@@ -490,6 +498,20 @@ contract FeeSplitterTest is Test {
         uint256 nativeTotal = (tokenJar.balance - jarNativeBefore) + (creator.balance - creatorNativeBefore);
         assertGt(nativeTotal, 5 ether, "donated native not distributed");
         assertGt(token.balanceOf(BURN_ADDRESS), 7 ether * 8_000 / 10_000, "donated token not burned pro rata");
+    }
+
+    function test_collectFees_assignsRoundingDustAfterZeroValueSplit() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("Plain", "PLAIN", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        vm.deal(address(splitter), 1);
+        uint256 jarNativeBefore = tokenJar.balance;
+
+        splitter.collectFees(_single(tokenId));
+
+        assertEq(tokenJar.balance - jarNativeBefore, 1);
+        assertEq(address(splitter).balance, 0);
     }
 
     function test_collectFees_secondCollectDistributesNewFeesOnly() public {
