@@ -64,7 +64,7 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
         positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
         vm.deal(address(positionRecipient), FORK_CURRENCY0_FEES_AMOUNT);
 
-        positionRecipient.onFeesReceived(FORK_TOKEN_ID, Currency.wrap(NATIVE), FORK_CURRENCY0_FEES_AMOUNT);
+        positionRecipient.onFeesReceived(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
 
         (uint256 currency0Fees, uint256 currency1Fees) = positionRecipient.fees(FORK_TOKEN_ID);
         assertEq(currency0Fees, FORK_CURRENCY0_FEES_AMOUNT);
@@ -110,13 +110,9 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
     }
 
     function _callbackSplitter(address recipient) internal returns (FeeSplitter splitter) {
-        FeeSplit[] memory nativeSplits = new FeeSplit[](1);
-        nativeSplits[0] = FeeSplit({recipient: recipient, bps: 10_000, useCallback: true});
-        FeeSplit[] memory tokenSplits = new FeeSplit[](1);
-        tokenSplits[0] = FeeSplit({recipient: recipient, bps: 10_000, useCallback: true});
-        splitter = new FeeSplitter(
-            IPositionManager(POSITION_MANAGER), address(this), address(this), nativeSplits, tokenSplits
-        );
+        FeeSplit[] memory splits = new FeeSplit[](1);
+        splits[0] = FeeSplit({recipient: recipient, nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
+        splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), address(this), address(this), splits);
     }
 
     function _single(uint256 tokenId) internal pure returns (uint256[] memory tokenIds) {

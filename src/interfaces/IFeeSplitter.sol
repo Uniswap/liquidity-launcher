@@ -8,13 +8,15 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// falling back to the UERC20 `creator()` of the pool's token.
 address constant FEE_BENEFICIARY_SENTINEL = address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
-/// @notice A single fee allocation: `bps` of one currency side to `recipient`.
+/// @notice A single fee allocation: shares of both currency sides to `recipient`.
 /// @param recipient The receiver of this share; may be the FEE_BENEFICIARY_SENTINEL.
-/// @param bps The share in basis points. Each side's splits sum to 10,000.
+/// @param nativeBps The native ETH (currency0) share in basis points. All nativeBps sum to 10,000.
+/// @param tokenBps The token (currency1) share in basis points. All tokenBps sum to 10,000.
 /// @param useCallback Whether to call ILPFeesPositionRecipient.onFeesReceived callback
 struct FeeSplit {
     address recipient;
-    uint16 bps;
+    uint16 nativeBps;
+    uint16 tokenBps;
     bool useCallback;
 }
 
@@ -44,14 +46,14 @@ interface IFeeSplitter {
     /// @param fallbackRecipient The invalid fallback.
     error InvalidFallback(address fallbackRecipient);
 
-    /// @notice Thrown when a side is configured with no splits.
+    /// @notice Thrown when no splits are configured.
     error NoSplits();
 
     /// @notice Thrown when a split recipient is the zero address or this contract.
     /// @param recipient The invalid recipient.
     error InvalidRecipient(address recipient);
 
-    /// @notice Thrown when a split has zero basis points.
+    /// @notice Thrown when a split has zero basis points on both sides.
     /// @param recipient The recipient of the empty split.
     error ZeroSplitBps(address recipient);
 
@@ -111,21 +113,18 @@ interface IFeeSplitter {
     /// @param tokenId The position token ID.
     function feeBeneficiary(uint256 tokenId) external view returns (address);
 
-    /// @notice Receives any native ETH share that cannot be delivered (unresolvable beneficiary, failed send).
+    /// @notice Receives the sentinel's native ETH share when no beneficiary is registered.
     function nativeFallback() external view returns (address);
 
-    /// @notice Receives any token share whose beneficiary recipient cannot be resolved.
+    /// @notice Receives the sentinel's token share when no beneficiary is registered.
     function tokenFallback() external view returns (address);
 
-    /// @notice The native ETH (currency0) split at `index`.
-    function nativeSplits(uint256 index) external view returns (address recipient, uint16 bps, bool useCallback);
+    /// @notice The fee split at `index`.
+    function splits(uint256 index)
+        external
+        view
+        returns (address recipient, uint16 nativeBps, uint16 tokenBps, bool useCallback);
 
-    /// @notice The token (currency1) split at `index`.
-    function tokenSplits(uint256 index) external view returns (address recipient, uint16 bps, bool useCallback);
-
-    /// @notice The full configured native ETH (currency0) splits.
-    function getNativeSplits() external view returns (FeeSplit[] memory);
-
-    /// @notice The full configured token (currency1) splits.
-    function getTokenSplits() external view returns (FeeSplit[] memory);
+    /// @notice The full configured fee splits.
+    function getSplits() external view returns (FeeSplit[] memory);
 }

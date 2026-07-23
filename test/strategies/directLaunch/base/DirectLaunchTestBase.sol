@@ -74,13 +74,12 @@ abstract contract DirectLaunchTestBase is Test {
     /// @notice Deploys a splitter with the intended product configuration: ETH fees to the tokenJar,
     ///         token fees burned, both with a 20% creator share.
     function _deployFeeSplitter() internal returns (FeeSplitter) {
-        FeeSplit[] memory nativeSplits = new FeeSplit[](2);
-        nativeSplits[0] = FeeSplit({recipient: tokenJar, bps: 8_000, useCallback: false});
-        nativeSplits[1] = FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, bps: 2_000, useCallback: false});
-        FeeSplit[] memory tokenSplits = new FeeSplit[](2);
-        tokenSplits[0] = FeeSplit({recipient: address(0xdead), bps: 8_000, useCallback: false});
-        tokenSplits[1] = FeeSplit({recipient: nativeSplits[1].recipient, bps: 2_000, useCallback: false});
-        return new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), nativeSplits, tokenSplits);
+        FeeSplit[] memory splits = new FeeSplit[](3);
+        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
+        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, useCallback: false});
+        splits[2] =
+            FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, nativeBps: 2_000, tokenBps: 2_000, useCallback: false});
+        return new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), splits);
     }
 
     /// @notice Deploys a strategy with the given tick and the shared collaborators (used by constructor tests).

@@ -13,9 +13,6 @@ interface ILPFeesPositionRecipient {
     /// @notice Thrown when the received amounts are less than expected
     error InsufficientAmountReceived(Currency currency, uint256 received, uint256 expected);
 
-    /// @notice Thrown when notified about fees in a currency outside the position's pool
-    error InvalidFeeCurrency(Currency currency);
-
     /// @notice Emitted after fees are collected and processed by an executor
     event FeesCollected(uint256 indexed tokenId, uint256 currency0Received, uint256 currency1Received, PoolKey poolKey);
 
@@ -31,9 +28,10 @@ interface ILPFeesPositionRecipient {
 
     /// @notice Called when fees are received from a position
     /// @dev Permissionless and balance-backed. Any balance not already attributed as fees can be
-    ///      attributed by a caller, so funds should be transferred and notified atomically.
+    ///      attributed by a caller, so funds should be transferred and notified atomically. The
+    ///      position's currencies are resolved from the PositionManager, never from the caller.
     /// @param tokenId The token ID of the position
-    /// @param currency The currency of the fees received
-    /// @param amount The amount of fees received
-    function onFeesReceived(uint256 tokenId, Currency currency, uint256 amount) external;
+    /// @param currency0Amount The amount of currency0 fees received
+    /// @param currency1Amount The amount of currency1 fees received
+    function onFeesReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external;
 }

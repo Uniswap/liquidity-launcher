@@ -46,9 +46,8 @@ contract ConstructorTest is DirectLaunchTestBase {
     function test_WhenFeeSplitterUsesDifferentPositionManager() public {
         // A splitter bound to a foreign PositionManager could never collect the launch positions.
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
-        FeeSplitter mismatched = new FeeSplitter(
-            otherPositionManager, tokenJar, address(0xdead), feeSplitter.getNativeSplits(), feeSplitter.getTokenSplits()
-        );
+        FeeSplitter mismatched =
+            new FeeSplitter(otherPositionManager, tokenJar, address(0xdead), feeSplitter.getSplits());
 
         vm.expectRevert(
             abi.encodeWithSelector(DirectLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))

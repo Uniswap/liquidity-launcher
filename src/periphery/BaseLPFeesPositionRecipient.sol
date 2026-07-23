@@ -29,22 +29,28 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
     }
 
     /// @inheritdoc ILPFeesPositionRecipient
-    function onFeesReceived(uint256 _tokenId, Currency _currency, uint256 _amount) external {
+    /// @dev The position's currencies are fetched from the PositionManager: the caller is untrusted,
+    ///      so notified amounts are attributed only to the pool the position actually belongs to.
+    function onFeesReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
-        Currency currency0 = poolKey.currency0;
-        Currency currency1 = poolKey.currency1;
-        if (!(_currency == currency0) && !(_currency == currency1)) revert InvalidFeeCurrency(_currency);
 
+        Fees storage positionFees = fees[_tokenId];
+        if (_currency0Amount != 0) {
+            _attribute(poolKey.currency0, _currency0Amount);
+            positionFees.currency0Fees += _currency0Amount;
+        }
+        if (_currency1Amount != 0) {
+            _attribute(poolKey.currency1, _currency1Amount);
+            positionFees.currency1Fees += _currency1Amount;
+        }
+    }
+
+    /// @notice Verifies `_amount` of `_currency` is backed by this contract's balance beyond the
+    ///         fees already attributed, then adds it to the attributed total.
+    function _attribute(Currency _currency, uint256 _amount) private {
         uint256 balance = _currency.balanceOfSelf();
         uint256 expectedTotalFees = totalFees[_currency] + _amount;
         if (balance < expectedTotalFees) revert InsufficientAmountReceived(_currency, balance, expectedTotalFees);
-
-        Fees storage positionFees = fees[_tokenId];
-        if (_currency == currency0) {
-            positionFees.currency0Fees += _amount;
-        } else {
-            positionFees.currency1Fees += _amount;
-        }
         totalFees[_currency] = expectedTotalFees;
     }
 

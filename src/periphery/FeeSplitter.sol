@@ -18,8 +18,8 @@ import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.s
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
 ///         their fees and pushes them to fixed recipients. Native ETH (currency0) and token (currency1)
 ///         fees are split independently. The fee-beneficiary sentinel in a split resolves per position
-///         to the beneficiary registered at deposit; unregistered or undeliverable shares go to the
-///         per-side fallback so a collect can never be bricked by a recipient.
+///         to the beneficiary registered at deposit; unregistered shares go to the per-side fallback.
+///         Native shares are force-sent, so a collect can never be blocked by a recipient.
 /// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
 ///      and no code path that transfers or approves a position out.
 /// @custom:security-contact security@uniswap.org
@@ -28,9 +28,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice The denominator for fee splits: each side's splits sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
-
-    /// @notice Gas forwarded on native transfers to untrusted recipients (solady's no-grief stipend).
-    uint256 private constant NATIVE_TRANSFER_GAS_STIPEND = 100_000;
 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
@@ -42,24 +39,20 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     address public immutable override tokenFallback;
 
     /// @inheritdoc IFeeSplitter
-    FeeSplit[] public override nativeSplits;
-    /// @inheritdoc IFeeSplitter
-    FeeSplit[] public override tokenSplits;
+    FeeSplit[] public override splits;
 
     /// @inheritdoc IFeeSplitter
     mapping(uint256 tokenId => address beneficiary) public override feeBeneficiary;
 
     /// @param _positionManager The canonical v4 PositionManager.
-    /// @param _nativeFallback Trusted receiver for undeliverable native ETH shares; must accept plain sends.
-    /// @param _tokenFallback Receiver for token shares whose beneficiary cannot be resolved.
-    /// @param nativeSplits_ The native ETH (currency0) fee splits; must sum to 10,000 bps.
-    /// @param tokenSplits_ The token (currency1) fee splits; must sum to 10,000 bps.
+    /// @param _nativeFallback Receiver of the sentinel's native ETH share when no beneficiary is registered.
+    /// @param _tokenFallback Receiver of the sentinel's token share when no beneficiary is registered.
+    /// @param splits_ The fee splits; each side's shares (nativeBps, tokenBps) must sum to 10,000 bps.
     constructor(
         IPositionManager _positionManager,
         address _nativeFallback,
         address _tokenFallback,
-        FeeSplit[] memory nativeSplits_,
-        FeeSplit[] memory tokenSplits_
+        FeeSplit[] memory splits_
     ) {
         if (!_isValidFeeRecipient(_nativeFallback)) revert InvalidFallback(_nativeFallback);
         if (!_isValidFeeRecipient(_tokenFallback)) revert InvalidFallback(_tokenFallback);
@@ -68,18 +61,12 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         nativeFallback = _nativeFallback;
         tokenFallback = _tokenFallback;
 
-        _validateAndStoreSplits(nativeSplits, nativeSplits_);
-        _validateAndStoreSplits(tokenSplits, tokenSplits_);
+        _validateAndStoreSplits(splits_);
     }
 
     /// @inheritdoc IFeeSplitter
-    function getNativeSplits() external view override returns (FeeSplit[] memory) {
-        return nativeSplits;
-    }
-
-    /// @inheritdoc IFeeSplitter
-    function getTokenSplits() external view override returns (FeeSplit[] memory) {
-        return tokenSplits;
+    function getSplits() external view override returns (FeeSplit[] memory) {
+        return splits;
     }
 
     /// @inheritdoc IFeeSplitter
@@ -101,7 +88,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint128 amount1Max,
         bytes calldata hookData
     ) external override nonReentrant {
-        if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert NotOwner(tokenId);
+        if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
+            revert NotOwner(tokenId);
+        }
         // Collect and distribute accrued fees before increasing: the increase below realizes any
         // pending fees inside the PositionManager, where they would be swept to the caller by
         // TAKE_PAIR instead of flowing through the configured splits.
@@ -166,78 +155,77 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
 
-        // Resolution order: the beneficiary registered at deposit, else the per-side fallback. A
-        // registered beneficiary that cannot receive a native send also falls back (see _transfer).
-        address beneficiary = feeBeneficiary[tokenId];
-        if (nativeAmount != 0) {
-            _distribute(
-                tokenId,
-                nativeSplits,
-                CurrencyLibrary.ADDRESS_ZERO,
-                nativeAmount,
-                beneficiary == address(0) ? nativeFallback : beneficiary
-            );
-        }
-        if (tokenAmount != 0) {
-            _distribute(
-                tokenId,
-                tokenSplits,
-                poolKey.currency1,
-                tokenAmount,
-                beneficiary == address(0) ? tokenFallback : beneficiary
-            );
+        if (nativeAmount != 0 || tokenAmount != 0) {
+            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
         }
     }
 
-    /// @notice Pushes one side's splits of `amount`. Cumulative allocation assigns all rounding dust to
-    ///         later recipients so the full amount is always forwarded.
+    /// @notice Pushes every split's shares of both sides in a single pass. Per-side cumulative
+    ///         allocation assigns all rounding dust to later recipients so the full amounts are
+    ///         always forwarded.
+    /// @dev The sentinel resolves to the beneficiary registered at deposit. Unregistered positions
+    ///      send each side of the sentinel share to that side's fallback, with no callback.
     function _distribute(
         uint256 tokenId,
-        FeeSplit[] storage splits,
-        Currency currency,
-        uint256 amount,
+        Currency tokenCurrency,
+        uint256 nativeAmount,
+        uint256 tokenAmount,
         address beneficiary
     ) private {
-        uint256 cumulativeBps;
-        uint256 distributed;
+        uint256 cumulativeNativeBps;
+        uint256 cumulativeTokenBps;
+        uint256 distributedNative;
+        uint256 distributedToken;
         uint256 count = splits.length;
         for (uint256 i; i < count; i++) {
             FeeSplit memory split = splits[i];
-            cumulativeBps += split.bps;
-            uint256 cumulativeAmount = FullMath.mulDiv(amount, cumulativeBps, BPS_DENOMINATOR);
-            uint256 recipientAmount = cumulativeAmount - distributed;
-            distributed = cumulativeAmount;
-            if (recipientAmount == 0) continue;
+            cumulativeNativeBps += split.nativeBps;
+            cumulativeTokenBps += split.tokenBps;
+            uint256 recipientNativeAmount =
+                FullMath.mulDiv(nativeAmount, cumulativeNativeBps, BPS_DENOMINATOR) - distributedNative;
+            uint256 recipientTokenAmount =
+                FullMath.mulDiv(tokenAmount, cumulativeTokenBps, BPS_DENOMINATOR) - distributedToken;
+            distributedNative += recipientNativeAmount;
+            distributedToken += recipientTokenAmount;
+            if (recipientNativeAmount == 0 && recipientTokenAmount == 0) continue;
 
             address recipient = split.recipient;
-            if (recipient == FEE_BENEFICIARY_SENTINEL) recipient = beneficiary;
+            if (recipient == FEE_BENEFICIARY_SENTINEL) {
+                if (beneficiary == address(0)) {
+                    if (recipientNativeAmount != 0) {
+                        _transfer(CurrencyLibrary.ADDRESS_ZERO, nativeFallback, recipientNativeAmount);
+                    }
+                    if (recipientTokenAmount != 0) _transfer(tokenCurrency, tokenFallback, recipientTokenAmount);
+                    continue;
+                }
+                recipient = beneficiary;
+            }
 
-            recipient = _transfer(currency, recipient, recipientAmount);
-            if (split.useCallback) _tryCallback(tokenId, currency, recipientAmount, recipient);
+            if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
+            if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
+
+            if (split.useCallback && (recipientNativeAmount != 0 || recipientTokenAmount != 0)) {
+                _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
+            }
         }
     }
 
-    /// @notice Sends `amount` of `currency` to `recipient`; a failed native send is redirected to the
-    ///         native fallback so an unfunded or reverting recipient can never block a collect. Token
-    ///         transfers have no receive hook to fail on and revert only for non-standard tokens.
-    function _transfer(Currency currency, address recipient, uint256 amount) private returns (address actualRecipient) {
+    /// @notice Sends `amount` of `currency` to `recipient`; Native transfers are force sent.
+    function _transfer(Currency currency, address recipient, uint256 amount) private {
         if (currency.isAddressZero()) {
-            if (!SafeTransferLib.trySafeTransferETH(recipient, amount, NATIVE_TRANSFER_GAS_STIPEND)) {
-                // The fallback is trusted at deploy time to accept native transfers.
-                SafeTransferLib.safeTransferETH(nativeFallback, amount);
-                recipient = nativeFallback;
-            }
+            SafeTransferLib.forceSafeTransferETH(recipient, amount);
         } else {
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
-        actualRecipient = recipient;
     }
 
     /// @notice Tries to call the onFeesReceived callback on the recipient
     /// @dev Does NOT revert if the callback fails
-    function _tryCallback(uint256 tokenId, Currency currency, uint256 amount, address recipient) private {
-        try ILPFeesPositionRecipient(recipient).onFeesReceived(tokenId, currency, amount) {} catch {}
+    function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
+        private
+    {
+        try ILPFeesPositionRecipient(recipient).onFeesReceived(tokenId, currency0Amount, currency1Amount) {} catch {}
     }
 
     /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and
@@ -246,24 +234,28 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         return recipient != address(0) && recipient != address(this) && recipient != FEE_BENEFICIARY_SENTINEL;
     }
 
-    /// @notice Validates and stores one side's splits.
-    function _validateAndStoreSplits(FeeSplit[] storage store, FeeSplit[] memory splits) private {
-        uint256 count = splits.length;
+    /// @notice Validates and stores the splits: each side's shares must independently sum to the
+    ///         bps denominator; a split may carry a single side but not neither.
+    function _validateAndStoreSplits(FeeSplit[] memory splits_) private {
+        uint256 count = splits_.length;
         if (count == 0) revert NoSplits();
 
-        uint256 totalBps;
+        uint256 totalNativeBps;
+        uint256 totalTokenBps;
         for (uint256 i; i < count; i++) {
-            FeeSplit memory split = splits[i];
+            FeeSplit memory split = splits_[i];
             if (split.recipient == address(0) || split.recipient == address(this)) {
                 revert InvalidRecipient(split.recipient);
             }
-            if (split.bps == 0) revert ZeroSplitBps(split.recipient);
+            if (split.nativeBps == 0 && split.tokenBps == 0) revert ZeroSplitBps(split.recipient);
             for (uint256 j; j < i; j++) {
-                if (splits[j].recipient == split.recipient) revert DuplicateRecipient(split.recipient);
+                if (splits_[j].recipient == split.recipient) revert DuplicateRecipient(split.recipient);
             }
-            totalBps += split.bps;
-            store.push(split);
+            totalNativeBps += split.nativeBps;
+            totalTokenBps += split.tokenBps;
+            splits.push(split);
         }
-        if (totalBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalBps);
+        if (totalNativeBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalNativeBps);
+        if (totalTokenBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalTokenBps);
     }
 }

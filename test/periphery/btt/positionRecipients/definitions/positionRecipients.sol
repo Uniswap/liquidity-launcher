@@ -196,12 +196,12 @@ contract PositionRecipientsBTTTest is Test {
         assertTrue(manager.operatorApproved());
     }
 
-    function test_BaseRecipient_WhenFeeCurrencyIsInvalid_Reverts() public {
+    function test_BaseRecipient_WhenPositionDoesNotExist_NotificationReverts() public {
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
-        Currency invalidCurrency = Currency.wrap(makeAddr("invalidCurrency"));
+        uint256 invalidTokenId = TOKEN_ID + 1;
 
-        vm.expectRevert(abi.encodeWithSelector(ILPFeesPositionRecipient.InvalidFeeCurrency.selector, invalidCurrency));
-        recipient.onFeesReceived(TOKEN_ID, invalidCurrency, 1);
+        vm.expectRevert(abi.encodeWithSelector(ILPFeesPositionRecipient.InvalidPosition.selector, invalidTokenId));
+        recipient.onFeesReceived(invalidTokenId, 1, 0);
     }
 
     function test_BaseRecipient_WhenNotifiedAmountWasNotReceived_Reverts() public {
@@ -210,20 +210,20 @@ contract PositionRecipientsBTTTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(ILPFeesPositionRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0)
         );
-        recipient.onFeesReceived(TOKEN_ID, currency0, FEES_0);
+        recipient.onFeesReceived(TOKEN_ID, FEES_0, 0);
     }
 
     function test_BaseRecipient_WhenBalanceIsAlreadyAttributed_CannotAttributeItAgain() public {
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
         MockERC20(Currency.unwrap(currency0)).transfer(address(recipient), FEES_0);
-        recipient.onFeesReceived(TOKEN_ID, currency0, FEES_0);
+        recipient.onFeesReceived(TOKEN_ID, FEES_0, 0);
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 ILPFeesPositionRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, FEES_0 * 2
             )
         );
-        recipient.onFeesReceived(TOKEN_ID, currency0, FEES_0);
+        recipient.onFeesReceived(TOKEN_ID, FEES_0, 0);
     }
 
     function test_BaseRecipient_WhenCurrency0MinimumIsNotMet_Reverts(uint256 minimum) public {
@@ -309,9 +309,7 @@ contract PositionRecipientsBTTTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                BuybackAndBurnPositionRecipient.InvalidCurrency.selector,
-                poolKey.currency0,
-                Currency.wrap(address(0))
+                BuybackAndBurnPositionRecipient.InvalidCurrency.selector, poolKey.currency0, Currency.wrap(address(0))
             )
         );
         executor.execute(recipient, TOKEN_ID, 0, 0);
@@ -384,7 +382,6 @@ contract PositionRecipientsBTTTest is Test {
             MockERC20(Currency.unwrap(key.currency0)).transfer(address(recipient), amount0);
         }
         MockERC20(Currency.unwrap(key.currency1)).transfer(address(recipient), amount1);
-        recipient.onFeesReceived(TOKEN_ID, key.currency0, amount0);
-        recipient.onFeesReceived(TOKEN_ID, key.currency1, amount1);
+        recipient.onFeesReceived(TOKEN_ID, amount0, amount1);
     }
 }
