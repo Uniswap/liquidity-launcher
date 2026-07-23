@@ -28,6 +28,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice The denominator for fee splits: each side's splits sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
+    /// @notice The maximum allowable amount for a single balance
+    uint256 public constant MAX_AMOUNT = type(uint256).max / BPS_DENOMINATOR;
 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
@@ -163,11 +165,11 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1, address(this));
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
-        // Distribute the full standing balances: every collect ends at zero, so outside the
-        // (pointless) donation case these equal the fees just collected — and donations are
-        // simply flushed through the split instead of being stuck here forever.
+        // Attribute the entire balance of the contract as the fees collected
         nativeAmount = address(this).balance;
         tokenAmount = poolKey.currency1.balanceOfSelf();
+        // Reject fees above MAX_AMOUNT to prevent future overflows
+        if (nativeAmount > MAX_AMOUNT || tokenAmount > MAX_AMOUNT) revert AmountTooLarge();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
     }
 
@@ -187,10 +189,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             FeeSplit memory split = splits[i];
             cumulativeNativeBps += split.nativeBps;
             cumulativeTokenBps += split.tokenBps;
-            uint256 recipientNativeAmount =
-                FullMath.mulDiv(nativeAmount, cumulativeNativeBps, BPS_DENOMINATOR) - distributedNative;
-            uint256 recipientTokenAmount =
-                FullMath.mulDiv(tokenAmount, cumulativeTokenBps, BPS_DENOMINATOR) - distributedToken;
+            // Checked math is fine here since we reject fees above MAX_AMOUNT 
+            uint256 recipientNativeAmount = (nativeAmount * cumulativeNativeBps / BPS_DENOMINATOR) - distributedNative;
+            uint256 recipientTokenAmount = (tokenAmount * cumulativeTokenBps / BPS_DENOMINATOR) - distributedToken;
             distributedNative += recipientNativeAmount;
             distributedToken += recipientTokenAmount;
             if (recipientNativeAmount == 0 && recipientTokenAmount == 0) continue;
@@ -218,8 +219,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     }
 
     /// @notice Sends `amount` of `currency` to `recipient`; Native transfers are force sent.
+    /// @dev Early returns if the amount is zero
     function _transfer(Currency currency, address recipient, uint256 amount) private {
-        // Early return if the amount is zero
         if (amount == 0) return;
         if (currency.isAddressZero()) {
             SafeTransferLib.forceSafeTransferETH(recipient, amount);

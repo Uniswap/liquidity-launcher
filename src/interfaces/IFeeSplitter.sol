@@ -46,6 +46,9 @@ interface IFeeSplitter {
     /// @param fallbackRecipient The invalid fallback.
     error InvalidFallback(address fallbackRecipient);
 
+    /// @notice Thrown when an amount is too large to be stored in the contract
+    error AmountTooLarge();
+
     /// @notice Thrown when no splits are configured.
     error NoSplits();
 
