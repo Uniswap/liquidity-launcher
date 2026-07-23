@@ -17,7 +17,6 @@
         - [TimelockedPositionRecipient](#timelockedpositionrecipient)
         - [FeeSplitter](#feesplitter)
         - [BuybackAndBurnPositionRecipient](#buybackandburnpositionrecipient)
-        - [CanonicalBuybackAndBurnPositionRecipient](#canonicalbuybackandburnpositionrecipient)
         - [CompoundingPositionRecipient](#compoundingpositionrecipient)
 - [Contract Interactions](#contract-interactions)
 - [Key Interfaces](#key-interfaces)
@@ -106,10 +105,7 @@ A deployed instance can be used as a `PositionDefinition.recipient` when using a
 The `FeeSplitter` is a singleton custodian of native-ETH v4 LP positions with immutable, deploy-time fee splits. `collectFees(uint256[] tokenIds)` permissionlessly collects each position's accrued fees and pushes independent basis-point splits of the native ETH side (`currency0`) and the token side (`currency1`) to fixed recipients. A fee-beneficiary sentinel recipient resolves per position to the beneficiary registered when the position was deposited: positions safe-transferred through the PositionManager may carry the abi-encoded beneficiary as transfer data. Unregistered positions and failed native sends route that share to an immutable per-side fallback, so a collect can never be blocked. `DirectLaunchStrategy` requires an abi-encoded `DirectLaunchConfig` naming the fee beneficiary in `configData` — freely chosen by the launch configuration and carrying no claim of authorship — rejecting only the zero address and the launcher (fees held by the launcher would be sweepable by anyone via `distributeToken`). Positions held by the splitter are irrecoverable by design — there is no owner, operator, or exit path.
 
 #### BuybackAndBurnPositionRecipient
-The `BuybackAndBurnPositionRecipient` holds positions for one configured token/currency pair. An `ILPFeesExecutor` calls `collectFees(tokenId, minCurrency0, minCurrency1)` and receives both newly collected currencies. During the callback the executor may perform a buyback; after it returns, the recipient pulls the configured token amount from the executor and sends it to the burn address. The full transaction reverts if either fee minimum or the burn requirement is not met.
-
-#### CanonicalBuybackAndBurnPositionRecipient
-The `CanonicalBuybackAndBurnPositionRecipient` is a singleton flavor for canonical token/ETH launches. It requires native ETH as `currency0`, derives the burn token from each position's `currency1`, and applies one minimum currency1 burn amount, operator, and timelock to every position it holds.
+The `BuybackAndBurnPositionRecipient` is a singleton receiving fees from any number of native-ETH-paired positions. An `ILPFeesExecutor` calls `collectFees(tokenId, minCurrency0, minCurrency1)` and receives both newly collected currencies. During the callback the executor may perform a buyback; after it returns, the recipient pulls the burn amount of the position's `currency1` from the executor and sends it to the burn address. It requires native ETH as `currency0`, derives the burn token from each position's `currency1`, and applies one minimum currency1 burn amount to every position. The full transaction reverts if either fee minimum or the burn requirement is not met. The contract is not intended to hold positions itself; it only receives fee notifications for positions held elsewhere (e.g. the `FeeSplitter`).
 
 #### CompoundingPositionRecipient
 The `CompoundingPositionRecipient` uses the same executor callback flow. The executor deposits ERC20 proceeds directly into PositionManager; for native pools it deposits WETH instead. After the callback, the recipient unwraps PositionManager's WETH balance, settles the available pool currencies, increases liquidity from the resulting deltas, and returns unused dust to the executor. The executor never receives approval over the position, and the transaction reverts unless the position's liquidity increases by at least `MIN_LIQUIDITY_INCREASE`.

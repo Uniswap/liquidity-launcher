@@ -17,9 +17,6 @@ import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimelockedPositionRecipient.sol";
 import {BaseLPFeesPositionRecipient} from "../../../../../src/periphery/BaseLPFeesPositionRecipient.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
-import {
-    CanonicalBuybackAndBurnPositionRecipient
-} from "../../../../../src/periphery/CanonicalBuybackAndBurnPositionRecipient.sol";
 import {CompoundingPositionRecipient} from "../../../../../src/periphery/CompoundingPositionRecipient.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
 import {MockLPFeesExecutor} from "../../../MockLPFeesExecutor.sol";
@@ -141,12 +138,6 @@ contract ReentrantLPFeesExecutor is ILPFeesExecutor {
 ///     └── it transfers both fees and invokes the executor
 ///
 /// BuybackAndBurnPositionRecipient
-/// ├── when the pool does not match
-/// │   └── it reverts
-/// └── when the executor satisfies the burn
-///     └── it burns the configured amount
-///
-/// CanonicalBuybackAndBurnPositionRecipient
 /// ├── when currency0 is not native
 /// │   └── it reverts
 /// └── when currency0 is native
@@ -311,44 +302,14 @@ contract PositionRecipientsBTTTest is Test {
         executor.execute(recipient, TOKEN_ID);
     }
 
-    function test_BuybackAndBurn_WhenPoolDoesNotMatch_Reverts() public {
-        BuybackAndBurnPositionRecipient recipient = new BuybackAndBurnPositionRecipient(
-            address(tokenA), makeAddr("otherCurrency"), operator, IPositionManager(address(manager)), 0, 1 ether
-        );
+    function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
+        BuybackAndBurnPositionRecipient recipient =
+            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), operator, 0, 1);
         MockLPFeesExecutor executor = new MockLPFeesExecutor();
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                BuybackAndBurnPositionRecipient.InvalidPool.selector, poolKey.currency0, poolKey.currency1
-            )
-        );
-        executor.execute(recipient, TOKEN_ID, 0, 0);
-    }
-
-    function test_BuybackAndBurn_WhenExecutorSatisfiesBurn_BurnsConfiguredAmount(uint128 burnAmount) public {
-        burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
-        address burnToken = Currency.unwrap(currency1);
-        BuybackAndBurnPositionRecipient recipient = new BuybackAndBurnPositionRecipient(
-            burnToken, Currency.unwrap(currency0), operator, IPositionManager(address(manager)), 0, burnAmount
-        );
-        MockBuybackAndBurnLPFeesExecutor executor = new MockBuybackAndBurnLPFeesExecutor(burnToken, burnAmount);
-        MockERC20(burnToken).transfer(address(executor), burnAmount);
-        uint256 burnedBefore = MockERC20(burnToken).balanceOf(address(0xdead));
-        _notifyFees(recipient, poolKey, FEES_0, FEES_1);
-
-        executor.execute(recipient, TOKEN_ID, 0, 0);
-
-        assertEq(MockERC20(burnToken).balanceOf(address(0xdead)) - burnedBefore, burnAmount);
-    }
-
-    function test_Canonical_WhenCurrency0IsNotNative_Reverts() public {
-        CanonicalBuybackAndBurnPositionRecipient recipient =
-            new CanonicalBuybackAndBurnPositionRecipient(IPositionManager(address(manager)), operator, 0, 1);
-        MockLPFeesExecutor executor = new MockLPFeesExecutor();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CanonicalBuybackAndBurnPositionRecipient.InvalidCurrency.selector,
+                BuybackAndBurnPositionRecipient.InvalidCurrency.selector,
                 poolKey.currency0,
                 Currency.wrap(address(0))
             )
@@ -356,12 +317,12 @@ contract PositionRecipientsBTTTest is Test {
         executor.execute(recipient, TOKEN_ID, 0, 0);
     }
 
-    function test_Canonical_WhenCurrency0IsNative_BurnsCurrency1(uint128 burnAmount) public {
+    function test_BuybackAndBurn_WhenCurrency0IsNative_BurnsCurrency1(uint128 burnAmount) public {
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
-        CanonicalBuybackAndBurnPositionRecipient recipient =
-            new CanonicalBuybackAndBurnPositionRecipient(IPositionManager(address(manager)), operator, 0, burnAmount);
+        BuybackAndBurnPositionRecipient recipient =
+            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), operator, 0, burnAmount);
         MockBuybackAndBurnLPFeesExecutor executor =
             new MockBuybackAndBurnLPFeesExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);

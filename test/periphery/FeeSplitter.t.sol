@@ -24,6 +24,7 @@ import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockRejectEth} from "../mocks/MockRejectEth.sol";
+import {WETH} from "solady/tokens/WETH.sol";
 
 /// @notice Native recipient that attempts to reenter collectFees from its receive hook.
 contract MockReentrantFeeRecipient {
@@ -79,14 +80,16 @@ contract FeeSplitterTest is Test {
         address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
     PoolSwapTest internal swapRouter;
+    WETH internal weth;
     address internal tokenJar = makeAddr("tokenJar");
     address internal creator = makeAddr("creator");
 
     function setUp() public {
+        weth = new WETH();
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
         deployCodeTo(
             "lib/v4-periphery/src/PositionManager.sol:PositionManager",
-            abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
+            abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(weth)),
             address(POSITION_MANAGER)
         );
         swapRouter = new PoolSwapTest(POOL_MANAGER);
@@ -609,6 +612,62 @@ contract FeeSplitterTest is Test {
 
     function test_increaseLiquidity_usesPositionManagerBalancesAndRefundsExcess() public {
         FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        uint256 liquidityIncrease = 1 ether;
+        uint128 amount0Max = 10 ether;
+        uint128 amount1Max = 10 ether;
+
+        weth.deposit{value: amount0Max}();
+        weth.transfer(address(POSITION_MANAGER), amount0Max);
+        token.transfer(address(POSITION_MANAGER), amount1Max);
+        uint256 ethBefore = address(this).balance;
+        uint256 tokenBefore = token.balanceOf(address(this));
+
+        splitter.increaseLiquidity(tokenId, liquidityIncrease, amount0Max, amount1Max, bytes(""));
+
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore + liquidityIncrease);
+        assertGt(address(this).balance, ethBefore);
+        assertGt(token.balanceOf(address(this)), tokenBefore);
+        assertEq(weth.balanceOf(address(POSITION_MANAGER)), 0);
+        assertEq(address(POSITION_MANAGER).balance, 0);
+        assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
+    }
+
+    function test_increaseLiquidity_distributesPendingFeesBeforeIncrease() public {
+        FeeSplitter splitter = _defaultSplitter();
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        uint256 liquidityIncrease = 1 ether;
+        uint128 amount0Max = 10 ether;
+        uint128 amount1Max = 10 ether;
+
+        weth.deposit{value: amount0Max}();
+        weth.transfer(address(POSITION_MANAGER), amount0Max);
+        token.transfer(address(POSITION_MANAGER), amount1Max);
+
+        uint256 jarBefore = tokenJar.balance;
+        uint256 creatorEthBefore = creator.balance;
+        uint256 burnBefore = token.balanceOf(BURN_ADDRESS);
+        uint256 creatorTokenBefore = token.balanceOf(creator);
+
+        splitter.increaseLiquidity(tokenId, liquidityIncrease, amount0Max, amount1Max, bytes(""));
+
+        // The accrued fees flowed through the configured splits instead of being folded into the
+        // increase or swept to the caller with the excess.
+        assertGt(tokenJar.balance, jarBefore);
+        assertGt(creator.balance, creatorEthBefore);
+        assertGt(token.balanceOf(BURN_ADDRESS), burnBefore);
+        assertGt(token.balanceOf(creator), creatorTokenBefore);
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore + liquidityIncrease);
+        assertEq(address(splitter).balance, 0);
+        assertEq(token.balanceOf(address(splitter)), 0);
+    }
+
+    function test_increaseLiquidity_revertsOnNonNativePool() public {
+        FeeSplitter splitter = _defaultSplitter();
         MockERC20 tokenA = new MockERC20("Token A", "A", 1_000_000 ether, address(this));
         MockERC20 tokenB = new MockERC20("Token B", "B", 1_000_000 ether, address(this));
         (MockERC20 token0, MockERC20 token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
@@ -621,23 +680,13 @@ contract FeeSplitterTest is Test {
         });
         POOL_MANAGER.initialize(key, SQRT_PRICE_1_1);
         uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
-        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
-        uint256 liquidityIncrease = 1 ether;
-        uint128 amount0Max = 10 ether;
-        uint128 amount1Max = 10 ether;
 
-        token0.transfer(address(POSITION_MANAGER), amount0Max);
-        token1.transfer(address(POSITION_MANAGER), amount1Max);
-        uint256 token0Before = token0.balanceOf(address(this));
-        uint256 token1Before = token1.balanceOf(address(this));
-
-        splitter.increaseLiquidity(tokenId, liquidityIncrease, amount0Max, amount1Max, bytes(""));
-
-        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore + liquidityIncrease);
-        assertGt(token0.balanceOf(address(this)), token0Before);
-        assertGt(token1.balanceOf(address(this)), token1Before);
-        assertEq(token0.balanceOf(address(POSITION_MANAGER)), 0);
-        assertEq(token1.balanceOf(address(POSITION_MANAGER)), 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IFeeSplitter.InvalidBaseCurrency.selector, tokenId, Currency.wrap(address(token0))
+            )
+        );
+        splitter.increaseLiquidity(tokenId, 1, 1, 1, bytes(""));
     }
 
     function test_increaseLiquidity_revertsIfSplitterDoesNotOwnPosition() public {

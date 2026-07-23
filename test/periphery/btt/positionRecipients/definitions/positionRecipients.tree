@@ -16,11 +16,6 @@ PositionRecipientsBTTTest
 │   └── when both minimums are met
 │       └── it transfers both fees and invokes the executor
 ├── BuybackAndBurnPositionRecipient
-│   ├── when the pool does not match
-│   │   └── it reverts
-│   └── when the executor satisfies the burn
-│       └── it burns the configured amount
-├── CanonicalBuybackAndBurnPositionRecipient
 │   ├── when currency0 is not native
 │   │   └── it reverts
 │   └── when currency0 is native

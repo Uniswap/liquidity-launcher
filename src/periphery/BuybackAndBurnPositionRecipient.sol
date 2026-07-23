@@ -2,75 +2,56 @@
 pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
 
 /// @title BuybackAndBurnPositionRecipient
-/// @notice Utility contract for holding a v4 LP position and burning the fees accrued from the position
-/// @dev An executor collects the fees, buys back the configured token in its callback, and must let the
-///      recipient pull at least the minimum burn amount of the token before the call completes
+/// @notice Singleton buyback-and-burn recipient for native-ETH-paired LP positions
+/// @dev Assumes every position pairs native ETH as currency0 with a standard 18-decimal ERC20 as currency1
+/// @dev This contract is not intended to hold positions; it only receives fee notifications
+/// @dev Note that the same timelock and burn threshold is applied to every position
 contract BuybackAndBurnPositionRecipient is BaseLPFeesPositionRecipient {
-    /// @notice Thrown when the token is address(0)
-    error InvalidToken();
-    /// @notice Thrown when the token and currency are the same address
-    error TokenAndCurrencyCannotBeTheSame();
-    /// @notice Thrown when the position does not use the configured token and currency
-    error InvalidPool(Currency currency0, Currency currency1);
-    /// @notice Thrown when the minimum token burn amount is zero
-    error InvalidMinTokenBurnAmount();
-
-    /// @notice Emitted when tokens are burned
-    /// @param amount The amount of tokens burned
-    event TokensBurned(uint256 amount);
+    /// @notice The currency paid to callers who collect fees
+    Currency public constant currency = CurrencyLibrary.ADDRESS_ZERO;
 
     /// @notice The address to send tokens to be burned
     address internal constant BURN_ADDRESS = address(0xdead);
 
-    /// @notice The token that will be burned
-    address public immutable token;
-    /// @notice The currency that will be used to collect fees
-    address public immutable currency;
-    /// @notice The minimum amount of token that the executor must burn
-    uint256 public immutable minTokenBurnAmount;
+    /// @notice Thrown when the position's currency is not native ETH
+    error InvalidCurrency(Currency received, Currency expected);
+    /// @notice Thrown when the minimum currency1 burn amount is 0
+    error InvalidMinCurrency1BurnAmount();
 
-    /// @dev The configured pair sorted as pool currencies (currency0 < currency1)
-    Currency private immutable expectedCurrency0;
-    Currency private immutable expectedCurrency1;
+    /// @notice Emitted when caller-provided tokens are sent to the burn address
+    event TokensBurned(uint256 indexed tokenId, Currency indexed token, uint256 amount);
+
+    uint256 public immutable minCurrency1BurnAmount;
 
     constructor(
-        address _token,
-        address _currency,
-        address _operator,
         IPositionManager _positionManager,
+        address _operator,
         uint256 _timelockBlockNumber,
-        uint256 _minTokenBurnAmount
+        uint256 _minCurrency1BurnAmount
     ) BaseLPFeesPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
-        if (_token == address(0)) revert InvalidToken();
-        if (_token == _currency) revert TokenAndCurrencyCannotBeTheSame();
-        if (_minTokenBurnAmount == 0) revert InvalidMinTokenBurnAmount();
-        token = _token;
-        currency = _currency;
-        minTokenBurnAmount = _minTokenBurnAmount;
-        (expectedCurrency0, expectedCurrency1) = _token < _currency
-            ? (Currency.wrap(_token), Currency.wrap(_currency))
-            : (Currency.wrap(_currency), Currency.wrap(_token));
+        if (_minCurrency1BurnAmount == 0) revert InvalidMinCurrency1BurnAmount();
+        minCurrency1BurnAmount = _minCurrency1BurnAmount;
     }
 
     /// @inheritdoc BaseLPFeesPositionRecipient
-    /// @dev Requires that the position uses the configured pair
-    function _beforeCallback(PoolKey memory _poolKey, uint256) internal view override returns (uint256) {
-        if (!(_poolKey.currency0 == expectedCurrency0 && _poolKey.currency1 == expectedCurrency1)) {
-            revert InvalidPool(_poolKey.currency0, _poolKey.currency1);
-        }
+    /// @dev Validates that the currency0 is native ETH
+    function _beforeCallback(PoolKey memory _poolKey, uint256) internal pure override returns (uint256) {
+        if (!_poolKey.currency0.isAddressZero()) revert InvalidCurrency(_poolKey.currency0, currency);
         return 0;
     }
 
     /// @inheritdoc BaseLPFeesPositionRecipient
-    /// @dev Always burns the specified token
-    function _afterCallback(PoolKey memory, uint256, uint256) internal override {
-        SafeTransferLib.safeTransferFrom(token, msg.sender, BURN_ADDRESS, minTokenBurnAmount);
-        emit TokensBurned(minTokenBurnAmount);
+    /// @dev Burns `minCurrency1BurnAmount` of `_poolKey.currency1` tokens
+    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
+        SafeTransferLib.safeTransferFrom(
+            Currency.unwrap(_poolKey.currency1), msg.sender, BURN_ADDRESS, minCurrency1BurnAmount
+        );
+        emit TokensBurned(_tokenId, _poolKey.currency1, minCurrency1BurnAmount);
     }
 }

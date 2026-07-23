@@ -85,7 +85,17 @@ interface IFeeSplitter {
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
 
-    /// @notice Increases the liquidity of a position
+    /// @notice Increases the liquidity of a position held by the splitter.
+    /// @dev Permissionless. The position's accrued fees are collected and distributed through the
+    ///      configured splits first, so they cannot be folded into the increase or swept to the
+    ///      caller. Only native-ETH (currency0) positions are supported. The PositionManager must
+    ///      already hold the WETH and token balances funding the increase; excess is returned to
+    ///      the caller.
+    /// @param tokenId The position to increase.
+    /// @param liquidity The liquidity to add.
+    /// @param amount0Max The maximum native ETH to spend.
+    /// @param amount1Max The maximum token to spend.
+    /// @param hookData Arbitrary data passed to the pool's hooks.
     function increaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,

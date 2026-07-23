@@ -93,7 +93,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @inheritdoc IFeeSplitter
     /// @notice Permissionlessly increase the liquidity of a position held in the FeeSplitter
-    /// @dev The PositionManager must already hold a balance of the tokens, and any excess will be taken back to the caller
+    /// @dev The PositionManager must already hold a WETH and token balance, and any excess will be taken back to the caller
     function increaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,
@@ -101,32 +101,26 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint128 amount1Max,
         bytes calldata hookData
     ) external override nonReentrant {
-        (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) revert NotOwner(tokenId);
+        // Collect and distribute accrued fees before increasing: the increase below realizes any
+        // pending fees inside the PositionManager, where they would be swept to the caller by
+        // TAKE_PAIR instead of flowing through the configured splits.
+        PoolKey memory poolKey = _collect(tokenId);
 
-        bool hasNativeCurrency = poolKey.currency0.isAddressZero();
-        uint256 offset = hasNativeCurrency ? 1 : 0;
-        bytes memory actions = hasNativeCurrency
-            ? abi.encodePacked(
-                uint8(Actions.UNWRAP),
-                uint8(Actions.SETTLE),
-                uint8(Actions.SETTLE),
-                uint8(Actions.INCREASE_LIQUIDITY),
-                uint8(Actions.TAKE_PAIR)
-            )
-            : abi.encodePacked(
-                uint8(Actions.SETTLE),
-                uint8(Actions.SETTLE),
-                uint8(Actions.INCREASE_LIQUIDITY),
-                uint8(Actions.TAKE_PAIR)
-            );
-        bytes[] memory params = new bytes[](4 + offset);
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.UNWRAP),
+            uint8(Actions.SETTLE),
+            uint8(Actions.SETTLE),
+            uint8(Actions.INCREASE_LIQUIDITY),
+            uint8(Actions.TAKE_PAIR)
+        );
+        bytes[] memory params = new bytes[](5);
         // Require the balance to already exist in PositionManager
-        if (hasNativeCurrency) params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
-        params[offset] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[offset + 1] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[offset + 2] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
-        params[offset + 3] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
+        params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
+        params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
+        params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
     }
 
@@ -152,8 +146,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     receive() external payable {}
 
     /// @notice Collects one position's fees to this contract and distributes both sides.
-    function _collect(uint256 tokenId) private {
-        (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
+    /// @return poolKey The position's pool key; its currency0 is guaranteed to be native ETH.
+    function _collect(uint256 tokenId) private returns (PoolKey memory poolKey) {
+        (poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
         if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
         address token = Currency.unwrap(poolKey.currency1);
 
