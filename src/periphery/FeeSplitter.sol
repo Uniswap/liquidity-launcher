@@ -74,7 +74,11 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 count = tokenIds.length;
         if (count == 0) revert NoTokenIds();
         for (uint256 i; i < count; i++) {
-            _collect(tokenIds[i]);
+            uint256 tokenId = tokenIds[i];
+            (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
+            if (nativeAmount != 0 || tokenAmount != 0) {
+                _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
+            }
         }
     }
 
@@ -91,26 +95,32 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
             revert NotOwner(tokenId);
         }
-        // Collect and distribute accrued fees before increasing: the increase below realizes any
-        // pending fees inside the PositionManager, where they would be swept to the caller by
-        // TAKE_PAIR instead of flowing through the configured splits.
-        PoolKey memory poolKey = _collect(tokenId);
+        // Collect any outstanding fees on the existing liquidity first
+        (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
 
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.UNWRAP),
-            uint8(Actions.SETTLE),
-            uint8(Actions.SETTLE),
-            uint8(Actions.INCREASE_LIQUIDITY),
-            uint8(Actions.TAKE_PAIR)
-        );
-        bytes[] memory params = new bytes[](5);
-        // Require the balance to already exist in PositionManager
-        params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
-        params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
-        params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        {
+            // Increase liquidity
+            bytes memory actions = abi.encodePacked(
+                uint8(Actions.UNWRAP),
+                uint8(Actions.SETTLE),
+                uint8(Actions.SETTLE),
+                uint8(Actions.INCREASE_LIQUIDITY),
+                uint8(Actions.TAKE_PAIR)
+            );
+            bytes[] memory params = new bytes[](5);
+            // Require the balance to already exist in PositionManager
+            params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
+            params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+            params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+            params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
+            params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
+            positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        }
+
+        // Distribute fees to all configured recipients
+        if (nativeAmount != 0 || tokenAmount != 0) {
+            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
+        }
     }
 
     /// @notice Accepts positions safe-transferred through the PositionManager and registers the
@@ -134,9 +144,14 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @notice Receives native ETH from the PositionManager take.
     receive() external payable {}
 
-    /// @notice Collects one position's fees to this contract and distributes both sides.
+    /// @notice Realizes one position's accrued fees into this contract's balances.
     /// @return poolKey The position's pool key; its currency0 is guaranteed to be native ETH.
-    function _collect(uint256 tokenId) private returns (PoolKey memory poolKey) {
+    /// @return nativeAmount The full standing native balance to distribute.
+    /// @return tokenAmount The full standing currency1 balance to distribute.
+    function _collect(uint256 tokenId)
+        private
+        returns (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount)
+    {
         (poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
         if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
         address token = Currency.unwrap(poolKey.currency1);
@@ -151,13 +166,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         // Distribute the full standing balances: every collect ends at zero, so outside the
         // (pointless) donation case these equal the fees just collected — and donations are
         // simply flushed through the split instead of being stuck here forever.
-        uint256 nativeAmount = address(this).balance;
-        uint256 tokenAmount = poolKey.currency1.balanceOfSelf();
+        nativeAmount = address(this).balance;
+        tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
-
-        if (nativeAmount != 0 || tokenAmount != 0) {
-            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
-        }
     }
 
     /// @notice Pushes every split's shares of both sides in a single pass. Per-side cumulative

@@ -72,6 +72,44 @@ contract MockFeeCallback {
     }
 }
 
+/// @notice Callback recipient that, when notified during distribution, tries to sweep the
+///         PositionManager's standing balances — the increaseLiquidity caller's pre-funded excess.
+contract MockPosmSweeperFeeRecipient {
+    IPositionManager internal immutable posm;
+    Currency[] internal sweepCurrencies;
+
+    uint256 public notifiedNative;
+    uint256 public notifiedToken;
+    uint256 public sweepAttempts;
+
+    constructor(IPositionManager _posm) {
+        posm = _posm;
+    }
+
+    function addSweepCurrency(Currency currency) external {
+        sweepCurrencies.push(currency);
+    }
+
+    function onFeesReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
+        notifiedNative += currency0Amount;
+        notifiedToken += currency1Amount;
+
+        // No try/catch: if the sweep reverted, the callback would revert and sweepAttempts would
+        // stay 0. A recorded attempt means the sweep ran to completion.
+        uint256 count = sweepCurrencies.length;
+        bytes memory actions = new bytes(count);
+        bytes[] memory params = new bytes[](count);
+        for (uint256 i; i < count; i++) {
+            actions[i] = bytes1(uint8(Actions.SWEEP));
+            params[i] = abi.encode(sweepCurrencies[i], address(this));
+        }
+        posm.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        sweepAttempts++;
+    }
+
+    receive() external payable {}
+}
+
 contract FeeSplitterTest is Test {
     using CurrencyLibrary for Currency;
 
@@ -692,6 +730,46 @@ contract FeeSplitterTest is Test {
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore + liquidityIncrease);
         assertEq(address(splitter).balance, 0);
         assertEq(token.balanceOf(address(splitter)), 0);
+    }
+
+    function test_increaseLiquidity_recipientCannotSweepCallerExcessFromPositionManager() public {
+        // A malicious fee recipient sweeps POSM's balances when its callback fires. Distribution
+        // runs only after the increase has consumed the caller's pre-fund and refunded the excess,
+        // so the sweep executes against an empty PositionManager and captures nothing.
+        MockPosmSweeperFeeRecipient attacker = new MockPosmSweeperFeeRecipient(POSITION_MANAGER);
+        FeeSplitter splitter =
+            new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, _splits(address(attacker), true));
+        (MockERC20 token,, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+        attacker.addSweepCurrency(CurrencyLibrary.ADDRESS_ZERO);
+        attacker.addSweepCurrency(Currency.wrap(address(weth)));
+        attacker.addSweepCurrency(Currency.wrap(address(token)));
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        uint256 liquidityIncrease = 1 ether;
+        uint128 amount0Max = 10 ether;
+        uint128 amount1Max = 10 ether;
+
+        weth.deposit{value: amount0Max}();
+        weth.transfer(address(POSITION_MANAGER), amount0Max);
+        token.transfer(address(POSITION_MANAGER), amount1Max);
+        uint256 callerEthBefore = address(this).balance;
+        uint256 callerTokenBefore = token.balanceOf(address(this));
+
+        splitter.increaseLiquidity(tokenId, liquidityIncrease, amount0Max, amount1Max, bytes(""));
+
+        // The sweep ran to completion but yielded nothing beyond the attacker's own fee share.
+        assertEq(attacker.sweepAttempts(), 1, "sweep attempt did not run");
+        assertEq(address(attacker).balance, attacker.notifiedNative(), "attacker holds more native than its share");
+        assertEq(token.balanceOf(address(attacker)), attacker.notifiedToken(), "attacker holds more than its share");
+        assertEq(weth.balanceOf(address(attacker)), 0, "attacker captured pre-funded WETH");
+        assertGt(attacker.notifiedNative(), 0, "fees were not distributed");
+
+        // The caller's excess was refunded before any recipient code ran.
+        assertGt(address(this).balance, callerEthBefore, "caller native refund missing");
+        assertGt(token.balanceOf(address(this)), callerTokenBefore, "caller token refund missing");
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore + liquidityIncrease);
+        assertEq(weth.balanceOf(address(POSITION_MANAGER)), 0);
+        assertEq(address(POSITION_MANAGER).balance, 0);
+        assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
     }
 
     function test_increaseLiquidity_revertsOnNonNativePool() public {
