@@ -4,8 +4,8 @@ pragma solidity ^0.8.26;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 
-/// @dev Sentinel recipient that resolves, per pool, to the position's registered fee beneficiary,
-/// falling back to the UERC20 `creator()` of the pool's token.
+/// @dev Sentinel recipient that resolves, per position, to the current holder of the splitter's
+/// beneficiary NFT (minted at deposit, freely transferable).
 address constant FEE_BENEFICIARY_SENTINEL = address(uint160(uint256(keccak256("FeeSplitter.FEE_BENEFICIARY"))));
 
 /// @notice A single fee allocation: shares of both currency sides to `recipient`.
@@ -36,11 +36,6 @@ interface IFeeSplitter {
     /// @param currency The currency sent; address(0) is native ETH.
     /// @param amount The amount sent.
     event FeesForwarded(address indexed recipient, Currency indexed currency, uint256 amount);
-
-    /// @notice Emitted when a deposited position registers its fee beneficiary.
-    /// @param tokenId The position registered.
-    /// @param feeBeneficiary The beneficiary receiving the sentinel fee share.
-    event FeeBeneficiarySet(uint256 indexed tokenId, address indexed feeBeneficiary);
 
     /// @notice Thrown when a fallback address is zero, the beneficiary sentinel, or this contract.
     /// @param fallbackRecipient The invalid fallback.
@@ -108,10 +103,6 @@ interface IFeeSplitter {
 
     /// @notice The canonical v4 PositionManager holding the LP positions.
     function positionManager() external view returns (IPositionManager);
-
-    /// @notice The registered fee beneficiary of a position; zero when none was registered at deposit.
-    /// @param tokenId The position token ID.
-    function feeBeneficiary(uint256 tokenId) external view returns (address);
 
     /// @notice Receives the sentinel's native ETH share when no beneficiary is registered.
     function nativeFallback() external view returns (address);

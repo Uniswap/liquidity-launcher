@@ -7,6 +7,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
@@ -23,7 +24,7 @@ import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.s
 /// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
 ///      and no code path that transfers or approves a position out.
 /// @custom:security-contact security@uniswap.org
-contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
+contract FeeSplitter is IFeeSplitter, IERC721Receiver, ERC721, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
 
     /// @notice The denominator for fee splits: each side's splits sum to this.
@@ -40,9 +41,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @inheritdoc IFeeSplitter
     FeeSplit[] public override splits;
-
-    /// @inheritdoc IFeeSplitter
-    mapping(uint256 tokenId => address beneficiary) public override feeBeneficiary;
 
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param _nativeFallback Receiver of the sentinel's native ETH share when no beneficiary is registered.
@@ -77,7 +75,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             uint256 tokenId = tokenIds[i];
             (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
             if (nativeAmount != 0 || tokenAmount != 0) {
-                _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
+                _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, _ownerOf(tokenId));
             }
         }
     }
@@ -119,14 +117,18 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
         // Distribute fees to all configured recipients
         if (nativeAmount != 0 || tokenAmount != 0) {
-            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
+            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, _ownerOf(tokenId));
         }
     }
 
-    /// @notice Accepts positions safe-transferred through the PositionManager and registers the
-    ///         transfer data, when present, as the position's fee beneficiary.
+    /// @notice Accepts positions safe-transferred through the PositionManager and mints this
+    ///         contract's beneficiary NFT (same tokenId as the position) to the address carried in
+    ///         the transfer data, when present.
     /// @dev Only PositionManager callbacks are accepted, so a registration verifiably comes from the
-    ///      position's owner, and it never changes: positions cannot leave the splitter. Adding fee
+    ///      position's owner; the mint cannot repeat since positions never leave the splitter. The
+    ///      NFT's current holder receives the sentinel fee share and may transfer it freely — no
+    ///      restriction is placed on transfers, so sending it to an address that cannot benefit
+    ///      (this contract, the sentinel) only misroutes that holder's own future share. Adding fee
     ///      beneficiaries is NOT supported for positions minted or sent to this contract without
     ///      triggering this callback. Other NFTs are rejected: they would be irrecoverably stuck,
     ///      since collectFees only interacts with the PositionManager.
@@ -135,8 +137,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (data.length != 0) {
             address beneficiary = abi.decode(data, (address));
             if (!_isValidFeeRecipient(beneficiary)) revert InvalidRecipient(beneficiary);
-            feeBeneficiary[tokenId] = beneficiary;
-            emit FeeBeneficiarySet(tokenId, beneficiary);
+            _mint(beneficiary, tokenId);
         }
         return IERC721Receiver.onERC721Received.selector;
     }
@@ -268,5 +269,20 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         }
         if (totalNativeBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalNativeBps);
         if (totalTokenBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalTokenBps);
+    }
+
+    /// @inheritdoc ERC721
+    function name() public pure override returns (string memory) {
+        return "FeeSplitter Beneficiary";
+    }
+
+    /// @inheritdoc ERC721
+    function symbol() public pure override returns (string memory) {
+        return "FSB";
+    }
+
+    /// @inheritdoc ERC721
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "";
     }
 }

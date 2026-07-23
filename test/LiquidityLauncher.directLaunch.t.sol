@@ -98,8 +98,8 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // Launcher handed everything off; strategy retains nothing.
         assertEq(IERC20(token).balanceOf(address(launcher)), 0);
         assertEq(IERC20(token).balanceOf(address(strategy)), 0);
-        // The configured beneficiary is registered for the launch position.
-        assertEq(feeSplitter.feeBeneficiary(tokenId), address(this));
+        // The configured beneficiary holds the splitter's beneficiary NFT for the launch position.
+        assertEq(feeSplitter.ownerOf(tokenId), address(this));
     }
 
     /// @notice A creator can launch and buy in one transaction today only through a generic

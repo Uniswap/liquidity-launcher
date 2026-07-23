@@ -20,6 +20,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -465,7 +466,6 @@ contract FeeSplitterTest is Test {
         PoolKey memory key = _initPool(address(token));
         uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
         _accrueFees(key);
-        assertEq(splitter.feeBeneficiary(tokenId), address(0));
 
         uint256 jarNativeBefore = tokenJar.balance;
         uint256 deadTokenBefore = token.balanceOf(BURN_ADDRESS);
@@ -815,8 +815,9 @@ contract FeeSplitterTest is Test {
 
         IERC721(address(POSITION_MANAGER)).safeTransferFrom(address(this), address(splitter), tokenId);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(splitter));
-        // No transfer data: nothing registered, resolution falls back to the token's creator().
-        assertEq(splitter.feeBeneficiary(tokenId), address(0));
+        // No transfer data: no beneficiary NFT exists for this position.
+        vm.expectRevert(ERC721.TokenDoesNotExist.selector);
+        splitter.ownerOf(tokenId);
     }
 
     function test_onERC721Received_registersBeneficiaryFromTransferData() public {
@@ -829,7 +830,7 @@ contract FeeSplitterTest is Test {
         address beneficiary = makeAddr("beneficiary");
         IERC721(address(POSITION_MANAGER))
             .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(beneficiary));
-        assertEq(splitter.feeBeneficiary(tokenId), beneficiary);
+        assertEq(splitter.ownerOf(tokenId), beneficiary);
 
         // The registered beneficiary receives the sentinel shares on both sides.
         splitter.collectFees(_single(tokenId));
@@ -837,15 +838,42 @@ contract FeeSplitterTest is Test {
         assertGt(token.balanceOf(beneficiary), 0);
     }
 
-    function test_onERC721Received_revertsOnZeroBeneficiary() public {
+    function test_beneficiaryNft_transferMovesTheFeeStream() public {
+        FeeSplitter splitter = _defaultSplitter();
+        (MockERC20 token, PoolKey memory key, uint256 tokenId) = _setUpPositionWithFees(splitter, creator);
+
+        // First collect pays the original beneficiary.
+        splitter.collectFees(_single(tokenId));
+        uint256 creatorNative = creator.balance;
+        assertGt(creatorNative, 0);
+
+        // The beneficiary transfers the fee stream by transferring the splitter's NFT.
+        address newBeneficiary = makeAddr("newBeneficiary");
+        vm.prank(creator);
+        splitter.transferFrom(creator, newBeneficiary, tokenId);
+        assertEq(splitter.ownerOf(tokenId), newBeneficiary);
+
+        // Subsequent fees go to the new holder; the old beneficiary earns nothing further.
+        _accrueFees(key);
+        splitter.collectFees(_single(tokenId));
+        assertGt(newBeneficiary.balance, 0);
+        assertGt(token.balanceOf(newBeneficiary), 0);
+        assertEq(creator.balance, creatorNative);
+    }
+
+    function test_onERC721Received_revertsOnInvalidBeneficiary() public {
         FeeSplitter splitter = _defaultSplitter();
         MockERC20 token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
         PoolKey memory key = _initPool(address(token));
         uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
 
-        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, address(0)));
-        IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(address(0)));
+        // Same hygiene as the constructor's split recipients: zero, the splitter, and the sentinel.
+        address[3] memory invalid = [address(0), address(splitter), FEE_BENEFICIARY_SENTINEL];
+        for (uint256 i; i < invalid.length; i++) {
+            vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, invalid[i]));
+            IERC721(address(POSITION_MANAGER))
+                .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(invalid[i]));
+        }
     }
 
     function test_onERC721Received_revertsForNonPositionManagerNFTs() public {
