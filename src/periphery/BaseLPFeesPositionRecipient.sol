@@ -74,11 +74,14 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         }
 
         delete fees[_tokenId];
-        totalFees[currency0] -= currency0Fees;
-        totalFees[currency1] -= currency1Fees;
-
-        if (currency0Fees != 0) currency0.transfer(msg.sender, currency0Fees);
-        if (currency1Fees != 0) currency1.transfer(msg.sender, currency1Fees);
+        if (currency0Fees != 0) {
+            currency0.transfer(msg.sender, currency0Fees);
+            totalFees[currency0] -= currency0Fees;
+        }
+        if (currency1Fees != 0) {
+            currency1.transfer(msg.sender, currency1Fees);
+            totalFees[currency1] -= currency1Fees;
+        }
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 

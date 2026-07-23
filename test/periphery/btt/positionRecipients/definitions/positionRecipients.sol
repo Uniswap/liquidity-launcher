@@ -89,6 +89,34 @@ contract MockPositionManager {
     receive() external payable {}
 }
 
+contract MockReentrantERC20 is MockERC20 {
+    ILPFeesPositionRecipient internal immutable recipient;
+    uint256 internal immutable tokenId;
+    uint256 internal immutable currency1Amount;
+
+    bool public reentryAttempted;
+    bool public reentrySucceeded;
+    bytes public reentryRevertData;
+
+    constructor(ILPFeesPositionRecipient _recipient, uint256 _tokenId, uint256 _currency1Amount, uint256 initialSupply)
+        MockERC20("Reentrant Token", "REENTRANT", initialSupply, msg.sender)
+    {
+        recipient = _recipient;
+        tokenId = _tokenId;
+        currency1Amount = _currency1Amount;
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        bool success = super.transfer(to, amount);
+        if (!reentryAttempted && msg.sender == address(recipient)) {
+            reentryAttempted = true;
+            (reentrySucceeded, reentryRevertData) =
+                address(recipient).call(abi.encodeCall(recipient.onFeesReceived, (tokenId, 0, currency1Amount)));
+        }
+        return success;
+    }
+}
+
 contract BasePositionRecipientHarness is BaseLPFeesPositionRecipient {
     constructor(IPositionManager positionManager) BaseLPFeesPositionRecipient(positionManager, address(0xBEEF), 0) {}
 }
@@ -134,6 +162,8 @@ contract ReentrantLPFeesExecutor is ILPFeesExecutor {
 /// │   └── it rolls back the collection
 /// ├── when the executor callback reenters
 /// │   └── it reverts
+/// ├── when currency0 transfer reenters fee notification
+/// │   └── it cannot attribute currency1 again
 /// └── when both minimums are met
 ///     └── it transfers both fees and invokes the executor
 ///
@@ -224,6 +254,39 @@ contract PositionRecipientsBTTTest is Test {
             )
         );
         recipient.onFeesReceived(TOKEN_ID, FEES_0, 0);
+    }
+
+    function test_BaseRecipient_WhenCurrency0TransferReenters_CannotAttributeCurrency1Again() public {
+        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        MockReentrantERC20 reentrantToken = new MockReentrantERC20(recipient, TOKEN_ID, FEES_1, 1_000_000 ether);
+        MockERC20 honestToken = new MockERC20("Honest Token", "HONEST", 1_000_000 ether, address(this));
+        PoolKey memory reentrantPool = PoolKey(
+            Currency.wrap(address(reentrantToken)), Currency.wrap(address(honestToken)), 3000, 60, IHooks(address(0))
+        );
+        _configure(reentrantPool, FEES_0, FEES_1, 1 ether);
+        _notifyFees(recipient, reentrantPool, FEES_0, FEES_1);
+        MockLPFeesExecutor executor = new MockLPFeesExecutor();
+
+        executor.execute(recipient, TOKEN_ID, 0, 0);
+
+        assertTrue(reentrantToken.reentryAttempted());
+        assertFalse(reentrantToken.reentrySucceeded());
+        assertEq(
+            reentrantToken.reentryRevertData(),
+            abi.encodeWithSelector(
+                ILPFeesPositionRecipient.InsufficientAmountReceived.selector,
+                reentrantPool.currency1,
+                FEES_1,
+                FEES_1 * 2
+            )
+        );
+        assertEq(reentrantPool.currency0.balanceOf(address(executor)), FEES_0);
+        assertEq(reentrantPool.currency1.balanceOf(address(executor)), FEES_1);
+        (uint256 fees0, uint256 fees1) = recipient.fees(TOKEN_ID);
+        assertEq(fees0, 0);
+        assertEq(fees1, 0);
+        assertEq(recipient.totalFees(reentrantPool.currency0), 0);
+        assertEq(recipient.totalFees(reentrantPool.currency1), 0);
     }
 
     function test_BaseRecipient_WhenCurrency0MinimumIsNotMet_Reverts(uint256 minimum) public {

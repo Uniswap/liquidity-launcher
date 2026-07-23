@@ -13,6 +13,8 @@ PositionRecipientsBTTTest
 │   │   └── it rolls back the collection
 │   ├── when the executor callback reenters
 │   │   └── it reverts
+│   ├── when currency0 transfer reenters fee notification
+│   │   └── it cannot attribute currency1 again
 │   └── when both minimums are met
 │       └── it transfers both fees and invokes the executor
 ├── BuybackAndBurnPositionRecipient
