@@ -12,7 +12,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../interfaces/IFeeSplitter.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.sol";
+import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
 
 /// @title FeeSplitter
 /// @notice Singleton, immutable-configuration custodian of v4 LP positions that permissionlessly collects
@@ -231,12 +231,12 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesForwarded(recipient, currency, amount);
     }
 
-    /// @notice Tries to call the onFeesReceived callback on the recipient
+    /// @notice Tries to call the onAmountsReceived callback on the recipient
     /// @dev Does NOT revert if the callback fails
     function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
         private
     {
-        try ILPFeesPositionRecipient(recipient).onFeesReceived(tokenId, currency0Amount, currency1Amount) {} catch {}
+        try IClaimablePositionRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {} catch {}
     }
 
     /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and

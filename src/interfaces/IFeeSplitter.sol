@@ -12,7 +12,7 @@ address constant FEE_BENEFICIARY_SENTINEL = address(uint160(uint256(keccak256("F
 /// @param recipient The receiver of this share; may be the FEE_BENEFICIARY_SENTINEL.
 /// @param nativeBps The native ETH (currency0) share in basis points. All nativeBps sum to 10,000.
 /// @param tokenBps The token (currency1) share in basis points. All tokenBps sum to 10,000.
-/// @param useCallback Whether to call ILPFeesPositionRecipient.onFeesReceived callback
+/// @param useCallback Whether to call IClaimablePositionRecipient.onAmountsReceived callback
 struct FeeSplit {
     address recipient;
     uint16 nativeBps;

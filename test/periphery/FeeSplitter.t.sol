@@ -59,7 +59,7 @@ contract MockFeeCallback {
         rejectEth = _rejectEth;
     }
 
-    function onFeesReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external {
+    function onAmountsReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external {
         if (shouldRevert) revert CallbackFailed();
         callbackCount++;
         lastTokenId = tokenId;
@@ -90,7 +90,7 @@ contract MockPosmSweeperFeeRecipient {
         sweepCurrencies.push(currency);
     }
 
-    function onFeesReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
+    function onAmountsReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
         notifiedNative += currency0Amount;
         notifiedToken += currency1Amount;
 

@@ -4,12 +4,12 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
+import {MockClaimExecutor} from "./MockClaimExecutor.sol";
 import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 
-/// @title MockCompoundingLPFeesExecutor
+/// @title MockCompoundingClaimExecutor
 /// @notice Deposits callback proceeds into PositionManager for compounding tests
-contract MockCompoundingLPFeesExecutor is MockLPFeesExecutor {
+contract MockCompoundingClaimExecutor is MockClaimExecutor {
     IPositionManager public immutable positionManager;
     IWETH9 public immutable weth9;
     IFeeSplitter public feeSplitter;

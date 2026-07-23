@@ -4,17 +4,17 @@ PositionRecipientsBTTTest
 │   │   └── it reverts
 │   └── when the timelock has passed
 │       └── it approves the operator
-├── BaseLPFeesPositionRecipient
+├── BasePositionRecipient
 │   ├── when currency0 minimum is not met
 │   │   └── it reverts for currency0
 │   ├── when currency1 minimum is not met
 │   │   └── it reverts for currency1
 │   ├── when the executor callback reverts
-│   │   └── it rolls back the collection
+│   │   └── it rolls back the claim
 │   ├── when the executor callback reenters
 │   │   └── it reverts
 │   └── when both minimums are met
-│       └── it transfers both fees and invokes the executor
+│       └── it transfers both amounts and invokes the executor
 ├── BuybackAndBurnPositionRecipient
 │   ├── when currency0 is not native
 │   │   └── it reverts
