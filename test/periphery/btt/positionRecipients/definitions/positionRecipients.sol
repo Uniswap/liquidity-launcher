@@ -208,7 +208,9 @@ contract PositionRecipientsBTTTest is Test {
         BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
 
         vm.expectRevert(
-            abi.encodeWithSelector(IClaimablePositionRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0)
+            abi.encodeWithSelector(
+                IClaimablePositionRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0
+            )
         );
         recipient.onAmountsReceived(TOKEN_ID, FEES_0, 0);
     }

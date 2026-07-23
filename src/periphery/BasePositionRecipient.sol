@@ -55,10 +55,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Timelock
     }
 
     /// @inheritdoc IClaimablePositionRecipient
-    function claim(uint256 _tokenId, uint256 _minCurrency0Amount, uint256 _minCurrency1Amount)
-        external
-        nonReentrant
-    {
+    function claim(uint256 _tokenId, uint256 _minCurrency0Amount, uint256 _minCurrency1Amount) external nonReentrant {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
         Currency currency0 = poolKey.currency0;

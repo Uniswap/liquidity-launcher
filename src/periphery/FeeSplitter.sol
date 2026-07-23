@@ -77,7 +77,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             uint256 tokenId = tokenIds[i];
             (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
             if (nativeAmount != 0 || tokenAmount != 0) {
-                _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
+                _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount);
             }
         }
     }
@@ -119,7 +119,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
         // Distribute fees to all configured recipients
         if (nativeAmount != 0 || tokenAmount != 0) {
-            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount, feeBeneficiary[tokenId]);
+            _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount);
         }
     }
 
@@ -171,18 +171,13 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
     }
 
-    /// @notice Pushes every split's shares of both sides in a single pass. Per-side cumulative
-    ///         allocation assigns all rounding dust to later recipients so the full amounts are
-    ///         always forwarded.
+    /// @notice Pushes every split's shares of both native and token fees to the recipients
     /// @dev The sentinel resolves to the beneficiary registered at deposit. Unregistered positions
     ///      send each side of the sentinel share to that side's fallback, with no callback.
-    function _distribute(
-        uint256 tokenId,
-        Currency tokenCurrency,
-        uint256 nativeAmount,
-        uint256 tokenAmount,
-        address beneficiary
-    ) private {
+    function _distribute(uint256 tokenId, Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) private {
+        address beneficiary = feeBeneficiary[tokenId];
+        // Initialze stack variables for the cumulative allocation of the splits
+        // ensuring that any rounding dust is carried forward to future recipients
         uint256 cumulativeNativeBps;
         uint256 cumulativeTokenBps;
         uint256 distributedNative;
@@ -201,19 +196,20 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             if (recipientNativeAmount == 0 && recipientTokenAmount == 0) continue;
 
             address recipient = split.recipient;
+            // If the recipient is the sentinel value, replace it with the beneficiary if it is set
             if (recipient == FEE_BENEFICIARY_SENTINEL) {
                 if (beneficiary == address(0)) {
-                    if (recipientNativeAmount != 0) {
-                        _transfer(CurrencyLibrary.ADDRESS_ZERO, nativeFallback, recipientNativeAmount);
-                    }
-                    if (recipientTokenAmount != 0) _transfer(tokenCurrency, tokenFallback, recipientTokenAmount);
+                    _transfer(CurrencyLibrary.ADDRESS_ZERO, nativeFallback, recipientNativeAmount);
+                    _transfer(tokenCurrency, tokenFallback, recipientTokenAmount);
+                    // Early return since we don't trigger callbacks on the fallback recipients
                     continue;
+                } else {
+                    recipient = beneficiary;
                 }
-                recipient = beneficiary;
             }
 
-            if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
-            if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
+            _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
+            _transfer(tokenCurrency, recipient, recipientTokenAmount);
 
             if (split.useCallback && (recipientNativeAmount != 0 || recipientTokenAmount != 0)) {
                 _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
@@ -223,6 +219,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Sends `amount` of `currency` to `recipient`; Native transfers are force sent.
     function _transfer(Currency currency, address recipient, uint256 amount) private {
+        // Early return if the amount is zero
+        if (amount == 0) return;
         if (currency.isAddressZero()) {
             SafeTransferLib.forceSafeTransferETH(recipient, amount);
         } else {
@@ -236,7 +234,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
         private
     {
-        try IClaimablePositionRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {} catch {}
+        try IClaimablePositionRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {}
+            catch {}
     }
 
     /// @notice True when `recipient` can meaningfully receive a fee share: zero, this contract, and

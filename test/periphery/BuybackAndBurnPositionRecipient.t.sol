@@ -89,9 +89,7 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         vm.expectEmit(true, true, false, true);
         emit BuybackAndBurnPositionRecipient.TokensBurned(FORK_TOKEN_ID, Currency.wrap(USDC), _minTokenBurnAmount);
         vm.expectEmit(true, false, false, false, address(positionRecipient));
-        emit IClaimablePositionRecipient.Claimed(
-            FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0, _poolKey(FORK_TOKEN_ID)
-        );
+        emit IClaimablePositionRecipient.Claimed(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0, _poolKey(FORK_TOKEN_ID));
         executor.execute(positionRecipient, FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
 
         assertEq(address(positionRecipient).balance, existingETH);
