@@ -32,7 +32,7 @@ contract MockVaultExecutor is ILPFeesExecutor {
         recipient.collectFees(tokenId, 0, 0);
     }
 
-    function callback(PoolKey memory, uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount)
+    function onFeesCollected(PoolKey memory, uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount)
         external
         override
     {
@@ -98,7 +98,7 @@ contract ReentrantVaultOwner {
         vault.collectFees(tokenId, 0, 0);
     }
 
-    function callback(PoolKey memory, uint256, uint256, uint256) external {}
+    function onFeesCollected(PoolKey memory, uint256, uint256, uint256) external {}
 
     receive() external payable {
         vault.onFeesReceived(tokenId, 1, 0);

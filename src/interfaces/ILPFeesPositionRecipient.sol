@@ -19,10 +19,10 @@ interface ILPFeesPositionRecipient {
     /// @notice Emitted after fees are collected and processed by an executor
     event FeesCollected(uint256 indexed tokenId, uint256 currency0Received, uint256 currency1Received, PoolKey poolKey);
 
-    /// @notice Collects a position's fees and lets the caller process them atomically.
-    /// @dev A recipient's per-currency transfer policy determines the payout. Contract callers are
-    ///      invoked through `ILPFeesExecutor.callback`; EOAs and callers in construction are not.
-    ///      Security must therefore be enforced by the recipient's before/after callback outcomes.
+    /// @notice Collects a position's attributed fees; the payout is determined by the recipient's
+    ///         transfer policy.
+    /// @dev Amounts are transferred FIRST, then contract callers are invoked via
+    ///      `ILPFeesExecutor.onFeesCollected`; EOAs are not called back.
     /// @param tokenId The token ID of the position
     /// @param minCurrency0Amount The minimum acceptable currency0 fees
     /// @param minCurrency1Amount The minimum acceptable currency1 fees
@@ -31,10 +31,10 @@ interface ILPFeesPositionRecipient {
     /// @notice Returns the fees attributed to a position and available for collection
     function fees(uint256 tokenId) external view returns (uint256 currency0Fees, uint256 currency1Fees);
 
-    /// @notice Called when fees are received from a position
-    /// @dev Permissionless and balance-backed. Any balance not already attributed as fees can be
-    ///      attributed by a caller, so funds should be transferred and notified atomically. The
-    ///      position's currencies are resolved from the PositionManager, never from the caller.
+    /// @notice MUST be called after transferring fees in to register the new balance. Failure to do
+    ///         so will result in a loss of funds attribution.
+    /// @dev Permissionless and balance-backed; the position's currencies are resolved from the
+    ///      PositionManager, never from the caller.
     /// @param tokenId The token ID of the position
     /// @param currency0Amount The amount of currency0 fees received
     /// @param currency1Amount The amount of currency1 fees received

@@ -16,11 +16,13 @@ contract MockBuybackAndBurnLPFeesExecutor is MockLPFeesExecutor {
         burnAmount = _burnAmount;
     }
 
-    function callback(PoolKey memory poolKey, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
-        public
-        override
-    {
-        super.callback(poolKey, tokenId, currency0Received, currency1Received);
+    function onFeesCollected(
+        PoolKey memory poolKey,
+        uint256 tokenId,
+        uint256 currency0Received,
+        uint256 currency1Received
+    ) public override {
+        super.onFeesCollected(poolKey, tokenId, currency0Received, currency1Received);
         IERC20(burnToken).approve(msg.sender, burnAmount);
     }
 }

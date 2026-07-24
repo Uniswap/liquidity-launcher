@@ -62,7 +62,7 @@ contract ConstructorTest is DirectLaunchTestBase {
         // Same wiring as the default splitter except the vault's shares do not announce pushes:
         // its fees would be stranded without accounting.
         FeeSplit[] memory splits = feeSplitter.getSplits();
-        splits[2].feesCallback = false;
+        splits[2].useCallback = false;
         FeeSplitter miswired = new FeeSplitter(POSITION_MANAGER, splits);
 
         vm.expectRevert(

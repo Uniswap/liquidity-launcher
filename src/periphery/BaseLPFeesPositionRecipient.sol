@@ -29,8 +29,6 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
     }
 
     /// @inheritdoc ILPFeesPositionRecipient
-    /// @dev The position's currencies are fetched from the PositionManager: the caller is untrusted,
-    ///      so notified amounts are attributed only to the pool the position actually belongs to.
     function onFeesReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
@@ -45,8 +43,7 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         }
     }
 
-    /// @notice Verifies `_amount` of `_currency` is backed by this contract's balance beyond the
-    ///         fees already attributed, then adds it to the attributed total.
+    /// @notice Requires `_amount` to be backed by balance beyond the fees already attributed.
     function _attribute(Currency _currency, uint256 _amount) private {
         uint256 balance = _currency.balanceOfSelf();
         uint256 expectedTotalFees = totalFees[_currency] + _amount;
@@ -73,8 +70,6 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
             revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
         }
 
-        // Strict phase order: the policy is consulted once against the untouched pre-transfer state,
-        // every returned value is validated, and only then does any payout execute.
         (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
             _beforeTransfer(_tokenId, currency0, currency1, currency0Fees, currency1Fees);
         if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
@@ -87,18 +82,18 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
-        // EOAs and constructor callers have no code and skip this optional executor notification.
-        // Implementations must secure collection through the outcome checks around it.
-        if (msg.sender.code.length != 0) ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, toSend0, toSend1);
+        // Callers without code skip the executor callback; the before/after hooks always run.
+        if (msg.sender.code.length != 0) {
+            ILPFeesExecutor(msg.sender).onFeesCollected(poolKey, _tokenId, toSend0, toSend1);
+        }
 
         _afterCallback(poolKey, _tokenId, context);
 
         emit FeesCollected(_tokenId, toSend0, toSend1, poolKey);
     }
 
-    /// @notice Decrements one currency's attributed accounting and pays it out. Accounting strictly
-    ///         precedes the transfer, so code running during a payout can neither re-collect
-    ///         (reentrancy guard) nor attribute the in-flight funds (balance proof).
+    /// @notice Decrements attribution before transferring, so code running during a payout cannot
+    ///         attribute the in-flight funds.
     function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
         private
     {
@@ -109,11 +104,10 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         _currency.transfer(_recipient, _toSend);
     }
 
-    /// @notice Transfer policy consulted once per collect, against the pre-transfer state and before
-    ///         any payout. The default pays the full available amounts to the caller. Overrides must
-    ///         return exact values: the base rejects zero recipients so a careless override cannot
-    ///         silently misroute funds — burning must be an explicit 0xdead. Returning an amount below
-    ///         the available fees leaves the remainder attributed and claimable later.
+    /// @notice Transfer policy consulted once per collect, before any payout. Defaults to paying the
+    ///         full available amounts to the caller.
+    /// @dev Zero recipients revert — burning must be an explicit 0xdead. Amounts below the available
+    ///      fees leave the remainder attributed and claimable later.
     function _beforeTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         virtual
