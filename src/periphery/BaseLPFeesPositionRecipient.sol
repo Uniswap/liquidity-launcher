@@ -73,23 +73,53 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
             revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
         }
 
-        delete fees[_tokenId];
-        if (currency0Fees != 0) {
-            currency0.transfer(msg.sender, currency0Fees);
-            totalFees[currency0] -= currency0Fees;
-        }
-        if (currency1Fees != 0) {
-            currency1.transfer(msg.sender, currency1Fees);
-            totalFees[currency1] -= currency1Fees;
-        }
+        // Strict phase order: the policy is consulted once against the untouched pre-transfer state,
+        // every returned value is validated, and only then does any payout execute.
+        (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
+            _beforeTransfer(_tokenId, currency0, currency1, currency0Fees, currency1Fees);
+        if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
+        if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
+        if (toSend0 > currency0Fees) revert InsufficientAmountReceived(currency0, currency0Fees, toSend0);
+        if (toSend1 > currency1Fees) revert InsufficientAmountReceived(currency1, currency1Fees, toSend1);
+
+        _payout(_tokenId, currency0, recipient0, toSend0, true);
+        _payout(_tokenId, currency1, recipient1, toSend1, false);
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
-        ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, currency0Fees, currency1Fees);
+        // EOAs and constructor callers have no code and skip this optional executor notification.
+        // Implementations must secure collection through the outcome checks around it.
+        if (msg.sender.code.length != 0) ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, toSend0, toSend1);
 
         _afterCallback(poolKey, _tokenId, context);
 
-        emit FeesCollected(_tokenId, currency0Fees, currency1Fees, poolKey);
+        emit FeesCollected(_tokenId, toSend0, toSend1, poolKey);
+    }
+
+    /// @notice Decrements one currency's attributed accounting and pays it out. Accounting strictly
+    ///         precedes the transfer, so code running during a payout can neither re-collect
+    ///         (reentrancy guard) nor attribute the in-flight funds (balance proof).
+    function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
+        private
+    {
+        if (_toSend == 0) return;
+        if (_isCurrency0) fees[_tokenId].currency0Fees -= _toSend;
+        else fees[_tokenId].currency1Fees -= _toSend;
+        totalFees[_currency] -= _toSend;
+        _currency.transfer(_recipient, _toSend);
+    }
+
+    /// @notice Transfer policy consulted once per collect, against the pre-transfer state and before
+    ///         any payout. The default pays the full available amounts to the caller. Overrides must
+    ///         return exact values: the base rejects zero recipients so a careless override cannot
+    ///         silently misroute funds — burning must be an explicit 0xdead. Returning an amount below
+    ///         the available fees leaves the remainder attributed and claimable later.
+    function _beforeTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
+        internal
+        virtual
+        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
+    {
+        return (msg.sender, _available0, msg.sender, _available1);
     }
 
     /// @notice Called before the callback is executed

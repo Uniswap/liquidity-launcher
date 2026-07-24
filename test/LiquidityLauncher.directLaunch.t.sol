@@ -30,7 +30,8 @@ import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
 import {DirectLaunchStrategy, DirectLaunchConfig} from "../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
-import {FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../src/interfaces/IFeeSplitter.sol";
+import {BeneficiaryVault} from "../src/periphery/BeneficiaryVault.sol";
+import {FeeSplit} from "../src/interfaces/IFeeSplitter.sol";
 
 contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -45,6 +46,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     IAllowanceTransfer internal permit2;
     UERC20Factory internal factory;
     FeeSplitter internal feeSplitter;
+    BeneficiaryVault internal beneficiaryVault;
     DirectLaunchStrategy internal strategy;
     address internal tokenJar = makeAddr("tokenJar");
 
@@ -62,15 +64,17 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // The intended product configuration: ETH fees to the tokenJar, token fees burned,
         // both with a 20% creator share.
         FeeSplit[] memory splits = new FeeSplit[](3);
-        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
-        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, useCallback: false});
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, address(0xdead));
+        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, feesCallback: false});
+        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, feesCallback: false});
         splits[2] =
-            FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, nativeBps: 2_000, tokenBps: 2_000, useCallback: false});
-        feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), splits);
+            FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, feesCallback: true});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
-        strategy =
-            new DirectLaunchStrategy(address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, INITIAL_TICK);
+        strategy = new DirectLaunchStrategy(
+            address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
+        );
     }
 
     function test_e2e_launchThroughLiquidityLauncher() public {
@@ -98,8 +102,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // Launcher handed everything off; strategy retains nothing.
         assertEq(IERC20(token).balanceOf(address(launcher)), 0);
         assertEq(IERC20(token).balanceOf(address(strategy)), 0);
-        // The configured beneficiary holds the splitter's beneficiary NFT for the launch position.
-        assertEq(feeSplitter.ownerOf(tokenId), address(this));
+        assertEq(beneficiaryVault.ownerOf(tokenId), address(this));
     }
 
     /// @notice A creator can launch and buy in one transaction today only through a generic

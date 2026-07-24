@@ -99,6 +99,41 @@ contract BuybackAndBurnPositionRecipientTest is TimelockedPositionRecipientTest 
         assertEq(IERC20(USDC).balanceOf(address(0xdead)), burnAddressTokenBefore + _minTokenBurnAmount);
     }
 
+    function test_collectFees_eoaWithApprovalSkipsCallbackAndStillBurns() public {
+        uint256 burnAmount = 1_000e6;
+        positionRecipient =
+            new BuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, burnAmount);
+        address collector = makeAddr("eoaCollector");
+        _dealUSDCFromPoolManager(collector, burnAmount);
+        vm.prank(collector);
+        IERC20(USDC).approve(address(positionRecipient), burnAmount);
+        _notifyNativeFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
+        uint256 collectorEthBefore = collector.balance;
+        uint256 burnBalanceBefore = IERC20(USDC).balanceOf(address(0xdead));
+
+        vm.prank(collector);
+        positionRecipient.collectFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
+
+        assertEq(collector.balance - collectorEthBefore, FORK_CURRENCY0_FEES_AMOUNT);
+        assertEq(IERC20(USDC).balanceOf(address(0xdead)) - burnBalanceBefore, burnAmount);
+    }
+
+    function test_collectFees_eoaWithoutApprovalReverts() public {
+        uint256 burnAmount = 1_000e6;
+        positionRecipient =
+            new BuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, burnAmount);
+        address collector = makeAddr("unapprovedEoaCollector");
+        _dealUSDCFromPoolManager(collector, burnAmount);
+        _notifyNativeFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
+
+        vm.prank(collector);
+        vm.expectRevert();
+        positionRecipient.collectFees(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
+
+        (uint256 nativeFees,) = positionRecipient.fees(FORK_TOKEN_ID);
+        assertEq(nativeFees, FORK_CURRENCY0_FEES_AMOUNT);
+    }
+
     function test_collectFees_revertsIfCurrencyIsNotNative() public {
         positionRecipient = new BuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
 

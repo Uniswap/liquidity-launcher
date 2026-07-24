@@ -4,7 +4,8 @@ pragma solidity ^0.8.26;
 import {DirectLaunchTestBase} from "../../base/DirectLaunchTestBase.sol";
 import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../../src/periphery/FeeSplitter.sol";
-import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
+import {IBeneficiaryVault} from "../../../../../src/interfaces/IBeneficiaryVault.sol";
+import {IFeeSplitter, FeeSplit} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -18,6 +19,10 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 /// │   └── it reverts with ZeroAddress
 /// ├── when the fee splitter uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
+/// ├── when the beneficiary vault is not configured on the fee splitter
+/// │   └── it reverts with BeneficiaryVaultMismatch
+/// ├── when the beneficiary vault's share lacks the fees callback
+/// │   └── it reverts with BeneficiaryVaultMismatch
 /// ├── when the initial tick is not aligned
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the maximum usable tick
@@ -31,7 +36,7 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 ///     └── it derives a position liquidity that fits in a single position
 contract ConstructorTest is DirectLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
-        zeroIndex = uint8(bound(zeroIndex, 0, 3));
+        zeroIndex = uint8(bound(zeroIndex, 0, 4));
 
         vm.expectRevert(DirectLaunchStrategy.ZeroAddress.selector);
         new DirectLaunchStrategy(
@@ -39,20 +44,42 @@ contract ConstructorTest is DirectLaunchTestBase {
             zeroIndex == 1 ? IPositionManager(address(0)) : IPositionManager(address(positionManager)),
             zeroIndex == 2 ? IPoolManager(address(0)) : poolManager,
             zeroIndex == 3 ? IFeeSplitter(address(0)) : feeSplitter,
+            zeroIndex == 4 ? IBeneficiaryVault(address(0)) : IBeneficiaryVault(beneficiaryVault),
             INITIAL_TICK
         );
+    }
+
+    function test_WhenBeneficiaryVaultIsNotConfiguredOnFeeSplitter() public {
+        address notARecipient = makeAddr("notARecipient");
+
+        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.BeneficiaryVaultMismatch.selector, notARecipient));
+        new DirectLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, IBeneficiaryVault(notARecipient), INITIAL_TICK
+        );
+    }
+
+    function test_WhenBeneficiaryVaultShareLacksFeesCallback() public {
+        // Same wiring as the default splitter except the vault's shares do not announce pushes:
+        // its fees would be stranded without accounting.
+        FeeSplit[] memory splits = feeSplitter.getSplits();
+        splits[2].feesCallback = false;
+        FeeSplitter miswired = new FeeSplitter(POSITION_MANAGER, splits);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(DirectLaunchStrategy.BeneficiaryVaultMismatch.selector, address(beneficiaryVault))
+        );
+        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, miswired, beneficiaryVault, INITIAL_TICK);
     }
 
     function test_WhenFeeSplitterUsesDifferentPositionManager() public {
         // A splitter bound to a foreign PositionManager could never collect the launch positions.
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
-        FeeSplitter mismatched =
-            new FeeSplitter(otherPositionManager, tokenJar, address(0xdead), feeSplitter.getSplits());
+        FeeSplitter mismatched = new FeeSplitter(otherPositionManager, feeSplitter.getSplits());
 
         vm.expectRevert(
             abi.encodeWithSelector(DirectLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))
         );
-        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, INITIAL_TICK);
+        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
@@ -124,6 +151,7 @@ contract ConstructorTest is DirectLaunchTestBase {
         assertEq(address(strategy.positionManager()), address(positionManager));
         assertEq(address(strategy.poolManager()), address(poolManager));
         assertEq(address(strategy.feeSplitter()), address(feeSplitter));
+        assertEq(address(strategy.beneficiaryVault()), address(beneficiaryVault));
         assertEq(strategy.initialTick(), INITIAL_TICK);
         assertEq(strategy.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
         assertGt(strategy.positionLiquidity(), 0);
