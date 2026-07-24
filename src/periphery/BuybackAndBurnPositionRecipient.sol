@@ -5,7 +5,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {BasePositionRecipient} from "./BasePositionRecipient.sol";
+import {ExecutorCallbackPositionRecipient} from "./ExecutorCallbackPositionRecipient.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Singleton buyback-and-burn recipient for native-ETH-paired LP positions
@@ -14,7 +14,7 @@ import {BasePositionRecipient} from "./BasePositionRecipient.sol";
 /// @dev The same burn threshold is applied to every position
 /// @dev Callers of `claim` must approve this contract for at least `minCurrency1BurnAmount` of the
 ///      position's currency1, which is pulled from the caller and sent to the burn address
-contract BuybackAndBurnPositionRecipient is BasePositionRecipient {
+contract BuybackAndBurnPositionRecipient is ExecutorCallbackPositionRecipient {
     /// @notice The currency paid to callers who claim
     Currency public constant currency = CurrencyLibrary.ADDRESS_ZERO;
 
@@ -32,20 +32,20 @@ contract BuybackAndBurnPositionRecipient is BasePositionRecipient {
     uint256 public immutable minCurrency1BurnAmount;
 
     constructor(IPositionManager _positionManager, uint256 _minCurrency1BurnAmount)
-        BasePositionRecipient(_positionManager)
+        ExecutorCallbackPositionRecipient(_positionManager)
     {
         if (_minCurrency1BurnAmount == 0) revert InvalidMinCurrency1BurnAmount();
         minCurrency1BurnAmount = _minCurrency1BurnAmount;
     }
 
-    /// @inheritdoc BasePositionRecipient
+    /// @inheritdoc ExecutorCallbackPositionRecipient
     /// @dev Requires native ETH as currency0, which also guarantees currency1 is the ERC20 burn target
     function _beforeCallback(PoolKey memory _poolKey, uint256) internal pure override returns (uint256) {
         if (!_poolKey.currency0.isAddressZero()) revert InvalidCurrency(_poolKey.currency0, currency);
         return 0;
     }
 
-    /// @inheritdoc BasePositionRecipient
+    /// @inheritdoc ExecutorCallbackPositionRecipient
     /// @dev Burns `minCurrency1BurnAmount` of `_poolKey.currency1` tokens
     function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
         SafeTransferLib.safeTransferFrom(
