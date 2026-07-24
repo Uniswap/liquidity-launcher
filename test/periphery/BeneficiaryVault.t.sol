@@ -42,6 +42,25 @@ contract MockVaultExecutor is IClaimExecutor {
         lastCurrency1Amount = currency1Amount;
     }
 
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IClaimExecutor).interfaceId;
+    }
+
+    receive() external payable {}
+}
+
+/// @dev Has an `onClaimed` implementation but no ERC165 introspection, like a smart contract wallet
+contract NonIntrospectableVaultExecutor {
+    uint256 public callbackCalls;
+
+    function collect(IClaimablePositionRecipient recipient, uint256 tokenId) external {
+        recipient.claim(tokenId, 0, 0);
+    }
+
+    function onClaimed(PoolKey memory, uint256, uint256, uint256) external {
+        callbackCalls++;
+    }
+
     receive() external payable {}
 }
 
@@ -318,6 +337,17 @@ contract BeneficiaryVaultTest is Test {
         assertEq(executor.lastTokenId(), tokenId);
         assertEq(executor.lastCurrency0Amount(), 1 ether);
         assertEq(executor.lastCurrency1Amount(), 2 ether);
+        assertEq(address(executor).balance, 1 ether);
+        assertEq(token.balanceOf(address(executor)), 2 ether);
+    }
+
+    function test_claim_contractWithoutERC165IsPaidWithoutCallback() public {
+        uint256 tokenId = _mintPosition(address(this));
+        NonIntrospectableVaultExecutor executor = new NonIntrospectableVaultExecutor();
+        _register(tokenId, address(this), address(executor));
+        _credit(vault, tokenId, 1 ether, 2 ether);
+        executor.collect(vault, tokenId);
+        assertEq(executor.callbackCalls(), 0);
         assertEq(address(executor).balance, 1 ether);
         assertEq(token.balanceOf(address(executor)), 2 ether);
     }

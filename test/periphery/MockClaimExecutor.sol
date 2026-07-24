@@ -5,6 +5,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IClaimExecutor} from "../../src/interfaces/IClaimExecutor.sol";
 import {IClaimablePositionRecipient} from "../../src/interfaces/IClaimablePositionRecipient.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title MockClaimExecutor
 contract MockClaimExecutor is IClaimExecutor {
@@ -32,6 +33,10 @@ contract MockClaimExecutor is IClaimExecutor {
         lastTokenId = tokenId;
         lastCurrency0Received = currency0Received;
         lastCurrency1Received = currency1Received;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {
+        return interfaceId == type(IClaimExecutor).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 
     receive() external payable {}

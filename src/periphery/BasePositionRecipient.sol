@@ -6,6 +6,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
 import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
 
@@ -80,8 +81,9 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
-        // Callers without code skip the executor callback; the before/after hooks always run.
-        if (msg.sender.code.length != 0) {
+        // Only callers declaring IClaimExecutor support via ERC165 receive the callback; the
+        // before/after hooks always run.
+        if (_supportsExecutorCallback(msg.sender)) {
             IClaimExecutor(msg.sender).onClaimed(poolKey, _tokenId, toSend0, toSend1);
         }
 
@@ -127,6 +129,16 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         else amounts[_tokenId].currency1Amount -= uint128(_toSend);
         totalAmounts[_currency] -= _toSend;
         _currency.transfer(_recipient, _toSend);
+    }
+
+    /// @notice Returns whether `_caller` declares IClaimExecutor support via ERC165.
+    /// @dev Uses a raw staticcall so callers without `supportsInterface` (EOAs, wallets, timelocks)
+    ///      are skipped rather than reverting the claim.
+    function _supportsExecutorCallback(address _caller) private view returns (bool) {
+        if (_caller.code.length == 0) return false;
+        (bool success, bytes memory returndata) =
+            _caller.staticcall(abi.encodeCall(IERC165.supportsInterface, (type(IClaimExecutor).interfaceId)));
+        return success && returndata.length == 32 && abi.decode(returndata, (bool));
     }
 
     /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.

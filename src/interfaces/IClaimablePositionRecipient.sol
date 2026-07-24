@@ -22,8 +22,8 @@ interface IClaimablePositionRecipient {
 
     /// @notice Claims a position's attributed amounts; the payout is determined by the recipient's
     ///         transfer policy.
-    /// @dev Amounts are transferred FIRST, then contract callers are invoked via
-    ///      `IClaimExecutor.onClaimed`; EOAs are not called back.
+    /// @dev Amounts are transferred FIRST, then callers declaring `IClaimExecutor` support via
+    ///      ERC165 are invoked through `onClaimed`; other callers are not called back.
     /// @param tokenId The token ID of the position
     /// @param minCurrency0Amount The minimum acceptable currency0 amount
     /// @param minCurrency1Amount The minimum acceptable currency1 amount

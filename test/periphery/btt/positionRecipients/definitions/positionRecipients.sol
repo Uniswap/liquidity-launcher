@@ -146,6 +146,10 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
         recipient.claim(tokenId, 0, 0);
     }
 
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IClaimExecutor).interfaceId;
+    }
+
     receive() external payable {}
 }
 

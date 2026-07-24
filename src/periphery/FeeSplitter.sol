@@ -53,9 +53,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (count == 0) revert NoTokenIds();
         for (uint256 i; i < count; i++) {
             uint256 tokenId = tokenIds[i];
-            (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
+            (Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
             if (nativeAmount != 0 || tokenAmount != 0) {
-                _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount);
+                _distribute(tokenId, tokenCurrency, nativeAmount, tokenAmount);
             }
         }
     }
@@ -121,28 +121,28 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     }
 
     /// @notice Realizes one position's accrued fees into this contract's balances.
-    /// @return poolKey The position's pool key; its currency0 is guaranteed to be native ETH.
+    /// @return tokenCurrency The position's currency1; currency0 is guaranteed to be native ETH.
     /// @return nativeAmount The full standing native balance to distribute.
     /// @return tokenAmount The full standing currency1 balance to distribute.
     function _collect(uint256 tokenId)
         private
-        returns (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount)
+        returns (Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount)
     {
-        (poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
+        (PoolKey memory poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
         if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
-        address token = Currency.unwrap(poolKey.currency1);
+        tokenCurrency = poolKey.currency1;
 
         // A zero-liquidity decrease realizes only the position's accrued fees.
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(tokenId, 0, 0, 0, bytes(""));
-        params[1] = abi.encode(poolKey.currency0, poolKey.currency1, address(this));
+        params[1] = abi.encode(poolKey.currency0, tokenCurrency, address(this));
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
         // Distribute the full standing balances; donations are flushed through the split.
         nativeAmount = address(this).balance;
-        tokenAmount = poolKey.currency1.balanceOfSelf();
-        emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
+        tokenAmount = tokenCurrency.balanceOfSelf();
+        emit FeesCollected(tokenId, Currency.unwrap(tokenCurrency), nativeAmount, tokenAmount);
     }
 
     /// @notice Pushes each split's shares of both sides in a single pass; rounding dust accrues to
