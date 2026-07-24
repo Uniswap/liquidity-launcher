@@ -16,23 +16,23 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
-import {BaseLPFeesPositionRecipient} from "../../src/periphery/BaseLPFeesPositionRecipient.sol";
+import {BasePositionRecipient} from "../../src/periphery/BasePositionRecipient.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
-import {ILPFeesPositionRecipient} from "../../src/interfaces/ILPFeesPositionRecipient.sol";
-import {ILPFeesExecutor} from "../../src/interfaces/ILPFeesExecutor.sol";
+import {IClaimablePositionRecipient} from "../../src/interfaces/IClaimablePositionRecipient.sol";
+import {IClaimExecutor} from "../../src/interfaces/IClaimExecutor.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
-contract MockVaultExecutor is ILPFeesExecutor {
+contract MockVaultExecutor is IClaimExecutor {
     uint256 public callbackCalls;
     uint256 public lastTokenId;
     uint256 public lastCurrency0Amount;
     uint256 public lastCurrency1Amount;
 
-    function collect(ILPFeesPositionRecipient recipient, uint256 tokenId) external {
-        recipient.collectFees(tokenId, 0, 0);
+    function collect(IClaimablePositionRecipient recipient, uint256 tokenId) external {
+        recipient.claim(tokenId, 0, 0);
     }
 
-    function onFeesCollected(PoolKey memory, uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount)
+    function onClaimed(PoolKey memory, uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount)
         external
         override
     {
@@ -45,8 +45,8 @@ contract MockVaultExecutor is ILPFeesExecutor {
     receive() external payable {}
 }
 
-contract PartialTransferRecipient is BaseLPFeesPositionRecipient {
-    constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
+contract PartialTransferRecipient is BasePositionRecipient {
+    constructor(IPositionManager manager) BasePositionRecipient(manager, address(0), type(uint256).max) {}
 
     function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -58,8 +58,8 @@ contract PartialTransferRecipient is BaseLPFeesPositionRecipient {
     }
 }
 
-contract ZeroTransferRecipient is BaseLPFeesPositionRecipient {
-    constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
+contract ZeroTransferRecipient is BasePositionRecipient {
+    constructor(IPositionManager manager) BasePositionRecipient(manager, address(0), type(uint256).max) {}
 
     function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -71,8 +71,8 @@ contract ZeroTransferRecipient is BaseLPFeesPositionRecipient {
     }
 }
 
-contract ZeroCurrency1Recipient is BaseLPFeesPositionRecipient {
-    constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
+contract ZeroCurrency1Recipient is BasePositionRecipient {
+    constructor(IPositionManager manager) BasePositionRecipient(manager, address(0), type(uint256).max) {}
 
     function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -95,13 +95,13 @@ contract ReentrantVaultOwner {
     }
 
     function collect() external {
-        vault.collectFees(tokenId, 0, 0);
+        vault.claim(tokenId, 0, 0);
     }
 
-    function onFeesCollected(PoolKey memory, uint256, uint256, uint256) external {}
+    function onClaimed(PoolKey memory, uint256, uint256, uint256) external {}
 
     receive() external payable {
-        vault.onFeesReceived(tokenId, 1, 0);
+        vault.onAmountsReceived(tokenId, 1, 0);
     }
 }
 
@@ -164,12 +164,12 @@ contract BeneficiaryVaultTest is Test {
         vault.registerBeneficiary(tokenId, owner);
     }
 
-    function _credit(ILPFeesPositionRecipient recipient, uint256 tokenId, uint256 nativeAmount, uint256 tokenAmount)
+    function _credit(IClaimablePositionRecipient recipient, uint256 tokenId, uint256 nativeAmount, uint256 tokenAmount)
         internal
     {
         vm.deal(address(recipient), address(recipient).balance + nativeAmount);
         token.transfer(address(recipient), tokenAmount);
-        recipient.onFeesReceived(tokenId, nativeAmount, tokenAmount);
+        recipient.onAmountsReceived(tokenId, nativeAmount, tokenAmount);
     }
 
     function test_constructor_storesFallbacksAndMetadata() public view {
@@ -231,67 +231,70 @@ contract BeneficiaryVaultTest is Test {
 
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_onFeesReceived_enforcesBalanceProofThenCreditsBothAmounts() public {
+    function test_onAmountsReceived_enforcesBalanceProofThenCreditsBothAmounts() public {
         uint256 tokenId = _mintPosition(address(this));
         _register(tokenId, address(this), beneficiary);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILPFeesPositionRecipient.InsufficientAmountReceived.selector, CurrencyLibrary.ADDRESS_ZERO, 0, 1 ether
+                IClaimablePositionRecipient.InsufficientAmountReceived.selector,
+                CurrencyLibrary.ADDRESS_ZERO,
+                0,
+                1 ether
             )
         );
-        vault.onFeesReceived(tokenId, 1 ether, 2 ether);
+        vault.onAmountsReceived(tokenId, 1 ether, 2 ether);
         vm.deal(address(vault), 1 ether);
         token.transfer(address(vault), 2 ether);
-        vault.onFeesReceived(tokenId, 1 ether, 2 ether);
-        vm.snapshotGasLastCall("BeneficiaryVault.onFeesReceived");
-        (uint256 nativeFees, uint256 tokenFees) = vault.fees(tokenId);
-        assertEq(nativeFees, 1 ether);
-        assertEq(tokenFees, 2 ether);
-        assertEq(vault.totalFees(CurrencyLibrary.ADDRESS_ZERO), 1 ether);
-        assertEq(vault.totalFees(Currency.wrap(address(token))), 2 ether);
+        vault.onAmountsReceived(tokenId, 1 ether, 2 ether);
+        vm.snapshotGasLastCall("BeneficiaryVault.onAmountsReceived");
+        (uint256 nativeAmount, uint256 tokenAmount) = vault.amounts(tokenId);
+        assertEq(nativeAmount, 1 ether);
+        assertEq(tokenAmount, 2 ether);
+        assertEq(vault.totalAmounts(CurrencyLibrary.ADDRESS_ZERO), 1 ether);
+        assertEq(vault.totalAmounts(Currency.wrap(address(token))), 2 ether);
     }
 
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_collectFees_eoaOwnerReceivesBothAndAccountingIsZeroed() public {
+    function test_claim_eoaOwnerReceivesBothAndAccountingIsZeroed() public {
         uint256 tokenId = _mintPosition(address(this));
         address owner = makeAddr("owner");
         _register(tokenId, address(this), owner);
         _credit(vault, tokenId, 1 ether, 2 ether);
         vm.prank(owner);
-        vault.collectFees(tokenId, 1 ether, 2 ether);
-        vm.snapshotGasLastCall("BeneficiaryVault.collectFees");
+        vault.claim(tokenId, 1 ether, 2 ether);
+        vm.snapshotGasLastCall("BeneficiaryVault.claim");
         assertEq(owner.balance, 1 ether);
         assertEq(token.balanceOf(owner), 2 ether);
-        (uint256 nativeFees, uint256 tokenFees) = vault.fees(tokenId);
-        assertEq(nativeFees, 0);
-        assertEq(tokenFees, 0);
-        assertEq(vault.totalFees(CurrencyLibrary.ADDRESS_ZERO), 0);
-        assertEq(vault.totalFees(Currency.wrap(address(token))), 0);
+        (uint256 nativeAmount, uint256 tokenAmount) = vault.amounts(tokenId);
+        assertEq(nativeAmount, 0);
+        assertEq(tokenAmount, 0);
+        assertEq(vault.totalAmounts(CurrencyLibrary.ADDRESS_ZERO), 0);
+        assertEq(vault.totalAmounts(Currency.wrap(address(token))), 0);
     }
 
-    function test_collectFees_nonOwnerReverts() public {
+    function test_claim_nonOwnerReverts() public {
         uint256 tokenId = _mintPosition(address(this));
         _register(tokenId, address(this), beneficiary);
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, address(this)));
-        vault.collectFees(tokenId, 0, 0);
+        vault.claim(tokenId, 0, 0);
     }
 
-    function test_collectFees_unregisteredPositionFlushesBothFallbacksPermissionlessly() public {
+    function test_claim_unregisteredPositionFlushesBothFallbacksPermissionlessly() public {
         uint256 tokenId = _mintPosition(address(this));
         _credit(vault, tokenId, 1 ether, 2 ether);
         vm.prank(makeAddr("anyone"));
-        vault.collectFees(tokenId, 0, 0);
+        vault.claim(tokenId, 0, 0);
         assertEq(nativeFallback.balance, 1 ether);
         assertEq(token.balanceOf(tokenFallback), 2 ether);
-        assertEq(vault.totalFees(CurrencyLibrary.ADDRESS_ZERO), 0);
-        assertEq(vault.totalFees(Currency.wrap(address(token))), 0);
-        (uint256 nativeFees, uint256 tokenFees) = vault.fees(tokenId);
-        assertEq(nativeFees, 0);
-        assertEq(tokenFees, 0);
+        assertEq(vault.totalAmounts(CurrencyLibrary.ADDRESS_ZERO), 0);
+        assertEq(vault.totalAmounts(Currency.wrap(address(token))), 0);
+        (uint256 nativeAmount, uint256 tokenAmount) = vault.amounts(tokenId);
+        assertEq(nativeAmount, 0);
+        assertEq(tokenAmount, 0);
     }
 
-    function test_collectFees_nftTransferMovesClaimRight() public {
+    function test_claim_nftTransferMovesClaimRight() public {
         uint256 tokenId = _mintPosition(address(this));
         _register(tokenId, address(this), beneficiary);
         _credit(vault, tokenId, 1 ether, 2 ether);
@@ -300,14 +303,14 @@ contract BeneficiaryVaultTest is Test {
         vault.transferFrom(beneficiary, newOwner, tokenId);
         vm.prank(beneficiary);
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, beneficiary));
-        vault.collectFees(tokenId, 0, 0);
+        vault.claim(tokenId, 0, 0);
         vm.prank(newOwner);
-        vault.collectFees(tokenId, 0, 0);
+        vault.claim(tokenId, 0, 0);
         assertEq(newOwner.balance, 1 ether);
         assertEq(token.balanceOf(newOwner), 2 ether);
     }
 
-    function test_collectFees_contractOwnerGetsCallbackWithActualAmounts() public {
+    function test_claim_contractOwnerGetsCallbackWithActualAmounts() public {
         uint256 tokenId = _mintPosition(address(this));
         MockVaultExecutor executor = new MockVaultExecutor();
         _register(tokenId, address(this), address(executor));
@@ -321,30 +324,30 @@ contract BeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(address(executor)), 2 ether);
     }
 
-    function test_collectFees_partialPolicyLeavesRemainderClaimableAndAccountingConsistent() public {
+    function test_claim_partialPolicyLeavesRemainderClaimableAndAccountingConsistent() public {
         uint256 tokenId = _mintPosition(address(this));
         PartialTransferRecipient recipient = new PartialTransferRecipient(POSITION_MANAGER);
         _credit(recipient, tokenId, 8 ether, 16 ether);
         address collector = makeAddr("collector");
         vm.prank(collector);
-        recipient.collectFees(tokenId, 8 ether, 16 ether);
+        recipient.claim(tokenId, 8 ether, 16 ether);
         assertEq(collector.balance, 4 ether);
         assertEq(token.balanceOf(collector), 8 ether);
-        (uint256 nativeFees, uint256 tokenFees) = recipient.fees(tokenId);
-        assertEq(nativeFees, 4 ether);
-        assertEq(tokenFees, 8 ether);
-        assertEq(recipient.totalFees(CurrencyLibrary.ADDRESS_ZERO), 4 ether);
-        assertEq(recipient.totalFees(Currency.wrap(address(token))), 8 ether);
+        (uint256 nativeAmount, uint256 tokenAmount) = recipient.amounts(tokenId);
+        assertEq(nativeAmount, 4 ether);
+        assertEq(tokenAmount, 8 ether);
+        assertEq(recipient.totalAmounts(CurrencyLibrary.ADDRESS_ZERO), 4 ether);
+        assertEq(recipient.totalAmounts(Currency.wrap(address(token))), 8 ether);
         vm.prank(collector);
-        recipient.collectFees(tokenId, 0, 0);
+        recipient.claim(tokenId, 0, 0);
         assertEq(collector.balance, 6 ether);
         assertEq(token.balanceOf(collector), 12 ether);
-        (nativeFees, tokenFees) = recipient.fees(tokenId);
-        assertEq(nativeFees, 2 ether);
-        assertEq(tokenFees, 4 ether);
+        (nativeAmount, tokenAmount) = recipient.amounts(tokenId);
+        assertEq(nativeAmount, 2 ether);
+        assertEq(tokenAmount, 4 ether);
     }
 
-    function test_collectFees_currency1RejectionBlocksAllPayouts() public {
+    function test_claim_currency1RejectionBlocksAllPayouts() public {
         uint256 tokenId = _mintPosition(address(this));
         ZeroCurrency1Recipient recipient = new ZeroCurrency1Recipient(POSITION_MANAGER);
         _credit(recipient, tokenId, 1 ether, 2 ether);
@@ -356,55 +359,55 @@ contract BeneficiaryVaultTest is Test {
         vm.prank(collector);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILPFeesPositionRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token))
+                IClaimablePositionRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token))
             )
         );
-        recipient.collectFees(tokenId, 0, 0);
+        recipient.claim(tokenId, 0, 0);
 
         assertEq(collector.balance, balanceBefore);
-        (uint256 nativeFees, uint256 tokenFees) = recipient.fees(tokenId);
-        assertEq(nativeFees, 1 ether);
-        assertEq(tokenFees, 2 ether);
+        (uint256 nativeAmount, uint256 tokenAmount) = recipient.amounts(tokenId);
+        assertEq(nativeAmount, 1 ether);
+        assertEq(tokenAmount, 2 ether);
     }
 
-    function test_collectFees_zeroRecipientPolicyReverts() public {
+    function test_claim_zeroRecipientPolicyReverts() public {
         uint256 tokenId = _mintPosition(address(this));
         ZeroTransferRecipient recipient = new ZeroTransferRecipient(POSITION_MANAGER);
         _credit(recipient, tokenId, 1 ether, 2 ether);
         vm.prank(makeAddr("collector"));
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILPFeesPositionRecipient.InvalidTransferRecipient.selector, CurrencyLibrary.ADDRESS_ZERO
+                IClaimablePositionRecipient.InvalidTransferRecipient.selector, CurrencyLibrary.ADDRESS_ZERO
             )
         );
-        recipient.collectFees(tokenId, 0, 0);
+        recipient.claim(tokenId, 0, 0);
     }
 
-    function test_collectFees_revertsWhenMinimumExceedsAvailable() public {
+    function test_claim_revertsWhenMinimumExceedsAvailable() public {
         uint256 tokenId = _mintPosition(address(this));
         _register(tokenId, address(this), beneficiary);
         _credit(vault, tokenId, 1 ether, 2 ether);
         vm.prank(beneficiary);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILPFeesPositionRecipient.InsufficientAmountReceived.selector,
+                IClaimablePositionRecipient.InsufficientAmountReceived.selector,
                 CurrencyLibrary.ADDRESS_ZERO,
                 1 ether,
                 1 ether + 1
             )
         );
-        vault.collectFees(tokenId, 1 ether + 1, 0);
+        vault.claim(tokenId, 1 ether + 1, 0);
     }
 
-    function test_collectFees_cannotAttributeInFlightPayoutFunds() public {
+    function test_claim_cannotAttributeInFlightPayoutFunds() public {
         uint256 tokenId = _mintPosition(address(this));
         ReentrantVaultOwner owner = new ReentrantVaultOwner(vault, tokenId);
         _register(tokenId, address(this), address(owner));
         _credit(vault, tokenId, 1 ether, 0);
         vm.expectRevert();
         owner.collect();
-        (uint256 nativeFees,) = vault.fees(tokenId);
-        assertEq(nativeFees, 1 ether);
+        (uint256 nativeAmount,) = vault.amounts(tokenId);
+        assertEq(nativeAmount, 1 ether);
     }
 
     receive() external payable {}

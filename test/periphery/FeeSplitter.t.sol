@@ -39,7 +39,7 @@ contract MockPosmSweeperFeeRecipient {
         currencies.push(currency);
     }
 
-    function onFeesReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
+    function onAmountsReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
         notifiedNative += currency0Amount;
         notifiedToken += currency1Amount;
         bytes memory actions = new bytes(currencies.length);
@@ -267,7 +267,7 @@ contract FeeSplitterTest is Test {
         uint256 burnBefore = token.balanceOf(BURN_ADDRESS);
         splitter.collectFees(_single(tokenId));
         vm.snapshotGasLastCall("FeeSplitter.collectFees");
-        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.fees(tokenId);
+        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.amounts(tokenId);
         assertGt(tokenJar.balance - jarBefore, 0);
         assertGt(token.balanceOf(BURN_ADDRESS) - burnBefore, 0);
         assertGt(nativeFees, 0);
@@ -371,7 +371,7 @@ contract FeeSplitterTest is Test {
         weth.transfer(address(POSITION_MANAGER), 10 ether);
         token.transfer(address(POSITION_MANAGER), 10 ether);
         splitter.increaseLiquidity(tokenId, 1 ether, 10 ether, 10 ether, bytes(""));
-        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.fees(tokenId);
+        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.amounts(tokenId);
         assertGt(nativeFees, 0);
         assertGt(tokenFees, 0);
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), beforeLiquidity + 1 ether);

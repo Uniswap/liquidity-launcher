@@ -250,7 +250,7 @@ contract DirectLaunchStrategyE2ETest is Test {
         // ETH fees split to the tokenJar and the beneficiary vault; token fees burn and vault.
         assertGt(tokenJar.balance, 0);
         assertGt(token.balanceOf(BURN_ADDRESS) - burnedBefore, 0);
-        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.fees(tokenId);
+        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.amounts(tokenId);
         assertGt(nativeFees, 0);
         assertGt(tokenFees, 0);
         // Nothing sticks to the splitter.
