@@ -4,6 +4,10 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
+import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -23,6 +27,7 @@ import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.s
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
+    using StateLibrary for IPoolManager;
 
     /// @notice The denominator for fee splits: each side's shares sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
@@ -60,8 +65,11 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @inheritdoc IFeeSplitter
     /// @dev Permissionless. The PositionManager must already hold the WETH and token funding, and any
-    ///      excess is taken back to the caller. Outstanding fees are collected FIRST so an increase can
-    ///      never consume undistributed fees as funding, then distributed after the increase.
+    ///      excess is taken back to the caller. Reverts while the position has uncollected fees: the
+    ///      increase would consume them as funding, skipping distribution — and collecting here instead
+    ///      would hand control to fee callbacks mid-increase, enabling callback cycles. Callers collect
+    ///      first, or run inside a fees callback where the fees were just realized. No recipient code
+    ///      executes during the increase.
     function increaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,
@@ -72,26 +80,25 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
             revert NotOwner(tokenId);
         }
-        // Collect any outstanding fees on the existing liquidity first
-        (PoolKey memory poolKey, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
-        {
-            bytes memory actions = abi.encodePacked(
-                uint8(Actions.UNWRAP),
-                uint8(Actions.SETTLE),
-                uint8(Actions.SETTLE),
-                uint8(Actions.INCREASE_LIQUIDITY),
-                uint8(Actions.TAKE_PAIR)
-            );
-            bytes[] memory params = new bytes[](5);
-            // Require the balance to already exist in PositionManager
-            params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
-            params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
-            params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
-            params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
-            params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
-            positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
-        }
-        if (nativeAmount != 0 || tokenAmount != 0) _distribute(tokenId, poolKey.currency1, nativeAmount, tokenAmount);
+        (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
+        if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
+        _requireNoPendingFees(tokenId, poolKey, info);
+
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.UNWRAP),
+            uint8(Actions.SETTLE),
+            uint8(Actions.SETTLE),
+            uint8(Actions.INCREASE_LIQUIDITY),
+            uint8(Actions.TAKE_PAIR)
+        );
+        bytes[] memory params = new bytes[](5);
+        // Require the balance to already exist in PositionManager
+        params[0] = abi.encode(ActionConstants.CONTRACT_BALANCE);
+        params[1] = abi.encode(poolKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
+        params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
+        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
     }
 
     /// @notice Accepts positions safe-transferred through the PositionManager and delivers each entry in
@@ -127,6 +134,22 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Receives native ETH from the PositionManager take.
     receive() external payable {}
+
+    /// @notice Reverts when the position's fee growth has moved since its last modification, i.e. it
+    ///         has accrued fees that a liquidity increase would silently consume as funding.
+    function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
+        IPoolManager poolManager = positionManager.poolManager();
+        PoolId poolId = poolKey.toId();
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager
+            .getPositionInfo(poolId, address(positionManager), info.tickLower(), info.tickUpper(), bytes32(tokenId));
+        // A zero-liquidity position accrues nothing; its last modification realized everything.
+        if (liquidity == 0) return;
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
+            poolManager.getFeeGrowthInside(poolId, info.tickLower(), info.tickUpper());
+        if (feeGrowthInside0X128 != feeGrowthInside0LastX128 || feeGrowthInside1X128 != feeGrowthInside1LastX128) {
+            revert UncollectedFees(tokenId);
+        }
+    }
 
     /// @notice Realizes one position's accrued fees into this contract's balances.
     /// @return poolKey The position's pool key; its currency0 is guaranteed to be native ETH.

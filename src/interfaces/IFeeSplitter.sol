@@ -92,6 +92,10 @@ interface IFeeSplitter {
     /// @param tokenId The position token ID.
     error NotOwner(uint256 tokenId);
 
+    /// @notice Thrown when a position still has uncollected fees at an increase.
+    /// @param tokenId The position token ID.
+    error UncollectedFees(uint256 tokenId);
+
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
     ///      splitter, otherwise the PositionManager reverts.
@@ -100,8 +104,10 @@ interface IFeeSplitter {
 
     /// @notice Increases the liquidity of a position held by the splitter using funds already sent to
     ///         the PositionManager; excess funding is taken back to the caller.
-    /// @dev Permissionless. Outstanding fees are collected before the increase so it can never consume
-    ///      undistributed fees as funding.
+    /// @dev Permissionless. Reverts while the position has uncollected fees: an increase would consume
+    ///      them as funding, skipping distribution — and collecting here instead would hand control to
+    ///      fee callbacks mid-increase, enabling callback cycles. Callers collect first, or run inside
+    ///      a fees callback where the fees were just realized.
     /// @param tokenId The position to increase.
     /// @param liquidity The liquidity to add.
     /// @param amount0Max The maximum currency0 to spend.

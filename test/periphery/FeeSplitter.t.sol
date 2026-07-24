@@ -427,9 +427,20 @@ contract FeeSplitterTest is Test {
         assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
     }
 
-    function test_increaseLiquidity_distributesPendingFeesBeforeIncrease() public {
+    function test_increaseLiquidity_revertsOnUncollectedFees() public {
         FeeSplitter splitter = _defaultSplitter();
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, true);
+        weth.deposit{value: 10 ether}();
+        weth.transfer(address(POSITION_MANAGER), 10 ether);
+        token.transfer(address(POSITION_MANAGER), 10 ether);
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.UncollectedFees.selector, tokenId));
+        splitter.increaseLiquidity(tokenId, 1 ether, 10 ether, 10 ether, bytes(""));
+    }
+
+    function test_increaseLiquidity_succeedsAfterCollect() public {
+        FeeSplitter splitter = _defaultSplitter();
+        (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, true);
+        splitter.collectFees(_single(tokenId));
         uint128 beforeLiquidity = POSITION_MANAGER.getPositionLiquidity(tokenId);
         weth.deposit{value: 10 ether}();
         weth.transfer(address(POSITION_MANAGER), 10 ether);
@@ -443,7 +454,7 @@ contract FeeSplitterTest is Test {
         assertEq(token.balanceOf(address(splitter)), 0);
     }
 
-    function test_increaseLiquidity_recipientCannotSweepCallerExcess() public {
+    function test_increaseLiquidity_noRecipientCodeRunsDuringIncrease() public {
         MockPosmSweeperFeeRecipient attacker = new MockPosmSweeperFeeRecipient(POSITION_MANAGER);
         FeeSplitter splitter =
             new FeeSplitter(POSITION_MANAGER, _splits(_split(address(attacker), 10_000, 10_000, false, true)));
@@ -451,6 +462,10 @@ contract FeeSplitterTest is Test {
         attacker.addSweepCurrency(CurrencyLibrary.ADDRESS_ZERO);
         attacker.addSweepCurrency(Currency.wrap(address(weth)));
         attacker.addSweepCurrency(Currency.wrap(address(token)));
+        // The recipient's only control window is the collect; the increase itself runs no recipient code,
+        // so the caller's PositionManager funding (added afterwards) is out of its reach entirely.
+        splitter.collectFees(_single(tokenId));
+        assertEq(attacker.sweepAttempts(), 1);
         weth.deposit{value: 10 ether}();
         weth.transfer(address(POSITION_MANAGER), 10 ether);
         token.transfer(address(POSITION_MANAGER), 10 ether);
