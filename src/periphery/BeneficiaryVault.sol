@@ -44,7 +44,7 @@ contract BeneficiaryVault is IBeneficiaryVault, BasePositionRecipient, ERC721 {
     /// @inheritdoc BasePositionRecipient
     /// @dev The owner of the beneficiary NFT receives the full amounts; unregistered positions pay out
     ///      to the per-side fallbacks.
-    function _beforeTransfer(uint256 _tokenId, Currency _currency0, Currency, uint256 _available0, uint256 _available1)
+    function _beforeClaimTransfer(uint256 _tokenId, Currency _currency0, Currency, uint256 _available0, uint256 _available1)
         internal
         view
         override

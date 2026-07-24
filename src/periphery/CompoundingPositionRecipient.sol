@@ -26,13 +26,13 @@ contract CompoundingPositionRecipient is BasePositionRecipientWithCallback {
 
     /// @inheritdoc BasePositionRecipientWithCallback
     /// @dev Snapshots the position's liquidity before the executor callback
-    function _beforeCallback(PoolKey memory, uint256 _tokenId) internal view override returns (uint256) {
+    function _beforeExecutorCallback(PoolKey memory, uint256 _tokenId) internal view override returns (uint256) {
         return positionManager.getPositionLiquidity(_tokenId);
     }
 
     /// @inheritdoc BasePositionRecipientWithCallback
-    /// @param _liquidityBefore The position's liquidity snapshotted by `_beforeCallback`
-    function _afterCallback(PoolKey memory, uint256 _tokenId, uint256 _liquidityBefore) internal view override {
+    /// @param _liquidityBefore The position's liquidity snapshotted by `_beforeExecutorCallback`
+    function _afterExecutorCallback(PoolKey memory, uint256 _tokenId, uint256 _liquidityBefore) internal view override {
         uint128 actualLiquidityAmount = positionManager.getPositionLiquidity(_tokenId);
         uint256 requiredLiquidityAmount = _liquidityBefore + MIN_LIQUIDITY_INCREASE;
         if (actualLiquidityAmount < requiredLiquidityAmount) {

@@ -67,7 +67,7 @@ contract NonIntrospectableVaultExecutor {
 contract PartialTransferRecipient is BasePositionRecipient {
     constructor(IPositionManager manager) BasePositionRecipient(manager) {}
 
-    function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
+    function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
         view
         override
@@ -80,7 +80,7 @@ contract PartialTransferRecipient is BasePositionRecipient {
 contract ZeroTransferRecipient is BasePositionRecipient {
     constructor(IPositionManager manager) BasePositionRecipient(manager) {}
 
-    function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
+    function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
         view
         override
@@ -93,7 +93,7 @@ contract ZeroTransferRecipient is BasePositionRecipient {
 contract ZeroCurrency1Recipient is BasePositionRecipient {
     constructor(IPositionManager manager) BasePositionRecipient(manager) {}
 
-    function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
+    function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
         view
         override

@@ -40,14 +40,14 @@ contract BuybackAndBurnPositionRecipient is BasePositionRecipientWithCallback {
 
     /// @inheritdoc BasePositionRecipientWithCallback
     /// @dev Requires native ETH as currency0, which also guarantees currency1 is the ERC20 burn target
-    function _beforeCallback(PoolKey memory _poolKey, uint256) internal pure override returns (uint256) {
+    function _beforeExecutorCallback(PoolKey memory _poolKey, uint256) internal pure override returns (uint256) {
         if (!_poolKey.currency0.isAddressZero()) revert InvalidCurrency(_poolKey.currency0, currency);
         return 0;
     }
 
     /// @inheritdoc BasePositionRecipientWithCallback
     /// @dev Burns `minCurrency1BurnAmount` of `_poolKey.currency1` tokens
-    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
+    function _afterExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
         SafeTransferLib.safeTransferFrom(
             Currency.unwrap(_poolKey.currency1), msg.sender, BURN_ADDRESS, minCurrency1BurnAmount
         );

@@ -72,7 +72,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         }
 
         (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
-            _beforeTransfer(_tokenId, currency0, currency1, currency0Amount, currency1Amount);
+            _beforeClaimTransfer(_tokenId, currency0, currency1, currency0Amount, currency1Amount);
         if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
         if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
         if (toSend0 > currency0Amount) revert InsufficientAmountReceived(currency0, currency0Amount, toSend0);
@@ -96,7 +96,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
     ///         full available amounts to the caller.
     /// @dev Zero recipients revert — burning must be an explicit 0xdead. Amounts below the available
     ///      balance leave the remainder attributed and claimable later.
-    function _beforeTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
+    function _beforeClaimTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         virtual
         returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)

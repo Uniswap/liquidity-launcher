@@ -92,7 +92,7 @@ contract BuybackAndBurnPositionRecipientTest is PositionRecipientTestBase {
         assertEq(IERC20(USDC).balanceOf(address(0xdead)), burnAddressTokenBefore + _minTokenBurnAmount);
     }
 
-    function test_claim_eoaWithApprovalSkipsCallbackAndStillBurns() public {
+    function test_claim_eoaCallerReverts_executorCallbackIsMandatory() public {
         uint256 burnAmount = 1_000e6;
         positionRecipient =
             new BuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), burnAmount);
@@ -101,24 +101,8 @@ contract BuybackAndBurnPositionRecipientTest is PositionRecipientTestBase {
         vm.prank(collector);
         IERC20(USDC).approve(address(positionRecipient), burnAmount);
         _notifyNativeAmounts(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
-        uint256 collectorEthBefore = collector.balance;
-        uint256 burnBalanceBefore = IERC20(USDC).balanceOf(address(0xdead));
 
-        vm.prank(collector);
-        positionRecipient.claim(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
-
-        assertEq(collector.balance - collectorEthBefore, FORK_CURRENCY0_FEES_AMOUNT);
-        assertEq(IERC20(USDC).balanceOf(address(0xdead)) - burnBalanceBefore, burnAmount);
-    }
-
-    function test_claim_eoaWithoutApprovalReverts() public {
-        uint256 burnAmount = 1_000e6;
-        positionRecipient =
-            new BuybackAndBurnPositionRecipient(IPositionManager(POSITION_MANAGER), burnAmount);
-        address collector = makeAddr("unapprovedEoaCollector");
-        _dealUSDCFromPoolManager(collector, burnAmount);
-        _notifyNativeAmounts(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
-
+        // Even a fully approved EOA cannot claim: the executor callback is mandatory.
         vm.prank(collector);
         vm.expectRevert();
         positionRecipient.claim(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
