@@ -11,7 +11,7 @@ import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecip
 /// @title BasePositionRecipient
 /// @notice Shared amount attribution and claim mechanics for LP position recipients.
 /// @dev This base pays out and nothing more: it exposes a single empty `_afterClaim` hook. Recipients
-///      that need to call back into an executor should inherit `ExecutorCallbackPositionRecipient`, which
+///      that need to call back into an executor should inherit `BasePositionRecipientWithCallback`, which
 ///      overrides `_afterClaim` with the before/callback/after flow. Recipients that don't (e.g. creator
 ///      fees paid straight to a beneficiary) inherit this base directly and never run a callback.
 abstract contract BasePositionRecipient is IClaimablePositionRecipient, ReentrancyGuardTransient {

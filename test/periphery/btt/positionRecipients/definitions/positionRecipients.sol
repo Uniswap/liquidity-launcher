@@ -16,7 +16,7 @@ import {IClaimablePositionRecipient} from "../../../../../src/interfaces/IClaima
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimelockedPositionRecipient.sol";
 import {BasePositionRecipient} from "../../../../../src/periphery/BasePositionRecipient.sol";
-import {ExecutorCallbackPositionRecipient} from "../../../../../src/periphery/ExecutorCallbackPositionRecipient.sol";
+import {BasePositionRecipientWithCallback} from "../../../../../src/periphery/BasePositionRecipientWithCallback.sol";
 import {BuybackAndBurnPositionRecipient} from "../../../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
 import {CompoundingPositionRecipient} from "../../../../../src/periphery/CompoundingPositionRecipient.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
@@ -127,8 +127,8 @@ contract BasePositionRecipientHarness is BasePositionRecipient {
 
 /// @dev Callback-flavoured harness: inherits the executor-callback base so `claim` runs the mandatory
 ///      onClaimed callback (with the before/after hooks) — the surface the callback tests exercise.
-contract ExecutorCallbackPositionRecipientHarness is ExecutorCallbackPositionRecipient {
-    constructor(IPositionManager positionManager) ExecutorCallbackPositionRecipient(positionManager) {}
+contract BasePositionRecipientWithCallbackHarness is BasePositionRecipientWithCallback {
+    constructor(IPositionManager positionManager) BasePositionRecipientWithCallback(positionManager) {}
 }
 
 contract RevertingLPFeesExecutor is MockClaimExecutor {
@@ -175,7 +175,7 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// └── when currency0 transfer reenters fee notification
 ///     └── it cannot attribute currency1 again
 ///
-/// ExecutorCallbackPositionRecipient
+/// BasePositionRecipientWithCallback
 /// ├── when the executor callback reverts
 /// │   └── it rolls back the claim
 /// ├── when the executor callback reenters
@@ -341,8 +341,8 @@ contract PositionRecipientsBTTTest is Test {
     ) public {
         minimum0 = bound(minimum0, 0, FEES_0);
         minimum1 = bound(minimum1, 0, FEES_1);
-        ExecutorCallbackPositionRecipientHarness recipient =
-            new ExecutorCallbackPositionRecipientHarness(IPositionManager(address(manager)));
+        BasePositionRecipientWithCallbackHarness recipient =
+            new BasePositionRecipientWithCallbackHarness(IPositionManager(address(manager)));
         MockClaimExecutor executor = new MockClaimExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
@@ -361,8 +361,8 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BaseRecipient_WhenExecutorCallbackReverts_RollsBackClaim() public {
-        ExecutorCallbackPositionRecipientHarness recipient =
-            new ExecutorCallbackPositionRecipientHarness(IPositionManager(address(manager)));
+        BasePositionRecipientWithCallbackHarness recipient =
+            new BasePositionRecipientWithCallbackHarness(IPositionManager(address(manager)));
         RevertingLPFeesExecutor executor = new RevertingLPFeesExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
@@ -377,8 +377,8 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BaseRecipient_WhenExecutorCallbackReenters_Reverts() public {
-        ExecutorCallbackPositionRecipientHarness recipient =
-            new ExecutorCallbackPositionRecipientHarness(IPositionManager(address(manager)));
+        BasePositionRecipientWithCallbackHarness recipient =
+            new BasePositionRecipientWithCallbackHarness(IPositionManager(address(manager)));
         ReentrantLPFeesExecutor executor = new ReentrantLPFeesExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 

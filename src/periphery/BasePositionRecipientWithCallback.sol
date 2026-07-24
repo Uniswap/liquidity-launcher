@@ -6,13 +6,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
 import {BasePositionRecipient} from "./BasePositionRecipient.sol";
 
-/// @title ExecutorCallbackPositionRecipient
+/// @title BasePositionRecipientWithCallback
 /// @notice Base for recipients whose claim MUST call back into the caller so it can act on the funds it
 ///         was just paid, bracketed by `_beforeCallback`/`_afterCallback` hooks that let the recipient
 ///         verify the caller did what it was supposed to (compound the liquidity, fund the burn, etc.).
 /// @dev The callback is not optional: the caller of `claim` MUST implement `IClaimExecutor`. Recipients
 ///      that don't need a callback must inherit `BasePositionRecipient` directly instead.
-abstract contract ExecutorCallbackPositionRecipient is BasePositionRecipient {
+abstract contract BasePositionRecipientWithCallback is BasePositionRecipient {
     constructor(IPositionManager _positionManager) BasePositionRecipient(_positionManager) {}
 
     /// @inheritdoc BasePositionRecipient
