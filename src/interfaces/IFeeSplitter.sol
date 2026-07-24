@@ -34,6 +34,9 @@ interface IFeeSplitter {
     /// @param amount The amount sent.
     event FeesForwarded(address indexed recipient, Currency indexed currency, uint256 amount);
 
+    /// @notice Thrown when a balance exceeds the maximum allowed.
+    error BalanceExceedsMaxAllowed(uint256 tokenId);
+
     /// @notice Thrown when no splits are configured.
     error NoSplits();
 

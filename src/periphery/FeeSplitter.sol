@@ -29,6 +29,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice The denominator for fee splits: each side's shares sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
+    /// @notice The maximum possible balance 
+    uint256 public constant MAX_BALANCE_ALLOWED = type(uint256).max / BPS_DENOMINATOR;
 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
@@ -142,6 +144,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         // Distribute the full standing balances; donations are flushed through the split.
         nativeAmount = address(this).balance;
         tokenAmount = tokenCurrency.balanceOfSelf();
+        if(nativeAmount > MAX_BALANCE_ALLOWED || tokenAmount > MAX_BALANCE_ALLOWED) revert BalanceExceedsMaxAllowed(tokenId);
         emit FeesCollected(tokenId, Currency.unwrap(tokenCurrency), nativeAmount, tokenAmount);
     }
 
@@ -151,8 +154,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         uint256 count = _splits.length;
         for (uint256 i; i < count; i++) {
             FeeSplit memory split = _splits[i];
-            uint256 recipientNativeAmount = FullMath.mulDiv(nativeAmount, split.nativeBps, BPS_DENOMINATOR);
-            uint256 recipientTokenAmount = FullMath.mulDiv(tokenAmount, split.tokenBps, BPS_DENOMINATOR);
+            uint256 recipientNativeAmount = nativeAmount * split.nativeBps / BPS_DENOMINATOR;
+            uint256 recipientTokenAmount = tokenAmount * split.tokenBps / BPS_DENOMINATOR;
             if (recipientNativeAmount == 0 && recipientTokenAmount == 0) continue;
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
