@@ -17,10 +17,6 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
     /// @notice The position manager used to resolve positions and their pool keys
     IPositionManager public immutable positionManager;
 
-    constructor(IPositionManager _positionManager) {
-        positionManager = _positionManager;
-    }
-
     struct Amounts {
         uint128 currency0Amount;
         uint128 currency1Amount;
@@ -28,11 +24,12 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
     mapping(uint256 tokenId => Amounts amounts) public override amounts;
     mapping(Currency currency => uint256 amount) public totalAmounts;
 
-    /// @notice Returns the pool key for an existing position
-    function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
-        (poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
-        if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
+    constructor(IPositionManager _positionManager) {
+        positionManager = _positionManager;
     }
+
+    /// @notice Receive ETH
+    receive() external payable {}
 
     /// @inheritdoc IClaimablePositionRecipient
     function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
@@ -93,25 +90,10 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         emit Claimed(_tokenId, toSend0, toSend1, poolKey);
     }
 
-    /// @notice Decrements attribution before transferring, so code running during a payout cannot
-    ///         attribute the in-flight funds.
-    function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
-        private
-    {
-        if (_toSend == 0) return;
-        // casts are safe as _toSend is bounded by the attributed uint128 amount
-        if (_isCurrency0) amounts[_tokenId].currency0Amount -= uint128(_toSend);
-        else amounts[_tokenId].currency1Amount -= uint128(_toSend);
-        totalAmounts[_currency] -= _toSend;
-        _currency.transfer(_recipient, _toSend);
-    }
-
-    /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
-    function _attribute(Currency _currency, uint256 _amount) private {
-        uint256 balance = _currency.balanceOfSelf();
-        uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;
-        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(_currency, balance, expectedTotalAmount);
-        totalAmounts[_currency] = expectedTotalAmount;
+    /// @notice Returns the pool key for an existing position
+    function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
+        (poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
+        if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
     }
 
     /// @notice Transfer policy consulted once per claim, before any payout. Defaults to paying the
@@ -134,6 +116,24 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
     /// @param _context The value returned by `_beforeCallback`
     function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _context) internal virtual {}
 
-    /// @notice Receive ETH
-    receive() external payable {}
+    /// @notice Decrements attribution before transferring, so code running during a payout cannot
+    ///         attribute the in-flight funds.
+    function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
+        private
+    {
+        if (_toSend == 0) return;
+        // casts are safe as _toSend is bounded by the attributed uint128 amount
+        if (_isCurrency0) amounts[_tokenId].currency0Amount -= uint128(_toSend);
+        else amounts[_tokenId].currency1Amount -= uint128(_toSend);
+        totalAmounts[_currency] -= _toSend;
+        _currency.transfer(_recipient, _toSend);
+    }
+
+    /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
+    function _attribute(Currency _currency, uint256 _amount) private {
+        uint256 balance = _currency.balanceOfSelf();
+        uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;
+        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(_currency, balance, expectedTotalAmount);
+        totalAmounts[_currency] = expectedTotalAmount;
+    }
 }
