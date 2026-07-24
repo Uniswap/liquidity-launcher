@@ -39,6 +39,7 @@ contract ConstructorTest is DirectLaunchTestBase {
             zeroIndex == 1 ? IPositionManager(address(0)) : IPositionManager(address(positionManager)),
             zeroIndex == 2 ? IPoolManager(address(0)) : poolManager,
             zeroIndex == 3 ? IFeeSplitter(address(0)) : feeSplitter,
+            address(beneficiaryVault),
             INITIAL_TICK
         );
     }
@@ -46,13 +47,14 @@ contract ConstructorTest is DirectLaunchTestBase {
     function test_WhenFeeSplitterUsesDifferentPositionManager() public {
         // A splitter bound to a foreign PositionManager could never collect the launch positions.
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
-        FeeSplitter mismatched =
-            new FeeSplitter(otherPositionManager, tokenJar, address(0xdead), feeSplitter.getSplits());
+        FeeSplitter mismatched = new FeeSplitter(otherPositionManager, feeSplitter.getSplits());
 
         vm.expectRevert(
             abi.encodeWithSelector(DirectLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))
         );
-        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, INITIAL_TICK);
+        new DirectLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, address(beneficiaryVault), INITIAL_TICK
+        );
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {

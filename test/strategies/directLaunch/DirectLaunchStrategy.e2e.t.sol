@@ -23,7 +23,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
-import {FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../src/interfaces/IFeeSplitter.sol";
+import {BeneficiaryVault} from "../../../src/periphery/BeneficiaryVault.sol";
+import {FeeSplit} from "../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 
 contract DirectLaunchStrategyE2ETest is Test {
@@ -39,6 +40,7 @@ contract DirectLaunchStrategyE2ETest is Test {
     address internal creator = makeAddr("creator"); // the launch-configured fee beneficiary
 
     FeeSplitter internal feeSplitter;
+    BeneficiaryVault internal beneficiaryVault;
     DirectLaunchStrategy internal strategy;
     PoolSwapTest internal swapRouter;
 
@@ -53,13 +55,25 @@ contract DirectLaunchStrategyE2ETest is Test {
         // The intended product configuration: ETH fees to the tokenJar, token fees burned,
         // both with a 20% creator share.
         FeeSplit[] memory splits = new FeeSplit[](3);
-        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
-        splits[1] = FeeSplit({recipient: BURN_ADDRESS, nativeBps: 0, tokenBps: 8_000, useCallback: false});
-        splits[2] =
-            FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, nativeBps: 2_000, tokenBps: 2_000, useCallback: false});
-        feeSplitter = new FeeSplitter(POSITION_MANAGER, tokenJar, BURN_ADDRESS, splits);
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, BURN_ADDRESS);
+        splits[0] = FeeSplit({
+            recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, positionCallback: false, feesCallback: false
+        });
+        splits[1] = FeeSplit({
+            recipient: BURN_ADDRESS, nativeBps: 0, tokenBps: 8_000, positionCallback: false, feesCallback: false
+        });
+        splits[2] = FeeSplit({
+            recipient: address(beneficiaryVault),
+            nativeBps: 2_000,
+            tokenBps: 2_000,
+            positionCallback: true,
+            feesCallback: true
+        });
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
-        strategy = new DirectLaunchStrategy(address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, INITIAL_TICK);
+        strategy = new DirectLaunchStrategy(
+            address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, address(beneficiaryVault), INITIAL_TICK
+        );
         swapRouter = new PoolSwapTest(POOL_MANAGER);
         vm.deal(address(this), 100_000 ether);
     }
@@ -242,11 +256,12 @@ contract DirectLaunchStrategyE2ETest is Test {
         vm.prank(makeAddr("keeper"));
         feeSplitter.collectFees(tokenIds);
 
-        // ETH fees split to the tokenJar and the token's UERC20 creator; token fees burn and creator.
+        // ETH fees split to the tokenJar and the beneficiary vault; token fees burn and vault.
         assertGt(tokenJar.balance, 0);
-        assertGt(creator.balance, 0);
         assertGt(token.balanceOf(BURN_ADDRESS) - burnedBefore, 0);
-        assertGt(token.balanceOf(creator), 0);
+        (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.fees(tokenId);
+        assertGt(nativeFees, 0);
+        assertGt(tokenFees, 0);
         // Nothing sticks to the splitter.
         assertEq(address(feeSplitter).balance, 0);
         assertEq(token.balanceOf(address(feeSplitter)), 0);

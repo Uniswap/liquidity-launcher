@@ -73,23 +73,46 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
             revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
         }
 
-        delete fees[_tokenId];
-        if (currency0Fees != 0) {
-            currency0.transfer(msg.sender, currency0Fees);
-            totalFees[currency0] -= currency0Fees;
+        (address recipient0, uint256 sent0) = _beforeTransfer(_tokenId, currency0, currency0Fees);
+        (address recipient1, uint256 sent1) = _beforeTransfer(_tokenId, currency1, currency1Fees);
+        if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
+        if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
+        if (sent0 > currency0Fees) revert InsufficientAmountReceived(currency0, currency0Fees, sent0);
+        if (sent1 > currency1Fees) revert InsufficientAmountReceived(currency1, currency1Fees, sent1);
+
+        if (sent0 != 0) {
+            fees[_tokenId].currency0Fees -= sent0;
+            totalFees[currency0] -= sent0;
+            currency0.transfer(recipient0, sent0);
         }
-        if (currency1Fees != 0) {
-            currency1.transfer(msg.sender, currency1Fees);
-            totalFees[currency1] -= currency1Fees;
+        if (sent1 != 0) {
+            fees[_tokenId].currency1Fees -= sent1;
+            totalFees[currency1] -= sent1;
+            currency1.transfer(recipient1, sent1);
         }
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
-        ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, currency0Fees, currency1Fees);
+        // EOAs and constructor callers have no code and skip this optional executor notification.
+        // Implementations must secure collection through the outcome checks around it.
+        if (msg.sender.code.length != 0) ILPFeesExecutor(msg.sender).callback(poolKey, _tokenId, sent0, sent1);
 
         _afterCallback(poolKey, _tokenId, context);
 
-        emit FeesCollected(_tokenId, currency0Fees, currency1Fees, poolKey);
+        emit FeesCollected(_tokenId, sent0, sent1, poolKey);
+    }
+
+    /// @notice Policy hook called before each currency payout in collectFees. The default pays the
+    ///         full available amount to the caller. Overrides must return exact values: the base
+    ///         rejects a zero recipient so a careless override cannot silently misroute funds — burning
+    ///         must be an explicit 0xdead. Returning sendAmount below `available` leaves the remainder
+    ///         attributed and claimable later.
+    function _beforeTransfer(uint256, Currency, uint256 _available)
+        internal
+        virtual
+        returns (address recipient, uint256 sendAmount)
+    {
+        return (msg.sender, _available);
     }
 
     /// @notice Called before the callback is executed

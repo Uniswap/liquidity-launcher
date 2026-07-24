@@ -13,11 +13,16 @@ interface ILPFeesPositionRecipient {
     /// @notice Thrown when the received amounts are less than expected
     error InsufficientAmountReceived(Currency currency, uint256 received, uint256 expected);
 
+    /// @notice Thrown when a fee-transfer policy returns the zero address.
+    error InvalidTransferRecipient(Currency currency);
+
     /// @notice Emitted after fees are collected and processed by an executor
     event FeesCollected(uint256 indexed tokenId, uint256 currency0Received, uint256 currency1Received, PoolKey poolKey);
 
-    /// @notice Collects a position's fees and lets the caller process them atomically
-    /// @dev The caller must implement `ILPFeesExecutor` and is invoked with the collected amounts
+    /// @notice Collects a position's fees and lets the caller process them atomically.
+    /// @dev A recipient's per-currency transfer policy determines the payout. Contract callers are
+    ///      invoked through `ILPFeesExecutor.callback`; EOAs and callers in construction are not.
+    ///      Security must therefore be enforced by the recipient's before/after callback outcomes.
     /// @param tokenId The token ID of the position
     /// @param minCurrency0Amount The minimum acceptable currency0 fees
     /// @param minCurrency1Amount The minimum acceptable currency1 fees

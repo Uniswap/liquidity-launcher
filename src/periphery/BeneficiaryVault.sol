@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
+import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
+import {IPositionReceivedCallback} from "../interfaces/IPositionReceivedCallback.sol";
+import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
+
+/// @title BeneficiaryVault
+/// @notice Pull-based fee recipient whose transferable ERC721 represents a position's beneficiary.
+/// @dev The inherited fee callback is permissionless and balance-backed. Hook-enabled tokens can re-enter
+///      between a pusher's transfer and callback, allowing in-flight balance attribution; standard tokens,
+///      including UERC20, do not have that window. The first caller can attribute untracked surplus and
+///      donations; this donation flushing is intentional.
+contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC721 {
+    using CurrencyLibrary for Currency;
+
+    /// @inheritdoc IBeneficiaryVault
+    address public immutable override nativeFallback;
+
+    /// @inheritdoc IBeneficiaryVault
+    address public immutable override tokenFallback;
+
+    /// @param _positionManager The canonical v4 PositionManager, also used for registration custody proofs.
+    /// @param _nativeFallback Trusted receiver for unregistered positions' native fee shares.
+    /// @param _tokenFallback Receiver for unregistered positions' token fee shares.
+    /// @dev The inherited timelock surface is deliberately locked forever: no operator, unreachable
+    ///      timelock — this contract only accounts fees, it never custodies positions.
+    constructor(IPositionManager _positionManager, address _nativeFallback, address _tokenFallback)
+        BaseLPFeesPositionRecipient(_positionManager, address(0), type(uint256).max)
+    {
+        if (_nativeFallback == address(0) || _nativeFallback == address(this)) revert InvalidFallback(_nativeFallback);
+        if (_tokenFallback == address(0) || _tokenFallback == address(this)) revert InvalidFallback(_tokenFallback);
+        nativeFallback = _nativeFallback;
+        tokenFallback = _tokenFallback;
+    }
+
+    /// @inheritdoc IPositionReceivedCallback
+    /// @dev The current custodian's data always wins: stale registration cannot block a deposit or retain
+    ///      its earnings. Unclaimed credits follow the NFT. Registration is final once the FeeSplitter
+    ///      holds the position.
+    function onPositionReceived(uint256 tokenId, address, bytes calldata data) external override {
+        if (IERC721(address(positionManager)).ownerOf(tokenId) != msg.sender) {
+            revert NotPositionOwner(tokenId, msg.sender);
+        }
+        address beneficiary = abi.decode(data, (address));
+        if (beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
+        if (_ownerOf(tokenId) != address(0)) _burn(tokenId);
+        _mint(beneficiary, tokenId);
+    }
+
+    /// @inheritdoc BaseLPFeesPositionRecipient
+    /// @dev The vault's whole claim policy: unregistered positions' shares are flushed permissionlessly
+    ///      to the per-side fallback; registered positions pay out only to their current NFT holder.
+    function _beforeTransfer(uint256 _tokenId, Currency _currency, uint256 _available)
+        internal
+        view
+        override
+        returns (address recipient, uint256 sendAmount)
+    {
+        address owner = _ownerOf(_tokenId);
+        if (owner == address(0)) return (_currency.isAddressZero() ? nativeFallback : tokenFallback, _available);
+        if (msg.sender != owner) revert NotBeneficiary(_tokenId, msg.sender);
+        return (msg.sender, _available);
+    }
+
+    /// @inheritdoc ERC721
+    function name() public pure override returns (string memory) {
+        return "Fee Beneficiary";
+    }
+
+    /// @inheritdoc ERC721
+    function symbol() public pure override returns (string memory) {
+        return "FEEB";
+    }
+
+    /// @inheritdoc ERC721
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "";
+    }
+}

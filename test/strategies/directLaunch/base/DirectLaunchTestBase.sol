@@ -10,7 +10,8 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../../src/strategies/DirectLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
-import {IFeeSplitter, FeeSplit, FEE_BENEFICIARY_SENTINEL} from "../../../../src/interfaces/IFeeSplitter.sol";
+import {IFeeSplitter, FeeSplit} from "../../../../src/interfaces/IFeeSplitter.sol";
+import {BeneficiaryVault} from "../../../../src/periphery/BeneficiaryVault.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 
 /// @notice A launched token with 6 decimals, used to exercise the decimals guard.
@@ -56,6 +57,7 @@ abstract contract DirectLaunchTestBase is Test {
     IPoolManager internal poolManager = POOL_MANAGER;
     IPositionManager internal positionManager = POSITION_MANAGER;
     FeeSplitter internal feeSplitter;
+    BeneficiaryVault internal beneficiaryVault;
     DirectLaunchStrategy internal strategy;
 
     function setUp() public virtual {
@@ -67,7 +69,9 @@ abstract contract DirectLaunchTestBase is Test {
         );
 
         feeSplitter = _deployFeeSplitter();
-        strategy = new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, INITIAL_TICK);
+        strategy = new DirectLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, address(beneficiaryVault), INITIAL_TICK
+        );
         vm.deal(address(this), 100_000 ether);
     }
 
@@ -75,16 +79,28 @@ abstract contract DirectLaunchTestBase is Test {
     ///         token fees burned, both with a 20% creator share.
     function _deployFeeSplitter() internal returns (FeeSplitter) {
         FeeSplit[] memory splits = new FeeSplit[](3);
-        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
-        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, useCallback: false});
-        splits[2] =
-            FeeSplit({recipient: FEE_BENEFICIARY_SENTINEL, nativeBps: 2_000, tokenBps: 2_000, useCallback: false});
-        return new FeeSplitter(POSITION_MANAGER, tokenJar, address(0xdead), splits);
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, address(0xdead));
+        splits[0] = FeeSplit({
+            recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, positionCallback: false, feesCallback: false
+        });
+        splits[1] = FeeSplit({
+            recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, positionCallback: false, feesCallback: false
+        });
+        splits[2] = FeeSplit({
+            recipient: address(beneficiaryVault),
+            nativeBps: 2_000,
+            tokenBps: 2_000,
+            positionCallback: true,
+            feesCallback: true
+        });
+        return new FeeSplitter(POSITION_MANAGER, splits);
     }
 
     /// @notice Deploys a strategy with the given tick and the shared collaborators (used by constructor tests).
     function _deployStrategy(int24 initialTick) internal returns (DirectLaunchStrategy) {
-        return new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, initialTick);
+        return new DirectLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, address(beneficiaryVault), initialTick
+        );
     }
 
     /// @notice Mints a fresh 1B-supply / 18-decimal token to this contract.
