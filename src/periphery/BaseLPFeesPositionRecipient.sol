@@ -73,8 +73,17 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
             revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
         }
 
-        uint256 toSend0 = _payout(_tokenId, currency0, currency0Fees, true);
-        uint256 toSend1 = _payout(_tokenId, currency1, currency1Fees, false);
+        // Strict phase order: the policy is consulted once against the untouched pre-transfer state,
+        // every returned value is validated, and only then does any payout execute.
+        (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
+            _beforeTransfer(_tokenId, currency0, currency1, currency0Fees, currency1Fees);
+        if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
+        if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
+        if (toSend0 > currency0Fees) revert InsufficientAmountReceived(currency0, currency0Fees, toSend0);
+        if (toSend1 > currency1Fees) revert InsufficientAmountReceived(currency1, currency1Fees, toSend1);
+
+        _payout(_tokenId, currency0, recipient0, toSend0, true);
+        _payout(_tokenId, currency1, recipient1, toSend1, false);
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
@@ -87,40 +96,30 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         emit FeesCollected(_tokenId, toSend0, toSend1, poolKey);
     }
 
-    /// @notice Runs one currency's payout pipeline: consults the transfer policy, validates its answer,
-    ///         decrements the attributed accounting, and pays out. Policy evaluations are interleaved with
-    ///         payouts — currency1's policy runs after currency0's transfer has already executed, so it may
-    ///         observe state changed by code running during that payout. This is safe because accounting
-    ///         precedes every transfer: mid-payout code can neither re-collect (reentrancy guard) nor
-    ///         attribute in-flight funds (balance proof), and a revert in the later policy unwinds the
-    ///         earlier payout with the whole transaction.
-    function _payout(uint256 _tokenId, Currency _currency, uint256 _available, bool _isCurrency0)
+    /// @notice Decrements one currency's attributed accounting and pays it out. Accounting strictly
+    ///         precedes the transfer, so code running during a payout can neither re-collect
+    ///         (reentrancy guard) nor attribute the in-flight funds (balance proof).
+    function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
         private
-        returns (uint256 toSend)
     {
-        address recipient;
-        (recipient, toSend) = _beforeTransfer(_tokenId, _currency, _available);
-        if (recipient == address(0)) revert InvalidTransferRecipient(_currency);
-        if (toSend > _available) revert InsufficientAmountReceived(_currency, _available, toSend);
-        if (toSend == 0) return 0;
-
-        if (_isCurrency0) fees[_tokenId].currency0Fees -= toSend;
-        else fees[_tokenId].currency1Fees -= toSend;
-        totalFees[_currency] -= toSend;
-        _currency.transfer(recipient, toSend);
+        if (_toSend == 0) return;
+        if (_isCurrency0) fees[_tokenId].currency0Fees -= _toSend;
+        else fees[_tokenId].currency1Fees -= _toSend;
+        totalFees[_currency] -= _toSend;
+        _currency.transfer(_recipient, _toSend);
     }
 
-    /// @notice Per-currency transfer policy consulted before each payout in collectFees. The default pays the
-    ///         full available amount to the caller. Overrides must return exact values: the base
-    ///         rejects a zero recipient so a careless override cannot silently misroute funds — burning
-    ///         must be an explicit 0xdead. Returning sendAmount below `available` leaves the remainder
-    ///         attributed and claimable later.
-    function _beforeTransfer(uint256, Currency, uint256 _available)
+    /// @notice Transfer policy consulted once per collect, against the pre-transfer state and before
+    ///         any payout. The default pays the full available amounts to the caller. Overrides must
+    ///         return exact values: the base rejects zero recipients so a careless override cannot
+    ///         silently misroute funds — burning must be an explicit 0xdead. Returning an amount below
+    ///         the available fees leaves the remainder attributed and claimable later.
+    function _beforeTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         virtual
-        returns (address recipient, uint256 sendAmount)
+        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
     {
-        return (msg.sender, _available);
+        return (msg.sender, _available0, msg.sender, _available1);
     }
 
     /// @notice Called before the callback is executed

@@ -52,17 +52,21 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC
 
     /// @inheritdoc BaseLPFeesPositionRecipient
     /// @dev The vault's whole claim policy: unregistered positions' shares are flushed permissionlessly
-    ///      to the per-side fallback; registered positions pay out only to their current NFT holder.
-    function _beforeTransfer(uint256 _tokenId, Currency _currency, uint256 _available)
+    ///      to the per-side fallbacks; registered positions pay out only to their current NFT holder.
+    function _beforeTransfer(uint256 _tokenId, Currency _currency0, Currency, uint256 _available0, uint256 _available1)
         internal
         view
         override
-        returns (address recipient, uint256 sendAmount)
+        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
     {
         address owner = _ownerOf(_tokenId);
-        if (owner == address(0)) return (_currency.isAddressZero() ? nativeFallback : tokenFallback, _available);
+        if (owner == address(0)) {
+            // currency1 can never be native in v4, so its fallback is always the token fallback.
+            return
+                (_currency0.isAddressZero() ? nativeFallback : tokenFallback, _available0, tokenFallback, _available1);
+        }
         if (msg.sender != owner) revert NotBeneficiary(_tokenId, msg.sender);
-        return (msg.sender, _available);
+        return (msg.sender, _available0, msg.sender, _available1);
     }
 
     /// @inheritdoc ERC721

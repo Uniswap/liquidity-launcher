@@ -48,42 +48,40 @@ contract MockVaultExecutor is ILPFeesExecutor {
 contract PartialTransferRecipient is BaseLPFeesPositionRecipient {
     constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
 
-    function _beforeTransfer(uint256, Currency, uint256 available)
+    function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
         view
         override
-        returns (address recipient, uint256 sendAmount)
+        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
     {
-        return (msg.sender, available / 2);
+        return (msg.sender, available0 / 2, msg.sender, available1 / 2);
     }
 }
 
 contract ZeroTransferRecipient is BaseLPFeesPositionRecipient {
     constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
 
-    function _beforeTransfer(uint256, Currency, uint256 available)
-        internal
-        pure
-        override
-        returns (address recipient, uint256 sendAmount)
-    {
-        return (address(0), available);
-    }
-}
-
-contract LatePolicyRevertRecipient is BaseLPFeesPositionRecipient {
-    constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
-
-    function _beforeTransfer(uint256, Currency currency, uint256 available)
+    function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
         view
         override
-        returns (address recipient, uint256 sendAmount)
+        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
     {
-        // Pays the native side normally but rejects the token side, so the currency1 policy
-        // reverts only after the currency0 payout has already executed.
-        if (currency.isAddressZero()) return (msg.sender, available);
-        return (address(0), available);
+        return (address(0), available0, msg.sender, available1);
+    }
+}
+
+contract ZeroCurrency1Recipient is BaseLPFeesPositionRecipient {
+    constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
+
+    function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
+        internal
+        view
+        override
+        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
+    {
+        // Accepts the native side but rejects the token side: validation must block ALL payouts.
+        return (msg.sender, available0, address(0), available1);
     }
 }
 
@@ -346,15 +344,15 @@ contract BeneficiaryVaultTest is Test {
         assertEq(tokenFees, 4 ether);
     }
 
-    function test_collectFees_latePolicyRevertUnwindsEarlierPayout() public {
+    function test_collectFees_currency1RejectionBlocksAllPayouts() public {
         uint256 tokenId = _mintPosition(address(this));
-        LatePolicyRevertRecipient recipient = new LatePolicyRevertRecipient(POSITION_MANAGER);
+        ZeroCurrency1Recipient recipient = new ZeroCurrency1Recipient(POSITION_MANAGER);
         _credit(recipient, tokenId, 1 ether, 2 ether);
         address collector = makeAddr("collector");
         uint256 balanceBefore = collector.balance;
 
-        // The currency1 policy rejects after the currency0 payout already ran; the revert must
-        // unwind the whole claim, native payout included.
+        // The policy runs once against the pre-transfer state and every returned value is validated
+        // before any payout, so rejecting currency1 blocks the native payout as well.
         vm.prank(collector);
         vm.expectRevert(
             abi.encodeWithSelector(
