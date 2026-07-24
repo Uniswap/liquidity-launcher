@@ -3,10 +3,8 @@ pragma solidity ^0.8.26;
 
 /// @title IBeneficiaryVault
 /// @notice A transferable ERC721 claim on a position's attributed LP fees.
-/// @dev Fee credit is permissionless and balance-backed. For hook-enabled tokens, an attacker can re-enter
-///      between a pusher's transfer and its callback and attribute that in-flight balance to another position.
-///      Standard tokens, including UERC20, have no such window. Any untracked surplus, including donations,
-///      is attributable by the first caller; donation flushing is intentional.
+/// @dev Fee attribution is permissionless and balance-backed; untracked surplus, including donations,
+///      is attributable by the first caller.
 interface IBeneficiaryVault {
     /// @notice Thrown when a registration caller does not custody the position in the PositionManager.
     /// @param tokenId The position token ID.
@@ -28,12 +26,9 @@ interface IBeneficiaryVault {
 
     /// @notice Registers `beneficiary` as the recipient of `tokenId`'s fee stream, minting (or
     ///         re-minting) the transferable beneficiary NFT with the position's tokenId.
-    /// @dev Authorized by custody: only the position's current owner in the PositionManager may
-    ///      register, so registration must happen BEFORE the position is transferred to a terminal
-    ///      custodian like the FeeSplitter — afterwards it is final. A re-registration by the current
-    ///      custodian replaces a stale beneficiary, and unclaimed credits follow the NFT. The vault
-    ///      cannot verify it is wired into the fee source's splits — registering with an unwired vault
-    ///      earns nothing, so integrators must check the wiring themselves.
+    /// @dev Caller MUST own the position in the PositionManager, so registration must happen BEFORE
+    ///      transferring the position to a terminal custodian like the FeeSplitter. Re-registration
+    ///      replaces the beneficiary; unclaimed credits follow the NFT.
     /// @param tokenId The position whose fee stream is being assigned.
     /// @param beneficiary The receiver of the beneficiary NFT.
     function registerBeneficiary(uint256 tokenId, address beneficiary) external;

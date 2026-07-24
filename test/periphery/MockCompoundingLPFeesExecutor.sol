@@ -25,11 +25,13 @@ contract MockCompoundingLPFeesExecutor is MockLPFeesExecutor {
         liquidityIncrease = _liquidityIncrease;
     }
 
-    function callback(PoolKey memory poolKey, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
-        public
-        override
-    {
-        super.callback(poolKey, tokenId, currency0Received, currency1Received);
+    function onFeesCollected(
+        PoolKey memory poolKey,
+        uint256 tokenId,
+        uint256 currency0Received,
+        uint256 currency1Received
+    ) public override {
+        super.onFeesCollected(poolKey, tokenId, currency0Received, currency1Received);
 
         if (poolKey.currency0.isAddressZero()) {
             if (currency0Received != 0) {

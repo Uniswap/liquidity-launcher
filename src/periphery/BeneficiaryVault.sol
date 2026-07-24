@@ -10,10 +10,6 @@ import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
 
 /// @title BeneficiaryVault
 /// @notice Pull-based fee recipient whose transferable ERC721 represents a position's beneficiary.
-/// @dev The inherited fee callback is permissionless and balance-backed. Hook-enabled tokens can re-enter
-///      between a pusher's transfer and callback, allowing in-flight balance attribution; standard tokens,
-///      including UERC20, do not have that window. The first caller can attribute untracked surplus and
-///      donations; this donation flushing is intentional.
 contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC721 {
     using CurrencyLibrary for Currency;
 
@@ -26,8 +22,7 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC
     /// @param _positionManager The canonical v4 PositionManager, also used for registration custody proofs.
     /// @param _nativeFallback Trusted receiver for unregistered positions' native fee shares.
     /// @param _tokenFallback Receiver for unregistered positions' token fee shares.
-    /// @dev The inherited timelock surface is deliberately locked forever: no operator, unreachable
-    ///      timelock — this contract only accounts fees, it never custodies positions.
+    /// @dev The inherited timelock surface is unreachable: this contract never custodies positions.
     constructor(IPositionManager _positionManager, address _nativeFallback, address _tokenFallback)
         BaseLPFeesPositionRecipient(_positionManager, address(0), type(uint256).max)
     {
@@ -38,9 +33,6 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC
     }
 
     /// @inheritdoc IBeneficiaryVault
-    /// @dev The current custodian's registration always wins: a stale or hostile pre-registration can
-    ///      neither block a later registration nor keep earning. Unclaimed credits follow the NFT.
-    ///      Registration is final once the FeeSplitter holds the position, since it never registers.
     function registerBeneficiary(uint256 tokenId, address beneficiary) external override {
         if (IERC721(address(positionManager)).ownerOf(tokenId) != msg.sender) {
             revert NotPositionOwner(tokenId, msg.sender);
@@ -51,8 +43,8 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC
     }
 
     /// @inheritdoc BaseLPFeesPositionRecipient
-    /// @dev The vault's whole claim policy: unregistered positions' shares are flushed permissionlessly
-    ///      to the per-side fallbacks; registered positions pay out only to their current NFT holder.
+    /// @dev The owner of the beneficiary NFT receives the full amounts; unregistered positions pay out
+    ///      to the per-side fallbacks.
     function _beforeTransfer(uint256 _tokenId, Currency _currency0, Currency, uint256 _available0, uint256 _available1)
         internal
         view

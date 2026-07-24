@@ -25,7 +25,7 @@ contract MockLPFeesExecutor is ILPFeesExecutor {
         IERC20(token).approve(spender, amount);
     }
 
-    function callback(PoolKey memory, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
+    function onFeesCollected(PoolKey memory, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
         public
         virtual
     {

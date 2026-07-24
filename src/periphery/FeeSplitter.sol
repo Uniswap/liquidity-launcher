@@ -21,8 +21,7 @@ import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.s
 /// @title FeeSplitter
 /// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
 ///         collects their fees and pushes independent fixed splits for native ETH and token fees.
-/// @dev Positions sent to this contract are irrecoverable by design: there is no owner, no operator,
-///      and no code path that transfers or approves a position out.
+/// @dev Positions sent to this contract are irrecoverable: no code path transfers or approves them out.
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
@@ -34,8 +33,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
 
-    /// @inheritdoc IFeeSplitter
-    FeeSplit[] public override splits;
+    FeeSplit[] internal _splits;
 
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param splits_ The fee splits; each side's shares must sum to 10,000 bps.
@@ -46,7 +44,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @inheritdoc IFeeSplitter
     function getSplits() external view override returns (FeeSplit[] memory) {
-        return splits;
+        return _splits;
     }
 
     /// @inheritdoc IFeeSplitter
@@ -63,12 +61,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     }
 
     /// @inheritdoc IFeeSplitter
-    /// @dev Permissionless. The PositionManager must already hold the WETH and token funding, and any
-    ///      excess is taken back to the caller. Reverts while the position has uncollected fees: the
-    ///      increase would consume them as funding, skipping distribution — and collecting here instead
-    ///      would hand control to fee callbacks mid-increase, enabling callback cycles. Callers collect
-    ///      first, or run inside a fees callback where the fees were just realized. No recipient code
-    ///      executes during the increase.
+    /// @dev All fees MUST be collected first; reverts with UncollectedFees otherwise. The PositionManager
+    ///      must already hold the WETH and token funding; excess is taken back to the caller.
     function increaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,
@@ -101,11 +95,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     }
 
     /// @notice Accepts positions safe-transferred through the PositionManager; any transfer data is
-    ///         ignored. The splitter learns nothing at deposit by design: beneficiary registration
-    ///         happens directly with the recipient (see BeneficiaryVault.registerBeneficiary) while the
-    ///         depositor still owns the position, so the splitter needs no knowledge of any recipient's
-    ///         implementation. Other NFTs are rejected — they would be irrecoverably stuck, since
-    ///         collectFees only interacts with the PositionManager.
+    ///         ignored. Other NFTs are rejected since they are not compatible with the PositionManager.
     function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         return IERC721Receiver.onERC721Received.selector;
@@ -114,8 +104,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @notice Receives native ETH from the PositionManager take.
     receive() external payable {}
 
-    /// @notice Reverts when the position's fee growth has moved since its last modification, i.e. it
-    ///         has accrued fees that a liquidity increase would silently consume as funding.
+    /// @notice Reverts with UncollectedFees if the position has accrued fees since its last modification.
     function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
         IPoolManager poolManager = positionManager.poolManager();
         PoolId poolId = poolKey.toId();
@@ -150,25 +139,22 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1, address(this));
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
 
-        // Distribute the full standing balances: every collect ends at zero, so outside the
-        // (pointless) donation case these equal the fees just collected — and donations are
-        // simply flushed through the split instead of being stuck here forever.
+        // Distribute the full standing balances; donations are flushed through the split.
         nativeAmount = address(this).balance;
         tokenAmount = poolKey.currency1.balanceOfSelf();
         emit FeesCollected(tokenId, token, nativeAmount, tokenAmount);
     }
 
-    /// @notice Pushes every split's shares of both sides in a single pass. Per-side cumulative
-    ///         allocation assigns all rounding dust to later recipients so the full amounts are
-    ///         always forwarded.
+    /// @notice Pushes each split's shares of both sides in a single pass; rounding dust accrues to
+    ///         later recipients.
     function _distribute(uint256 tokenId, Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) private {
         uint256 cumulativeNativeBps;
         uint256 cumulativeTokenBps;
         uint256 distributedNative;
         uint256 distributedToken;
-        uint256 count = splits.length;
+        uint256 count = _splits.length;
         for (uint256 i; i < count; i++) {
-            FeeSplit memory split = splits[i];
+            FeeSplit memory split = _splits[i];
             cumulativeNativeBps += split.nativeBps;
             cumulativeTokenBps += split.tokenBps;
             uint256 recipientNativeAmount =
@@ -181,14 +167,13 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
-            if (split.feesCallback && (recipientNativeAmount != 0 || recipientTokenAmount != 0)) {
+            if (split.useCallback && (recipientNativeAmount != 0 || recipientTokenAmount != 0)) {
                 _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
             }
         }
     }
 
-    /// @notice Sends `amount` of `currency` to `recipient`; native transfers are force-sent so a
-    ///         recipient can never block a collect.
+    /// @notice Native transfers are force-sent so a recipient can never block a collect.
     function _transfer(Currency currency, address recipient, uint256 amount) private {
         if (currency.isAddressZero()) {
             SafeTransferLib.forceSafeTransferETH(recipient, amount);
@@ -198,16 +183,15 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesForwarded(recipient, currency, amount);
     }
 
-    /// @notice Tries the onFeesReceived callback on the recipient with the actual pushed amounts.
-    /// @dev Does NOT revert if the callback fails: a recipient can never brick the permissionless collect.
+    /// @notice Callback failures are swallowed: a recipient can never brick the permissionless collect.
     function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
         private
     {
         try ILPFeesPositionRecipient(recipient).onFeesReceived(tokenId, currency0Amount, currency1Amount) {} catch {}
     }
 
-    /// @notice Validates and stores the splits: each side's shares must independently sum to the
-    ///         bps denominator; a split may carry a single side but not neither.
+    /// @notice Each side's shares must independently sum to the bps denominator; a split may carry a
+    ///         single side but not neither.
     function _validateAndStoreSplits(FeeSplit[] memory splits_) private {
         uint256 count = splits_.length;
         if (count == 0) revert NoSplits();
@@ -219,7 +203,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
                 revert InvalidRecipient(split.recipient);
             }
             if (split.nativeBps == 0 && split.tokenBps == 0) revert ZeroSplitBps(split.recipient);
-            if (split.feesCallback && split.recipient.code.length == 0) {
+            if (split.useCallback && split.recipient.code.length == 0) {
                 revert CallbackRecipientNotContract(split.recipient);
             }
             for (uint256 j; j < i; j++) {
@@ -227,7 +211,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             }
             totalNativeBps += split.nativeBps;
             totalTokenBps += split.tokenBps;
-            splits.push(split);
+            _splits.push(split);
         }
         if (totalNativeBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalNativeBps);
         if (totalTokenBps != BPS_DENOMINATOR) revert InvalidSplitTotal(totalTokenBps);

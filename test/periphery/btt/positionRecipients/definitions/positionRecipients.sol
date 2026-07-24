@@ -124,7 +124,7 @@ contract BasePositionRecipientHarness is BaseLPFeesPositionRecipient {
 contract RevertingLPFeesExecutor is MockLPFeesExecutor {
     error CallbackFailed();
 
-    function callback(PoolKey memory, uint256, uint256, uint256) public pure override {
+    function onFeesCollected(PoolKey memory, uint256, uint256, uint256) public pure override {
         revert CallbackFailed();
     }
 }
@@ -139,7 +139,7 @@ contract ReentrantLPFeesExecutor is ILPFeesExecutor {
         recipient.collectFees(_tokenId, 0, 0);
     }
 
-    function callback(PoolKey memory, uint256, uint256, uint256) external {
+    function onFeesCollected(PoolKey memory, uint256, uint256, uint256) external {
         recipient.collectFees(tokenId, 0, 0);
     }
 

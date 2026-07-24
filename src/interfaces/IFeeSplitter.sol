@@ -8,12 +8,12 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// @param recipient The receiver of these shares; appears at most once in the splits.
 /// @param nativeBps The native ETH (currency0) share in basis points. All nativeBps sum to 10,000.
 /// @param tokenBps The token (currency1) share in basis points. All tokenBps sum to 10,000.
-/// @param feesCallback Whether the recipient is notified after receiving a fee share.
+/// @param useCallback Whether the recipient is notified after receiving a fee share.
 struct FeeSplit {
     address recipient;
     uint16 nativeBps;
     uint16 tokenBps;
-    bool feesCallback;
+    bool useCallback;
 }
 
 /// @title IFeeSplitter
@@ -85,10 +85,7 @@ interface IFeeSplitter {
 
     /// @notice Increases the liquidity of a position held by the splitter using funds already sent to
     ///         the PositionManager; excess funding is taken back to the caller.
-    /// @dev Permissionless. Reverts while the position has uncollected fees: an increase would consume
-    ///      them as funding, skipping distribution — and collecting here instead would hand control to
-    ///      fee callbacks mid-increase, enabling callback cycles. Callers collect first, or run inside
-    ///      a fees callback where the fees were just realized.
+    /// @dev Permissionless. All fees MUST be collected first; reverts with UncollectedFees otherwise.
     /// @param tokenId The position to increase.
     /// @param liquidity The liquidity to add.
     /// @param amount0Max The maximum currency0 to spend.
@@ -104,12 +101,6 @@ interface IFeeSplitter {
 
     /// @notice The canonical v4 PositionManager holding the LP positions.
     function positionManager() external view returns (IPositionManager);
-
-    /// @notice The split at `index`.
-    function splits(uint256 index)
-        external
-        view
-        returns (address recipient, uint16 nativeBps, uint16 tokenBps, bool feesCallback);
 
     /// @notice The full immutable split configuration.
     function getSplits() external view returns (FeeSplit[] memory);

@@ -139,7 +139,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         bool wired;
         for (uint256 i; i < splitCount; i++) {
             if (feeSplits[i].recipient == address(_beneficiaryVault)) {
-                wired = feeSplits[i].feesCallback;
+                wired = feeSplits[i].useCallback;
                 break;
             }
         }

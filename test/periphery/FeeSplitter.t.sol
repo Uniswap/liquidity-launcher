@@ -83,12 +83,12 @@ contract FeeSplitterTest is Test {
         vm.deal(address(this), 10_000 ether);
     }
 
-    function _split(address recipient, uint16 nativeBps, uint16 tokenBps, bool feesCallback)
+    function _split(address recipient, uint16 nativeBps, uint16 tokenBps, bool useCallback)
         internal
         pure
         returns (FeeSplit memory)
     {
-        return FeeSplit(recipient, nativeBps, tokenBps, feesCallback);
+        return FeeSplit(recipient, nativeBps, tokenBps, useCallback);
     }
 
     function _splits(FeeSplit memory split_) internal pure returns (FeeSplit[] memory out) {
@@ -184,11 +184,11 @@ contract FeeSplitterTest is Test {
         assertEq(entries[0].recipient, tokenJar);
         assertEq(entries[0].nativeBps, 8_000);
         assertEq(entries[0].tokenBps, 0);
-        assertFalse(entries[0].feesCallback);
+        assertFalse(entries[0].useCallback);
         assertEq(entries[2].recipient, address(beneficiaryVault));
         assertEq(entries[2].nativeBps, 2_000);
         assertEq(entries[2].tokenBps, 2_000);
-        assertTrue(entries[2].feesCallback);
+        assertTrue(entries[2].useCallback);
     }
 
     function test_constructor_revertsOnZeroRecipient() public {
