@@ -73,23 +73,8 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
             revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
         }
 
-        (address recipient0, uint256 toSend0) = _beforeTransfer(_tokenId, currency0, currency0Fees);
-        (address recipient1, uint256 toSend1) = _beforeTransfer(_tokenId, currency1, currency1Fees);
-        if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
-        if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
-        if (toSend0 > currency0Fees) revert InsufficientAmountReceived(currency0, currency0Fees, toSend0);
-        if (toSend1 > currency1Fees) revert InsufficientAmountReceived(currency1, currency1Fees, toSend1);
-
-        if (toSend0 != 0) {
-            fees[_tokenId].currency0Fees -= toSend0;
-            totalFees[currency0] -= toSend0;
-            currency0.transfer(recipient0, toSend0);
-        }
-        if (toSend1 != 0) {
-            fees[_tokenId].currency1Fees -= toSend1;
-            totalFees[currency1] -= toSend1;
-            currency1.transfer(recipient1, toSend1);
-        }
+        uint256 toSend0 = _payout(_tokenId, currency0, currency0Fees, true);
+        uint256 toSend1 = _payout(_tokenId, currency1, currency1Fees, false);
 
         uint256 context = _beforeCallback(poolKey, _tokenId);
 
@@ -100,6 +85,29 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         _afterCallback(poolKey, _tokenId, context);
 
         emit FeesCollected(_tokenId, toSend0, toSend1, poolKey);
+    }
+
+    /// @notice Runs one currency's payout pipeline: consults the transfer policy, validates its answer,
+    ///         decrements the attributed accounting, and pays out. Policy evaluations are interleaved with
+    ///         payouts — currency1's policy runs after currency0's transfer has already executed, so it may
+    ///         observe state changed by code running during that payout. This is safe because accounting
+    ///         precedes every transfer: mid-payout code can neither re-collect (reentrancy guard) nor
+    ///         attribute in-flight funds (balance proof), and a revert in the later policy unwinds the
+    ///         earlier payout with the whole transaction.
+    function _payout(uint256 _tokenId, Currency _currency, uint256 _available, bool _isCurrency0)
+        private
+        returns (uint256 toSend)
+    {
+        address recipient;
+        (recipient, toSend) = _beforeTransfer(_tokenId, _currency, _available);
+        if (recipient == address(0)) revert InvalidTransferRecipient(_currency);
+        if (toSend > _available) revert InsufficientAmountReceived(_currency, _available, toSend);
+        if (toSend == 0) return 0;
+
+        if (_isCurrency0) fees[_tokenId].currency0Fees -= toSend;
+        else fees[_tokenId].currency1Fees -= toSend;
+        totalFees[_currency] -= toSend;
+        _currency.transfer(recipient, toSend);
     }
 
     /// @notice Per-currency transfer policy consulted before each payout in collectFees. The default pays the

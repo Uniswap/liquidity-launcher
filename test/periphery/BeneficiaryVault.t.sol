@@ -71,6 +71,22 @@ contract ZeroTransferRecipient is BaseLPFeesPositionRecipient {
     }
 }
 
+contract LatePolicyRevertRecipient is BaseLPFeesPositionRecipient {
+    constructor(IPositionManager manager) BaseLPFeesPositionRecipient(manager, address(0), type(uint256).max) {}
+
+    function _beforeTransfer(uint256, Currency currency, uint256 available)
+        internal
+        view
+        override
+        returns (address recipient, uint256 sendAmount)
+    {
+        // Pays the native side normally but rejects the token side, so the currency1 policy
+        // reverts only after the currency0 payout has already executed.
+        if (currency.isAddressZero()) return (msg.sender, available);
+        return (address(0), available);
+    }
+}
+
 contract ReentrantVaultOwner {
     BeneficiaryVault internal immutable vault;
     uint256 internal immutable tokenId;
@@ -328,6 +344,29 @@ contract BeneficiaryVaultTest is Test {
         (nativeFees, tokenFees) = recipient.fees(tokenId);
         assertEq(nativeFees, 2 ether);
         assertEq(tokenFees, 4 ether);
+    }
+
+    function test_collectFees_latePolicyRevertUnwindsEarlierPayout() public {
+        uint256 tokenId = _mintPosition(address(this));
+        LatePolicyRevertRecipient recipient = new LatePolicyRevertRecipient(POSITION_MANAGER);
+        _credit(recipient, tokenId, 1 ether, 2 ether);
+        address collector = makeAddr("collector");
+        uint256 balanceBefore = collector.balance;
+
+        // The currency1 policy rejects after the currency0 payout already ran; the revert must
+        // unwind the whole claim, native payout included.
+        vm.prank(collector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILPFeesPositionRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token))
+            )
+        );
+        recipient.collectFees(tokenId, 0, 0);
+
+        assertEq(collector.balance, balanceBefore);
+        (uint256 nativeFees, uint256 tokenFees) = recipient.fees(tokenId);
+        assertEq(nativeFees, 1 ether);
+        assertEq(tokenFees, 2 ether);
     }
 
     function test_collectFees_zeroRecipientPolicyReverts() public {
