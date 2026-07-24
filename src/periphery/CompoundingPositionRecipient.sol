@@ -17,12 +17,9 @@ contract CompoundingPositionRecipient is BasePositionRecipient {
     /// @notice The minimum liquidity increase required to be compounded
     uint128 public immutable MIN_LIQUIDITY_INCREASE;
 
-    constructor(
-        IPositionManager _positionManager,
-        address _operator,
-        uint256 _timelockBlockNumber,
-        uint128 _minLiquidityIncrease
-    ) BasePositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+    constructor(IPositionManager _positionManager, uint128 _minLiquidityIncrease)
+        BasePositionRecipient(_positionManager)
+    {
         if (_minLiquidityIncrease == 0) revert MinLiquidityIncreaseIsZero();
         MIN_LIQUIDITY_INCREASE = _minLiquidityIncrease;
     }

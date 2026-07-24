@@ -4,16 +4,15 @@ pragma solidity ^0.8.26;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
-import {ITimelockedPositionRecipient} from "../../src/interfaces/ITimelockedPositionRecipient.sol";
 import {IClaimablePositionRecipient} from "../../src/interfaces/IClaimablePositionRecipient.sol";
 import {CompoundingPositionRecipient} from "../../src/periphery/CompoundingPositionRecipient.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockClaimExecutor} from "./MockClaimExecutor.sol";
 import {MockCompoundingClaimExecutor} from "./MockCompoundingClaimExecutor.sol";
-import {TimelockedPositionRecipientTest} from "./TimelockedPositionRecipient.t.sol";
+import {PositionRecipientTestBase} from "./PositionRecipientTestBase.sol";
 
-contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
+contract CompoundingPositionRecipientTest is PositionRecipientTestBase {
     address internal constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     CompoundingPositionRecipient internal positionRecipient;
@@ -25,43 +24,37 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
         executor = new MockCompoundingClaimExecutor(IPositionManager(POSITION_MANAGER), IWETH9(WETH9));
     }
 
-    function _getPositionRecipient(uint64 _timelockBlockNumber)
-        internal
-        override
-        returns (ITimelockedPositionRecipient)
-    {
-        return new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber, 1);
-    }
-
-    function test_Constructor_WhenMinimumLiquidityIncreaseIsZero_Reverts(uint64 timelockBlockNumber) public {
+    function test_Constructor_WhenMinimumLiquidityIncreaseIsZero_Reverts() public {
         vm.expectRevert(CompoundingPositionRecipient.MinLiquidityIncreaseIsZero.selector);
-        new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, timelockBlockNumber, 0);
+        new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), 0);
     }
 
-    function test_Constructor_WhenParametersAreValid_SetsConfiguration(
-        uint64 timelockBlockNumber,
-        uint128 minLiquidityIncrease
-    ) public {
+    function test_Constructor_WhenParametersAreValid_SetsConfiguration(uint128 minLiquidityIncrease) public {
         minLiquidityIncrease = uint128(bound(minLiquidityIncrease, 1, type(uint128).max));
-        positionRecipient = new CompoundingPositionRecipient(
-            IPositionManager(POSITION_MANAGER), operator, timelockBlockNumber, minLiquidityIncrease
-        );
+        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), minLiquidityIncrease);
 
-        assertEq(positionRecipient.timelockBlockNumber(), timelockBlockNumber);
         assertEq(positionRecipient.MIN_LIQUIDITY_INCREASE(), minLiquidityIncrease);
-        assertEq(positionRecipient.operator(), operator);
         assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
     }
 
+    function test_CanReceiveETH() public {
+        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), 1);
+        uint256 balanceBefore = address(positionRecipient).balance;
+        vm.deal(address(this), 1 ether);
+        (bool success,) = address(positionRecipient).call{value: 1 ether}("");
+        assertTrue(success);
+        assertEq(address(positionRecipient).balance, balanceBefore + 1 ether);
+    }
+
     function test_Claim_WhenPositionDoesNotExist_Reverts() public {
-        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
+        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), 1);
 
         vm.expectRevert(abi.encodeWithSelector(IClaimablePositionRecipient.InvalidPosition.selector, type(uint256).max));
         executor.execute(positionRecipient, type(uint256).max, 0, 0);
     }
 
     function test_OnAmountsReceived_WhenPositionIsNotOwned_RecordsAmounts() public {
-        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
+        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), 1);
         vm.deal(address(positionRecipient), FORK_CURRENCY0_FEES_AMOUNT);
 
         positionRecipient.onAmountsReceived(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
@@ -73,7 +66,7 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
 
     function test_Claim_WhenLiquidityIncreaseIsInsufficient_Reverts() public {
         positionRecipient =
-            new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, type(uint128).max);
+            new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), type(uint128).max);
         MockClaimExecutor noopExecutor = new MockClaimExecutor();
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
         uint128 liquidityBefore = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);
@@ -89,7 +82,7 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
     }
 
     function test_Claim_WhenExecutorDepositsProceeds_IncreasesLiquidity() public {
-        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), operator, 0, 1);
+        positionRecipient = new CompoundingPositionRecipient(IPositionManager(POSITION_MANAGER), 1);
         FeeSplitter splitter = _callbackSplitter(address(positionRecipient));
         uint256 recipientCurrency0Before = Currency.wrap(NATIVE).balanceOf(address(positionRecipient));
         uint256 recipientCurrency1Before = Currency.wrap(USDC).balanceOf(address(positionRecipient));

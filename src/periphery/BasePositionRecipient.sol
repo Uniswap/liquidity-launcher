@@ -4,20 +4,26 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
 import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
-import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 
 /// @title BasePositionRecipient
 /// @notice Shared amount attribution and executor claim mechanics for LP position recipients
-abstract contract BasePositionRecipient is IClaimablePositionRecipient, TimelockedPositionRecipient {
-    constructor(IPositionManager _positionManager, address _operator, uint256 _timelockBlockNumber)
-        TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber)
-    {}
+abstract contract BasePositionRecipient is IClaimablePositionRecipient, ReentrancyGuardTransient {
+    using SafeCast for uint256;
+
+    /// @notice The position manager used to resolve positions and their pool keys
+    IPositionManager public immutable positionManager;
+
+    constructor(IPositionManager _positionManager) {
+        positionManager = _positionManager;
+    }
 
     struct Amounts {
-        uint256 currency0Amount;
-        uint256 currency1Amount;
+        uint128 currency0Amount;
+        uint128 currency1Amount;
     }
     mapping(uint256 tokenId => Amounts amounts) public override amounts;
     mapping(Currency currency => uint256 amount) public totalAmounts;
@@ -32,23 +38,16 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Timelock
     function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
-        Amounts storage positionAmounts = amounts[_tokenId];
+        Amounts memory positionAmounts = amounts[_tokenId];
         if (_currency0Amount != 0) {
             _attribute(poolKey.currency0, _currency0Amount);
-            positionAmounts.currency0Amount += _currency0Amount;
+            positionAmounts.currency0Amount = (positionAmounts.currency0Amount + _currency0Amount).toUint128();
         }
         if (_currency1Amount != 0) {
             _attribute(poolKey.currency1, _currency1Amount);
-            positionAmounts.currency1Amount += _currency1Amount;
+            positionAmounts.currency1Amount = (positionAmounts.currency1Amount + _currency1Amount).toUint128();
         }
-    }
-
-    /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
-    function _attribute(Currency _currency, uint256 _amount) private {
-        uint256 balance = _currency.balanceOfSelf();
-        uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;
-        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(_currency, balance, expectedTotalAmount);
-        totalAmounts[_currency] = expectedTotalAmount;
+        amounts[_tokenId] = positionAmounts;
     }
 
     /// @inheritdoc IClaimablePositionRecipient
@@ -57,8 +56,13 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Timelock
 
         Currency currency0 = poolKey.currency0;
         Currency currency1 = poolKey.currency1;
-        uint256 currency0Amount = amounts[_tokenId].currency0Amount;
-        uint256 currency1Amount = amounts[_tokenId].currency1Amount;
+        uint256 currency0Amount;
+        uint256 currency1Amount;
+        {
+            Amounts memory positionAmounts = amounts[_tokenId];
+            currency0Amount = positionAmounts.currency0Amount;
+            currency1Amount = positionAmounts.currency1Amount;
+        }
 
         if (currency0Amount < _minCurrency0Amount) {
             revert InsufficientAmountReceived(currency0, currency0Amount, _minCurrency0Amount);
@@ -95,10 +99,19 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Timelock
         private
     {
         if (_toSend == 0) return;
-        if (_isCurrency0) amounts[_tokenId].currency0Amount -= _toSend;
-        else amounts[_tokenId].currency1Amount -= _toSend;
+        // casts are safe as _toSend is bounded by the attributed uint128 amount
+        if (_isCurrency0) amounts[_tokenId].currency0Amount -= uint128(_toSend);
+        else amounts[_tokenId].currency1Amount -= uint128(_toSend);
         totalAmounts[_currency] -= _toSend;
         _currency.transfer(_recipient, _toSend);
+    }
+
+    /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
+    function _attribute(Currency _currency, uint256 _amount) private {
+        uint256 balance = _currency.balanceOfSelf();
+        uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;
+        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(_currency, balance, expectedTotalAmount);
+        totalAmounts[_currency] = expectedTotalAmount;
     }
 
     /// @notice Transfer policy consulted once per claim, before any payout. Defaults to paying the
@@ -120,4 +133,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Timelock
     /// @notice Called after the callback is executed
     /// @param _context The value returned by `_beforeCallback`
     function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _context) internal virtual {}
+
+    /// @notice Receive ETH
+    receive() external payable {}
 }

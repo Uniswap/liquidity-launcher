@@ -30,7 +30,7 @@ interface IClaimablePositionRecipient {
     function claim(uint256 tokenId, uint256 minCurrency0Amount, uint256 minCurrency1Amount) external;
 
     /// @notice Returns the amounts attributed to a position and available to claim
-    function amounts(uint256 tokenId) external view returns (uint256 currency0Amount, uint256 currency1Amount);
+    function amounts(uint256 tokenId) external view returns (uint128 currency0Amount, uint128 currency1Amount);
 
     /// @notice MUST be called after transferring amounts in to register the new balance. Failure to
     ///         do so will result in a loss of funds attribution.

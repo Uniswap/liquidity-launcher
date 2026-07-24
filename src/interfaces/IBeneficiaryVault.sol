@@ -11,7 +11,7 @@ interface IBeneficiaryVault {
     /// @param sender The caller that failed the custody proof.
     error NotPositionOwner(uint256 tokenId, address sender);
 
-    /// @notice Thrown when this contract is named as its own beneficiary.
+    /// @notice Thrown when the beneficiary is the zero address or this contract.
     /// @param beneficiary The invalid beneficiary.
     error InvalidBeneficiary(address beneficiary);
 
@@ -28,7 +28,8 @@ interface IBeneficiaryVault {
     ///         re-minting) the transferable beneficiary NFT with the position's tokenId.
     /// @dev Caller MUST own the position in the PositionManager, so registration must happen BEFORE
     ///      transferring the position to a terminal custodian like the FeeSplitter. Re-registration
-    ///      replaces the beneficiary; unclaimed credits follow the NFT.
+    ///      replaces the beneficiary; unclaimed credits follow the NFT. The beneficiary cannot be
+    ///      zero or this contract; unregistered positions pay out to the fallbacks.
     /// @param tokenId The position whose fee stream is being assigned.
     /// @param beneficiary The receiver of the beneficiary NFT.
     function registerBeneficiary(uint256 tokenId, address beneficiary) external;

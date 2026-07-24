@@ -22,9 +22,8 @@ contract BeneficiaryVault is IBeneficiaryVault, BasePositionRecipient, ERC721 {
     /// @param _positionManager The canonical v4 PositionManager, also used for registration custody proofs.
     /// @param _nativeFallback Trusted receiver for unregistered positions' native fee shares.
     /// @param _tokenFallback Receiver for unregistered positions' token fee shares.
-    /// @dev The inherited timelock surface is unreachable: this contract never custodies positions.
     constructor(IPositionManager _positionManager, address _nativeFallback, address _tokenFallback)
-        BasePositionRecipient(_positionManager, address(0), type(uint256).max)
+        BasePositionRecipient(_positionManager)
     {
         if (_nativeFallback == address(0) || _nativeFallback == address(this)) revert InvalidFallback(_nativeFallback);
         if (_tokenFallback == address(0) || _tokenFallback == address(this)) revert InvalidFallback(_tokenFallback);
@@ -37,7 +36,7 @@ contract BeneficiaryVault is IBeneficiaryVault, BasePositionRecipient, ERC721 {
         if (IERC721(address(positionManager)).ownerOf(tokenId) != msg.sender) {
             revert NotPositionOwner(tokenId, msg.sender);
         }
-        if (beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
+        if (beneficiary == address(0) || beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
         if (_ownerOf(tokenId) != address(0)) _burn(tokenId);
         _mint(beneficiary, tokenId);
     }

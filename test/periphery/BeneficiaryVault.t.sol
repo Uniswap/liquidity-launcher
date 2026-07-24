@@ -46,7 +46,7 @@ contract MockVaultExecutor is IClaimExecutor {
 }
 
 contract PartialTransferRecipient is BasePositionRecipient {
-    constructor(IPositionManager manager) BasePositionRecipient(manager, address(0), type(uint256).max) {}
+    constructor(IPositionManager manager) BasePositionRecipient(manager) {}
 
     function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -59,7 +59,7 @@ contract PartialTransferRecipient is BasePositionRecipient {
 }
 
 contract ZeroTransferRecipient is BasePositionRecipient {
-    constructor(IPositionManager manager) BasePositionRecipient(manager, address(0), type(uint256).max) {}
+    constructor(IPositionManager manager) BasePositionRecipient(manager) {}
 
     function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -72,7 +72,7 @@ contract ZeroTransferRecipient is BasePositionRecipient {
 }
 
 contract ZeroCurrency1Recipient is BasePositionRecipient {
-    constructor(IPositionManager manager) BasePositionRecipient(manager, address(0), type(uint256).max) {}
+    constructor(IPositionManager manager) BasePositionRecipient(manager) {}
 
     function _beforeTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -178,8 +178,6 @@ contract BeneficiaryVaultTest is Test {
         assertEq(vault.name(), "Fee Beneficiary");
         assertEq(vault.symbol(), "FEEB");
         assertEq(vault.tokenURI(1), "");
-        assertEq(vault.operator(), address(0));
-        assertEq(vault.timelockBlockNumber(), type(uint256).max);
     }
 
     function test_constructor_revertsOnInvalidNativeFallback() public {
@@ -213,7 +211,7 @@ contract BeneficiaryVaultTest is Test {
 
     function test_registerBeneficiary_zeroBeneficiaryReverts() public {
         uint256 tokenId = _mintPosition(address(this));
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(0)));
         vault.registerBeneficiary(tokenId, address(0));
     }
 

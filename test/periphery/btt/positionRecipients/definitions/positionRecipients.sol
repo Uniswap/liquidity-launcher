@@ -121,7 +121,7 @@ contract MockReentrantERC20 is MockERC20 {
 }
 
 contract BasePositionRecipientHarness is BasePositionRecipient {
-    constructor(IPositionManager positionManager) BasePositionRecipient(positionManager, address(0xBEEF), 0) {}
+    constructor(IPositionManager positionManager) BasePositionRecipient(positionManager) {}
 }
 
 contract RevertingLPFeesExecutor is MockClaimExecutor {
@@ -372,7 +372,7 @@ contract PositionRecipientsBTTTest is Test {
 
     function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
         BuybackAndBurnPositionRecipient recipient =
-            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), operator, 0, 1);
+            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
         vm.expectRevert(
@@ -388,7 +388,7 @@ contract PositionRecipientsBTTTest is Test {
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
         BuybackAndBurnPositionRecipient recipient =
-            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), operator, 0, burnAmount);
+            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), burnAmount);
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
@@ -403,7 +403,7 @@ contract PositionRecipientsBTTTest is Test {
     function test_Compounding_WhenLiquidityIncreaseIsBelowMinimum_Reverts() public {
         _configure(poolKey, FEES_0, FEES_1, 0);
         CompoundingPositionRecipient recipient =
-            new CompoundingPositionRecipient(IPositionManager(address(manager)), operator, 0, 1);
+            new CompoundingPositionRecipient(IPositionManager(address(manager)), 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
         vm.expectRevert(
@@ -420,7 +420,7 @@ contract PositionRecipientsBTTTest is Test {
         liquidityIncrease = uint128(bound(liquidityIncrease, 1, 100_000 ether));
         _configure(poolKey, FEES_0, FEES_1, liquidityIncrease);
         CompoundingPositionRecipient recipient =
-            new CompoundingPositionRecipient(IPositionManager(address(manager)), operator, 0, liquidityIncrease);
+            new CompoundingPositionRecipient(IPositionManager(address(manager)), liquidityIncrease);
         MockCompoundingClaimExecutor executor =
             new MockCompoundingClaimExecutor(IPositionManager(address(manager)), IWETH9(address(0)));
         executor.setFeeSplitter(IFeeSplitter(address(manager)), liquidityIncrease);
