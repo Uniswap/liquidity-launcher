@@ -273,8 +273,9 @@ contract FeeSplitterTest is Test {
         assertGt(nativeFees, 0);
         assertGt(tokenFees, 0);
         assertEq(beneficiaryVault.ownerOf(tokenId), creator);
-        assertEq(address(splitter).balance, 0);
-        assertEq(token.balanceOf(address(splitter)), 0);
+        // Floor-division dust (under 1 wei per nonzero-bps split) stays behind for the next flush.
+        assertLe(address(splitter).balance, 1);
+        assertLe(token.balanceOf(address(splitter)), 1);
     }
 
     function test_collectFees_revertsOnEmptyTokenIds() public {
@@ -330,8 +331,8 @@ contract FeeSplitterTest is Test {
         vm.deal(address(splitter), 5 ether);
         token.transfer(address(splitter), 7 ether);
         splitter.collectFees(_single(tokenId));
-        assertEq(address(splitter).balance, 0);
-        assertEq(token.balanceOf(address(splitter)), 0);
+        assertLe(address(splitter).balance, 1);
+        assertLe(token.balanceOf(address(splitter)), 1);
     }
 
     function test_increaseLiquidity_usesPositionManagerBalancesAndRefundsExcess() public {
@@ -375,8 +376,8 @@ contract FeeSplitterTest is Test {
         assertGt(nativeFees, 0);
         assertGt(tokenFees, 0);
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), beforeLiquidity + 1 ether);
-        assertEq(address(splitter).balance, 0);
-        assertEq(token.balanceOf(address(splitter)), 0);
+        assertLe(address(splitter).balance, 1);
+        assertLe(token.balanceOf(address(splitter)), 1);
     }
 
     function test_increaseLiquidity_noRecipientCodeRunsDuringIncrease() public {

@@ -253,9 +253,9 @@ contract DirectLaunchStrategyE2ETest is Test {
         (uint256 nativeFees, uint256 tokenFees) = beneficiaryVault.amounts(tokenId);
         assertGt(nativeFees, 0);
         assertGt(tokenFees, 0);
-        // Nothing sticks to the splitter.
-        assertEq(address(feeSplitter).balance, 0);
-        assertEq(token.balanceOf(address(feeSplitter)), 0);
+        // Only floor-division dust sticks to the splitter, flushed on the next collect.
+        assertLe(address(feeSplitter).balance, 1);
+        assertLe(token.balanceOf(address(feeSplitter)), 1);
         // Collection moves fee revenue only: position liquidity and pool price are untouched.
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore);
         (uint160 priceAfter,,,) = POOL_MANAGER.getSlot0(key.toId());

@@ -145,31 +145,19 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesCollected(tokenId, Currency.unwrap(tokenCurrency), nativeAmount, tokenAmount);
     }
 
-    /// @notice Pushes each split's shares of both sides in a single pass; rounding dust accrues to
-    ///         later recipients.
+    /// @notice Pushes each split's floor share of both sides; rounding dust stays in this contract
+    ///         and is flushed through the next distribution.
     function _distribute(uint256 tokenId, Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) private {
-        uint256 cumulativeNativeBps;
-        uint256 cumulativeTokenBps;
-        uint256 distributedNative;
-        uint256 distributedToken;
         uint256 count = _splits.length;
         for (uint256 i; i < count; i++) {
             FeeSplit memory split = _splits[i];
-            cumulativeNativeBps += split.nativeBps;
-            cumulativeTokenBps += split.tokenBps;
-            uint256 recipientNativeAmount =
-                FullMath.mulDiv(nativeAmount, cumulativeNativeBps, BPS_DENOMINATOR) - distributedNative;
-            uint256 recipientTokenAmount =
-                FullMath.mulDiv(tokenAmount, cumulativeTokenBps, BPS_DENOMINATOR) - distributedToken;
-            distributedNative += recipientNativeAmount;
-            distributedToken += recipientTokenAmount;
+            uint256 recipientNativeAmount = FullMath.mulDiv(nativeAmount, split.nativeBps, BPS_DENOMINATOR);
+            uint256 recipientTokenAmount = FullMath.mulDiv(tokenAmount, split.tokenBps, BPS_DENOMINATOR);
             if (recipientNativeAmount == 0 && recipientTokenAmount == 0) continue;
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
-            if (split.useCallback && (recipientNativeAmount != 0 || recipientTokenAmount != 0)) {
-                _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
-            }
+            if (split.useCallback) _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
         }
     }
 
