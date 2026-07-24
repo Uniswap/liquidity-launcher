@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
+import {BasePositionRecipient} from "./BasePositionRecipient.sol";
+
+/// @title BasePositionRecipientWithCallback
+/// @notice Base for recipients whose claim MUST call back into the caller so it can act on the funds it
+///         was just paid, bracketed by `_beforeCallback`/`_afterCallback` hooks that let the recipient
+///         verify the caller did what it was supposed to (compound the liquidity, fund the burn, etc.).
+/// @dev The callback is not optional: the caller of `claim` MUST implement `IClaimExecutor`. Recipients
+///      that don't need a callback must inherit `BasePositionRecipient` directly instead.
+abstract contract BasePositionRecipientWithCallback is BasePositionRecipient {
+    constructor(IPositionManager _positionManager) BasePositionRecipient(_positionManager) {}
+
+    /// @inheritdoc BasePositionRecipient
+    /// @dev Runs `_beforeCallback`, the mandatory executor callback, then `_afterCallback`. The
+    ///      before/after hooks bracket the callback so a subclass can snapshot state and enforce the
+    ///      caller's obligation across it.
+    function _afterClaim(PoolKey memory _poolKey, uint256 _tokenId, uint256 _toSend0, uint256 _toSend1)
+        internal
+        override
+    {
+        uint256 context = _beforeCallback(_poolKey, _tokenId);
+        IClaimExecutor(msg.sender).onClaimed(_poolKey, _tokenId, _toSend0, _toSend1);
+        _afterCallback(_poolKey, _tokenId, context);
+    }
+
+    /// @notice Called before the executor callback
+    /// @return context An opaque value passed through to `_afterCallback`
+    function _beforeCallback(PoolKey memory _poolKey, uint256 _tokenId) internal virtual returns (uint256 context) {}
+
+    /// @notice Called after the executor callback
+    /// @param _context The value returned by `_beforeCallback`
+    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _context) internal virtual {}
+}

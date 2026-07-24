@@ -327,16 +327,16 @@ contract BeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(newOwner), 2 ether);
     }
 
-    function test_claim_contractOwnerGetsCallbackWithActualAmounts() public {
+    function test_claim_contractOwnerPaidWithoutCallback() public {
+        // The vault is a callback-free recipient (inherits BasePositionRecipient, not the executor-
+        // callback base): even an owner that fully implements IClaimExecutor is simply paid its
+        // amounts, with no onClaimed invocation.
         uint256 tokenId = _mintPosition(address(this));
         MockVaultExecutor executor = new MockVaultExecutor();
         _register(tokenId, address(this), address(executor));
         _credit(vault, tokenId, 1 ether, 2 ether);
         executor.collect(vault, tokenId);
-        assertEq(executor.callbackCalls(), 1);
-        assertEq(executor.lastTokenId(), tokenId);
-        assertEq(executor.lastCurrency0Amount(), 1 ether);
-        assertEq(executor.lastCurrency1Amount(), 2 ether);
+        assertEq(executor.callbackCalls(), 0);
         assertEq(address(executor).balance, 1 ether);
         assertEq(token.balanceOf(address(executor)), 2 ether);
     }

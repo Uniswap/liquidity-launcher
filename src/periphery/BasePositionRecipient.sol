@@ -6,12 +6,14 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
 import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
 
 /// @title BasePositionRecipient
-/// @notice Shared amount attribution and executor claim mechanics for LP position recipients
+/// @notice Shared amount attribution and claim mechanics for LP position recipients.
+/// @dev This base pays out and nothing more: it exposes a single empty `_afterClaim` hook. Recipients
+///      that need to call back into an executor should inherit `BasePositionRecipientWithCallback`, which
+///      overrides `_afterClaim` with the before/callback/after flow. Recipients that don't (e.g. creator
+///      fees paid straight to a beneficiary) inherit this base directly and never run a callback.
 abstract contract BasePositionRecipient is IClaimablePositionRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
@@ -79,15 +81,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         _payout(_tokenId, currency0, recipient0, toSend0, true);
         _payout(_tokenId, currency1, recipient1, toSend1, false);
 
-        uint256 context = _beforeCallback(poolKey, _tokenId);
-
-        // Only callers declaring IClaimExecutor support via ERC165 receive the callback; the
-        // before/after hooks always run.
-        if (_supportsExecutorCallback(msg.sender)) {
-            IClaimExecutor(msg.sender).onClaimed(poolKey, _tokenId, toSend0, toSend1);
-        }
-
-        _afterCallback(poolKey, _tokenId, context);
+        _afterClaim(poolKey, _tokenId, toSend0, toSend1);
 
         emit Claimed(_tokenId, toSend0, toSend1, poolKey);
     }
@@ -110,13 +104,15 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         return (msg.sender, _available0, msg.sender, _available1);
     }
 
-    /// @notice Called before the callback is executed
-    /// @return context An opaque value passed through to `_afterCallback`
-    function _beforeCallback(PoolKey memory _poolKey, uint256 _tokenId) internal virtual returns (uint256 context) {}
-
-    /// @notice Called after the callback is executed
-    /// @param _context The value returned by `_beforeCallback`
-    function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _context) internal virtual {}
+    /// @notice Hook run at the end of `claim`, after both payouts. Empty by default; the base pays out
+    ///         and does nothing else. Overrides must not touch the attribution accounting.
+    /// @param _poolKey The claimed position's pool key
+    /// @param _tokenId The claimed position's token ID
+    /// @param _toSend0 The currency0 amount paid out in this claim
+    /// @param _toSend1 The currency1 amount paid out in this claim
+    function _afterClaim(PoolKey memory _poolKey, uint256 _tokenId, uint256 _toSend0, uint256 _toSend1)
+        internal
+        virtual {}
 
     /// @notice Decrements attribution before transferring, so code running during a payout cannot
     ///         attribute the in-flight funds.
@@ -129,16 +125,6 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         else amounts[_tokenId].currency1Amount -= uint128(_toSend);
         totalAmounts[_currency] -= _toSend;
         _currency.transfer(_recipient, _toSend);
-    }
-
-    /// @notice Returns whether `_caller` declares IClaimExecutor support via ERC165.
-    /// @dev Uses a raw staticcall so callers without `supportsInterface` (EOAs, wallets, timelocks)
-    ///      are skipped rather than reverting the claim.
-    function _supportsExecutorCallback(address _caller) private view returns (bool) {
-        if (_caller.code.length == 0) return false;
-        (bool success, bytes memory returndata) =
-            _caller.staticcall(abi.encodeCall(IERC165.supportsInterface, (type(IClaimExecutor).interfaceId)));
-        return success && returndata.length == 32 && abi.decode(returndata, (bool));
     }
 
     /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
