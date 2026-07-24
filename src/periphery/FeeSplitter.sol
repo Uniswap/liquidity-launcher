@@ -98,6 +98,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Accepts positions safe-transferred through the PositionManager; any transfer data is
     ///         ignored. Other NFTs are rejected since they are not compatible with the PositionManager.
+    /// @dev Positions on hooked pools that require hookData for liquidity operations are not
+    ///      supported and should not be transferred into this contract.
     function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         return IERC721Receiver.onERC721Received.selector;
