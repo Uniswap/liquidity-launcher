@@ -6,7 +6,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
-import {IPositionReceivedCallback} from "../interfaces/IPositionReceivedCallback.sol";
 import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
 
 /// @title BeneficiaryVault
@@ -38,15 +37,14 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseLPFeesPositionRecipient, ERC
         tokenFallback = _tokenFallback;
     }
 
-    /// @inheritdoc IPositionReceivedCallback
-    /// @dev The current custodian's data always wins: stale registration cannot block a deposit or retain
-    ///      its earnings. Unclaimed credits follow the NFT. Registration is final once the FeeSplitter
-    ///      holds the position.
-    function onPositionReceived(uint256 tokenId, address, bytes calldata data) external override {
+    /// @inheritdoc IBeneficiaryVault
+    /// @dev The current custodian's registration always wins: a stale or hostile pre-registration can
+    ///      neither block a later registration nor keep earning. Unclaimed credits follow the NFT.
+    ///      Registration is final once the FeeSplitter holds the position, since it never registers.
+    function registerBeneficiary(uint256 tokenId, address beneficiary) external override {
         if (IERC721(address(positionManager)).ownerOf(tokenId) != msg.sender) {
             revert NotPositionOwner(tokenId, msg.sender);
         }
-        address beneficiary = abi.decode(data, (address));
         if (beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
         if (_ownerOf(tokenId) != address(0)) _burn(tokenId);
         _mint(beneficiary, tokenId);

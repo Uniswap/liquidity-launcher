@@ -65,24 +65,15 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         // both with a 20% creator share.
         FeeSplit[] memory splits = new FeeSplit[](3);
         beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, address(0xdead));
-        splits[0] = FeeSplit({
-            recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, positionCallback: false, feesCallback: false
-        });
-        splits[1] = FeeSplit({
-            recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, positionCallback: false, feesCallback: false
-        });
-        splits[2] = FeeSplit({
-            recipient: address(beneficiaryVault),
-            nativeBps: 2_000,
-            tokenBps: 2_000,
-            positionCallback: true,
-            feesCallback: true
-        });
+        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, feesCallback: false});
+        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, feesCallback: false});
+        splits[2] =
+            FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, feesCallback: true});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
         strategy = new DirectLaunchStrategy(
-            address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, address(beneficiaryVault), INITIAL_TICK
+            address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
         );
     }
 

@@ -8,26 +8,12 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 /// @param recipient The receiver of these shares; appears at most once in the splits.
 /// @param nativeBps The native ETH (currency0) share in basis points. All nativeBps sum to 10,000.
 /// @param tokenBps The token (currency1) share in basis points. All tokenBps sum to 10,000.
-/// @param positionCallback Whether the recipient is notified when a position is deposited.
 /// @param feesCallback Whether the recipient is notified after receiving a fee share.
 struct FeeSplit {
     address recipient;
     uint16 nativeBps;
     uint16 tokenBps;
-    bool positionCallback;
     bool feesCallback;
-}
-
-/// @notice One targeted position callback in a deposit's transfer data. The data of a position
-///         safe-transfer to the FeeSplitter, when present, MUST be `abi.encode(PositionCallbackData[])`:
-///         each entry delivers its own payload to one targeted position-callback recipient, and recipients
-///         not targeted are not notified. Empty transfer data leaves every recipient unregistered.
-/// @param index The targeted entry in `getSplits()`; it must opt into position callbacks. The immutable
-///        split array means this index resolves to the same recipient forever.
-/// @param data The payload passed through to the recipient's onPositionReceived.
-struct PositionCallbackData {
-    uint256 index;
-    bytes data;
 }
 
 /// @title IFeeSplitter
@@ -83,11 +69,6 @@ interface IFeeSplitter {
     /// @param sender The rejected caller of onERC721Received.
     error NotPositionManager(address sender);
 
-    /// @notice Thrown when a deposit's callback index is out of range or targets a split that has not
-    ///         opted into position callbacks.
-    /// @param index The invalid callback index.
-    error InvalidCallbackIndex(uint256 index);
-
     /// @notice Thrown when this contract does not own the position being increased.
     /// @param tokenId The position token ID.
     error NotOwner(uint256 tokenId);
@@ -124,12 +105,12 @@ interface IFeeSplitter {
     /// @notice The canonical v4 PositionManager holding the LP positions.
     function positionManager() external view returns (IPositionManager);
 
-    /// @notice The split at `index` — the position addressed by `PositionCallbackData.index`.
+    /// @notice The split at `index`.
     function splits(uint256 index)
         external
         view
-        returns (address recipient, uint16 nativeBps, uint16 tokenBps, bool positionCallback, bool feesCallback);
+        returns (address recipient, uint16 nativeBps, uint16 tokenBps, bool feesCallback);
 
-    /// @notice The full immutable split configuration; the index space for PositionCallbackData.
+    /// @notice The full immutable split configuration.
     function getSplits() external view returns (FeeSplit[] memory);
 }

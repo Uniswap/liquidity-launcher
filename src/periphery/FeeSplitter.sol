@@ -15,8 +15,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {IFeeSplitter, FeeSplit, PositionCallbackData} from "../interfaces/IFeeSplitter.sol";
-import {IPositionReceivedCallback} from "../interfaces/IPositionReceivedCallback.sol";
+import {IFeeSplitter, FeeSplit} from "../interfaces/IFeeSplitter.sol";
 import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.sol";
 
 /// @title FeeSplitter
@@ -101,34 +100,14 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
     }
 
-    /// @notice Accepts positions safe-transferred through the PositionManager and delivers each entry in
-    ///         `abi.encode(PositionCallbackData[])` transfer data to the split recipient at its index.
-    ///         Registration is atomic with the position transfer: a callback revert fails the whole
-    ///         deposit. Other NFTs are rejected — they would be irrecoverably stuck, since collectFees
-    ///         only interacts with the PositionManager.
-    /// @dev nonReentrant shares the guard with collectFees so a position callback cannot trigger a collect
-    ///      for a fee-carrying position before its registration completes.
-    function onERC721Received(address, address from, uint256 tokenId, bytes calldata data)
-        external
-        nonReentrant
-        returns (bytes4)
-    {
+    /// @notice Accepts positions safe-transferred through the PositionManager; any transfer data is
+    ///         ignored. The splitter learns nothing at deposit by design: beneficiary registration
+    ///         happens directly with the recipient (see BeneficiaryVault.registerBeneficiary) while the
+    ///         depositor still owns the position, so the splitter needs no knowledge of any recipient's
+    ///         implementation. Other NFTs are rejected — they would be irrecoverably stuck, since
+    ///         collectFees only interacts with the PositionManager.
+    function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
-        if (data.length != 0) {
-            PositionCallbackData[] memory callbacks = abi.decode(data, (PositionCallbackData[]));
-            uint256 splitCount = splits.length;
-            uint256 count = callbacks.length;
-            for (uint256 i; i < count; i++) {
-                PositionCallbackData memory callback = callbacks[i];
-                // An invalid index reverts instead of being skipped: a mistyped target must fail the
-                // deposit loudly, not silently drop a registration.
-                if (callback.index >= splitCount || !splits[callback.index].positionCallback) {
-                    revert InvalidCallbackIndex(callback.index);
-                }
-                IPositionReceivedCallback(splits[callback.index].recipient)
-                    .onPositionReceived(tokenId, from, callback.data);
-            }
-        }
         return IERC721Receiver.onERC721Received.selector;
     }
 
@@ -140,8 +119,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
         IPoolManager poolManager = positionManager.poolManager();
         PoolId poolId = poolKey.toId();
-        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager
-            .getPositionInfo(poolId, address(positionManager), info.tickLower(), info.tickUpper(), bytes32(tokenId));
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager.getPositionInfo(
+            poolId, address(positionManager), info.tickLower(), info.tickUpper(), bytes32(tokenId)
+        );
         // A zero-liquidity position accrues nothing; its last modification realized everything.
         if (liquidity == 0) return;
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
@@ -239,7 +219,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
                 revert InvalidRecipient(split.recipient);
             }
             if (split.nativeBps == 0 && split.tokenBps == 0) revert ZeroSplitBps(split.recipient);
-            if ((split.positionCallback || split.feesCallback) && split.recipient.code.length == 0) {
+            if (split.feesCallback && split.recipient.code.length == 0) {
                 revert CallbackRecipientNotContract(split.recipient);
             }
             for (uint256 j; j < i; j++) {

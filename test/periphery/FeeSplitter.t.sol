@@ -20,9 +20,9 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {WETH} from "solady/tokens/WETH.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
-import {IFeeSplitter, FeeSplit, PositionCallbackData} from "../../src/interfaces/IFeeSplitter.sol";
+import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
-import {MockPositionCallbacks} from "../mocks/MockPositionCallbacks.sol";
+import {MockFeesCallback} from "../mocks/MockFeesCallback.sol";
 
 contract MockPosmSweeperFeeRecipient {
     IPositionManager internal immutable posm;
@@ -83,12 +83,12 @@ contract FeeSplitterTest is Test {
         vm.deal(address(this), 10_000 ether);
     }
 
-    function _split(address recipient, uint16 nativeBps, uint16 tokenBps, bool positionCallback, bool feesCallback)
+    function _split(address recipient, uint16 nativeBps, uint16 tokenBps, bool feesCallback)
         internal
         pure
         returns (FeeSplit memory)
     {
-        return FeeSplit(recipient, nativeBps, tokenBps, positionCallback, feesCallback);
+        return FeeSplit(recipient, nativeBps, tokenBps, feesCallback);
     }
 
     function _splits(FeeSplit memory split_) internal pure returns (FeeSplit[] memory out) {
@@ -96,18 +96,12 @@ contract FeeSplitterTest is Test {
         out[0] = split_;
     }
 
-    function _callbackData(uint256 index, bytes memory payload) internal pure returns (bytes memory) {
-        PositionCallbackData[] memory callbacks = new PositionCallbackData[](1);
-        callbacks[0] = PositionCallbackData({index: index, data: payload});
-        return abi.encode(callbacks);
-    }
-
     function _defaultSplitter() internal returns (FeeSplitter splitter) {
         beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, BURN_ADDRESS);
         FeeSplit[] memory entries = new FeeSplit[](3);
-        entries[0] = _split(tokenJar, 8_000, 0, false, false);
-        entries[1] = _split(BURN_ADDRESS, 0, 8_000, false, false);
-        entries[2] = _split(address(beneficiaryVault), 2_000, 2_000, true, true);
+        entries[0] = _split(tokenJar, 8_000, 0, false);
+        entries[1] = _split(BURN_ADDRESS, 0, 8_000, false);
+        entries[2] = _split(address(beneficiaryVault), 2_000, 2_000, true);
         splitter = new FeeSplitter(POSITION_MANAGER, entries);
     }
 
@@ -172,8 +166,9 @@ contract FeeSplitterTest is Test {
         token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
         key = _initPool(address(token));
         tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
-        bytes memory data = registered ? _callbackData(2, abi.encode(creator)) : bytes("");
-        IERC721(address(POSITION_MANAGER)).safeTransferFrom(address(this), address(splitter), tokenId, data);
+        // Registration happens directly with the vault while this test contract still owns the position.
+        if (registered) beneficiaryVault.registerBeneficiary(tokenId, creator);
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(splitter), tokenId);
         _accrueFees(key);
     }
 
@@ -189,29 +184,27 @@ contract FeeSplitterTest is Test {
         assertEq(entries[0].recipient, tokenJar);
         assertEq(entries[0].nativeBps, 8_000);
         assertEq(entries[0].tokenBps, 0);
-        assertFalse(entries[0].positionCallback);
         assertFalse(entries[0].feesCallback);
         assertEq(entries[2].recipient, address(beneficiaryVault));
         assertEq(entries[2].nativeBps, 2_000);
         assertEq(entries[2].tokenBps, 2_000);
-        assertTrue(entries[2].positionCallback);
         assertTrue(entries[2].feesCallback);
     }
 
     function test_constructor_revertsOnZeroRecipient() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, address(0)));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(address(0), 10_000, 10_000, false, false)));
+        new FeeSplitter(POSITION_MANAGER, _splits(_split(address(0), 10_000, 10_000, false)));
     }
 
     function test_constructor_revertsOnSelfRecipient() public {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, predicted));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(predicted, 10_000, 10_000, false, false)));
+        new FeeSplitter(POSITION_MANAGER, _splits(_split(predicted, 10_000, 10_000, false)));
     }
 
     function test_constructor_revertsOnCallbackRecipientWithoutCode() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.CallbackRecipientNotContract.selector, creator));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(creator, 10_000, 10_000, true, false)));
+        new FeeSplitter(POSITION_MANAGER, _splits(_split(creator, 10_000, 10_000, true)));
     }
 
     function test_constructor_revertsOnNoSplits() public {
@@ -221,108 +214,40 @@ contract FeeSplitterTest is Test {
 
     function test_constructor_revertsOnBothZeroBps() public {
         FeeSplit[] memory entries = new FeeSplit[](2);
-        entries[0] = _split(tokenJar, 10_000, 10_000, false, false);
-        entries[1] = _split(creator, 0, 0, false, false);
+        entries[0] = _split(tokenJar, 10_000, 10_000, false);
+        entries[1] = _split(creator, 0, 0, false);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.ZeroSplitBps.selector, creator));
         new FeeSplitter(POSITION_MANAGER, entries);
     }
 
     function test_constructor_revertsOnDuplicateRecipient() public {
         FeeSplit[] memory entries = new FeeSplit[](2);
-        entries[0] = _split(tokenJar, 5_000, 5_000, false, false);
-        entries[1] = _split(tokenJar, 5_000, 5_000, false, false);
+        entries[0] = _split(tokenJar, 5_000, 5_000, false);
+        entries[1] = _split(tokenJar, 5_000, 5_000, false);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.DuplicateRecipient.selector, tokenJar));
         new FeeSplitter(POSITION_MANAGER, entries);
     }
 
     function test_constructor_revertsOnInvalidNativeTotal() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidSplitTotal.selector, 9_999));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(tokenJar, 9_999, 10_000, false, false)));
+        new FeeSplitter(POSITION_MANAGER, _splits(_split(tokenJar, 9_999, 10_000, false)));
     }
 
     function test_constructor_revertsOnInvalidTokenTotal() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidSplitTotal.selector, 9_999));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(tokenJar, 10_000, 9_999, false, false)));
+        new FeeSplitter(POSITION_MANAGER, _splits(_split(tokenJar, 10_000, 9_999, false)));
     }
 
-    function test_onERC721Received_notifiesTargetWithExactPayload() public {
-        MockPositionCallbacks callback = new MockPositionCallbacks();
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true, false)));
-        MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
-        uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        bytes memory payload = abi.encode(creator, uint256(42));
-        IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, _callbackData(0, payload));
-        assertEq(callback.positionCalls(), 1);
-        assertEq(callback.lastPositionTokenId(), tokenId);
-        assertEq(callback.lastPositionFrom(), address(this));
-        assertEq(callback.lastPositionData(), payload);
-    }
-
-    function test_onERC721Received_targetsOnlyListedEntries() public {
-        MockPositionCallbacks first = new MockPositionCallbacks();
-        MockPositionCallbacks second = new MockPositionCallbacks();
-        FeeSplit[] memory entries = new FeeSplit[](2);
-        entries[0] = _split(address(first), 5_000, 5_000, true, false);
-        entries[1] = _split(address(second), 5_000, 5_000, true, false);
-        FeeSplitter splitter = new FeeSplitter(POSITION_MANAGER, entries);
-        MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
-        uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, _callbackData(0, bytes("first")));
-        assertEq(first.positionCalls(), 1);
-        assertEq(second.positionCalls(), 0);
-    }
-
-    function test_onERC721Received_revertsOnUnflaggedTarget() public {
+    function test_onERC721Received_ignoresTransferData() public {
         FeeSplitter splitter = _defaultSplitter();
         MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
         uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidCallbackIndex.selector, 0));
+        // The splitter learns nothing at deposit: arbitrary data is accepted and ignored, and no
+        // registration happens — that is a direct interaction with the vault.
         IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, _callbackData(0, bytes("")));
-    }
-
-    function test_onERC721Received_revertsOnOutOfRangeIndex() public {
-        FeeSplitter splitter = _defaultSplitter();
-        MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
-        uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidCallbackIndex.selector, 3));
-        IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, _callbackData(3, bytes("")));
-    }
-
-    function test_onERC721Received_emptyDataSkipsCallbacksAndDeposits() public {
-        MockPositionCallbacks callback = new MockPositionCallbacks();
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true, false)));
-        MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
-        uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        IERC721(address(POSITION_MANAGER)).safeTransferFrom(address(this), address(splitter), tokenId, bytes(""));
-        assertEq(callback.positionCalls(), 0);
+            .safeTransferFrom(address(this), address(splitter), tokenId, abi.encode(creator, uint256(42)));
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(splitter));
-    }
-
-    function test_onERC721Received_bubblesVaultRegistrationRevert() public {
-        FeeSplitter splitter = _defaultSplitter();
-        MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
-        uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        vm.expectRevert();
-        IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, _callbackData(2, bytes("")));
-    }
-
-    function test_onERC721Received_blocksCollectDuringDeposit() public {
-        MockPositionCallbacks callback = new MockPositionCallbacks();
-        callback.setCollectOnPosition(true);
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true, false)));
-        MockERC20 token = new MockERC20("T", "T", 1_000 ether, address(this));
-        uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
-        vm.expectRevert(abi.encodeWithSignature("Reentrancy()"));
-        IERC721(address(POSITION_MANAGER))
-            .safeTransferFrom(address(this), address(splitter), tokenId, _callbackData(0, bytes("")));
+        assertEq(beneficiaryVault.balanceOf(creator), 0);
     }
 
     function test_onERC721Received_revertsForNonPositionManagerNFT() public {
@@ -359,9 +284,9 @@ contract FeeSplitterTest is Test {
     }
 
     function test_collectFees_notifiesFlaggedRecipientOnceWithBothAmounts() public {
-        MockPositionCallbacks callback = new MockPositionCallbacks();
+        MockFeesCallback callback = new MockFeesCallback();
         FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, false, true)));
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
         splitter.collectFees(_single(tokenId));
         assertEq(callback.feesCalls(), 1);
@@ -373,10 +298,10 @@ contract FeeSplitterTest is Test {
     }
 
     function test_collectFees_swallowsRevertingFeesCallback() public {
-        MockPositionCallbacks callback = new MockPositionCallbacks();
+        MockFeesCallback callback = new MockFeesCallback();
         callback.setRevertFees(true);
         FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, false, true)));
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
         splitter.collectFees(_single(tokenId));
         assertGt(address(callback).balance, 0);
@@ -385,11 +310,11 @@ contract FeeSplitterTest is Test {
     }
 
     function test_collectFees_forceSendsNativeAndStillAttemptsCallback() public {
-        MockPositionCallbacks callback = new MockPositionCallbacks();
+        MockFeesCallback callback = new MockFeesCallback();
         callback.setRejectNative(true);
         FeeSplit[] memory entries = new FeeSplit[](2);
-        entries[0] = _split(address(callback), 10_000, 0, false, true);
-        entries[1] = _split(BURN_ADDRESS, 0, 10_000, false, false);
+        entries[0] = _split(address(callback), 10_000, 0, true);
+        entries[1] = _split(BURN_ADDRESS, 0, 10_000, false);
         FeeSplitter splitter = new FeeSplitter(POSITION_MANAGER, entries);
         (,, uint256 tokenId) = _positionWithFees(splitter, false);
         splitter.collectFees(_single(tokenId));
@@ -457,7 +382,7 @@ contract FeeSplitterTest is Test {
     function test_increaseLiquidity_noRecipientCodeRunsDuringIncrease() public {
         MockPosmSweeperFeeRecipient attacker = new MockPosmSweeperFeeRecipient(POSITION_MANAGER);
         FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(attacker), 10_000, 10_000, false, true)));
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(attacker), 10_000, 10_000, true)));
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
         attacker.addSweepCurrency(CurrencyLibrary.ADDRESS_ZERO);
         attacker.addSweepCurrency(Currency.wrap(address(weth)));

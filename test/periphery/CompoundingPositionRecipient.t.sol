@@ -111,9 +111,7 @@ contract CompoundingPositionRecipientTest is TimelockedPositionRecipientTest {
 
     function _callbackSplitter(address recipient) internal returns (FeeSplitter splitter) {
         FeeSplit[] memory splits = new FeeSplit[](1);
-        splits[0] = FeeSplit({
-            recipient: recipient, nativeBps: 10_000, tokenBps: 10_000, positionCallback: false, feesCallback: true
-        });
+        splits[0] = FeeSplit({recipient: recipient, nativeBps: 10_000, tokenBps: 10_000, feesCallback: true});
         splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
     }
 

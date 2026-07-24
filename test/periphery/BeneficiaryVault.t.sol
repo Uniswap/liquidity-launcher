@@ -147,7 +147,7 @@ contract BeneficiaryVaultTest is Test {
 
     function _register(uint256 tokenId, address custodian, address owner) internal {
         vm.prank(custodian);
-        vault.onPositionReceived(tokenId, address(0), abi.encode(owner));
+        vault.registerBeneficiary(tokenId, owner);
     }
 
     function _credit(ILPFeesPositionRecipient recipient, uint256 tokenId, uint256 nativeAmount, uint256 tokenAmount)
@@ -181,35 +181,29 @@ contract BeneficiaryVaultTest is Test {
         new BeneficiaryVault(POSITION_MANAGER, nativeFallback, address(0));
     }
 
-    function test_onPositionReceived_requiresCustodyAndMints() public {
+    function test_registerBeneficiary_requiresCustodyAndMints() public {
         address custodian = makeAddr("custodian");
         uint256 tokenId = _mintPosition(custodian);
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotPositionOwner.selector, tokenId, address(this)));
-        vault.onPositionReceived(tokenId, address(0), abi.encode(beneficiary));
+        vault.registerBeneficiary(tokenId, beneficiary);
         _register(tokenId, custodian, beneficiary);
         assertEq(vault.ownerOf(tokenId), beneficiary);
         assertEq(vault.balanceOf(beneficiary), 1);
     }
 
-    function test_onPositionReceived_emptyDataReverts() public {
-        uint256 tokenId = _mintPosition(address(this));
-        vm.expectRevert();
-        vault.onPositionReceived(tokenId, address(0), bytes(""));
-    }
-
-    function test_onPositionReceived_revertsWhenBeneficiaryIsVault() public {
+    function test_registerBeneficiary_revertsWhenBeneficiaryIsVault() public {
         uint256 tokenId = _mintPosition(address(this));
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(vault)));
-        vault.onPositionReceived(tokenId, address(0), abi.encode(address(vault)));
+        vault.registerBeneficiary(tokenId, address(vault));
     }
 
-    function test_onPositionReceived_zeroBeneficiaryReverts() public {
+    function test_registerBeneficiary_zeroBeneficiaryReverts() public {
         uint256 tokenId = _mintPosition(address(this));
         vm.expectRevert();
-        vault.onPositionReceived(tokenId, address(0), abi.encode(address(0)));
+        vault.registerBeneficiary(tokenId, address(0));
     }
 
-    function test_onPositionReceived_currentCustodianOverridesStaleRegistration() public {
+    function test_registerBeneficiary_currentCustodianOverridesStaleRegistration() public {
         uint256 tokenId = _mintPosition(address(this));
         address stale = makeAddr("stale");
         _register(tokenId, address(this), stale);
