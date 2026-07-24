@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IClaimExecutor} from "../../src/interfaces/IClaimExecutor.sol";
-import {IClaimablePositionRecipient} from "../../src/interfaces/IClaimablePositionRecipient.sol";
+import {IClaimableRecipient} from "../../src/interfaces/IClaimableRecipient.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
@@ -14,7 +14,7 @@ contract MockClaimExecutor is IClaimExecutor {
     uint256 public lastCurrency1Received;
 
     function execute(
-        IClaimablePositionRecipient recipient,
+        IClaimableRecipient recipient,
         uint256 tokenId,
         uint256 minCurrency0Amount,
         uint256 minCurrency1Amount

@@ -12,13 +12,13 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
 import {IClaimExecutor} from "../../../../../src/interfaces/IClaimExecutor.sol";
-import {IClaimablePositionRecipient} from "../../../../../src/interfaces/IClaimablePositionRecipient.sol";
+import {IClaimableRecipient} from "../../../../../src/interfaces/IClaimableRecipient.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {ITimelockedPositionRecipient} from "../../../../../src/interfaces/ITimelockedPositionRecipient.sol";
-import {BasePositionRecipient} from "../../../../../src/periphery/BasePositionRecipient.sol";
-import {BasePositionRecipientWithCallback} from "../../../../../src/periphery/BasePositionRecipientWithCallback.sol";
-import {BuybackAndBurnPositionRecipient} from "../../../../../src/periphery/BuybackAndBurnPositionRecipient.sol";
-import {CompoundingPositionRecipient} from "../../../../../src/periphery/CompoundingPositionRecipient.sol";
+import {BaseClaimRecipient} from "../../../../../src/periphery/BaseClaimRecipient.sol";
+import {BaseClaimRecipientWithCallback} from "../../../../../src/periphery/BaseClaimRecipientWithCallback.sol";
+import {BuybackAndBurnClaimRecipient} from "../../../../../src/periphery/BuybackAndBurnClaimRecipient.sol";
+import {CompoundingClaimRecipient} from "../../../../../src/periphery/CompoundingClaimRecipient.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
 import {MockClaimExecutor} from "../../../MockClaimExecutor.sol";
 import {MockCompoundingClaimExecutor} from "../../../MockCompoundingClaimExecutor.sol";
@@ -91,7 +91,7 @@ contract MockPositionManager {
 }
 
 contract MockReentrantERC20 is MockERC20 {
-    IClaimablePositionRecipient internal immutable recipient;
+    IClaimableRecipient internal immutable recipient;
     uint256 internal immutable tokenId;
     uint256 internal immutable currency1Amount;
 
@@ -100,7 +100,7 @@ contract MockReentrantERC20 is MockERC20 {
     bytes public reentryRevertData;
 
     constructor(
-        IClaimablePositionRecipient _recipient,
+        IClaimableRecipient _recipient,
         uint256 _tokenId,
         uint256 _currency1Amount,
         uint256 initialSupply
@@ -121,14 +121,14 @@ contract MockReentrantERC20 is MockERC20 {
     }
 }
 
-contract BasePositionRecipientHarness is BasePositionRecipient {
-    constructor(IPositionManager positionManager) BasePositionRecipient(positionManager) {}
+contract BaseClaimRecipientHarness is BaseClaimRecipient {
+    constructor(IPositionManager positionManager) BaseClaimRecipient(positionManager) {}
 }
 
 /// @dev Callback-flavoured harness: inherits the executor-callback base so `claim` runs the mandatory
 ///      onClaimed callback (with the before/after hooks) — the surface the callback tests exercise.
-contract BasePositionRecipientWithCallbackHarness is BasePositionRecipientWithCallback {
-    constructor(IPositionManager positionManager) BasePositionRecipientWithCallback(positionManager) {}
+contract BaseClaimRecipientWithCallbackHarness is BaseClaimRecipientWithCallback {
+    constructor(IPositionManager positionManager) BaseClaimRecipientWithCallback(positionManager) {}
 }
 
 contract RevertingLPFeesExecutor is MockClaimExecutor {
@@ -140,10 +140,10 @@ contract RevertingLPFeesExecutor is MockClaimExecutor {
 }
 
 contract ReentrantLPFeesExecutor is IClaimExecutor {
-    IClaimablePositionRecipient internal recipient;
+    IClaimableRecipient internal recipient;
     uint256 internal tokenId;
 
-    function execute(IClaimablePositionRecipient _recipient, uint256 _tokenId) external {
+    function execute(IClaimableRecipient _recipient, uint256 _tokenId) external {
         recipient = _recipient;
         tokenId = _tokenId;
         recipient.claim(_tokenId, 0, 0);
@@ -169,13 +169,13 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// └── when the timelock has passed
 ///     └── it approves the operator
 ///
-/// BasePositionRecipient
+/// BaseClaimRecipient
 /// ├── when either minimum is not met
 /// │   └── it reverts for the corresponding currency
 /// └── when currency0 transfer reenters fee notification
 ///     └── it cannot attribute currency1 again
 ///
-/// BasePositionRecipientWithCallback
+/// BaseClaimRecipientWithCallback
 /// ├── when the executor callback reverts
 /// │   └── it rolls back the claim
 /// ├── when the executor callback reenters
@@ -183,13 +183,13 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// └── when both minimums are met
 ///     └── it transfers both amounts and invokes the executor
 ///
-/// BuybackAndBurnPositionRecipient
+/// BuybackAndBurnClaimRecipient
 /// ├── when currency0 is not native
 /// │   └── it reverts
 /// └── when currency0 is native
 ///     └── it burns currency1
 ///
-/// CompoundingPositionRecipient
+/// CompoundingClaimRecipient
 /// ├── when the liquidity increase is below the minimum
 /// │   └── it reverts
 /// └── when the executor deposits both currencies
@@ -243,39 +243,39 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BaseRecipient_WhenPositionDoesNotExist_NotificationReverts() public {
-        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         uint256 invalidTokenId = TOKEN_ID + 1;
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimablePositionRecipient.InvalidPosition.selector, invalidTokenId));
+        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, invalidTokenId));
         recipient.onAmountsReceived(invalidTokenId, 1, 0);
     }
 
     function test_BaseRecipient_WhenNotifiedAmountWasNotReceived_Reverts() public {
-        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0
+                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0
             )
         );
         recipient.onAmountsReceived(TOKEN_ID, FEES_0, 0);
     }
 
     function test_BaseRecipient_WhenBalanceIsAlreadyAttributed_CannotAttributeItAgain() public {
-        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         MockERC20(Currency.unwrap(currency0)).transfer(address(recipient), FEES_0);
         recipient.onAmountsReceived(TOKEN_ID, FEES_0, 0);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, FEES_0 * 2
+                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, FEES_0 * 2
             )
         );
         recipient.onAmountsReceived(TOKEN_ID, FEES_0, 0);
     }
 
     function test_BaseRecipient_WhenCurrency0TransferReenters_CannotAttributeCurrency1Again() public {
-        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         MockReentrantERC20 reentrantToken = new MockReentrantERC20(recipient, TOKEN_ID, FEES_1, 1_000_000 ether);
         MockERC20 honestToken = new MockERC20("Honest Token", "HONEST", 1_000_000 ether, address(this));
         PoolKey memory reentrantPool = PoolKey(
@@ -292,7 +292,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(
             reentrantToken.reentryRevertData(),
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector,
+                IClaimableRecipient.InsufficientAmountReceived.selector,
                 reentrantPool.currency1,
                 FEES_1,
                 FEES_1 * 2
@@ -309,13 +309,13 @@ contract PositionRecipientsBTTTest is Test {
 
     function test_BaseRecipient_WhenCurrency0MinimumIsNotMet_Reverts(uint256 minimum) public {
         minimum = bound(minimum, FEES_0 + 1, type(uint128).max);
-        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         MockClaimExecutor executor = new MockClaimExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum
+                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum
             )
         );
         executor.execute(recipient, TOKEN_ID, minimum, 0);
@@ -323,13 +323,13 @@ contract PositionRecipientsBTTTest is Test {
 
     function test_BaseRecipient_WhenCurrency1MinimumIsNotMet_Reverts(uint256 minimum) public {
         minimum = bound(minimum, FEES_1 + 1, type(uint128).max);
-        BasePositionRecipientHarness recipient = new BasePositionRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         MockClaimExecutor executor = new MockClaimExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector, currency1, FEES_1, minimum
+                IClaimableRecipient.InsufficientAmountReceived.selector, currency1, FEES_1, minimum
             )
         );
         executor.execute(recipient, TOKEN_ID, 0, minimum);
@@ -341,8 +341,8 @@ contract PositionRecipientsBTTTest is Test {
     ) public {
         minimum0 = bound(minimum0, 0, FEES_0);
         minimum1 = bound(minimum1, 0, FEES_1);
-        BasePositionRecipientWithCallbackHarness recipient =
-            new BasePositionRecipientWithCallbackHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientWithCallbackHarness recipient =
+            new BaseClaimRecipientWithCallbackHarness(IPositionManager(address(manager)));
         MockClaimExecutor executor = new MockClaimExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
@@ -361,8 +361,8 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BaseRecipient_WhenExecutorCallbackReverts_RollsBackClaim() public {
-        BasePositionRecipientWithCallbackHarness recipient =
-            new BasePositionRecipientWithCallbackHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientWithCallbackHarness recipient =
+            new BaseClaimRecipientWithCallbackHarness(IPositionManager(address(manager)));
         RevertingLPFeesExecutor executor = new RevertingLPFeesExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
@@ -377,8 +377,8 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BaseRecipient_WhenExecutorCallbackReenters_Reverts() public {
-        BasePositionRecipientWithCallbackHarness recipient =
-            new BasePositionRecipientWithCallbackHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientWithCallbackHarness recipient =
+            new BaseClaimRecipientWithCallbackHarness(IPositionManager(address(manager)));
         ReentrantLPFeesExecutor executor = new ReentrantLPFeesExecutor();
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
@@ -387,13 +387,13 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
-        BuybackAndBurnPositionRecipient recipient =
-            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), 1);
+        BuybackAndBurnClaimRecipient recipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                BuybackAndBurnPositionRecipient.InvalidCurrency.selector, poolKey.currency0, Currency.wrap(address(0))
+                BuybackAndBurnClaimRecipient.InvalidCurrency.selector, poolKey.currency0, Currency.wrap(address(0))
             )
         );
         executor.execute(recipient, TOKEN_ID, 0, 0);
@@ -403,8 +403,8 @@ contract PositionRecipientsBTTTest is Test {
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
-        BuybackAndBurnPositionRecipient recipient =
-            new BuybackAndBurnPositionRecipient(IPositionManager(address(manager)), burnAmount);
+        BuybackAndBurnClaimRecipient recipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), burnAmount);
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
@@ -418,12 +418,12 @@ contract PositionRecipientsBTTTest is Test {
 
     function test_Compounding_WhenLiquidityIncreaseIsBelowMinimum_Reverts() public {
         _configure(poolKey, FEES_0, FEES_1, 0);
-        CompoundingPositionRecipient recipient = new CompoundingPositionRecipient(IPositionManager(address(manager)), 1);
+        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                CompoundingPositionRecipient.NotEnoughLiquidityAdded.selector,
+                CompoundingClaimRecipient.NotEnoughLiquidityAdded.selector,
                 uint256(INITIAL_LIQUIDITY) + 1,
                 INITIAL_LIQUIDITY
             )
@@ -434,8 +434,8 @@ contract PositionRecipientsBTTTest is Test {
     function test_Compounding_WhenExecutorDepositsBothCurrencies_IncreasesLiquidity(uint128 liquidityIncrease) public {
         liquidityIncrease = uint128(bound(liquidityIncrease, 1, 100_000 ether));
         _configure(poolKey, FEES_0, FEES_1, liquidityIncrease);
-        CompoundingPositionRecipient recipient =
-            new CompoundingPositionRecipient(IPositionManager(address(manager)), liquidityIncrease);
+        CompoundingClaimRecipient recipient =
+            new CompoundingClaimRecipient(IPositionManager(address(manager)), liquidityIncrease);
         MockCompoundingClaimExecutor executor =
             new MockCompoundingClaimExecutor(IPositionManager(address(manager)), IWETH9(address(0)));
         executor.setFeeSplitter(IFeeSplitter(address(manager)), liquidityIncrease);
@@ -456,7 +456,7 @@ contract PositionRecipientsBTTTest is Test {
         MockERC20(Currency.unwrap(key.currency1)).transfer(address(manager), fee1);
     }
 
-    function _notifyAmounts(IClaimablePositionRecipient recipient, PoolKey memory key, uint256 amount0, uint256 amount1)
+    function _notifyAmounts(IClaimableRecipient recipient, PoolKey memory key, uint256 amount0, uint256 amount1)
         internal
     {
         if (key.currency0.isAddressZero()) {

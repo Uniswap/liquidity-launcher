@@ -6,11 +6,11 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
-import {BasePositionRecipient} from "./BasePositionRecipient.sol";
+import {BaseClaimRecipient} from "./BaseClaimRecipient.sol";
 
 /// @title BeneficiaryVault
 /// @notice Pull-based fee recipient whose transferable ERC721 represents a position's beneficiary.
-contract BeneficiaryVault is IBeneficiaryVault, BasePositionRecipient, ERC721 {
+contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
     using CurrencyLibrary for Currency;
 
     /// @inheritdoc IBeneficiaryVault
@@ -23,7 +23,7 @@ contract BeneficiaryVault is IBeneficiaryVault, BasePositionRecipient, ERC721 {
     /// @param _nativeFallback Trusted receiver for unregistered positions' native fee shares.
     /// @param _tokenFallback Receiver for unregistered positions' token fee shares.
     constructor(IPositionManager _positionManager, address _nativeFallback, address _tokenFallback)
-        BasePositionRecipient(_positionManager)
+        BaseClaimRecipient(_positionManager)
     {
         if (_nativeFallback == address(0) || _nativeFallback == address(this)) revert InvalidFallback(_nativeFallback);
         if (_tokenFallback == address(0) || _tokenFallback == address(this)) revert InvalidFallback(_tokenFallback);
@@ -41,7 +41,7 @@ contract BeneficiaryVault is IBeneficiaryVault, BasePositionRecipient, ERC721 {
         _mint(beneficiary, tokenId);
     }
 
-    /// @inheritdoc BasePositionRecipient
+    /// @inheritdoc BaseClaimRecipient
     /// @dev The owner of the beneficiary NFT receives the full amounts; unregistered positions pay out
     ///      to the per-side fallbacks.
     function _beforeClaimTransfer(uint256 _tokenId, Currency _currency0, Currency, uint256 _available0, uint256 _available1)

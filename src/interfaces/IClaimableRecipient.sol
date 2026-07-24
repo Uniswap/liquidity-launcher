@@ -4,10 +4,10 @@ pragma solidity ^0.8.26;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-/// @title IClaimablePositionRecipient
+/// @title IClaimableRecipient
 /// @notice Interface for position recipients that attribute received amounts to positions and hand
 ///         them to an `IClaimExecutor` callback on claim
-interface IClaimablePositionRecipient {
+interface IClaimableRecipient {
     /// @notice Thrown when the position does not exist or has been burned
     error InvalidPosition(uint256 tokenId);
 

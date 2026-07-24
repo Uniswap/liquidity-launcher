@@ -5,7 +5,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title IClaimExecutor
 /// @notice Callback interface for contracts that process amounts claimed from a v4 LP position recipient
-/// @dev Only recipients that require a callback (see `BasePositionRecipientWithCallback`) invoke this, and
+/// @dev Only recipients that require a callback (see `BaseClaimRecipientWithCallback`) invoke this, and
 ///      they invoke it unconditionally: the caller of `claim` on such a recipient MUST implement `onClaimed`.
 ///      Recipients that do not need a callback (e.g. `BeneficiaryVault`) never call it.
 interface IClaimExecutor {

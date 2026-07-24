@@ -5,16 +5,16 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {BasePositionRecipientWithCallback} from "./BasePositionRecipientWithCallback.sol";
+import {BaseClaimRecipientWithCallback} from "./BaseClaimRecipientWithCallback.sol";
 
-/// @title BuybackAndBurnPositionRecipient
+/// @title BuybackAndBurnClaimRecipient
 /// @notice Singleton buyback-and-burn recipient for native-ETH-paired LP positions
 /// @dev Assumes every position pairs native ETH as currency0 with a standard 18-decimal ERC20 as currency1
 /// @dev This contract is not intended to hold positions; it only receives amount notifications
 /// @dev The same burn threshold is applied to every position
 /// @dev Callers of `claim` must approve this contract for at least `minCurrency1BurnAmount` of the
 ///      position's currency1, which is pulled from the caller and sent to the burn address
-contract BuybackAndBurnPositionRecipient is BasePositionRecipientWithCallback {
+contract BuybackAndBurnClaimRecipient is BaseClaimRecipientWithCallback {
     /// @notice The currency paid to callers who claim
     Currency public constant currency = CurrencyLibrary.ADDRESS_ZERO;
 
@@ -32,20 +32,20 @@ contract BuybackAndBurnPositionRecipient is BasePositionRecipientWithCallback {
     uint256 public immutable minCurrency1BurnAmount;
 
     constructor(IPositionManager _positionManager, uint256 _minCurrency1BurnAmount)
-        BasePositionRecipientWithCallback(_positionManager)
+        BaseClaimRecipientWithCallback(_positionManager)
     {
         if (_minCurrency1BurnAmount == 0) revert InvalidMinCurrency1BurnAmount();
         minCurrency1BurnAmount = _minCurrency1BurnAmount;
     }
 
-    /// @inheritdoc BasePositionRecipientWithCallback
+    /// @inheritdoc BaseClaimRecipientWithCallback
     /// @dev Requires native ETH as currency0, which also guarantees currency1 is the ERC20 burn target
     function _beforeExecutorCallback(PoolKey memory _poolKey, uint256) internal pure override returns (uint256) {
         if (!_poolKey.currency0.isAddressZero()) revert InvalidCurrency(_poolKey.currency0, currency);
         return 0;
     }
 
-    /// @inheritdoc BasePositionRecipientWithCallback
+    /// @inheritdoc BaseClaimRecipientWithCallback
     /// @dev Burns `minCurrency1BurnAmount` of `_poolKey.currency1` tokens
     function _afterExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
         SafeTransferLib.safeTransferFrom(

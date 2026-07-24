@@ -6,15 +6,15 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
-import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
+import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 
-/// @title BasePositionRecipient
+/// @title BaseClaimRecipient
 /// @notice Shared amount attribution and claim mechanics for LP position recipients.
 /// @dev This base pays out and nothing more: it exposes a single empty `_afterClaim` hook. Recipients
-///      that need to call back into an executor should inherit `BasePositionRecipientWithCallback`, which
+///      that need to call back into an executor should inherit `BaseClaimRecipientWithCallback`, which
 ///      overrides `_afterClaim` with the before/callback/after flow. Recipients that don't (e.g. creator
 ///      fees paid straight to a beneficiary) inherit this base directly and never run a callback.
-abstract contract BasePositionRecipient is IClaimablePositionRecipient, ReentrancyGuardTransient {
+abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
     /// @notice The position manager used to resolve positions and their pool keys
@@ -34,7 +34,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
     /// @notice Receive ETH
     receive() external payable {}
 
-    /// @inheritdoc IClaimablePositionRecipient
+    /// @inheritdoc IClaimableRecipient
     function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
@@ -50,7 +50,7 @@ abstract contract BasePositionRecipient is IClaimablePositionRecipient, Reentran
         amounts[_tokenId] = positionAmounts;
     }
 
-    /// @inheritdoc IClaimablePositionRecipient
+    /// @inheritdoc IClaimableRecipient
     function claim(uint256 _tokenId, uint256 _minCurrency0Amount, uint256 _minCurrency1Amount) external nonReentrant {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 

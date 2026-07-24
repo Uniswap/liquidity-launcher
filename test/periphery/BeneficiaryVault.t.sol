@@ -16,9 +16,9 @@ import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
-import {BasePositionRecipient} from "../../src/periphery/BasePositionRecipient.sol";
+import {BaseClaimRecipient} from "../../src/periphery/BaseClaimRecipient.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
-import {IClaimablePositionRecipient} from "../../src/interfaces/IClaimablePositionRecipient.sol";
+import {IClaimableRecipient} from "../../src/interfaces/IClaimableRecipient.sol";
 import {IClaimExecutor} from "../../src/interfaces/IClaimExecutor.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
@@ -28,7 +28,7 @@ contract MockVaultExecutor is IClaimExecutor {
     uint256 public lastCurrency0Amount;
     uint256 public lastCurrency1Amount;
 
-    function collect(IClaimablePositionRecipient recipient, uint256 tokenId) external {
+    function collect(IClaimableRecipient recipient, uint256 tokenId) external {
         recipient.claim(tokenId, 0, 0);
     }
 
@@ -53,7 +53,7 @@ contract MockVaultExecutor is IClaimExecutor {
 contract NonIntrospectableVaultExecutor {
     uint256 public callbackCalls;
 
-    function collect(IClaimablePositionRecipient recipient, uint256 tokenId) external {
+    function collect(IClaimableRecipient recipient, uint256 tokenId) external {
         recipient.claim(tokenId, 0, 0);
     }
 
@@ -64,8 +64,8 @@ contract NonIntrospectableVaultExecutor {
     receive() external payable {}
 }
 
-contract PartialTransferRecipient is BasePositionRecipient {
-    constructor(IPositionManager manager) BasePositionRecipient(manager) {}
+contract PartialTransferRecipient is BaseClaimRecipient {
+    constructor(IPositionManager manager) BaseClaimRecipient(manager) {}
 
     function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -77,8 +77,8 @@ contract PartialTransferRecipient is BasePositionRecipient {
     }
 }
 
-contract ZeroTransferRecipient is BasePositionRecipient {
-    constructor(IPositionManager manager) BasePositionRecipient(manager) {}
+contract ZeroTransferRecipient is BaseClaimRecipient {
+    constructor(IPositionManager manager) BaseClaimRecipient(manager) {}
 
     function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -90,8 +90,8 @@ contract ZeroTransferRecipient is BasePositionRecipient {
     }
 }
 
-contract ZeroCurrency1Recipient is BasePositionRecipient {
-    constructor(IPositionManager manager) BasePositionRecipient(manager) {}
+contract ZeroCurrency1Recipient is BaseClaimRecipient {
+    constructor(IPositionManager manager) BaseClaimRecipient(manager) {}
 
     function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
@@ -183,7 +183,7 @@ contract BeneficiaryVaultTest is Test {
         vault.registerBeneficiary(tokenId, owner);
     }
 
-    function _credit(IClaimablePositionRecipient recipient, uint256 tokenId, uint256 nativeAmount, uint256 tokenAmount)
+    function _credit(IClaimableRecipient recipient, uint256 tokenId, uint256 nativeAmount, uint256 tokenAmount)
         internal
     {
         vm.deal(address(recipient), address(recipient).balance + nativeAmount);
@@ -253,7 +253,7 @@ contract BeneficiaryVaultTest is Test {
         _register(tokenId, address(this), beneficiary);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector,
+                IClaimableRecipient.InsufficientAmountReceived.selector,
                 CurrencyLibrary.ADDRESS_ZERO,
                 0,
                 1 ether
@@ -328,7 +328,7 @@ contract BeneficiaryVaultTest is Test {
     }
 
     function test_claim_contractOwnerPaidWithoutCallback() public {
-        // The vault is a callback-free recipient (inherits BasePositionRecipient, not the executor-
+        // The vault is a callback-free recipient (inherits BaseClaimRecipient, not the executor-
         // callback base): even an owner that fully implements IClaimExecutor is simply paid its
         // amounts, with no onClaimed invocation.
         uint256 tokenId = _mintPosition(address(this));
@@ -387,7 +387,7 @@ contract BeneficiaryVaultTest is Test {
         vm.prank(collector);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token))
+                IClaimableRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token))
             )
         );
         recipient.claim(tokenId, 0, 0);
@@ -405,7 +405,7 @@ contract BeneficiaryVaultTest is Test {
         vm.prank(makeAddr("collector"));
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InvalidTransferRecipient.selector, CurrencyLibrary.ADDRESS_ZERO
+                IClaimableRecipient.InvalidTransferRecipient.selector, CurrencyLibrary.ADDRESS_ZERO
             )
         );
         recipient.claim(tokenId, 0, 0);
@@ -418,7 +418,7 @@ contract BeneficiaryVaultTest is Test {
         vm.prank(beneficiary);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimablePositionRecipient.InsufficientAmountReceived.selector,
+                IClaimableRecipient.InsufficientAmountReceived.selector,
                 CurrencyLibrary.ADDRESS_ZERO,
                 1 ether,
                 1 ether + 1

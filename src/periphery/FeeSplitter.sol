@@ -16,7 +16,7 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IFeeSplitter, FeeSplit} from "../interfaces/IFeeSplitter.sol";
-import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
+import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 
 /// @title FeeSplitter
 /// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
@@ -178,7 +178,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
         private
     {
-        try IClaimablePositionRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {}
+        try IClaimableRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {}
             catch {}
     }
 
