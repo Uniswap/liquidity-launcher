@@ -4,23 +4,23 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {ILPFeesExecutor} from "../interfaces/ILPFeesExecutor.sol";
-import {ILPFeesPositionRecipient} from "../interfaces/ILPFeesPositionRecipient.sol";
+import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
+import {IClaimablePositionRecipient} from "../interfaces/IClaimablePositionRecipient.sol";
 import {TimelockedPositionRecipient} from "./TimelockedPositionRecipient.sol";
 
-/// @title BaseLPFeesPositionRecipient
-/// @notice Shared fee collection and executor callback mechanics for LP position recipients
-abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, TimelockedPositionRecipient {
+/// @title BasePositionRecipient
+/// @notice Shared amount attribution and executor claim mechanics for LP position recipients
+abstract contract BasePositionRecipient is IClaimablePositionRecipient, TimelockedPositionRecipient {
     constructor(IPositionManager _positionManager, address _operator, uint256 _timelockBlockNumber)
         TimelockedPositionRecipient(_positionManager, _operator, _timelockBlockNumber)
     {}
 
-    struct Fees {
-        uint256 currency0Fees;
-        uint256 currency1Fees;
+    struct Amounts {
+        uint256 currency0Amount;
+        uint256 currency1Amount;
     }
-    mapping(uint256 tokenId => Fees fees) public override fees;
-    mapping(Currency currency => uint256 amount) public totalFees;
+    mapping(uint256 tokenId => Amounts amounts) public override amounts;
+    mapping(Currency currency => uint256 amount) public totalAmounts;
 
     /// @notice Returns the pool key for an existing position
     function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
@@ -28,54 +28,51 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
     }
 
-    /// @inheritdoc ILPFeesPositionRecipient
-    function onFeesReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
+    /// @inheritdoc IClaimablePositionRecipient
+    function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
-        Fees storage positionFees = fees[_tokenId];
+        Amounts storage positionAmounts = amounts[_tokenId];
         if (_currency0Amount != 0) {
             _attribute(poolKey.currency0, _currency0Amount);
-            positionFees.currency0Fees += _currency0Amount;
+            positionAmounts.currency0Amount += _currency0Amount;
         }
         if (_currency1Amount != 0) {
             _attribute(poolKey.currency1, _currency1Amount);
-            positionFees.currency1Fees += _currency1Amount;
+            positionAmounts.currency1Amount += _currency1Amount;
         }
     }
 
-    /// @notice Requires `_amount` to be backed by balance beyond the fees already attributed.
+    /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
     function _attribute(Currency _currency, uint256 _amount) private {
         uint256 balance = _currency.balanceOfSelf();
-        uint256 expectedTotalFees = totalFees[_currency] + _amount;
-        if (balance < expectedTotalFees) revert InsufficientAmountReceived(_currency, balance, expectedTotalFees);
-        totalFees[_currency] = expectedTotalFees;
+        uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;
+        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(_currency, balance, expectedTotalAmount);
+        totalAmounts[_currency] = expectedTotalAmount;
     }
 
-    /// @inheritdoc ILPFeesPositionRecipient
-    function collectFees(uint256 _tokenId, uint256 _minCurrency0Amount, uint256 _minCurrency1Amount)
-        external
-        nonReentrant
-    {
+    /// @inheritdoc IClaimablePositionRecipient
+    function claim(uint256 _tokenId, uint256 _minCurrency0Amount, uint256 _minCurrency1Amount) external nonReentrant {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
         Currency currency0 = poolKey.currency0;
         Currency currency1 = poolKey.currency1;
-        uint256 currency0Fees = fees[_tokenId].currency0Fees;
-        uint256 currency1Fees = fees[_tokenId].currency1Fees;
+        uint256 currency0Amount = amounts[_tokenId].currency0Amount;
+        uint256 currency1Amount = amounts[_tokenId].currency1Amount;
 
-        if (currency0Fees < _minCurrency0Amount) {
-            revert InsufficientAmountReceived(currency0, currency0Fees, _minCurrency0Amount);
+        if (currency0Amount < _minCurrency0Amount) {
+            revert InsufficientAmountReceived(currency0, currency0Amount, _minCurrency0Amount);
         }
-        if (currency1Fees < _minCurrency1Amount) {
-            revert InsufficientAmountReceived(currency1, currency1Fees, _minCurrency1Amount);
+        if (currency1Amount < _minCurrency1Amount) {
+            revert InsufficientAmountReceived(currency1, currency1Amount, _minCurrency1Amount);
         }
 
         (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
-            _beforeTransfer(_tokenId, currency0, currency1, currency0Fees, currency1Fees);
+            _beforeTransfer(_tokenId, currency0, currency1, currency0Amount, currency1Amount);
         if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
         if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
-        if (toSend0 > currency0Fees) revert InsufficientAmountReceived(currency0, currency0Fees, toSend0);
-        if (toSend1 > currency1Fees) revert InsufficientAmountReceived(currency1, currency1Fees, toSend1);
+        if (toSend0 > currency0Amount) revert InsufficientAmountReceived(currency0, currency0Amount, toSend0);
+        if (toSend1 > currency1Amount) revert InsufficientAmountReceived(currency1, currency1Amount, toSend1);
 
         _payout(_tokenId, currency0, recipient0, toSend0, true);
         _payout(_tokenId, currency1, recipient1, toSend1, false);
@@ -84,12 +81,12 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
 
         // Callers without code skip the executor callback; the before/after hooks always run.
         if (msg.sender.code.length != 0) {
-            ILPFeesExecutor(msg.sender).onFeesCollected(poolKey, _tokenId, toSend0, toSend1);
+            IClaimExecutor(msg.sender).onClaimed(poolKey, _tokenId, toSend0, toSend1);
         }
 
         _afterCallback(poolKey, _tokenId, context);
 
-        emit FeesCollected(_tokenId, toSend0, toSend1, poolKey);
+        emit Claimed(_tokenId, toSend0, toSend1, poolKey);
     }
 
     /// @notice Decrements attribution before transferring, so code running during a payout cannot
@@ -98,16 +95,16 @@ abstract contract BaseLPFeesPositionRecipient is ILPFeesPositionRecipient, Timel
         private
     {
         if (_toSend == 0) return;
-        if (_isCurrency0) fees[_tokenId].currency0Fees -= _toSend;
-        else fees[_tokenId].currency1Fees -= _toSend;
-        totalFees[_currency] -= _toSend;
+        if (_isCurrency0) amounts[_tokenId].currency0Amount -= _toSend;
+        else amounts[_tokenId].currency1Amount -= _toSend;
+        totalAmounts[_currency] -= _toSend;
         _currency.transfer(_recipient, _toSend);
     }
 
-    /// @notice Transfer policy consulted once per collect, before any payout. Defaults to paying the
+    /// @notice Transfer policy consulted once per claim, before any payout. Defaults to paying the
     ///         full available amounts to the caller.
     /// @dev Zero recipients revert — burning must be an explicit 0xdead. Amounts below the available
-    ///      fees leave the remainder attributed and claimable later.
+    ///      balance leave the remainder attributed and claimable later.
     function _beforeTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         virtual

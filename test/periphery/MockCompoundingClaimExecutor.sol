@@ -4,12 +4,12 @@ pragma solidity ^0.8.26;
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
+import {MockClaimExecutor} from "./MockClaimExecutor.sol";
 import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 
-/// @title MockCompoundingLPFeesExecutor
+/// @title MockCompoundingClaimExecutor
 /// @notice Deposits callback proceeds into PositionManager for compounding tests
-contract MockCompoundingLPFeesExecutor is MockLPFeesExecutor {
+contract MockCompoundingClaimExecutor is MockClaimExecutor {
     IPositionManager public immutable positionManager;
     IWETH9 public immutable weth9;
     IFeeSplitter public feeSplitter;
@@ -25,13 +25,11 @@ contract MockCompoundingLPFeesExecutor is MockLPFeesExecutor {
         liquidityIncrease = _liquidityIncrease;
     }
 
-    function onFeesCollected(
-        PoolKey memory poolKey,
-        uint256 tokenId,
-        uint256 currency0Received,
-        uint256 currency1Received
-    ) public override {
-        super.onFeesCollected(poolKey, tokenId, currency0Received, currency1Received);
+    function onClaimed(PoolKey memory poolKey, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
+        public
+        override
+    {
+        super.onClaimed(poolKey, tokenId, currency0Received, currency1Received);
 
         if (poolKey.currency0.isAddressZero()) {
             if (currency0Received != 0) {

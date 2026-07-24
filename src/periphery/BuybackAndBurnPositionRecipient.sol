@@ -5,15 +5,15 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
-import {BaseLPFeesPositionRecipient} from "./BaseLPFeesPositionRecipient.sol";
+import {BasePositionRecipient} from "./BasePositionRecipient.sol";
 
 /// @title BuybackAndBurnPositionRecipient
 /// @notice Singleton buyback-and-burn recipient for native-ETH-paired LP positions
 /// @dev Assumes every position pairs native ETH as currency0 with a standard 18-decimal ERC20 as currency1
-/// @dev This contract is not intended to hold positions; it only receives fee notifications
+/// @dev This contract is not intended to hold positions; it only receives amount notifications
 /// @dev Note that the same timelock and burn threshold is applied to every position
-contract BuybackAndBurnPositionRecipient is BaseLPFeesPositionRecipient {
-    /// @notice The currency paid to callers who collect fees
+contract BuybackAndBurnPositionRecipient is BasePositionRecipient {
+    /// @notice The currency paid to callers who claim
     Currency public constant currency = CurrencyLibrary.ADDRESS_ZERO;
 
     /// @notice The address to send tokens to be burned
@@ -34,19 +34,19 @@ contract BuybackAndBurnPositionRecipient is BaseLPFeesPositionRecipient {
         address _operator,
         uint256 _timelockBlockNumber,
         uint256 _minCurrency1BurnAmount
-    ) BaseLPFeesPositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
+    ) BasePositionRecipient(_positionManager, _operator, _timelockBlockNumber) {
         if (_minCurrency1BurnAmount == 0) revert InvalidMinCurrency1BurnAmount();
         minCurrency1BurnAmount = _minCurrency1BurnAmount;
     }
 
-    /// @inheritdoc BaseLPFeesPositionRecipient
+    /// @inheritdoc BasePositionRecipient
     /// @dev Validates that the currency0 is native ETH
     function _beforeCallback(PoolKey memory _poolKey, uint256) internal pure override returns (uint256) {
         if (!_poolKey.currency0.isAddressZero()) revert InvalidCurrency(_poolKey.currency0, currency);
         return 0;
     }
 
-    /// @inheritdoc BaseLPFeesPositionRecipient
+    /// @inheritdoc BasePositionRecipient
     /// @dev Burns `minCurrency1BurnAmount` of `_poolKey.currency1` tokens
     function _afterCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
         SafeTransferLib.safeTransferFrom(

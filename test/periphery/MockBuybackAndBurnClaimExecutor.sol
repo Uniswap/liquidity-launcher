@@ -3,11 +3,11 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {MockLPFeesExecutor} from "./MockLPFeesExecutor.sol";
+import {MockClaimExecutor} from "./MockClaimExecutor.sol";
 
-/// @title MockBuybackAndBurnLPFeesExecutor
+/// @title MockBuybackAndBurnClaimExecutor
 /// @notice Test executor that makes its configured burn token available to the calling recipient
-contract MockBuybackAndBurnLPFeesExecutor is MockLPFeesExecutor {
+contract MockBuybackAndBurnClaimExecutor is MockClaimExecutor {
     address public immutable burnToken;
     uint256 public immutable burnAmount;
 
@@ -16,13 +16,11 @@ contract MockBuybackAndBurnLPFeesExecutor is MockLPFeesExecutor {
         burnAmount = _burnAmount;
     }
 
-    function onFeesCollected(
-        PoolKey memory poolKey,
-        uint256 tokenId,
-        uint256 currency0Received,
-        uint256 currency1Received
-    ) public override {
-        super.onFeesCollected(poolKey, tokenId, currency0Received, currency1Received);
+    function onClaimed(PoolKey memory poolKey, uint256 tokenId, uint256 currency0Received, uint256 currency1Received)
+        public
+        override
+    {
+        super.onClaimed(poolKey, tokenId, currency0Received, currency1Received);
         IERC20(burnToken).approve(msg.sender, burnAmount);
     }
 }

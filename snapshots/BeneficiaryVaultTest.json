@@ -1,4 +1,4 @@
 {
-  "BeneficiaryVault.collectFees": "100684",
-  "BeneficiaryVault.onFeesReceived": "130296"
+  "BeneficiaryVault.claim": "100682",
+  "BeneficiaryVault.onAmountsReceived": "130320"
 }

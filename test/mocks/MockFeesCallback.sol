@@ -21,7 +21,7 @@ contract MockFeesCallback {
         rejectNative = value;
     }
 
-    function onFeesReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external {
+    function onAmountsReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external {
         if (revertFees) revert FeesCallbackFailed();
         feesCalls++;
         lastFeesTokenId = tokenId;
