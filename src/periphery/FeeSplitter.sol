@@ -173,10 +173,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
-            // Not swallowed: the transfers already landed, so a failed attribution would leave a balance
-            // that anyone may attribute to their own position. Reverting rolls both back. Swallowing is
-            // only safe once attribution and delivery are one step (the recipient pulling on notification).
             if (split.useCallback) {
+                // Requires that recipients never revert for a legitimate pool and token: a revert reverts
+                // the collect, deliberately, since swallowing it would leave the transfers unattributed.
                 IClaimableRecipient(recipient).onAmountsReceived(tokenId, recipientNativeAmount, recipientTokenAmount);
             }
         }
