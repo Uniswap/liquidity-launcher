@@ -91,6 +91,16 @@ interface IFeeSplitter {
     /// @notice Increases the liquidity of a position held by the splitter using funds already sent to
     ///         the PositionManager; excess funding is taken back to the caller.
     /// @dev Permissionless. All fees MUST be collected first; reverts with UncollectedFees otherwise.
+    ///      Funding may be native or WETH, since the plan unwraps whatever WETH the PositionManager holds
+    ///      and settles its full balances.
+    ///
+    ///      When the PoolManager is already unlocked, the liquidity actions run within that existing lock,
+    ///      so a caller can fund the increase from a flash loan taken inside their own unlock instead of
+    ///      holding the capital. Two constraints apply to such callers: the unlock MUST be opened through
+    ///      `poolManager.unlock()` from their own contract — entering through
+    ///      `PositionManager.modifyLiquidities` keeps the PositionManager's own lock held, so this nested
+    ///      call would revert with ContractLocked — and the increase MUST happen BEFORE any rebalancing
+    ///      swap on the same pool, because the swap's fee growth would trip UncollectedFees.
     /// @param tokenId The position to increase.
     /// @param liquidity The liquidity to add.
     /// @param amount0Max The maximum currency0 to spend.

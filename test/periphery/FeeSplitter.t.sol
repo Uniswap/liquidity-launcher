@@ -14,6 +14,8 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
@@ -76,6 +78,91 @@ contract MockFixedCostCallback {
         }
         sink = h;
         attributed += currency0Amount + currency1Amount;
+    }
+
+    receive() external payable {}
+}
+
+/// @notice A searcher that funds an increase from a v4 flash loan taken inside its own unlock, which is
+///         only possible if the splitter runs its liquidity actions within the already-open lock.
+contract MockFlashLoanSearcher is IUnlockCallback {
+    using CurrencyLibrary for Currency;
+    using TransientStateLibrary for IPoolManager;
+
+    IPoolManager internal immutable poolManager;
+    IPositionManager internal immutable positionManager;
+    IFeeSplitter internal immutable splitter;
+
+    PoolKey internal key;
+    uint256 internal tokenId;
+    uint128 internal liquidity;
+    uint256 internal flashAmount;
+    bool internal swapBeforeIncrease;
+
+    constructor(IPoolManager _poolManager, IPositionManager _positionManager, IFeeSplitter _splitter) {
+        poolManager = _poolManager;
+        positionManager = _positionManager;
+        splitter = _splitter;
+    }
+
+    function compound(
+        PoolKey memory _key,
+        uint256 _tokenId,
+        uint128 _liquidity,
+        uint256 _flashAmount,
+        bool _swapBeforeIncrease
+    ) external {
+        key = _key;
+        tokenId = _tokenId;
+        liquidity = _liquidity;
+        flashAmount = _flashAmount;
+        swapBeforeIncrease = _swapBeforeIncrease;
+        poolManager.unlock(bytes(""));
+    }
+
+    function unlockCallback(bytes calldata) external returns (bytes memory) {
+        require(msg.sender == address(poolManager), "only manager");
+
+        if (swapBeforeIncrease) {
+            // Trading moves fee growth for the in-range position, so the increase must refuse to run.
+            poolManager.swap(
+                key,
+                SwapParams({
+                    zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                bytes("")
+            );
+        }
+
+        // Flash loan: borrow both sides straight into the PositionManager, which is where the splitter's
+        // plan settles from. No capital of our own is committed yet.
+        poolManager.take(key.currency0, address(positionManager), flashAmount);
+        poolManager.take(key.currency1, address(positionManager), flashAmount);
+
+        splitter.increaseLiquidity(tokenId, liquidity, type(uint128).max, type(uint128).max, bytes(""));
+
+        // Repay: the unused funding already came back via TAKE_PAIR, so only the liquidity's real cost
+        // is settled from our own balance.
+        _settle(key.currency0);
+        _settle(key.currency1);
+        return bytes("");
+    }
+
+    function _settle(Currency currency) internal {
+        int256 delta = poolManager.currencyDelta(address(this), currency);
+        if (delta > 0) {
+            poolManager.take(currency, address(this), uint256(delta));
+            return;
+        }
+        if (delta == 0) return;
+        uint256 owed = uint256(-delta);
+        if (currency.isAddressZero()) {
+            poolManager.settle{value: owed}();
+        } else {
+            poolManager.sync(currency);
+            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), owed);
+            poolManager.settle();
+        }
     }
 
     receive() external payable {}
@@ -538,6 +625,40 @@ contract FeeSplitterTest is Test {
         uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.NotOwner.selector, tokenId));
         splitter.increaseLiquidity(tokenId, 1, 1, 1, bytes(""));
+    }
+
+    function test_increaseLiquidity_withinExistingUnlockFundedByFlashLoan() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        MockFlashLoanSearcher searcher = new MockFlashLoanSearcher(POOL_MANAGER, POSITION_MANAGER, splitter);
+        // The searcher holds far less than it borrows: only enough to pay for the liquidity it adds.
+        vm.deal(address(searcher), 2 ether);
+        token.transfer(address(searcher), 2 ether);
+        uint128 beforeLiquidity = POSITION_MANAGER.getPositionLiquidity(tokenId);
+
+        searcher.compound(key, tokenId, 1 ether, 5 ether, false);
+
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), beforeLiquidity + 1 ether);
+        // The unlock closed, so every delta was settled; nothing is left parked on the PositionManager.
+        assertEq(address(POSITION_MANAGER).balance, 0);
+        assertEq(weth.balanceOf(address(POSITION_MANAGER)), 0);
+        assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
+    }
+
+    function test_increaseLiquidity_withinUnlockStillRequiresCollectFirst() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        MockFlashLoanSearcher searcher = new MockFlashLoanSearcher(POOL_MANAGER, POSITION_MANAGER, splitter);
+        vm.deal(address(searcher), 20 ether);
+        token.transfer(address(searcher), 20 ether);
+
+        // Swapping first inside the same unlock accrues fees, which the increase must not bury.
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.UncollectedFees.selector, tokenId));
+        searcher.compound(key, tokenId, 1 ether, 5 ether, true);
     }
 
     receive() external payable {}

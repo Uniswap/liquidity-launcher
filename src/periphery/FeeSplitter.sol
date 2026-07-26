@@ -7,6 +7,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -26,6 +27,7 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
+    using TransientStateLibrary for IPoolManager;
 
     /// @notice The denominator for fee splits: each side's shares sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
@@ -75,9 +77,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
             revert NotOwner(tokenId);
         }
+        IPoolManager poolManager = positionManager.poolManager();
         (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
         if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
-        _requireNoPendingFees(tokenId, poolKey, info);
+        _requireNoPendingFees(poolManager, tokenId, poolKey, info);
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.UNWRAP),
@@ -93,7 +96,14 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
         params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        // A caller who already holds the PoolManager lock — funding this increase from a flash loan
+        // inside their own unlock — cannot open a second one: modifyLiquidities would revert with
+        // AlreadyUnlocked, so the actions run within the existing lock instead.
+        if (poolManager.isUnlocked()) {
+            positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+        } else {
+            positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        }
     }
 
     /// @notice Accepts positions safe-transferred through the PositionManager; any transfer data is
@@ -109,8 +119,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     receive() external payable {}
 
     /// @notice Reverts with UncollectedFees if the position has accrued fees since its last modification.
-    function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
-        IPoolManager poolManager = positionManager.poolManager();
+    function _requireNoPendingFees(IPoolManager poolManager, uint256 tokenId, PoolKey memory poolKey, PositionInfo info)
+        private
+        view
+    {
         PoolId poolId = poolKey.toId();
         (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager.getPositionInfo(
             poolId, address(positionManager), info.tickLower(), info.tickUpper(), bytes32(tokenId)
