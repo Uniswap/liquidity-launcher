@@ -82,25 +82,17 @@ interface IFeeSplitter {
 
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
-    ///      splitter, otherwise the PositionManager reverts. A callback recipient that fails to accept
-    ///      its notification reverts the whole call, leaving those fees unrealized in the pool; since
-    ///      each position is independent, the remaining token IDs can still be collected on their own.
+    ///      splitter, otherwise the PositionManager reverts. A recipient that reverts its notification
+    ///      reverts this call, leaving those fees in the pool; other token IDs are unaffected.
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
 
     /// @notice Increases the liquidity of a position held by the splitter using funds already sent to
     ///         the PositionManager; excess funding is taken back to the caller.
     /// @dev Permissionless. All fees MUST be collected first; reverts with UncollectedFees otherwise.
-    ///      Funding may be native or WETH, since the plan unwraps whatever WETH the PositionManager holds
-    ///      and settles its full balances.
-    ///
-    ///      When the PoolManager is already unlocked, the liquidity actions run within that existing lock,
-    ///      so a caller can fund the increase from a flash loan taken inside their own unlock instead of
-    ///      holding the capital. Two constraints apply to such callers: the unlock MUST be opened through
-    ///      `poolManager.unlock()` from their own contract — entering through
-    ///      `PositionManager.modifyLiquidities` keeps the PositionManager's own lock held, so this nested
-    ///      call would revert with ContractLocked — and the increase MUST happen BEFORE any rebalancing
-    ///      swap on the same pool, because the swap's fee growth would trip UncollectedFees.
+    ///      If the PoolManager is already unlocked the actions run in that lock, so the increase can be
+    ///      funded from a flash loan. Such callers MUST open the lock via `poolManager.unlock()` (entering
+    ///      through `PositionManager.modifyLiquidities` reverts ContractLocked) and increase before swapping.
     /// @param tokenId The position to increase.
     /// @param liquidity The liquidity to add.
     /// @param amount0Max The maximum currency0 to spend.

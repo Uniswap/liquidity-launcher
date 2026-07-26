@@ -97,9 +97,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
         params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
-        // A caller who already holds the PoolManager lock — funding this increase from a flash loan
-        // inside their own unlock — cannot open a second one: modifyLiquidities would revert with
-        // AlreadyUnlocked, so the actions run within the existing lock instead.
+        // modifyLiquidities opens its own lock, which reverts when the caller already holds one.
         if (poolManager.isUnlocked()) {
             positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
         } else {
@@ -175,13 +173,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
-            // A failed notification MUST revert the collect. Swallowing it is only safe when delivery and
-            // accounting are inseparable, and they are not here: the transfers above have already landed
-            // while the recipient's attribution has not, leaving a balance that its permissionless,
-            // balance-backed accounting lets anyone attribute to a position of their choosing. Reverting
-            // instead rolls back the transfers and the fee realization, so the fees simply stay unrealized
-            // in the pool. If this framework ever moves to funds-with-call (the recipient pulls inside the
-            // notification, making attribution and delivery one step), swallowing can safely return.
+            // Not swallowed: the transfers already landed, so a failed attribution would leave a balance
+            // that anyone may attribute to their own position. Reverting rolls both back. Swallowing is
+            // only safe once attribution and delivery are one step (the recipient pulling on notification).
             if (split.useCallback) {
                 IClaimableRecipient(recipient).onAmountsReceived(tokenId, recipientNativeAmount, recipientTokenAmount);
             }
