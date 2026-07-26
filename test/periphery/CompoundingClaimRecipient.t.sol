@@ -65,8 +65,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
     }
 
     function test_Claim_WhenLiquidityIncreaseIsInsufficient_Reverts() public {
-        positionRecipient =
-            new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), type(uint128).max);
+        positionRecipient = new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), type(uint128).max);
         MockClaimExecutor noopExecutor = new MockClaimExecutor();
         _yoinkPosition(FORK_TOKEN_ID, address(positionRecipient));
         uint128 liquidityBefore = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);

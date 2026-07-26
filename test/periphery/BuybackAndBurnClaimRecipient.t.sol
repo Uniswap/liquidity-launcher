@@ -30,8 +30,7 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
 
     function test_CanBeConstructed(uint256 _minTokenBurnAmount) public {
         vm.assume(_minTokenBurnAmount > 0);
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
 
         assertEq(positionRecipient.minCurrency1BurnAmount(), _minTokenBurnAmount);
         assertEq(Currency.unwrap(positionRecipient.currency()), NATIVE);
@@ -70,8 +69,7 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
 
     function test_claim_derivesTokenAndPreservesExistingETH(uint256 _minTokenBurnAmount) public {
         _minTokenBurnAmount = bound(_minTokenBurnAmount, 1, 1_000_000e6);
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
@@ -94,8 +92,7 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
 
     function test_claim_eoaCallerReverts_executorCallbackIsMandatory() public {
         uint256 burnAmount = 1_000e6;
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), burnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), burnAmount);
         address collector = makeAddr("eoaCollector");
         _dealUSDCFromPoolManager(collector, burnAmount);
         vm.prank(collector);

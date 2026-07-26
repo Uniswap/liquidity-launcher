@@ -45,12 +45,13 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
     /// @inheritdoc BaseClaimRecipient
     /// @dev The owner of the beneficiary NFT receives the full amounts; unregistered positions pay out
     ///      to the per-side fallbacks.
-    function _beforeClaimTransfer(uint256 _tokenId, Currency _currency0, Currency, uint256 _available0, uint256 _available1)
-        internal
-        view
-        override
-        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
-    {
+    function _beforeClaimTransfer(
+        uint256 _tokenId,
+        Currency _currency0,
+        Currency,
+        uint256 _available0,
+        uint256 _available1
+    ) internal view override returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) {
         address owner = _ownerOf(_tokenId);
         if (owner == address(0)) {
             // currency1 can never be native in v4, so its fallback is always the token fallback.

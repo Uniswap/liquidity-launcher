@@ -16,10 +16,7 @@ contract TimelockedPositionRecipientTest is PositionRecipientTestBase {
         vm.label(operator, "operator");
     }
 
-    function _getPositionRecipient(uint64 _timelockBlockNumber)
-        internal
-        returns (ITimelockedPositionRecipient)
-    {
+    function _getPositionRecipient(uint64 _timelockBlockNumber) internal returns (ITimelockedPositionRecipient) {
         return new TimelockedPositionRecipient(IPositionManager(POSITION_MANAGER), operator, _timelockBlockNumber);
     }
 

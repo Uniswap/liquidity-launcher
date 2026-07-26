@@ -30,7 +30,11 @@ abstract contract BaseClaimRecipientWithCallback is BaseClaimRecipient {
 
     /// @notice Called before the executor callback
     /// @return context An opaque value passed through to `_afterExecutorCallback`
-    function _beforeExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId) internal virtual returns (uint256 context) {}
+    function _beforeExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId)
+        internal
+        virtual
+        returns (uint256 context)
+    {}
 
     /// @notice Called after the executor callback
     /// @param _context The value returned by `_beforeExecutorCallback`

@@ -99,12 +99,9 @@ contract MockReentrantERC20 is MockERC20 {
     bool public reentrySucceeded;
     bytes public reentryRevertData;
 
-    constructor(
-        IClaimableRecipient _recipient,
-        uint256 _tokenId,
-        uint256 _currency1Amount,
-        uint256 initialSupply
-    ) MockERC20("Reentrant Token", "REENTRANT", initialSupply, msg.sender) {
+    constructor(IClaimableRecipient _recipient, uint256 _tokenId, uint256 _currency1Amount, uint256 initialSupply)
+        MockERC20("Reentrant Token", "REENTRANT", initialSupply, msg.sender)
+    {
         recipient = _recipient;
         tokenId = _tokenId;
         currency1Amount = _currency1Amount;
@@ -254,9 +251,7 @@ contract PositionRecipientsBTTTest is Test {
         BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0
-            )
+            abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0)
         );
         recipient.onAmountsReceived(TOKEN_ID, FEES_0, 0);
     }
@@ -292,10 +287,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(
             reentrantToken.reentryRevertData(),
             abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector,
-                reentrantPool.currency1,
-                FEES_1,
-                FEES_1 * 2
+                IClaimableRecipient.InsufficientAmountReceived.selector, reentrantPool.currency1, FEES_1, FEES_1 * 2
             )
         );
         assertEq(reentrantPool.currency0.balanceOf(address(executor)), FEES_0);
@@ -314,9 +306,7 @@ contract PositionRecipientsBTTTest is Test {
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum
-            )
+            abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum)
         );
         executor.execute(recipient, TOKEN_ID, minimum, 0);
     }
@@ -328,9 +318,7 @@ contract PositionRecipientsBTTTest is Test {
         _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector, currency1, FEES_1, minimum
-            )
+            abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency1, FEES_1, minimum)
         );
         executor.execute(recipient, TOKEN_ID, 0, minimum);
     }
@@ -387,8 +375,7 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
-        BuybackAndBurnClaimRecipient recipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), 1);
+        BuybackAndBurnClaimRecipient recipient = new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
         vm.expectRevert(

@@ -253,10 +253,7 @@ contract BeneficiaryVaultTest is Test {
         _register(tokenId, address(this), beneficiary);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector,
-                CurrencyLibrary.ADDRESS_ZERO,
-                0,
-                1 ether
+                IClaimableRecipient.InsufficientAmountReceived.selector, CurrencyLibrary.ADDRESS_ZERO, 0, 1 ether
             )
         );
         vault.onAmountsReceived(tokenId, 1 ether, 2 ether);
@@ -386,9 +383,7 @@ contract BeneficiaryVaultTest is Test {
         // before any payout, so rejecting currency1 blocks the native payout as well.
         vm.prank(collector);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token))
-            )
+            abi.encodeWithSelector(IClaimableRecipient.InvalidTransferRecipient.selector, Currency.wrap(address(token)))
         );
         recipient.claim(tokenId, 0, 0);
 
@@ -404,9 +399,7 @@ contract BeneficiaryVaultTest is Test {
         _credit(recipient, tokenId, 1 ether, 2 ether);
         vm.prank(makeAddr("collector"));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InvalidTransferRecipient.selector, CurrencyLibrary.ADDRESS_ZERO
-            )
+            abi.encodeWithSelector(IClaimableRecipient.InvalidTransferRecipient.selector, CurrencyLibrary.ADDRESS_ZERO)
         );
         recipient.claim(tokenId, 0, 0);
     }
