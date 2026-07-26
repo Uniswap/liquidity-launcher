@@ -38,12 +38,16 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
 
+    /// @notice The PoolManager the PositionManager is bound to.
+    IPoolManager public immutable poolManager;
+
     FeeSplit[] internal _splits;
 
     /// @param _positionManager The canonical v4 PositionManager.
     /// @param splits_ The fee splits; each side's shares must sum to 10,000 bps.
     constructor(IPositionManager _positionManager, FeeSplit[] memory splits_) {
         positionManager = _positionManager;
+        poolManager = _positionManager.poolManager();
         _validateAndStoreSplits(splits_);
     }
 
@@ -78,10 +82,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
             revert NotOwner(tokenId);
         }
-        IPoolManager poolManager = positionManager.poolManager();
         (PoolKey memory poolKey, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
         if (!poolKey.currency0.isAddressZero()) revert InvalidBaseCurrency(tokenId, poolKey.currency0);
-        _requireNoPendingFees(poolManager, tokenId, poolKey, info);
+        _requireNoPendingFees(tokenId, poolKey, info);
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.UNWRAP),
@@ -116,10 +119,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     receive() external payable {}
 
     /// @notice Reverts with UncollectedFees if the position has accrued fees since its last modification.
-    function _requireNoPendingFees(IPoolManager poolManager, uint256 tokenId, PoolKey memory poolKey, PositionInfo info)
-        private
-        view
-    {
+    function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
         PoolId poolId = poolKey.toId();
         (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager.getPositionInfo(
             poolId, address(positionManager), info.tickLower(), info.tickUpper(), bytes32(tokenId)
