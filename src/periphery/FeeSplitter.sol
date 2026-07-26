@@ -7,6 +7,7 @@ import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstan
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -22,18 +23,23 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 /// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
 ///         collects their fees and pushes independent fixed splits for native ETH and token fees.
 /// @dev Positions sent to this contract are irrecoverable: no code path transfers or approves them out.
+/// @dev Never deposit uncollectable positions: restricted or non-standard currency1, or hooks needing hookData.
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
+    using TransientStateLibrary for IPoolManager;
 
     /// @notice The denominator for fee splits: each side's shares sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    /// @notice The maximum possible balance 
+    /// @notice The maximum possible balance
     uint256 public constant MAX_BALANCE_ALLOWED = type(uint256).max / BPS_DENOMINATOR;
 
     /// @inheritdoc IFeeSplitter
     IPositionManager public immutable override positionManager;
+
+    /// @notice The PoolManager the PositionManager is bound to.
+    IPoolManager public immutable poolManager;
 
     FeeSplit[] internal _splits;
 
@@ -41,6 +47,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @param splits_ The fee splits; each side's shares must sum to 10,000 bps.
     constructor(IPositionManager _positionManager, FeeSplit[] memory splits_) {
         positionManager = _positionManager;
+        poolManager = _positionManager.poolManager();
         _validateAndStoreSplits(splits_);
     }
 
@@ -93,13 +100,16 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         params[2] = abi.encode(poolKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData);
         params[4] = abi.encode(poolKey.currency0, poolKey.currency1, msg.sender);
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        // modifyLiquidities opens its own lock, which reverts when the caller already holds one.
+        if (poolManager.isUnlocked()) {
+            positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+        } else {
+            positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        }
     }
 
     /// @notice Accepts positions safe-transferred through the PositionManager; any transfer data is
     ///         ignored. Other NFTs are rejected since they are not compatible with the PositionManager.
-    /// @dev Positions on hooked pools that require hookData for liquidity operations are not
-    ///      supported and should not be transferred into this contract.
     function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         return IERC721Receiver.onERC721Received.selector;
@@ -110,7 +120,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Reverts with UncollectedFees if the position has accrued fees since its last modification.
     function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
-        IPoolManager poolManager = positionManager.poolManager();
         PoolId poolId = poolKey.toId();
         (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager.getPositionInfo(
             poolId, address(positionManager), info.tickLower(), info.tickUpper(), bytes32(tokenId)
@@ -146,7 +155,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         // Distribute the full standing balances; donations are flushed through the split.
         nativeAmount = address(this).balance;
         tokenAmount = tokenCurrency.balanceOfSelf();
-        if(nativeAmount > MAX_BALANCE_ALLOWED || tokenAmount > MAX_BALANCE_ALLOWED) revert BalanceExceedsMaxAllowed(tokenId);
+        if (nativeAmount > MAX_BALANCE_ALLOWED || tokenAmount > MAX_BALANCE_ALLOWED) {
+            revert BalanceExceedsMaxAllowed(tokenId);
+        }
         emit FeesCollected(tokenId, Currency.unwrap(tokenCurrency), nativeAmount, tokenAmount);
     }
 
@@ -162,11 +173,15 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
-            if (split.useCallback) _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
+            if (split.useCallback) {
+                // Requires that recipients never revert for a legitimate pool and token: a revert reverts
+                // the collect, deliberately, since swallowing it would leave the transfers unattributed.
+                IClaimableRecipient(recipient).onAmountsReceived(tokenId, recipientNativeAmount, recipientTokenAmount);
+            }
         }
     }
 
-    /// @notice Native transfers are force-sent so a recipient can never block a collect.
+    /// @notice Native transfers are force-sent so a recipient cannot block a collect by rejecting ETH.
     function _transfer(Currency currency, address recipient, uint256 amount) private {
         if (currency.isAddressZero()) {
             SafeTransferLib.forceSafeTransferETH(recipient, amount);
@@ -174,14 +189,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
-    }
-
-    /// @notice Callback failures are swallowed: a recipient can never brick the permissionless collect.
-    function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
-        private
-    {
-        try IClaimableRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {}
-            catch {}
     }
 
     /// @notice Each side's shares must independently sum to the bps denominator; a split may carry a

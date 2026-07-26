@@ -35,7 +35,8 @@ interface IClaimableRecipient {
     /// @notice MUST be called after transferring amounts in to register the new balance. Failure to
     ///         do so will result in a loss of funds attribution.
     /// @dev Permissionless and balance-backed; the position's currencies are resolved from the
-    ///      PositionManager, never from the caller.
+    ///      PositionManager, never from the caller. Implementations MUST NOT revert for a position they
+    ///      serve: sources that push before notifying do not swallow it, so a revert reverts their call.
     /// @param tokenId The token ID of the position
     /// @param currency0Amount The amount of currency0 received
     /// @param currency1Amount The amount of currency1 received

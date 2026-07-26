@@ -82,13 +82,17 @@ interface IFeeSplitter {
 
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
-    ///      splitter, otherwise the PositionManager reverts.
+    ///      splitter, otherwise the PositionManager reverts. A recipient that reverts its notification
+    ///      reverts this call, leaving those fees in the pool; other token IDs are unaffected.
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
 
     /// @notice Increases the liquidity of a position held by the splitter using funds already sent to
     ///         the PositionManager; excess funding is taken back to the caller.
     /// @dev Permissionless. All fees MUST be collected first; reverts with UncollectedFees otherwise.
+    ///      If the PoolManager is already unlocked the actions run in that lock, so the increase can be
+    ///      funded from a flash loan. Such callers MUST open the lock via `poolManager.unlock()` (entering
+    ///      through `PositionManager.modifyLiquidities` reverts ContractLocked) and increase before swapping.
     /// @param tokenId The position to increase.
     /// @param liquidity The liquidity to add.
     /// @param amount0Max The maximum currency0 to spend.

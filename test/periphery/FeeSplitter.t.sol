@@ -14,6 +14,8 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
@@ -50,6 +52,117 @@ contract MockPosmSweeperFeeRecipient {
         }
         posm.modifyLiquidities(abi.encode(actions, params), block.timestamp);
         sweepAttempts++;
+    }
+
+    receive() external payable {}
+}
+
+/// @notice Callback with a fixed gas requirement, used to probe gas-starvation of the notification.
+///         Reverts (underflow) when handed less than `burnGas`, which is exactly the failure a caller
+///         can induce by tuning the outer gas limit.
+contract MockFixedCostCallback {
+    uint256 public attributed;
+    bytes32 internal sink;
+    uint256 internal immutable burnGas;
+
+    constructor(uint256 _burnGas) {
+        burnGas = _burnGas;
+    }
+
+    function onAmountsReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
+        uint256 target = gasleft() - burnGas;
+        bytes32 h = sink;
+        uint256 i;
+        while (gasleft() > target) {
+            h = keccak256(abi.encode(h, i++));
+        }
+        sink = h;
+        attributed += currency0Amount + currency1Amount;
+    }
+
+    receive() external payable {}
+}
+
+/// @notice A searcher that funds an increase from a v4 flash loan taken inside its own unlock, which is
+///         only possible if the splitter runs its liquidity actions within the already-open lock.
+contract MockFlashLoanSearcher is IUnlockCallback {
+    using CurrencyLibrary for Currency;
+    using TransientStateLibrary for IPoolManager;
+
+    IPoolManager internal immutable poolManager;
+    IPositionManager internal immutable positionManager;
+    IFeeSplitter internal immutable splitter;
+
+    PoolKey internal key;
+    uint256 internal tokenId;
+    uint128 internal liquidity;
+    uint256 internal flashAmount;
+    bool internal swapBeforeIncrease;
+
+    constructor(IPoolManager _poolManager, IPositionManager _positionManager, IFeeSplitter _splitter) {
+        poolManager = _poolManager;
+        positionManager = _positionManager;
+        splitter = _splitter;
+    }
+
+    function compound(
+        PoolKey memory _key,
+        uint256 _tokenId,
+        uint128 _liquidity,
+        uint256 _flashAmount,
+        bool _swapBeforeIncrease
+    ) external {
+        key = _key;
+        tokenId = _tokenId;
+        liquidity = _liquidity;
+        flashAmount = _flashAmount;
+        swapBeforeIncrease = _swapBeforeIncrease;
+        poolManager.unlock(bytes(""));
+    }
+
+    function unlockCallback(bytes calldata) external returns (bytes memory) {
+        require(msg.sender == address(poolManager), "only manager");
+
+        if (swapBeforeIncrease) {
+            // Trading moves fee growth for the in-range position, so the increase must refuse to run.
+            poolManager.swap(
+                key,
+                SwapParams({
+                    zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                bytes("")
+            );
+        }
+
+        // Flash loan: borrow both sides straight into the PositionManager, which is where the splitter's
+        // plan settles from. No capital of our own is committed yet.
+        poolManager.take(key.currency0, address(positionManager), flashAmount);
+        poolManager.take(key.currency1, address(positionManager), flashAmount);
+
+        splitter.increaseLiquidity(tokenId, liquidity, type(uint128).max, type(uint128).max, bytes(""));
+
+        // Repay: the unused funding already came back via TAKE_PAIR, so only the liquidity's real cost
+        // is settled from our own balance.
+        _settle(key.currency0);
+        _settle(key.currency1);
+        return bytes("");
+    }
+
+    function _settle(Currency currency) internal {
+        int256 delta = poolManager.currencyDelta(address(this), currency);
+        if (delta > 0) {
+            poolManager.take(currency, address(this), uint256(delta));
+            return;
+        }
+        if (delta == 0) return;
+        uint256 owed = uint256(-delta);
+        if (currency.isAddressZero()) {
+            poolManager.settle{value: owed}();
+        } else {
+            poolManager.sync(currency);
+            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), owed);
+            poolManager.settle();
+        }
     }
 
     receive() external payable {}
@@ -298,16 +411,96 @@ contract FeeSplitterTest is Test {
         assertGt(callback.lastCurrency1Amount(), 0);
     }
 
-    function test_collectFees_swallowsRevertingFeesCallback() public {
+    function test_collectFees_revertingFeesCallbackRevertsTheWholeCollect() public {
         MockFeesCallback callback = new MockFeesCallback();
         callback.setRevertFees(true);
         FeeSplitter splitter =
             new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
+
+        vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
+        splitter.collectFees(_single(tokenId));
+
+        // Nothing was delivered and nothing is stranded anywhere: the transfers and the fee realization
+        // were both rolled back, so an unattributed balance can never exist.
+        assertEq(address(callback).balance, 0);
+        assertEq(token.balanceOf(address(callback)), 0);
+        assertEq(address(splitter).balance, 0);
+        assertEq(token.balanceOf(address(splitter)), 0);
+
+        // The fees stayed unrealized in the pool, so they are still fully collectable afterwards.
+        callback.setRevertFees(false);
         splitter.collectFees(_single(tokenId));
         assertGt(address(callback).balance, 0);
         assertGt(token.balanceOf(address(callback)), 0);
-        assertEq(address(splitter).balance, 0);
+        assertEq(callback.feesCalls(), 1);
+    }
+
+    /// @notice Regression test for the gas-starvation class: a caller who tunes the gas limit so the
+    ///         notification runs out of gas must never end up with a succeeded collect that skipped
+    ///         attribution, which would leave a balance anyone could attribute to their own position.
+    function test_collectFees_gasStarvationCannotStrandFunds() public {
+        // 400k is far above the ~126-164k where the retained 1/64 would cover the caller's remaining
+        // work, i.e. exactly the shape that produced a stranding window while failures were swallowed.
+        MockFixedCostCallback callback = new MockFixedCostCallback(400_000);
+        FeeSplitter splitter =
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
+
+        uint256 honest;
+        {
+            uint256 snap = vm.snapshotState();
+            uint256 before = gasleft();
+            splitter.collectFees(_single(tokenId));
+            honest = before - gasleft();
+            vm.revertToState(snap);
+        }
+
+        uint256 succeeded;
+        uint256 reverted;
+        for (uint256 g = honest + 20_000; g > honest - 20_000; g -= 1_000) {
+            uint256 snap = vm.snapshotState();
+            (bool ok,) = address(splitter).call{gas: g}(abi.encodeCall(FeeSplitter.collectFees, (_single(tokenId))));
+            if (ok) {
+                succeeded++;
+                // Every succeeding collect must have attributed; a success with funds sitting on the
+                // recipient and nothing attributed is the vulnerability.
+                assertGt(callback.attributed(), 0, "collect succeeded without attribution");
+            } else {
+                reverted++;
+                assertEq(address(callback).balance, 0, "native stranded on a failed collect");
+                assertEq(token.balanceOf(address(callback)), 0, "token stranded on a failed collect");
+            }
+            vm.revertToState(snap);
+        }
+        // Both regimes were exercised, so the sweep really did starve the callback at some point.
+        assertGt(succeeded, 0, "no gas limit succeeded");
+        assertGt(reverted, 0, "no gas limit starved the callback");
+    }
+
+    function test_collectFees_failingRecipientOnlyBlocksItsOwnPosition() public {
+        MockFeesCallback callback = new MockFeesCallback();
+        FeeSplitter splitter =
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        (,, uint256 blockedTokenId) = _positionWithFees(splitter, false);
+        (MockERC20 healthyToken,, uint256 healthyTokenId) = _positionWithFees(splitter, false);
+        callback.setRevertForTokenId(blockedTokenId);
+
+        // A batch containing the blocked position reverts as a whole.
+        uint256[] memory both = new uint256[](2);
+        both[0] = blockedTokenId;
+        both[1] = healthyTokenId;
+        vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
+        splitter.collectFees(both);
+
+        // The healthy position is unaffected and collects on its own.
+        splitter.collectFees(_single(healthyTokenId));
+        assertGt(healthyToken.balanceOf(address(callback)), 0);
+        assertEq(callback.feesCalls(), 1);
+
+        // The blocked position still reverts by itself, with its fees left in the pool.
+        vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
+        splitter.collectFees(_single(blockedTokenId));
     }
 
     function test_collectFees_forceSendsNativeAndStillAttemptsCallback() public {
@@ -432,6 +625,40 @@ contract FeeSplitterTest is Test {
         uint256 tokenId = _mintPosition(_initPool(address(token)), address(this), 100 ether, 100 ether);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.NotOwner.selector, tokenId));
         splitter.increaseLiquidity(tokenId, 1, 1, 1, bytes(""));
+    }
+
+    function test_increaseLiquidity_withinExistingUnlockFundedByFlashLoan() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        MockFlashLoanSearcher searcher = new MockFlashLoanSearcher(POOL_MANAGER, POSITION_MANAGER, splitter);
+        // The searcher holds far less than it borrows: only enough to pay for the liquidity it adds.
+        vm.deal(address(searcher), 2 ether);
+        token.transfer(address(searcher), 2 ether);
+        uint128 beforeLiquidity = POSITION_MANAGER.getPositionLiquidity(tokenId);
+
+        searcher.compound(key, tokenId, 1 ether, 5 ether, false);
+
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), beforeLiquidity + 1 ether);
+        // The unlock closed, so every delta was settled; nothing is left parked on the PositionManager.
+        assertEq(address(POSITION_MANAGER).balance, 0);
+        assertEq(weth.balanceOf(address(POSITION_MANAGER)), 0);
+        assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
+    }
+
+    function test_increaseLiquidity_withinUnlockStillRequiresCollectFirst() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        MockFlashLoanSearcher searcher = new MockFlashLoanSearcher(POOL_MANAGER, POSITION_MANAGER, splitter);
+        vm.deal(address(searcher), 20 ether);
+        token.transfer(address(searcher), 20 ether);
+
+        // Swapping first inside the same unlock accrues fees, which the increase must not bury.
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.UncollectedFees.selector, tokenId));
+        searcher.compound(key, tokenId, 1 ether, 5 ether, true);
     }
 
     receive() external payable {}
