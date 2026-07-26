@@ -23,6 +23,7 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 /// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
 ///         collects their fees and pushes independent fixed splits for native ETH and token fees.
 /// @dev Positions sent to this contract are irrecoverable: no code path transfers or approves them out.
+/// @dev Never deposit positions whose collects cannot succeed: non-standard currency1, or hooks needing hookData.
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
@@ -108,8 +109,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Accepts positions safe-transferred through the PositionManager; any transfer data is
     ///         ignored. Other NFTs are rejected since they are not compatible with the PositionManager.
-    /// @dev Positions on hooked pools that require hookData for liquidity operations are not
-    ///      supported and should not be transferred into this contract.
     function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
         if (msg.sender != address(positionManager)) revert NotPositionManager(msg.sender);
         return IERC721Receiver.onERC721Received.selector;
