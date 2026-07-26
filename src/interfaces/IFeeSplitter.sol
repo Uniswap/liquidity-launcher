@@ -82,7 +82,9 @@ interface IFeeSplitter {
 
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
-    ///      splitter, otherwise the PositionManager reverts.
+    ///      splitter, otherwise the PositionManager reverts. A callback recipient that fails to accept
+    ///      its notification reverts the whole call, leaving those fees unrealized in the pool; since
+    ///      each position is independent, the remaining token IDs can still be collected on their own.
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
 

@@ -29,7 +29,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice The denominator for fee splits: each side's shares sum to this.
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    /// @notice The maximum possible balance 
+    /// @notice The maximum possible balance
     uint256 public constant MAX_BALANCE_ALLOWED = type(uint256).max / BPS_DENOMINATOR;
 
     /// @inheritdoc IFeeSplitter
@@ -146,7 +146,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         // Distribute the full standing balances; donations are flushed through the split.
         nativeAmount = address(this).balance;
         tokenAmount = tokenCurrency.balanceOfSelf();
-        if(nativeAmount > MAX_BALANCE_ALLOWED || tokenAmount > MAX_BALANCE_ALLOWED) revert BalanceExceedsMaxAllowed(tokenId);
+        if (nativeAmount > MAX_BALANCE_ALLOWED || tokenAmount > MAX_BALANCE_ALLOWED) {
+            revert BalanceExceedsMaxAllowed(tokenId);
+        }
         emit FeesCollected(tokenId, Currency.unwrap(tokenCurrency), nativeAmount, tokenAmount);
     }
 
@@ -162,11 +164,20 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             address recipient = split.recipient;
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
-            if (split.useCallback) _tryCallback(tokenId, recipientNativeAmount, recipientTokenAmount, recipient);
+            // A failed notification MUST revert the collect. Swallowing it is only safe when delivery and
+            // accounting are inseparable, and they are not here: the transfers above have already landed
+            // while the recipient's attribution has not, leaving a balance that its permissionless,
+            // balance-backed accounting lets anyone attribute to a position of their choosing. Reverting
+            // instead rolls back the transfers and the fee realization, so the fees simply stay unrealized
+            // in the pool. If this framework ever moves to funds-with-call (the recipient pulls inside the
+            // notification, making attribution and delivery one step), swallowing can safely return.
+            if (split.useCallback) {
+                IClaimableRecipient(recipient).onAmountsReceived(tokenId, recipientNativeAmount, recipientTokenAmount);
+            }
         }
     }
 
-    /// @notice Native transfers are force-sent so a recipient can never block a collect.
+    /// @notice Native transfers are force-sent so a recipient cannot block a collect by rejecting ETH.
     function _transfer(Currency currency, address recipient, uint256 amount) private {
         if (currency.isAddressZero()) {
             SafeTransferLib.forceSafeTransferETH(recipient, amount);
@@ -174,14 +185,6 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             SafeTransferLib.safeTransfer(Currency.unwrap(currency), recipient, amount);
         }
         emit FeesForwarded(recipient, currency, amount);
-    }
-
-    /// @notice Callback failures are swallowed: a recipient can never brick the permissionless collect.
-    function _tryCallback(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount, address recipient)
-        private
-    {
-        try IClaimableRecipient(recipient).onAmountsReceived(tokenId, currency0Amount, currency1Amount) {}
-            catch {}
     }
 
     /// @notice Each side's shares must independently sum to the bps denominator; a split may carry a

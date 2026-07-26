@@ -8,6 +8,7 @@ contract MockFeesCallback {
 
     bool public revertFees;
     bool public rejectNative;
+    uint256 public revertForTokenId;
     uint256 public feesCalls;
     uint256 public lastFeesTokenId;
     uint256 public lastCurrency0Amount;
@@ -21,8 +22,13 @@ contract MockFeesCallback {
         rejectNative = value;
     }
 
+    /// @notice Rejects the notification for a single position, leaving other positions collectable.
+    function setRevertForTokenId(uint256 tokenId) external {
+        revertForTokenId = tokenId;
+    }
+
     function onAmountsReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external {
-        if (revertFees) revert FeesCallbackFailed();
+        if (revertFees || (revertForTokenId != 0 && tokenId == revertForTokenId)) revert FeesCallbackFailed();
         feesCalls++;
         lastFeesTokenId = tokenId;
         lastCurrency0Amount = currency0Amount;

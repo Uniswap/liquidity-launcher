@@ -55,6 +55,32 @@ contract MockPosmSweeperFeeRecipient {
     receive() external payable {}
 }
 
+/// @notice Callback with a fixed gas requirement, used to probe gas-starvation of the notification.
+///         Reverts (underflow) when handed less than `burnGas`, which is exactly the failure a caller
+///         can induce by tuning the outer gas limit.
+contract MockFixedCostCallback {
+    uint256 public attributed;
+    bytes32 internal sink;
+    uint256 internal immutable burnGas;
+
+    constructor(uint256 _burnGas) {
+        burnGas = _burnGas;
+    }
+
+    function onAmountsReceived(uint256, uint256 currency0Amount, uint256 currency1Amount) external {
+        uint256 target = gasleft() - burnGas;
+        bytes32 h = sink;
+        uint256 i;
+        while (gasleft() > target) {
+            h = keccak256(abi.encode(h, i++));
+        }
+        sink = h;
+        attributed += currency0Amount + currency1Amount;
+    }
+
+    receive() external payable {}
+}
+
 contract FeeSplitterTest is Test {
     using CurrencyLibrary for Currency;
 
@@ -298,16 +324,96 @@ contract FeeSplitterTest is Test {
         assertGt(callback.lastCurrency1Amount(), 0);
     }
 
-    function test_collectFees_swallowsRevertingFeesCallback() public {
+    function test_collectFees_revertingFeesCallbackRevertsTheWholeCollect() public {
         MockFeesCallback callback = new MockFeesCallback();
         callback.setRevertFees(true);
         FeeSplitter splitter =
             new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
+
+        vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
+        splitter.collectFees(_single(tokenId));
+
+        // Nothing was delivered and nothing is stranded anywhere: the transfers and the fee realization
+        // were both rolled back, so an unattributed balance can never exist.
+        assertEq(address(callback).balance, 0);
+        assertEq(token.balanceOf(address(callback)), 0);
+        assertEq(address(splitter).balance, 0);
+        assertEq(token.balanceOf(address(splitter)), 0);
+
+        // The fees stayed unrealized in the pool, so they are still fully collectable afterwards.
+        callback.setRevertFees(false);
         splitter.collectFees(_single(tokenId));
         assertGt(address(callback).balance, 0);
         assertGt(token.balanceOf(address(callback)), 0);
-        assertEq(address(splitter).balance, 0);
+        assertEq(callback.feesCalls(), 1);
+    }
+
+    /// @notice Regression test for the gas-starvation class: a caller who tunes the gas limit so the
+    ///         notification runs out of gas must never end up with a succeeded collect that skipped
+    ///         attribution, which would leave a balance anyone could attribute to their own position.
+    function test_collectFees_gasStarvationCannotStrandFunds() public {
+        // 400k is far above the ~126-164k where the retained 1/64 would cover the caller's remaining
+        // work, i.e. exactly the shape that produced a stranding window while failures were swallowed.
+        MockFixedCostCallback callback = new MockFixedCostCallback(400_000);
+        FeeSplitter splitter =
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
+
+        uint256 honest;
+        {
+            uint256 snap = vm.snapshotState();
+            uint256 before = gasleft();
+            splitter.collectFees(_single(tokenId));
+            honest = before - gasleft();
+            vm.revertToState(snap);
+        }
+
+        uint256 succeeded;
+        uint256 reverted;
+        for (uint256 g = honest + 20_000; g > honest - 20_000; g -= 1_000) {
+            uint256 snap = vm.snapshotState();
+            (bool ok,) = address(splitter).call{gas: g}(abi.encodeCall(FeeSplitter.collectFees, (_single(tokenId))));
+            if (ok) {
+                succeeded++;
+                // Every succeeding collect must have attributed; a success with funds sitting on the
+                // recipient and nothing attributed is the vulnerability.
+                assertGt(callback.attributed(), 0, "collect succeeded without attribution");
+            } else {
+                reverted++;
+                assertEq(address(callback).balance, 0, "native stranded on a failed collect");
+                assertEq(token.balanceOf(address(callback)), 0, "token stranded on a failed collect");
+            }
+            vm.revertToState(snap);
+        }
+        // Both regimes were exercised, so the sweep really did starve the callback at some point.
+        assertGt(succeeded, 0, "no gas limit succeeded");
+        assertGt(reverted, 0, "no gas limit starved the callback");
+    }
+
+    function test_collectFees_failingRecipientOnlyBlocksItsOwnPosition() public {
+        MockFeesCallback callback = new MockFeesCallback();
+        FeeSplitter splitter =
+            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        (,, uint256 blockedTokenId) = _positionWithFees(splitter, false);
+        (MockERC20 healthyToken,, uint256 healthyTokenId) = _positionWithFees(splitter, false);
+        callback.setRevertForTokenId(blockedTokenId);
+
+        // A batch containing the blocked position reverts as a whole.
+        uint256[] memory both = new uint256[](2);
+        both[0] = blockedTokenId;
+        both[1] = healthyTokenId;
+        vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
+        splitter.collectFees(both);
+
+        // The healthy position is unaffected and collects on its own.
+        splitter.collectFees(_single(healthyTokenId));
+        assertGt(healthyToken.balanceOf(address(callback)), 0);
+        assertEq(callback.feesCalls(), 1);
+
+        // The blocked position still reverts by itself, with its fees left in the pool.
+        vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
+        splitter.collectFees(_single(blockedTokenId));
     }
 
     function test_collectFees_forceSendsNativeAndStillAttemptsCallback() public {
