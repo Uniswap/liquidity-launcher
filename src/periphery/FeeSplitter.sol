@@ -23,7 +23,7 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 /// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
 ///         collects their fees and pushes independent fixed splits for native ETH and token fees.
 /// @dev Positions sent to this contract are irrecoverable: no code path transfers or approves them out.
-/// @dev Never deposit positions whose collects cannot succeed: non-standard currency1, or hooks needing hookData.
+/// @dev Never deposit uncollectable positions: restricted or non-standard currency1, or hooks needing hookData.
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;

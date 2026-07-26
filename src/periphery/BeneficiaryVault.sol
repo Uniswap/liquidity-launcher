@@ -10,6 +10,7 @@ import {BaseClaimRecipient} from "./BaseClaimRecipient.sol";
 
 /// @title BeneficiaryVault
 /// @notice Pull-based fee recipient whose transferable ERC721 represents a position's beneficiary.
+/// @dev Fallbacks must accept plain native transfers; a beneficiary that cannot can move the NFT to one that can.
 contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
     using CurrencyLibrary for Currency;
 
