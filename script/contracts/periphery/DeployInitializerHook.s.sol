@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {InitializerHook} from "../../src/periphery/hooks/InitializerHook.sol";
-import {Parameters, DeployParameters} from "./Parameters.sol";
+import {InitializerHook} from "../../../src/periphery/hooks/InitializerHook.sol";
+import {Parameters, DeployParameters} from "../Parameters.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {console} from "forge-std/console.sol";
 import {Script} from "forge-std/Script.sol";
 import {HookMiner} from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 
+/// @title DeployInitializerHookScript
 contract DeployInitializerHookScript is Script, Parameters {
     function run(address authorized) public {
         DeployParameters memory params = getParameters(block.chainid);

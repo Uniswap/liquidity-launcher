@@ -17,6 +17,8 @@ contract Parameters {
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public constant DEFAULT_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     uint160 public constant DEFAULT_HOOK_FLAGS = Hooks.BEFORE_INITIALIZE_FLAG;
+    // Default preferred burn address per chain
+    address public constant DEFAULT_BURN_ADDRESS = address(0xdead);
 
     // Mainnet addresses: https://docs.uniswap.org/contracts/v4/deployments#ethereum-1
     IPositionManager public constant MAINNET_POSITION_MANAGER =
@@ -76,7 +78,11 @@ contract Parameters {
     /// @notice Thrown when parameters are not set for a given chainId
     error ParametersNotSetForChainId(uint256 chainId);
 
+    /// @notice Thrown when a parameter is not set for a given chainId
+    error ParameterNotSetForChainId(uint256 chainId, string name);
+
     mapping(uint256 chainId => DeployParameters) public parameters;
+    mapping(uint256 chainId => address) public tokenJar;
 
     constructor() {
         parameters[MAINNET_CHAIN_ID] = DeployParameters({
@@ -124,6 +130,11 @@ contract Parameters {
             poolManager: BASE_SEPOLIA_POOL_MANAGER,
             salt: 0x0000000000000000000000000000000000000000000000000000000000001ab5
         });
+
+        // Set token jar addresses
+
+        // https://github.com/Uniswap/protocol-fees#robinhood-chain-chain-id-4663
+        tokenJar[ROBINHOOD_CHAIN_ID] = 0x2aC03e14Cfe755426DaAEe0a4994184Ce81482F8;
     }
 
     function getParameters(uint256 chainId) public view returns (DeployParameters memory) {
@@ -132,5 +143,12 @@ contract Parameters {
             revert ParametersNotSetForChainId(chainId);
         }
         return params;
+    }
+
+    function getTokenJar(uint256 chainId) public view returns (address tokenJarAddress) {
+        tokenJarAddress = tokenJar[chainId];
+        if (tokenJarAddress == address(0)) {
+            revert ParameterNotSetForChainId(chainId, "tokenJar");
+        }
     }
 }
