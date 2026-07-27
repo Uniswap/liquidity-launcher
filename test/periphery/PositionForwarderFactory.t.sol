@@ -169,6 +169,43 @@ contract PositionForwarderFactoryTest is Test {
         assertGt(tokenJar.balance, 0, "jar share not paid");
     }
 
+    /// @notice One call settles a migrated launch end to end: deploy, register, forward, collect.
+    function test_deployAndFlushCollect_settlesInOneCall() public {
+        address forwarder = factory.predict(beneficiary);
+        (MockERC20 token, PoolKey memory key, uint256 tokenId) = _launchInto(forwarder);
+        // Fees accrue while the position still sits at the forwarder, unregistered and uncollected.
+        _accrueFees(key);
+
+        factory.deployAndFlushCollect(beneficiary, _single(tokenId));
+
+        assertEq(vault.ownerOf(tokenId), beneficiary, "beneficiary NFT not minted");
+        assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(splitter), "position not forwarded");
+        (uint128 nativeAmount, uint128 tokenAmount) = vault.amounts(tokenId);
+        assertGt(nativeAmount, 0, "no native credited");
+        assertGt(tokenAmount, 0, "no token credited");
+        assertGt(token.balanceOf(BURN_ADDRESS), 0, "burn share not paid");
+        assertGt(tokenJar.balance, 0, "jar share not paid");
+
+        // The credited fees are the beneficiary's to pull, with no further setup.
+        vm.prank(beneficiary);
+        vault.claim(tokenId, 0, 0);
+        assertEq(beneficiary.balance, nativeAmount);
+        assertEq(token.balanceOf(beneficiary), tokenAmount);
+    }
+
+    /// @notice Collecting a position that has accrued nothing is a no-op rather than a revert.
+    function test_deployAndFlushCollect_withoutAccruedFees() public {
+        address forwarder = factory.predict(beneficiary);
+        (,, uint256 tokenId) = _launchInto(forwarder);
+
+        factory.deployAndFlushCollect(beneficiary, _single(tokenId));
+
+        assertEq(vault.ownerOf(tokenId), beneficiary);
+        (uint128 nativeAmount, uint128 tokenAmount) = vault.amounts(tokenId);
+        assertEq(nativeAmount, 0);
+        assertEq(tokenAmount, 0);
+    }
+
     function test_flush_handlesMultipleTokenIds() public {
         address forwarder = factory.predict(beneficiary);
         (, PoolKey memory key, uint256 first) = _launchInto(forwarder);

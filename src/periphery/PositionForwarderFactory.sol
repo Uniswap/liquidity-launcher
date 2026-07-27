@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
+import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
 import {PositionForwarder} from "./PositionForwarder.sol";
 
 /// @title PositionForwarderFactory
@@ -57,11 +58,23 @@ contract PositionForwarderFactory {
     }
 
     /// @notice Deploys `beneficiary`'s forwarder if needed and flushes the positions it holds.
-    /// @dev The single call a keeper makes once a launch has migrated.
+    /// @dev Use this when the positions have no fees worth collecting yet, otherwise prefer
+    ///      `deployAndFlushCollect`.
     /// @param beneficiary The beneficiary whose forwarder holds the positions.
     /// @param tokenIds The positions to register and forward.
-    function deployAndFlush(address beneficiary, uint256[] calldata tokenIds) external {
+    function deployAndFlush(address beneficiary, uint256[] calldata tokenIds) public {
         deploy(beneficiary).flush(tokenIds);
+    }
+
+    /// @notice Deploys, flushes, and collects the forwarded positions' fees in one call.
+    /// @dev The single call a keeper makes once a launch has migrated: the collect only credits the
+    ///      beneficiary because the flush registered it first. Collecting reverts the whole call if any
+    ///      recipient rejects its notification, same as calling `FeeSplitter.collectFees` directly.
+    /// @param beneficiary The beneficiary whose forwarder holds the positions.
+    /// @param tokenIds The positions to register, forward, and collect.
+    function deployAndFlushCollect(address beneficiary, uint256[] calldata tokenIds) external {
+        deployAndFlush(beneficiary, tokenIds);
+        IFeeSplitter(feeSplitter).collectFees(tokenIds);
     }
 
     /// @notice The CREATE2 salt for `beneficiary`'s forwarder.

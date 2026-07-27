@@ -14,7 +14,7 @@ import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
 ///      which can register through the vault's existing custody proof.
 ///      Flow: `PositionForwarderFactory.predict` -> `positionRecipient` (leave every
 ///      `overridePositionRecipient` at zero; the default covers all definitions and the implicit full-range
-///      fallback) -> create the launch -> after migration, `deployAndFlush`.
+///      fallback) -> create the launch -> after migration, `deployAndFlushCollect`.
 /// @custom:security-contact security@uniswap.org
 contract PositionForwarder {
     /// @notice The canonical v4 PositionManager holding the positions.
