@@ -6,20 +6,33 @@ import {DeployLiquidityLauncherScript} from "./DeployLiquidityLauncher.s.sol";
 import {DeployLBPStrategyScript} from "./DeployLBPStrategy.s.sol";
 import {DeployTokenSplitterScript} from "./DeployTokenSplitter.s.sol";
 import {IDistributorFactory} from "../../src/interfaces/IDistributorFactory.sol";
-import {DeployInitializerHookScript} from "./DeployInitializerHook.s.sol";
+import {DeployInitializerHookScript} from "./periphery/DeployInitializerHook.s.sol";
+import {DeployBeneficiaryVaultScript} from "./periphery/DeployBeneficiaryVault.s.sol";
+import {DeployFeeSplitterScript} from "./periphery/DeployFeeSplitter.s.sol";
+import {DeployCompoundingClaimRecipientScript} from "./periphery/DeployCompoundingClaimRecipient.s.sol";
+import {DeployDirectLaunchStrategyScript} from "./DeployDirectLaunchStrategy.s.sol";
 import {console} from "forge-std/console.sol";
 
 contract DeployAllScript is Script {
     DeployLiquidityLauncherScript public liquidityLauncherDeployer;
     DeployLBPStrategyScript public lbpStrategyDeployer;
     DeployTokenSplitterScript public tokenSplitterDeployer;
+    // Periphery deployers
     DeployInitializerHookScript public initializerHookDeployer;
+    DeployBeneficiaryVaultScript public beneficiaryVaultDeployer;
+    DeployFeeSplitterScript public feeSplitterDeployer;
+    DeployCompoundingClaimRecipientScript public compoundingClaimRecipientDeployer;
+    DeployDirectLaunchStrategyScript public directLaunchStrategyDeployer;
 
     constructor() {
         liquidityLauncherDeployer = new DeployLiquidityLauncherScript();
         lbpStrategyDeployer = new DeployLBPStrategyScript();
         tokenSplitterDeployer = new DeployTokenSplitterScript();
         initializerHookDeployer = new DeployInitializerHookScript();
+        beneficiaryVaultDeployer = new DeployBeneficiaryVaultScript();
+        feeSplitterDeployer = new DeployFeeSplitterScript();
+        compoundingClaimRecipientDeployer = new DeployCompoundingClaimRecipientScript();
+        directLaunchStrategyDeployer = new DeployDirectLaunchStrategyScript();
     }
 
     function run(IDistributorFactory initializerFactory) public {
@@ -29,5 +42,16 @@ contract DeployAllScript is Script {
         address lbpStrategyAddress = lbpStrategyDeployer.run(initializerFactory);
         tokenSplitterDeployer.run();
         initializerHookDeployer.run(lbpStrategyAddress);
+
+        // Deploy periphery contracts
+        address beneficiaryVaultAddress = beneficiaryVaultDeployer.run();
+        vm.setEnv("BENEFICIARY_VAULT", vm.toString(beneficiaryVaultAddress));
+        address compoundingClaimRecipientAddress = compoundingClaimRecipientDeployer.run();
+        vm.setEnv("COMPOUNDING_CLAIM_RECIPIENT", vm.toString(compoundingClaimRecipientAddress));
+        address feeSplitterAddress = feeSplitterDeployer.run();
+
+        // Deploy strategy contracts
+        address directLaunchStrategyAddress =
+            directLaunchStrategyDeployer.run(feeSplitterAddress, beneficiaryVaultAddress);
     }
 }
