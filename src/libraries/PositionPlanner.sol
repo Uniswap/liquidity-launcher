@@ -47,20 +47,16 @@ library PositionPlanner {
     /// @param actual The actual number of positions
     /// @param max The maximum allowed number of positions
     error TooManyPositions(uint24 actual, uint24 max);
-    /// @notice Thrown when a position's range is not entirely on the token side of the initial price
-    /// @param lowerTick The resolved lower tick of the invalid position
-    /// @param upperTick The resolved upper tick of the invalid position
-    error PositionNotSingleSided(int24 lowerTick, int24 upperTick);
 
     /// @notice Validates that position definitions are correct
     /// @dev Reverts if the number of definitions exceeds the maximum allowed,
     ///      if tick offsets are out of order, or if the total weight exceeds `MPS`
     /// @param _definitions the position definitions
-    /// @return totalWeight The sum of all definition weights, for callers that constrain it further
-    function validate(PositionDefinition[] memory _definitions) internal pure returns (uint256 totalWeight) {
+    function validate(PositionDefinition[] memory _definitions) internal pure {
         if (_definitions.length > MAX_ADDITIONAL_POSITIONS_PER_PLAN) {
             revert TooManyPositions(uint24(_definitions.length), MAX_ADDITIONAL_POSITIONS_PER_PLAN);
         }
+        uint256 totalWeight;
         for (uint256 i; i < _definitions.length; i++) {
             PositionDefinition memory definition = _definitions[i];
             if (definition.offsetLower >= definition.offsetUpper) {
