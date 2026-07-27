@@ -27,7 +27,7 @@ contract DeployBeneficiaryVaultScript is Script, Parameters {
         }
 
         vm.broadcast();
-        address beneficiaryVault = Create2.deploy(
+        beneficiaryVault = Create2.deploy(
             0,
             salt,
             abi.encodePacked(

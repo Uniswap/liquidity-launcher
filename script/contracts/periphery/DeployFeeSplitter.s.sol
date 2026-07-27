@@ -14,11 +14,16 @@ contract DeployFeeSplitterScript is Script, Parameters {
     function run() public returns (address feeSplitter) {
         DeployParameters memory params = getParameters(block.chainid);
 
-        // Simple fee split sending all native to the tokenJar and all token to the burn address
+        // Simple fee split setup.
+        address beneficiaryVault = vm.envAddress("BENEFICIARY_VAULT");
+        address compoundingClaimRecipient = vm.envAddress("COMPOUNDING_CLAIM_RECIPIENT");
+        if (beneficiaryVault == address(0)) revert("env: BENEFICIARY_VAULT not set");
+        if (compoundingClaimRecipient == address(0)) revert("env: COMPOUNDING_CLAIM_RECIPIENT not set");
+
         FeeSplit[] memory feeSplits = new FeeSplit[](2);
-        feeSplits[0] =
-            FeeSplit({recipient: getTokenJar(block.chainid), nativeBps: 10000, tokenBps: 0, useCallback: false});
-        feeSplits[1] = FeeSplit({recipient: DEFAULT_BURN_ADDRESS, nativeBps: 0, tokenBps: 10000, useCallback: false});
+        feeSplits[0] = FeeSplit({recipient: beneficiaryVault, nativeBps: 4_000, tokenBps: 0, useCallback: true}); // 40% of ETH fees go to beneficiary vault
+        feeSplits[1] =
+            FeeSplit({recipient: compoundingClaimRecipient, nativeBps: 6_000, tokenBps: 10_000, useCallback: true}); // Remainder of ETH and all token fees go to compounder
 
         // Optionally use a salt for deployment
         bytes32 salt = bytes32(0);

@@ -16,13 +16,20 @@ contract DeployInitializerHookScript is Script, Parameters {
             keccak256(abi.encodePacked(type(InitializerHook).creationCode, abi.encode(params.poolManager, authorized)));
 
         // Otherwise, mine a salt that will produce a valid v4 hook address
-        (address foundAddress, bytes32 foundSalt) = HookMiner.find(
-            DEFAULT_CREATE2_DEPLOYER,
-            DEFAULT_HOOK_FLAGS,
-            type(InitializerHook).creationCode,
-            abi.encode(params.poolManager, authorized)
-        );
-        console.logBytes32(foundSalt);
+        bytes32 foundSalt;
+        address foundAddress;
+        if (params.initializerHookSalt != bytes32(0)) {
+            foundSalt = params.initializerHookSalt;
+            foundAddress = Create2.computeAddress(foundSalt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
+        } else {
+            (foundAddress, foundSalt) = HookMiner.find(
+                DEFAULT_CREATE2_DEPLOYER,
+                DEFAULT_HOOK_FLAGS,
+                type(InitializerHook).creationCode,
+                abi.encode(params.poolManager, authorized)
+            );
+            console.logBytes32(foundSalt);
+        }
 
         if (foundAddress.code.length > 0) {
             console.log("Skipping deployment of InitializerHook as it already exists at", foundAddress);

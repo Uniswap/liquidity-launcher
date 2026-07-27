@@ -10,7 +10,7 @@ import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 
 contract DeployDirectLaunchStrategyScript is Script, Parameters {
-    int24 public constant initialTick = 121_980;
+    int24 public constant initialTick = 198_060;
 
     function run(address feeSplitter, address beneficiaryVault) public returns (address directLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
@@ -26,7 +26,6 @@ contract DeployDirectLaunchStrategyScript is Script, Parameters {
             )
         );
         bytes32 initCodeHash = keccak256(bytecode);
-        console.logBytes32(initCodeHash);
 
         bytes32 salt = bytes32(0);
         address expectedAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
