@@ -97,12 +97,12 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
 
         token.approve(address(strategy), TOTAL_SUPPLY);
-        vm.expectEmit(true, true, true, true, address(feeSplitter));
-        emit IFeeSplitter.FeeBeneficiarySet(tokenId, launchFeeBeneficiary);
+        // The vault mints its beneficiary NFT (same tokenId) to the configured beneficiary.
+        vm.expectEmit(true, true, true, true, address(beneficiaryVault));
+        emit IERC721.Transfer(address(0), launchFeeBeneficiary, tokenId);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
 
-        // The configured beneficiary is registered and the splitter holds the position.
-        assertEq(feeSplitter.feeBeneficiary(tokenId), launchFeeBeneficiary);
+        assertEq(beneficiaryVault.ownerOf(tokenId), launchFeeBeneficiary);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
     }
 
