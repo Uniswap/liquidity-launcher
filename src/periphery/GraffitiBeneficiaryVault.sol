@@ -10,11 +10,11 @@ import {BeneficiaryVault} from "./BeneficiaryVault.sol";
 /// @title GraffitiBeneficiaryVault
 /// @notice A BeneficiaryVault whose unregistered positions can be claimed by the creator of the
 ///         launcher-created token they pair, proven through that token's graffiti.
-/// @dev A temporary bridge for strategies that predate this vault and therefore never register a
-///      beneficiary while they custody the position. Claims proven this way mint no NFT, so the stream
-///      cannot be sold or moved. Graffiti records whoever called the LiquidityLauncher, so for a token
-///      created through an aggregator that aggregator is the prover, and anyone able to route a call
-///      through it can claim.
+/// @dev A bridge for strategies that predate this vault and therefore never register a beneficiary while
+///      they custody the position. The first proven claim mints the creator the NFT, so it happens once
+///      per position and every later claim runs the base's plain owner check. Graffiti records whoever
+///      called the LiquidityLauncher, so for a token created through an aggregator that aggregator is the
+///      prover, and anyone able to route a call through it can claim.
 contract GraffitiBeneficiaryVault is IGraffitiBeneficiaryVault, BeneficiaryVault {
     using CurrencyLibrary for Currency;
 
@@ -26,26 +26,27 @@ contract GraffitiBeneficiaryVault is IGraffitiBeneficiaryVault, BeneficiaryVault
     {}
 
     /// @inheritdoc BeneficiaryVault
-    /// @dev Registered positions keep the base's NFT semantics. An unregistered position pays the caller
-    ///      when they are the creator of either paired token, and otherwise reverts rather than flushing
-    ///      to the fallbacks, so nobody can push an unclaimed creator share away before they claim.
+    /// @dev An unregistered position registers the caller when they are the creator of either paired token,
+    ///      and otherwise reverts rather than flushing to the fallbacks, so nobody can push an unclaimed
+    ///      creator share away before they claim. Everything else is the base's NFT semantics, including the
+    ///      payout itself: minting first means the base resolves the recipient from the fresh owner.
     function _beforeClaimTransfer(
         uint256 _tokenId,
         Currency _currency0,
         Currency _currency1,
         uint256 _available0,
         uint256 _available1
-    ) internal view override returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) {
-        if (_ownerOf(_tokenId) != address(0)) {
-            return super._beforeClaimTransfer(_tokenId, _currency0, _currency1, _available0, _available1);
+    ) internal override returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) {
+        if (_ownerOf(_tokenId) == address(0)) {
+            bytes32 callerGraffiti = keccak256(abi.encode(msg.sender));
+            (bool isLauncherToken0, bool isCreator0) = _readGraffiti(_currency0, callerGraffiti);
+            (bool isLauncherToken1, bool isCreator1) = _readGraffiti(_currency1, callerGraffiti);
+
+            // Registering here rather than paying out directly leaves the creator a transferable NFT and
+            // retires the graffiti proof for this position: ownership can never fall back to address(0).
+            if (isCreator0 || isCreator1) _mint(msg.sender, _tokenId);
+            else if (isLauncherToken0 || isLauncherToken1) revert NotTokenCreator(_tokenId, msg.sender);
         }
-
-        bytes32 callerGraffiti = keccak256(abi.encode(msg.sender));
-        (bool isLauncherToken0, bool isCreator0) = _readGraffiti(_currency0, callerGraffiti);
-        (bool isLauncherToken1, bool isCreator1) = _readGraffiti(_currency1, callerGraffiti);
-
-        if (isCreator0 || isCreator1) return (msg.sender, _available0, msg.sender, _available1);
-        if (isLauncherToken0 || isLauncherToken1) revert NotTokenCreator(_tokenId, msg.sender);
 
         return super._beforeClaimTransfer(_tokenId, _currency0, _currency1, _available0, _available1);
     }

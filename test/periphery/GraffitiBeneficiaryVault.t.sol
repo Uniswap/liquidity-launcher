@@ -130,7 +130,7 @@ contract GraffitiBeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(beneficiary), 2 ether);
     }
 
-    /// @notice The creator of an unregistered position's currency1 claims both sides.
+    /// @notice The creator of an unregistered position's currency1 claims both sides and is registered.
     function test_claim_creatorOfCurrency1() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
@@ -144,7 +144,50 @@ contract GraffitiBeneficiaryVaultTest is Test {
         (uint128 credited0, uint128 credited1) = vault.amounts(tokenId);
         assertEq(credited0, 0);
         assertEq(credited1, 0);
-        assertEq(vault.balanceOf(creator), 0, "no NFT is minted for a graffiti claim");
+        assertEq(vault.ownerOf(tokenId), creator, "the proven claim registers the creator");
+    }
+
+    /// @notice Once minted, the position is registered like any other: later claims never re-read graffiti.
+    function test_claim_secondClaimRunsBasePathWithoutGraffiti() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+        _credit(tokenId, 1 ether, address(token), 2 ether);
+
+        vm.prank(creator);
+        vault.claim(tokenId, 0, 0);
+
+        // A graffiti read would now revert, proving the base path no longer consults it.
+        token.setGraffitiReverts(true);
+        _credit(tokenId, 3 ether, address(token), 4 ether);
+        vm.prank(creator);
+        vault.claim(tokenId, 0, 0);
+
+        assertEq(creator.balance, 4 ether);
+        assertEq(token.balanceOf(creator), 6 ether);
+    }
+
+    /// @notice The minted NFT is transferable, which moves the claim right with it.
+    function test_claim_mintedNftTransfersTheClaimRight() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+        _credit(tokenId, 1 ether, address(token), 2 ether);
+
+        vm.prank(creator);
+        vault.claim(tokenId, 0, 0);
+
+        vm.prank(creator);
+        vault.transferFrom(creator, beneficiary, tokenId);
+        _credit(tokenId, 3 ether, address(token), 4 ether);
+
+        // The creator's graffiti no longer helps once the NFT names someone else.
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, creator));
+        vault.claim(tokenId, 0, 0);
+
+        vm.prank(beneficiary);
+        vault.claim(tokenId, 0, 0);
+        assertEq(beneficiary.balance, 3 ether);
+        assertEq(token.balanceOf(beneficiary), 4 ether);
     }
 
     /// @notice The launch token can sort into currency0 on a token pair, as LBP launches allow.
