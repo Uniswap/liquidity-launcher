@@ -97,22 +97,31 @@ contract CreatorClaimRecipientTest is Test {
         recipient.onAmountsReceived(tokenId, nativeAmount, 0);
     }
 
+    function test_metadata() public view {
+        assertEq(recipient.name(), "Creator Fee Claim");
+        assertEq(recipient.symbol(), "CFEE");
+        assertEq(recipient.tokenURI(1), "");
+    }
+
     /// forge-config: default.isolate = true
     /// forge-config: ci.isolate = true
-    function test_claim_creatorReceivesNativeAndAccountingIsZeroed() public {
+    function test_claim_creatorReceivesNativeAndIsMintedTheClaimNft() public {
         uint256 tokenId = _mintNativePosition(address(token), address(this));
         _creditNative(tokenId, 1 ether);
         vm.prank(creator);
         recipient.claim(tokenId, 1 ether, 0);
-        vm.snapshotGasLastCall("CreatorClaimRecipient.claim");
+        vm.snapshotGasLastCall("CreatorClaimRecipient.firstClaim");
         assertEq(creator.balance, 1 ether);
+        assertEq(recipient.ownerOf(tokenId), creator);
         (uint256 nativeAmount, uint256 tokenAmount) = recipient.amounts(tokenId);
         assertEq(nativeAmount, 0);
         assertEq(tokenAmount, 0);
         assertEq(recipient.totalAmounts(CurrencyLibrary.ADDRESS_ZERO), 0);
     }
 
-    function test_claim_proofRerunsOnEveryClaim() public {
+    /// forge-config: default.isolate = true
+    /// forge-config: ci.isolate = true
+    function test_claim_secondClaimRunsTheOwnerPath() public {
         uint256 tokenId = _mintNativePosition(address(token), address(this));
         _creditNative(tokenId, 1 ether);
         vm.prank(creator);
@@ -120,7 +129,27 @@ contract CreatorClaimRecipientTest is Test {
         _creditNative(tokenId, 2 ether);
         vm.prank(creator);
         recipient.claim(tokenId, 0, 0);
+        vm.snapshotGasLastCall("CreatorClaimRecipient.claim");
         assertEq(creator.balance, 3 ether);
+    }
+
+    function test_claim_mintedNftTransfersTheClaimRight() public {
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+        _creditNative(tokenId, 1 ether);
+        vm.prank(creator);
+        recipient.claim(tokenId, 0, 0);
+        vm.prank(creator);
+        recipient.transferFrom(creator, stranger, tokenId);
+        _creditNative(tokenId, 2 ether);
+
+        // The creator's graffiti no longer helps once the NFT names someone else.
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(ICreatorClaimRecipient.NotClaimOwner.selector, tokenId, creator));
+        recipient.claim(tokenId, 0, 0);
+
+        vm.prank(stranger);
+        recipient.claim(tokenId, 0, 0);
+        assertEq(stranger.balance, 2 ether);
     }
 
     function test_claim_nonCreatorRevertsAndAccountingIsUntouched() public {
