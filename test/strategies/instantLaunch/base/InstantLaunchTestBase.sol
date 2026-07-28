@@ -49,7 +49,7 @@ abstract contract InstantLaunchTestBase is Test {
     int24 internal constant INITIAL_TICK = 121_980;
     /// @dev Lowest aligned initial tick at which the full supply still fits under maxLiquidityPerTick;
     ///      one spacing lower reverts UnrealizableLaunch.
-    int24 internal constant LOWEST_REALIZABLE_TICK = -325_140;
+    int24 internal constant LOWEST_REALIZABLE_TICK = -254_460;
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");
