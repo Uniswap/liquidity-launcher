@@ -8,7 +8,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../../src/strategies/DirectLaunchStrategy.sol";
+import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../../../src/interfaces/IFeeSplitter.sol";
 import {BeneficiaryVault} from "../../../../src/periphery/BeneficiaryVault.sol";
@@ -38,10 +38,10 @@ contract MockDirectShortTransferToken is ERC20 {
     }
 }
 
-/// @notice Shared fixture for DirectLaunchStrategy unit tests. Deploys the real v4 PoolManager /
+/// @notice Shared fixture for InstantLaunchStrategy unit tests. Deploys the real v4 PoolManager /
 ///         PositionManager and the hookless strategy. `launcher` is this test contract,
 ///         so it can drive `initializeDistribution` directly.
-abstract contract DirectLaunchTestBase is Test {
+abstract contract InstantLaunchTestBase is Test {
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
@@ -58,7 +58,7 @@ abstract contract DirectLaunchTestBase is Test {
     IPositionManager internal positionManager = POSITION_MANAGER;
     FeeSplitter internal feeSplitter;
     BeneficiaryVault internal beneficiaryVault;
-    DirectLaunchStrategy internal strategy;
+    InstantLaunchStrategy internal strategy;
 
     function setUp() public virtual {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -69,7 +69,7 @@ abstract contract DirectLaunchTestBase is Test {
         );
 
         feeSplitter = _deployFeeSplitter();
-        strategy = new DirectLaunchStrategy(
+        strategy = new InstantLaunchStrategy(
             launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
         );
         vm.deal(address(this), 100_000 ether);
@@ -88,9 +88,9 @@ abstract contract DirectLaunchTestBase is Test {
     }
 
     /// @notice Deploys a strategy with the given tick and the shared collaborators (used by constructor tests).
-    function _deployStrategy(int24 initialTick) internal returns (DirectLaunchStrategy) {
+    function _deployStrategy(int24 initialTick) internal returns (InstantLaunchStrategy) {
         return
-            new DirectLaunchStrategy(
+            new InstantLaunchStrategy(
                 launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, initialTick
             );
     }
@@ -108,7 +108,7 @@ abstract contract DirectLaunchTestBase is Test {
 
     /// @notice The default launch configuration naming the fee beneficiary.
     function _defaultConfig() internal view returns (bytes memory) {
-        return abi.encode(DirectLaunchConfig({feeBeneficiary: launchFeeBeneficiary}));
+        return abi.encode(InstantLaunchConfig({feeBeneficiary: launchFeeBeneficiary}));
     }
 
     receive() external payable {}

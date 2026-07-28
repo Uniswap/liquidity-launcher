@@ -2,20 +2,20 @@
 pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
-import {DirectLaunchStrategy} from "../../src/strategies/DirectLaunchStrategy.sol";
+import {InstantLaunchStrategy} from "../../src/strategies/InstantLaunchStrategy.sol";
 import {console} from "forge-std/console.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {DeployParameters, Parameters} from "./Parameters.sol";
 import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 
-contract DeployDirectLaunchStrategyScript is Script, Parameters {
+contract DeployInstantLaunchStrategyScript is Script, Parameters {
     int24 public constant initialTick = 198_060;
 
-    function run(address feeSplitter, address beneficiaryVault) public returns (address directLaunchStrategy) {
+    function run(address feeSplitter, address beneficiaryVault) public returns (address instantLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
         bytes memory bytecode = abi.encodePacked(
-            type(DirectLaunchStrategy).creationCode,
+            type(InstantLaunchStrategy).creationCode,
             abi.encode(
                 LIQUIDITY_LAUNCHER,
                 params.positionManager,
@@ -30,13 +30,13 @@ contract DeployDirectLaunchStrategyScript is Script, Parameters {
         bytes32 salt = bytes32(0);
         address expectedAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
         if (expectedAddress.code.length > 0) {
-            console.log("Skipping deployment of DirectLaunchStrategy as it already exists at", expectedAddress);
+            console.log("Skipping deployment of InstantLaunchStrategy as it already exists at", expectedAddress);
             return expectedAddress;
         }
 
         vm.broadcast();
-        directLaunchStrategy = Create2.deploy(0, salt, bytecode);
-        console.log("DirectLaunchStrategy deployed to:", directLaunchStrategy);
-        return directLaunchStrategy;
+        instantLaunchStrategy = Create2.deploy(0, salt, bytecode);
+        console.log("InstantLaunchStrategy deployed to:", instantLaunchStrategy);
+        return instantLaunchStrategy;
     }
 }

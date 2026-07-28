@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {DirectLaunchTestBase} from "../../base/DirectLaunchTestBase.sol";
-import {DirectLaunchStrategy} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
+import {InstantLaunchTestBase} from "../../base/InstantLaunchTestBase.sol";
+import {InstantLaunchStrategy} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../../src/periphery/FeeSplitter.sol";
 import {IBeneficiaryVault} from "../../../../../src/interfaces/IBeneficiaryVault.sol";
 import {IFeeSplitter, FeeSplit} from "../../../../../src/interfaces/IFeeSplitter.sol";
@@ -12,7 +12,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 
 /// @title ConstructorTest
-/// @notice BTT tests for DirectLaunchStrategy.constructor
+/// @notice BTT tests for InstantLaunchStrategy.constructor
 ///
 /// constructor
 /// ├── when a required address is zero
@@ -34,12 +34,12 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
 ///     └── it derives a position liquidity that fits in a single position
-contract ConstructorTest is DirectLaunchTestBase {
+contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         zeroIndex = uint8(bound(zeroIndex, 0, 4));
 
-        vm.expectRevert(DirectLaunchStrategy.ZeroAddress.selector);
-        new DirectLaunchStrategy(
+        vm.expectRevert(InstantLaunchStrategy.ZeroAddress.selector);
+        new InstantLaunchStrategy(
             zeroIndex == 0 ? address(0) : launcher,
             zeroIndex == 1 ? IPositionManager(address(0)) : IPositionManager(address(positionManager)),
             zeroIndex == 2 ? IPoolManager(address(0)) : poolManager,
@@ -52,8 +52,8 @@ contract ConstructorTest is DirectLaunchTestBase {
     function test_WhenBeneficiaryVaultIsNotConfiguredOnFeeSplitter() public {
         address notARecipient = makeAddr("notARecipient");
 
-        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.BeneficiaryVaultMismatch.selector, notARecipient));
-        new DirectLaunchStrategy(
+        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.BeneficiaryVaultMismatch.selector, notARecipient));
+        new InstantLaunchStrategy(
             launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, IBeneficiaryVault(notARecipient), INITIAL_TICK
         );
     }
@@ -66,9 +66,9 @@ contract ConstructorTest is DirectLaunchTestBase {
         FeeSplitter miswired = new FeeSplitter(POSITION_MANAGER, splits);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DirectLaunchStrategy.BeneficiaryVaultMismatch.selector, address(beneficiaryVault))
+            abi.encodeWithSelector(InstantLaunchStrategy.BeneficiaryVaultMismatch.selector, address(beneficiaryVault))
         );
-        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, miswired, beneficiaryVault, INITIAL_TICK);
+        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, miswired, beneficiaryVault, INITIAL_TICK);
     }
 
     function test_WhenFeeSplitterUsesDifferentPositionManager() public {
@@ -79,28 +79,30 @@ contract ConstructorTest is DirectLaunchTestBase {
         FeeSplitter mismatched = new FeeSplitter(otherPositionManager, feeSplitter.getSplits());
 
         vm.expectRevert(
-            abi.encodeWithSelector(DirectLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))
+            abi.encodeWithSelector(
+                InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
+            )
         );
-        new DirectLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
+        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
         initialTick = int24(bound(initialTick, LOWEST_REALIZABLE_TICK, TickMath.maxUsableTick(strategy.TICK_SPACING())));
         vm.assume(initialTick % strategy.TICK_SPACING() != 0);
 
-        vm.expectRevert(DirectLaunchStrategy.InvalidTickRange.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(initialTick);
     }
 
     function test_WhenInitialTickExceedsMaximumUsableTick() public {
         int24 tickSpacing = strategy.TICK_SPACING();
-        vm.expectRevert(DirectLaunchStrategy.InvalidTickRange.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(TickMath.maxUsableTick(tickSpacing) + tickSpacing);
     }
 
     function test_WhenInitialTickEqualsMinimumUsableTick() public {
         int24 minUsable = TickMath.minUsableTick(strategy.TICK_SPACING());
-        vm.expectRevert(DirectLaunchStrategy.InvalidTickRange.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(minUsable);
     }
 
@@ -111,13 +113,13 @@ contract ConstructorTest is DirectLaunchTestBase {
             bound(initialTick, type(int24).min / tickSpacing, TickMath.minUsableTick(tickSpacing) / tickSpacing)
         ) * tickSpacing;
 
-        vm.expectRevert(DirectLaunchStrategy.InvalidTickRange.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(initialTick);
     }
 
     function test_WhenSupplyDoesNotFitInSinglePosition() public {
         int24 tickSpacing = strategy.TICK_SPACING();
-        vm.expectRevert(DirectLaunchStrategy.UnrealizableLaunch.selector);
+        vm.expectRevert(InstantLaunchStrategy.UnrealizableLaunch.selector);
         _deployStrategy(LOWEST_REALIZABLE_TICK - tickSpacing);
     }
 
@@ -133,18 +135,18 @@ contract ConstructorTest is DirectLaunchTestBase {
             )
         ) * tickSpacing;
 
-        vm.expectRevert(DirectLaunchStrategy.UnrealizableLaunch.selector);
+        vm.expectRevert(InstantLaunchStrategy.UnrealizableLaunch.selector);
         _deployStrategy(initialTick);
     }
 
     function test_WhenInitialTickIsLowestRealizableTick_deploys() public {
-        DirectLaunchStrategy deployed = _deployStrategy(LOWEST_REALIZABLE_TICK);
+        InstantLaunchStrategy deployed = _deployStrategy(LOWEST_REALIZABLE_TICK);
         assertEq(deployed.initialTick(), LOWEST_REALIZABLE_TICK);
     }
 
     function test_WhenInitialTickIsMaximumUsableTick_deploys() public {
         int24 maxUsable = TickMath.maxUsableTick(strategy.TICK_SPACING());
-        DirectLaunchStrategy deployed = _deployStrategy(maxUsable);
+        InstantLaunchStrategy deployed = _deployStrategy(maxUsable);
         assertEq(deployed.initialTick(), maxUsable);
     }
 
@@ -165,7 +167,7 @@ contract ConstructorTest is DirectLaunchTestBase {
             bound(initialTick, LOWEST_REALIZABLE_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
         ) * tickSpacing;
 
-        DirectLaunchStrategy deployed = _deployStrategy(initialTick);
+        InstantLaunchStrategy deployed = _deployStrategy(initialTick);
         assertGt(deployed.positionLiquidity(), 0);
         assertLe(deployed.positionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
     }

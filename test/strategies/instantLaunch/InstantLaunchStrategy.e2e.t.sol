@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-// End-to-end coverage for the hookless direct launch. The launch position is permanently held by
+// End-to-end coverage for the hookless instant launch. The launch position is permanently held by
 // the singleton FeeSplitter, swaps are ungated from the first block, and fee collection runs
 // permissionlessly through FeeSplitter.collectFees.
 
@@ -21,13 +21,13 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
-import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../src/strategies/DirectLaunchStrategy.sol";
+import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 
-contract DirectLaunchStrategyE2ETest is Test {
+contract InstantLaunchStrategyE2ETest is Test {
     using StateLibrary for IPoolManager;
 
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
@@ -41,7 +41,7 @@ contract DirectLaunchStrategyE2ETest is Test {
 
     FeeSplitter internal feeSplitter;
     BeneficiaryVault internal beneficiaryVault;
-    DirectLaunchStrategy internal strategy;
+    InstantLaunchStrategy internal strategy;
     PoolSwapTest internal swapRouter;
 
     function setUp() public {
@@ -62,7 +62,7 @@ contract DirectLaunchStrategyE2ETest is Test {
             FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, useCallback: true});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
-        strategy = new DirectLaunchStrategy(
+        strategy = new InstantLaunchStrategy(
             address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
         );
         swapRouter = new PoolSwapTest(POOL_MANAGER);
@@ -126,7 +126,7 @@ contract DirectLaunchStrategyE2ETest is Test {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
-        vm.snapshotGasLastCall("DirectLaunch swap: exact output");
+        vm.snapshotGasLastCall("InstantLaunch swap: exact output");
     }
 
     /// forge-config: default.isolate = true
@@ -142,7 +142,7 @@ contract DirectLaunchStrategyE2ETest is Test {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
         );
-        vm.snapshotGasLastCall("DirectLaunch swap: exact input");
+        vm.snapshotGasLastCall("InstantLaunch swap: exact input");
     }
 
     function test_swapExactInput_largeBuyMovesPriceDownAndPoolKeepsTrading() public {
@@ -306,7 +306,7 @@ contract DirectLaunchStrategyE2ETest is Test {
         strategy.initializeDistribution(
             address(token),
             strategy.TOTAL_SUPPLY(),
-            abi.encode(DirectLaunchConfig({feeBeneficiary: creator})),
+            abi.encode(InstantLaunchConfig({feeBeneficiary: creator})),
             bytes32(0)
         );
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);

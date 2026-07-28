@@ -2,11 +2,11 @@
 pragma solidity ^0.8.26;
 
 import {
-    DirectLaunchTestBase,
+    InstantLaunchTestBase,
     MockDirectShortTransferToken,
     MockDirectSixDecimalToken
-} from "../../base/DirectLaunchTestBase.sol";
-import {DirectLaunchStrategy, DirectLaunchConfig} from "../../../../../src/strategies/DirectLaunchStrategy.sol";
+} from "../../base/InstantLaunchTestBase.sol";
+import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
 import {IStrategy} from "../../../../../src/interfaces/IStrategy.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
@@ -21,7 +21,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 
 /// @title InitializeDistributionTest
-/// @notice BTT tests for DirectLaunchStrategy.initializeDistribution
+/// @notice BTT tests for InstantLaunchStrategy.initializeDistribution
 ///
 /// initializeDistribution
 /// ├── when the caller is not the launcher
@@ -49,7 +49,7 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 ///     ├── it custodies the position in the fee splitter
 ///     ├── it retains no tokens and burns only dust
 ///     └── it emits the launch events
-contract InitializeDistributionTest is DirectLaunchTestBase {
+contract InitializeDistributionTest is InstantLaunchTestBase {
     using StateLibrary for IPoolManager;
 
     function _key(address token) internal view returns (PoolKey memory) {
@@ -63,7 +63,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
     }
 
     function test_WhenCallerIsNotLauncher() public {
-        vm.expectRevert(DirectLaunchStrategy.OnlyLauncher.selector);
+        vm.expectRevert(InstantLaunchStrategy.OnlyLauncher.selector);
         vm.prank(makeAddr("unauthorized"));
         strategy.initializeDistribution(address(1), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
@@ -71,7 +71,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
     function test_WhenConfigDataIsEmpty() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         token.approve(address(strategy), TOTAL_SUPPLY);
-        vm.expectRevert(DirectLaunchStrategy.InvalidConfigData.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidConfigData.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, bytes(""), bytes32(0));
     }
 
@@ -86,9 +86,9 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         token.approve(address(strategy), TOTAL_SUPPLY);
         address invalid = useLauncher ? launcher : address(0);
-        vm.expectRevert(abi.encodeWithSelector(DirectLaunchStrategy.InvalidFeeBeneficiary.selector, invalid));
+        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.InvalidFeeBeneficiary.selector, invalid));
         strategy.initializeDistribution(
-            address(token), TOTAL_SUPPLY, abi.encode(DirectLaunchConfig({feeBeneficiary: invalid})), bytes32(0)
+            address(token), TOTAL_SUPPLY, abi.encode(InstantLaunchConfig({feeBeneficiary: invalid})), bytes32(0)
         );
     }
 
@@ -108,19 +108,19 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
 
     function test_WhenDistributionAmountIsNotFixedSupply() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        vm.expectRevert(DirectLaunchStrategy.InvalidSupply.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidSupply.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY - 1, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenTokenSupplyIsNotFixedSupply() public {
         MockERC20 token = _deployToken(TOTAL_SUPPLY - 1);
-        vm.expectRevert(DirectLaunchStrategy.InvalidSupply.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidSupply.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
     function test_WhenTokenDoesNotUse18Decimals() public {
         MockDirectSixDecimalToken token = new MockDirectSixDecimalToken(TOTAL_SUPPLY, address(this));
-        vm.expectRevert(DirectLaunchStrategy.InvalidTokenDecimals.selector);
+        vm.expectRevert(InstantLaunchStrategy.InvalidTokenDecimals.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
@@ -128,7 +128,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         MockDirectShortTransferToken token = new MockDirectShortTransferToken(TOTAL_SUPPLY, address(this));
         token.approve(address(strategy), TOTAL_SUPPLY);
         vm.expectRevert(
-            abi.encodeWithSelector(DirectLaunchStrategy.TokenAmountMismatch.selector, TOTAL_SUPPLY - 1, TOTAL_SUPPLY)
+            abi.encodeWithSelector(InstantLaunchStrategy.TokenAmountMismatch.selector, TOTAL_SUPPLY - 1, TOTAL_SUPPLY)
         );
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
@@ -210,7 +210,7 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         vm.expectEmit(true, true, false, true, address(strategy));
         emit IStrategy.DistributionInitialized(address(strategy), address(token), TOTAL_SUPPLY);
         vm.expectEmit(true, true, true, true, address(strategy));
-        emit DirectLaunchStrategy.TokenLaunched(key.toId(), address(token), recipient, key);
+        emit InstantLaunchStrategy.TokenLaunched(key.toId(), address(token), recipient, key);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
@@ -221,6 +221,6 @@ contract InitializeDistributionTest is DirectLaunchTestBase {
         token.approve(address(strategy), TOTAL_SUPPLY);
 
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
-        vm.snapshotGasLastCall("DirectLaunchStrategy initializeDistribution");
+        vm.snapshotGasLastCall("InstantLaunchStrategy initializeDistribution");
     }
 }

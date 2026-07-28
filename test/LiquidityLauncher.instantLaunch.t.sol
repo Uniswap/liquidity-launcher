@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-// Proves the direct-launch strategy plugs into the canonical LiquidityLauncher flow:
+// Proves the instant-launch strategy plugs into the canonical LiquidityLauncher flow:
 // createToken(recipient = launcher) + distributeToken(strategy, ...) in a single multicall.
 // Mirrors LiquidityLauncher.bondingCurve.t.sol without the hook handshake — the pool is hookless.
 
@@ -28,12 +28,12 @@ import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
-import {DirectLaunchStrategy, DirectLaunchConfig} from "../src/strategies/DirectLaunchStrategy.sol";
+import {InstantLaunchStrategy, InstantLaunchConfig} from "../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../src/interfaces/IFeeSplitter.sol";
 
-contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
+contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
 
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
@@ -47,7 +47,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     UERC20Factory internal factory;
     FeeSplitter internal feeSplitter;
     BeneficiaryVault internal beneficiaryVault;
-    DirectLaunchStrategy internal strategy;
+    InstantLaunchStrategy internal strategy;
     address internal tokenJar = makeAddr("tokenJar");
 
     function setUp() public {
@@ -72,7 +72,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
-        strategy = new DirectLaunchStrategy(
+        strategy = new InstantLaunchStrategy(
             address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
         );
     }
@@ -85,7 +85,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         Distribution memory distribution = Distribution({
             strategy: address(strategy),
             amount: TOTAL_SUPPLY,
-            configData: abi.encode(DirectLaunchConfig({feeBeneficiary: address(this)}))
+            configData: abi.encode(InstantLaunchConfig({feeBeneficiary: address(this)}))
         });
 
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
@@ -170,7 +170,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         Distribution memory distribution = Distribution({
             strategy: address(strategy),
             amount: TOTAL_SUPPLY,
-            configData: abi.encode(DirectLaunchConfig({feeBeneficiary: address(this)}))
+            configData: abi.encode(InstantLaunchConfig({feeBeneficiary: address(this)}))
         });
         launcher.multicall(_buildCalls(distribution));
         address token =
@@ -225,7 +225,7 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
                     Distribution({
                         strategy: address(strategy),
                         amount: TOTAL_SUPPLY,
-                        configData: abi.encode(DirectLaunchConfig({feeBeneficiary: creator}))
+                        configData: abi.encode(InstantLaunchConfig({feeBeneficiary: creator}))
                     }),
                     bytes32(0)
                 )
@@ -274,11 +274,11 @@ contract DirectLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         Distribution memory distribution = Distribution({
             strategy: address(strategy),
             amount: TOTAL_SUPPLY,
-            configData: abi.encode(DirectLaunchConfig({feeBeneficiary: address(this)}))
+            configData: abi.encode(InstantLaunchConfig({feeBeneficiary: address(this)}))
         });
 
         launcher.multicall(_buildCalls(distribution));
-        vm.snapshotGasLastCall("DirectLaunch launch: LiquidityLauncher multicall");
+        vm.snapshotGasLastCall("InstantLaunch launch: LiquidityLauncher multicall");
     }
 
     function _buildCalls(Distribution memory distribution) internal view returns (bytes[] memory calls) {
