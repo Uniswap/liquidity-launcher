@@ -79,7 +79,9 @@ contract ConstructorTest is InstantLaunchTestBase {
         FeeSplitter mismatched = new FeeSplitter(otherPositionManager, feeSplitter.getSplits());
 
         vm.expectRevert(
-            abi.encodeWithSelector(InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager))
+            abi.encodeWithSelector(
+                InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
+            )
         );
         new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
     }
