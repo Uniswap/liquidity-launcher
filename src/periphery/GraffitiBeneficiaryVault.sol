@@ -26,10 +26,8 @@ contract GraffitiBeneficiaryVault is IGraffitiBeneficiaryVault, BeneficiaryVault
     {}
 
     /// @inheritdoc BeneficiaryVault
-    /// @dev An unregistered position registers the caller when they are the creator of either paired token,
-    ///      and otherwise reverts rather than flushing to the fallbacks, so nobody can push an unclaimed
-    ///      creator share away before they claim. Everything else is the base's NFT semantics, including the
-    ///      payout itself: minting first means the base resolves the recipient from the fresh owner.
+    /// @dev Supports claiming ownership via the token's graffiti which is set to the original creator
+    ///      on tokens deployed via the UERC20Factory and LiquidityLauncher.
     function _beforeClaimTransfer(
         uint256 _tokenId,
         Currency _currency0,
@@ -39,31 +37,25 @@ contract GraffitiBeneficiaryVault is IGraffitiBeneficiaryVault, BeneficiaryVault
     ) internal override returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) {
         if (_ownerOf(_tokenId) == address(0)) {
             bytes32 callerGraffiti = keccak256(abi.encode(msg.sender));
-            (bool isLauncherToken0, bool isCreator0) = _readGraffiti(_currency0, callerGraffiti);
-            (bool isLauncherToken1, bool isCreator1) = _readGraffiti(_currency1, callerGraffiti);
+            bytes32 graffiti0 = _graffitiOf(_currency0);
+            bytes32 graffiti1 = _graffitiOf(_currency1);
 
             // Registering here rather than paying out directly leaves the creator a transferable NFT and
             // retires the graffiti proof for this position: ownership can never fall back to address(0).
-            if (isCreator0 || isCreator1) _mint(msg.sender, _tokenId);
-            else if (isLauncherToken0 || isLauncherToken1) revert NotTokenCreator(_tokenId, msg.sender);
+            if (graffiti0 == callerGraffiti || graffiti1 == callerGraffiti) _mint(msg.sender, _tokenId);
+            else if (graffiti0 != bytes32(0) || graffiti1 != bytes32(0)) revert NotTokenCreator(_tokenId, msg.sender);
         }
 
         return super._beforeClaimTransfer(_tokenId, _currency0, _currency1, _available0, _available1);
     }
 
-    /// @notice Reads `_currency`'s graffiti, tolerating currencies that do not expose one.
-    /// @return isLauncherToken Whether the currency exposes a graffiti at all.
-    /// @return isCreator Whether that graffiti matches `_callerGraffiti`.
-    function _readGraffiti(Currency _currency, bytes32 _callerGraffiti)
-        private
-        view
-        returns (bool isLauncherToken, bool isCreator)
-    {
-        if (_currency.isAddressZero()) return (false, false);
-        try IUERC20(Currency.unwrap(_currency)).graffiti() returns (bytes32 graffiti) {
-            return (true, graffiti == _callerGraffiti);
-        } catch {
-            return (false, false);
-        }
+    /// @notice Reads `_currency`'s graffiti, returning bytes32(0) when not set
+    /// @return graffiti Any graffiti value set on the deployed token contract. See `IUERC20.graffiti()`.
+    function _graffitiOf(Currency _currency) private view returns (bytes32 graffiti) {
+        if (_currency.isAddressZero()) return bytes32(0);
+        (bool success, bytes memory data) =
+            address(Currency.unwrap(_currency)).staticcall(abi.encodeWithSelector(IUERC20.graffiti.selector));
+        if (success && data.length == 32) return abi.decode(data, (bytes32));
+        return bytes32(0);
     }
 }
