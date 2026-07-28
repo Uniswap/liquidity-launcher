@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {DirectLaunchTestBase} from "./base/DirectLaunchTestBase.sol";
-import {DirectLaunchStrategy} from "../../../src/strategies/DirectLaunchStrategy.sol";
+import {InstantLaunchTestBase} from "./base/InstantLaunchTestBase.sol";
+import {InstantLaunchStrategy} from "../../../src/strategies/InstantLaunchStrategy.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @notice Regression test for the stray-ETH griefing DoS on DirectLaunchStrategy.
-contract DirectLaunchStrategyStrayEthTest is DirectLaunchTestBase {
+/// @notice Regression test for the stray-ETH griefing DoS on InstantLaunchStrategy.
+contract InstantLaunchStrategyStrayEthTest is InstantLaunchTestBase {
     /// @notice Control: a normal launch (no stray ETH on the PositionManager) succeeds.
     function test_launch_succeedsWithoutStrayEth() public {
         assertEq(address(POSITION_MANAGER).balance, 0, "precondition: PM has no ETH");
