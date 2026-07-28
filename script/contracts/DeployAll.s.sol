@@ -10,7 +10,7 @@ import {DeployInitializerHookScript} from "./periphery/DeployInitializerHook.s.s
 import {DeployBeneficiaryVaultScript} from "./periphery/DeployBeneficiaryVault.s.sol";
 import {DeployFeeSplitterScript} from "./periphery/DeployFeeSplitter.s.sol";
 import {DeployCompoundingClaimRecipientScript} from "./periphery/DeployCompoundingClaimRecipient.s.sol";
-import {DeployDirectLaunchStrategyScript} from "./DeployDirectLaunchStrategy.s.sol";
+import {DeployInstantLaunchStrategyScript} from "./DeployInstantLaunchStrategy.s.sol";
 import {console} from "forge-std/console.sol";
 
 contract DeployAllScript is Script {
@@ -22,7 +22,7 @@ contract DeployAllScript is Script {
     DeployBeneficiaryVaultScript public beneficiaryVaultDeployer;
     DeployFeeSplitterScript public feeSplitterDeployer;
     DeployCompoundingClaimRecipientScript public compoundingClaimRecipientDeployer;
-    DeployDirectLaunchStrategyScript public directLaunchStrategyDeployer;
+    DeployInstantLaunchStrategyScript public instantLaunchStrategyDeployer;
 
     constructor() {
         liquidityLauncherDeployer = new DeployLiquidityLauncherScript();
@@ -32,7 +32,7 @@ contract DeployAllScript is Script {
         beneficiaryVaultDeployer = new DeployBeneficiaryVaultScript();
         feeSplitterDeployer = new DeployFeeSplitterScript();
         compoundingClaimRecipientDeployer = new DeployCompoundingClaimRecipientScript();
-        directLaunchStrategyDeployer = new DeployDirectLaunchStrategyScript();
+        instantLaunchStrategyDeployer = new DeployInstantLaunchStrategyScript();
     }
 
     function run(IDistributorFactory initializerFactory) public {
@@ -51,7 +51,7 @@ contract DeployAllScript is Script {
         address feeSplitterAddress = feeSplitterDeployer.run();
 
         // Deploy strategy contracts
-        address directLaunchStrategyAddress =
-            directLaunchStrategyDeployer.run(feeSplitterAddress, beneficiaryVaultAddress);
+        address instantLaunchStrategyAddress =
+            instantLaunchStrategyDeployer.run(feeSplitterAddress, beneficiaryVaultAddress);
     }
 }

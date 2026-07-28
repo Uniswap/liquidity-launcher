@@ -26,11 +26,11 @@ import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/Posi
 
 /// @notice The launch configuration carried in `configData`.
 /// @param feeBeneficiary The freely chosen recipient of the fee splitter's beneficiary share.
-struct DirectLaunchConfig {
+struct InstantLaunchConfig {
     address feeBeneficiary;
 }
 
-/// @title DirectLaunchStrategy
+/// @title InstantLaunchStrategy
 /// @notice `IStrategy` that launches a fixed-supply token directly into a hookless native-ETH v4 pool,
 ///         with the entire supply in a single-sided LP position. Plugs into `LiquidityLauncher.distributeToken`:
 ///         the launcher approves this strategy and calls `initializeDistribution`, and the strategy pulls
@@ -41,7 +41,7 @@ struct DirectLaunchConfig {
 ///      from the min usable tick up to the initial tick — the token side of the opening price — so buys walk
 ///      the price downward through the available supply.
 /// @custom:security-contact security@uniswap.org
-contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
+contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     using PositionPlanner for *;
 
@@ -174,7 +174,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @dev Called by `LiquidityLauncher.distributeToken`, which approves `totalSupply` to this strategy
     ///      first. Pulls exactly `totalSupply` from `msg.sender` (fully consuming the allowance, as the
     ///      launcher's post-call guard requires), then builds the launch pool. `configData` must carry
-    ///      the abi-encoded `DirectLaunchConfig` naming the launch's fee beneficiary, registered
+    ///      the abi-encoded `InstantLaunchConfig` naming the launch's fee beneficiary, registered
     ///      directly with `beneficiaryVault` before the position moves to the splitter. `salt` is unused —
     ///      this singleton strategy uses fixed parameters.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
@@ -185,7 +185,7 @@ contract DirectLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         // Only accept distributions routed through the configured launcher.
         if (msg.sender != launcher) revert OnlyLauncher();
         if (configData.length == 0) revert InvalidConfigData();
-        DirectLaunchConfig memory config = abi.decode(configData, (DirectLaunchConfig));
+        InstantLaunchConfig memory config = abi.decode(configData, (InstantLaunchConfig));
         _validateFeeBeneficiary(config.feeBeneficiary);
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
