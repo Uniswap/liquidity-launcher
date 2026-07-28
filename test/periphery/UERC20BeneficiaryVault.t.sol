@@ -14,13 +14,13 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {GraffitiBeneficiaryVault} from "../../src/periphery/GraffitiBeneficiaryVault.sol";
+import {UERC20BeneficiaryVault} from "../../src/periphery/UERC20BeneficiaryVault.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
-import {IGraffitiBeneficiaryVault} from "../../src/interfaces/IGraffitiBeneficiaryVault.sol";
+import {IUERC20BeneficiaryVault} from "../../src/interfaces/IUERC20BeneficiaryVault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockUERC20} from "../mocks/MockUERC20.sol";
 
-contract GraffitiBeneficiaryVaultTest is Test {
+contract UERC20BeneficiaryVaultTest is Test {
     using CurrencyLibrary for Currency;
 
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
@@ -29,7 +29,7 @@ contract GraffitiBeneficiaryVaultTest is Test {
     uint24 internal constant FEE = 10_000;
     int24 internal constant TICK_SPACING = 200;
 
-    GraffitiBeneficiaryVault internal vault;
+    UERC20BeneficiaryVault internal vault;
     address internal nativeFallback = makeAddr("nativeFallback");
     address internal tokenFallback = makeAddr("tokenFallback");
     address internal creator = makeAddr("creator");
@@ -43,7 +43,7 @@ contract GraffitiBeneficiaryVaultTest is Test {
             abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
             address(POSITION_MANAGER)
         );
-        vault = new GraffitiBeneficiaryVault(POSITION_MANAGER, nativeFallback, tokenFallback);
+        vault = new UERC20BeneficiaryVault(POSITION_MANAGER, nativeFallback, tokenFallback);
         vm.deal(address(this), 10_000 ether);
     }
 
@@ -215,7 +215,7 @@ contract GraffitiBeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(IGraffitiBeneficiaryVault.NotTokenCreator.selector, tokenId, stranger));
+        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotTokenCreator.selector, tokenId, stranger));
         vault.claim(tokenId, 0, 0);
 
         assertEq(nativeFallback.balance, 0);
@@ -245,7 +245,7 @@ contract GraffitiBeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IGraffitiBeneficiaryVault.NotTokenCreator.selector, tokenId, creator));
+        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotTokenCreator.selector, tokenId, creator));
         vault.claim(tokenId, 0, 0);
 
         vm.prank(stranger);
