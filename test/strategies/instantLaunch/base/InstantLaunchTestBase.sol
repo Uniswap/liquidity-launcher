@@ -12,6 +12,7 @@ import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../../src/strate
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../../../src/interfaces/IFeeSplitter.sol";
 import {BeneficiaryVault} from "../../../../src/periphery/BeneficiaryVault.sol";
+import {IBeneficiaryVault} from "../../../../src/interfaces/IBeneficiaryVault.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
 
 /// @notice A launched token with 6 decimals, used to exercise the decimals guard.
@@ -93,6 +94,13 @@ abstract contract InstantLaunchTestBase is Test {
             new InstantLaunchStrategy(
                 launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, initialTick
             );
+    }
+
+    /// @notice Deploys a strategy with no beneficiary vault: its launches carry no creator fee share.
+    function _deployStrategyWithoutBeneficiaryVault() internal returns (InstantLaunchStrategy) {
+        return new InstantLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, IBeneficiaryVault(address(0)), INITIAL_TICK
+        );
     }
 
     /// @notice Mints a fresh 1B-supply / 18-decimal token to this contract.

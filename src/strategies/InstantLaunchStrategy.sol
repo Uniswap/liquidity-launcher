@@ -20,7 +20,7 @@ import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.so
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {IStrategy} from "../interfaces/IStrategy.sol";
 import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
-import {IFeeSplitter, FeeSplit} from "../interfaces/IFeeSplitter.sol";
+import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
 
@@ -65,6 +65,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     ///         permissionlessly distributes its fees.
     IFeeSplitter public immutable feeSplitter;
     /// @notice The vault that registers each launch's fee beneficiary and vaults their fee share.
+    ///         Zero when this instance launches without a creator fee share.
     IBeneficiaryVault public immutable beneficiaryVault;
     /// @notice Aligned tick at which the pool opens (highest price); the position's upper bound.
     int24 public immutable initialTick;
@@ -88,9 +89,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Thrown when the fee splitter is not bound to the same PositionManager as this strategy.
     /// @param splitterPositionManager The fee splitter's PositionManager
     error PositionManagerMismatch(address splitterPositionManager);
-    /// @notice Thrown when the beneficiary vault is not a fees-callback split recipient of the splitter.
-    /// @param beneficiaryVault The miswired vault
-    error BeneficiaryVaultMismatch(address beneficiaryVault);
     /// @notice Thrown at deployment when the full supply does not fit in a single position.
     error UnrealizableLaunch();
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
@@ -120,9 +118,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         IBeneficiaryVault _beneficiaryVault,
         int24 _initialTick
     ) {
+        // The beneficiary vault is deliberately absent from this check: a zero vault opts the instance
+        // out of creator fees, leaving every launch's position unregistered.
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
-                || address(_feeSplitter) == address(0) || address(_beneficiaryVault) == address(0)
+                || address(_feeSplitter) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -131,19 +131,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (_feeSplitter.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
         }
-        // A vault outside the splitter's splits — or one whose pushed shares are not announced through
-        // the fees callback — would leave every launch's beneficiary share unaccounted. The splits are
-        // immutable, so this deploy-time check can never go stale.
-        FeeSplit[] memory feeSplits = _feeSplitter.getSplits();
-        uint256 splitCount = feeSplits.length;
-        bool wired;
-        for (uint256 i; i < splitCount; i++) {
-            if (feeSplits[i].recipient == address(_beneficiaryVault)) {
-                wired = feeSplits[i].useCallback;
-                break;
-            }
-        }
-        if (!wired) revert BeneficiaryVaultMismatch(address(_beneficiaryVault));
         // The tick must be aligned and leave a non-empty usable range below it: the launch position spans
         // [minUsableTick, initialTick] on the token side of the price.
         if (
@@ -175,8 +162,10 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     ///      first. Pulls exactly `totalSupply` from `msg.sender` (fully consuming the allowance, as the
     ///      launcher's post-call guard requires), then builds the launch pool. `configData` must carry
     ///      the abi-encoded `InstantLaunchConfig` naming the launch's fee beneficiary, registered
-    ///      directly with `beneficiaryVault` before the position moves to the splitter. `salt` is unused —
-    ///      this singleton strategy uses fixed parameters.
+    ///      directly with `beneficiaryVault` before the position moves to the splitter. A beneficiary is
+    ///      required even when no vault is configured, so `configData` encodes identically against every
+    ///      deployment; without a vault it goes unused and the launch carries no creator share. `salt` is
+    ///      unused — this singleton strategy uses fixed parameters.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
         external
         override
@@ -217,10 +206,8 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             });
 
             definitions.validate();
-            // The position is minted to this strategy and handed to the fee splitter below through
-            // the PositionManager's safeTransferFrom, whose receiver callback verifiably delivers
-            // the fee beneficiary. The splitter provides permanent custody and permissionless
-            // per-pool fee distribution (see FeeSplitter).
+            // The position is minted to this strategy and handed to the fee splitter below, which
+            // provides permanent custody and permissionless per-pool fee distribution (see FeeSplitter).
             (Position[] memory positions,) = definitions.resolve(
                 initialSqrtPriceX96, TICK_SPACING, CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}), address(this)
             );
@@ -242,10 +229,10 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         emit DistributionInitialized(address(this), token, totalSupply);
         emit TokenLaunched(poolId, token, address(feeSplitter), key);
 
-        // Register the beneficiary while this strategy still custodies the position — the vault
-        // authorizes registration by position ownership — then hand the position to the splitter for
-        // permanent custody. A plain transfer suffices: the splitter learns nothing at deposit.
-        beneficiaryVault.registerBeneficiary(tokenId, config.feeBeneficiary);
+        // Optionally register the beneficiary of the position if creator fees are enabled.
+        if (address(beneficiaryVault) != address(0)) {
+            beneficiaryVault.registerBeneficiary(tokenId, config.feeBeneficiary);
+        }
         IERC721(address(positionManager)).transferFrom(address(this), address(feeSplitter), tokenId);
     }
 
