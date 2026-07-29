@@ -35,6 +35,7 @@ interface IFeeSplitter {
     event FeesForwarded(address indexed recipient, Currency indexed currency, uint256 amount);
 
     /// @notice Thrown when a balance exceeds the maximum allowed.
+    /// @param tokenId The position whose collection realized the balance.
     error BalanceExceedsMaxAllowed(uint256 tokenId);
 
     /// @notice Thrown when no splits are configured.
@@ -80,10 +81,15 @@ interface IFeeSplitter {
     /// @param tokenId The position token ID.
     error UncollectedFees(uint256 tokenId);
 
+    /// @notice Thrown when collectFees is called while the PoolManager is already unlocked.
+    error PoolManagerAlreadyUnlocked();
+
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
     /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
     ///      splitter, otherwise the PositionManager reverts. A recipient that reverts its notification
     ///      reverts this call, leaving those fees in the pool; other token IDs are unaffected.
+    ///      Unlike `increaseLiquidity`, collection cannot run inside an existing PoolManager unlock:
+    ///      it reverts with PoolManagerAlreadyUnlocked so recipients are never notified mid-lock.
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
 
@@ -107,8 +113,10 @@ interface IFeeSplitter {
     ) external;
 
     /// @notice The canonical v4 PositionManager holding the LP positions.
+    /// @return The PositionManager this splitter collects through.
     function positionManager() external view returns (IPositionManager);
 
     /// @notice The full immutable split configuration.
+    /// @return The configured fee splits.
     function getSplits() external view returns (FeeSplit[] memory);
 }

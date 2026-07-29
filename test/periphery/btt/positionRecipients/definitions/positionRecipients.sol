@@ -452,6 +452,8 @@ contract PositionRecipientsBTTTest is Test {
             MockERC20(Currency.unwrap(key.currency0)).transfer(address(recipient), amount0);
         }
         MockERC20(Currency.unwrap(key.currency1)).transfer(address(recipient), amount1);
+        vm.expectEmit(address(recipient));
+        emit IClaimableRecipient.AmountsReceived(TOKEN_ID, amount0, amount1);
         recipient.onAmountsReceived(TOKEN_ID, amount0, amount1);
     }
 }

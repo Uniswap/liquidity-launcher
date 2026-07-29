@@ -15,16 +15,18 @@ contract CompoundingClaimRecipient is BaseClaimRecipientWithCallback {
     error MinLiquidityIncreaseIsZero();
 
     /// @notice Thrown when the liquidity of the position did not increase by at least the required liquidity amount
+    /// @param required The liquidity the position must reach
+    /// @param actual The position's liquidity after the callback
     error NotEnoughLiquidityAdded(uint256 required, uint256 actual);
 
     /// @notice The minimum liquidity increase required to be compounded
-    uint128 public immutable MIN_LIQUIDITY_INCREASE;
+    uint128 public immutable minLiquidityIncrease;
 
     constructor(IPositionManager _positionManager, uint128 _minLiquidityIncrease)
         BaseClaimRecipientWithCallback(_positionManager)
     {
         if (_minLiquidityIncrease == 0) revert MinLiquidityIncreaseIsZero();
-        MIN_LIQUIDITY_INCREASE = _minLiquidityIncrease;
+        minLiquidityIncrease = _minLiquidityIncrease;
     }
 
     /// @inheritdoc BaseClaimRecipientWithCallback
@@ -37,7 +39,7 @@ contract CompoundingClaimRecipient is BaseClaimRecipientWithCallback {
     /// @param _liquidityBefore The position's liquidity snapshotted by `_beforeExecutorCallback`
     function _afterExecutorCallback(PoolKey memory, uint256 _tokenId, uint256 _liquidityBefore) internal view override {
         uint128 actualLiquidityAmount = positionManager.getPositionLiquidity(_tokenId);
-        uint256 requiredLiquidityAmount = _liquidityBefore + MIN_LIQUIDITY_INCREASE;
+        uint256 requiredLiquidityAmount = _liquidityBefore + minLiquidityIncrease;
         if (actualLiquidityAmount < requiredLiquidityAmount) {
             revert NotEnoughLiquidityAdded(requiredLiquidityAmount, actualLiquidityAmount);
         }

@@ -51,7 +51,7 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
         Currency,
         uint256 _available0,
         uint256 _available1
-    ) internal virtual override returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) {
+    ) internal virtual override returns (address, uint256, address, uint256) {
         address owner = _ownerOf(_tokenId);
         if (owner == address(0)) {
             // currency1 can never be native in v4, so its fallback is always the token fallback.

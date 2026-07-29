@@ -168,6 +168,31 @@ contract MockFlashLoanSearcher is IUnlockCallback {
     receive() external payable {}
 }
 
+/// @notice A caller that opens its own unlock and collects inside it, which the splitter must reject.
+contract MockUnlockedCollector is IUnlockCallback {
+    IPoolManager internal immutable poolManager;
+    IFeeSplitter internal immutable splitter;
+    uint256 internal tokenId;
+
+    constructor(IPoolManager _poolManager, IFeeSplitter _splitter) {
+        poolManager = _poolManager;
+        splitter = _splitter;
+    }
+
+    function collect(uint256 _tokenId) external {
+        tokenId = _tokenId;
+        poolManager.unlock(bytes(""));
+    }
+
+    function unlockCallback(bytes calldata) external returns (bytes memory) {
+        require(msg.sender == address(poolManager), "only manager");
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
+        splitter.collectFees(tokenIds);
+        return bytes("");
+    }
+}
+
 contract FeeSplitterTest is Test {
     using CurrencyLibrary for Currency;
 
@@ -645,6 +670,19 @@ contract FeeSplitterTest is Test {
         assertEq(address(POSITION_MANAGER).balance, 0);
         assertEq(weth.balanceOf(address(POSITION_MANAGER)), 0);
         assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
+    }
+
+    function test_collectFees_revertsWithinExistingUnlock() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        MockUnlockedCollector collector = new MockUnlockedCollector(POOL_MANAGER, splitter);
+
+        // Collection opens its own lock, so it cannot run inside a caller's: distribution and recipient
+        // notifications must never execute with the PoolManager unlocked.
+        vm.expectRevert(IFeeSplitter.PoolManagerAlreadyUnlocked.selector);
+        collector.collect(tokenId);
     }
 
     function test_increaseLiquidity_withinUnlockStillRequiresCollectFirst() public {
