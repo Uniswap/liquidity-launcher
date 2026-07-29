@@ -38,8 +38,10 @@ interface IClaimableRecipient {
 
     /// @notice Claims a position's attributed amounts; the payout is determined by the recipient's
     ///         transfer policy.
-    /// @dev Amounts are transferred FIRST, then callers declaring `IClaimExecutor` support via
-    ///      ERC165 are invoked through `onClaimed`; other callers are not called back.
+    /// @dev Amounts are transferred FIRST. Whether the caller is then called back through `onClaimed`
+    ///      is fixed by the recipient's base, not by any runtime interface probe: recipients inheriting
+    ///      `BaseClaimRecipientWithCallback` invoke it unconditionally, so their callers MUST implement
+    ///      `IClaimExecutor`; recipients inheriting `BaseClaimRecipient` never call back.
     /// @param tokenId The token ID of the position
     /// @param minCurrency0Amount The minimum acceptable currency0 amount
     /// @param minCurrency1Amount The minimum acceptable currency1 amount
