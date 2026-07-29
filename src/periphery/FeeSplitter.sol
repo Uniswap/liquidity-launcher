@@ -11,7 +11,6 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
@@ -41,6 +40,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @notice The PoolManager the PositionManager is bound to.
     IPoolManager public immutable poolManager;
 
+    /// @notice The fee splits pushed on every distribution; validated at construction and never changed.
     FeeSplit[] internal _splits;
 
     /// @param _positionManager The canonical v4 PositionManager.
@@ -60,6 +60,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     function collectFees(uint256[] calldata tokenIds) external override nonReentrant {
         uint256 count = tokenIds.length;
         if (count == 0) revert NoTokenIds();
+        // Collection opens its own lock so distribution and every recipient notification run with the
+        // PoolManager locked; failing here is self-describing where the PoolManager's would not be.
+        if (poolManager.isUnlocked()) revert PoolManagerAlreadyUnlocked();
         for (uint256 i; i < count; i++) {
             uint256 tokenId = tokenIds[i];
             (Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
@@ -108,7 +111,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         }
     }
 
-    /// @notice Accepts positions safe-transferred through the PositionManager; transfer data is ignored.
+    /// @notice Accepts positions safe-transferred through the PositionManager; the operator, sender,
+    ///         token ID, and transfer data are all ignored.
     /// @dev Reverts with `NotPositionManager` if any other contract calls this.
     /// @return The `onERC721Received` selector.
     function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {
@@ -120,6 +124,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     receive() external payable {}
 
     /// @notice Reverts with UncollectedFees if the position has accrued fees since its last modification.
+    /// @param tokenId The position token ID.
+    /// @param poolKey The position's pool key.
+    /// @param info The position's packed info, carrying its tick range.
     function _requireNoPendingFees(uint256 tokenId, PoolKey memory poolKey, PositionInfo info) private view {
         PoolId poolId = poolKey.toId();
         (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) = poolManager.getPositionInfo(
@@ -135,6 +142,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     }
 
     /// @notice Realizes one position's accrued fees into this contract's balances.
+    /// @param tokenId The position token ID.
     /// @return tokenCurrency The position's currency1; currency0 is guaranteed to be native ETH.
     /// @return nativeAmount The full standing native balance to distribute.
     /// @return tokenAmount The full standing currency1 balance to distribute.
@@ -164,6 +172,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
 
     /// @notice Pushes each split's floor share of both sides; rounding dust stays in this contract
     ///         and is flushed through the next distribution.
+    /// @param tokenId The collected position, passed through to callback recipients for attribution.
+    /// @param tokenCurrency The position's currency1.
+    /// @param nativeAmount The native ETH amount to distribute.
+    /// @param tokenAmount The currency1 amount to distribute.
     function _distribute(uint256 tokenId, Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) private {
         uint256 count = _splits.length;
         for (uint256 i; i < count; i++) {

@@ -91,9 +91,10 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     error InvalidTokenDecimals();
     /// @notice Thrown when the configured tick cannot define the launch range.
     error InvalidTickRange();
-    /// @notice Thrown when the fee splitter is not bound to the same PositionManager as this strategy.
-    /// @param splitterPositionManager The fee splitter's PositionManager
-    error PositionManagerMismatch(address splitterPositionManager);
+    /// @notice Thrown when the fee splitter or beneficiary vault is not bound to the same
+    ///         PositionManager as this strategy.
+    /// @param mismatchedPositionManager The mismatched PositionManager
+    error PositionManagerMismatch(address mismatchedPositionManager);
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
     /// @notice Thrown when the configured fee beneficiary is the zero address or the launcher.
@@ -133,6 +134,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         // launch position's fees permanently uncollectable.
         if (_feeSplitter.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
+        }
+        // Registration proves custody against the vault's own PositionManager; a mismatch would
+        // revert every launch at registration.
+        if (address(_beneficiaryVault) != address(0) && _beneficiaryVault.positionManager() != _positionManager) {
+            revert PositionManagerMismatch(address(_beneficiaryVault.positionManager()));
         }
         // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
         // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.
@@ -248,6 +254,9 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
     /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens
     ///         via a balance-diff check and protecting any pre-existing strategy balance.
+    /// @param token The token to pull.
+    /// @param amount The amount to pull.
+    /// @return balanceBefore The strategy's token balance before the pull.
     function _pull(address token, uint256 amount) private returns (uint256 balanceBefore) {
         balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);

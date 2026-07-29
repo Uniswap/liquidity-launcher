@@ -29,6 +29,8 @@ abstract contract BaseClaimRecipientWithCallback is BaseClaimRecipient {
     }
 
     /// @notice Called before the executor callback
+    /// @param _poolKey The claimed position's pool key
+    /// @param _tokenId The claimed position's token ID
     /// @return context An opaque value passed through to `_afterExecutorCallback`
     function _beforeExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId)
         internal
@@ -37,6 +39,8 @@ abstract contract BaseClaimRecipientWithCallback is BaseClaimRecipient {
     {}
 
     /// @notice Called after the executor callback
+    /// @param _poolKey The claimed position's pool key
+    /// @param _tokenId The claimed position's token ID
     /// @param _context The value returned by `_beforeExecutorCallback`
     function _afterExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256 _context) internal virtual {}
 }

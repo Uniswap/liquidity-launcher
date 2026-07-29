@@ -17,14 +17,22 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
-    /// @notice The position manager used to resolve positions and their pool keys
-    IPositionManager public immutable positionManager;
+    /// @inheritdoc IClaimableRecipient
+    IPositionManager public immutable override positionManager;
 
+    /// @notice A position's attributed amounts, one per pool currency side.
+    /// @param currency0Amount The attributed currency0 amount
+    /// @param currency1Amount The attributed currency1 amount
     struct Amounts {
         uint128 currency0Amount;
         uint128 currency1Amount;
     }
+
+    /// @inheritdoc IClaimableRecipient
     mapping(uint256 tokenId => Amounts amounts) public override amounts;
+
+    /// @notice The total attributed amount per currency across all positions; every attribution must be
+    ///         backed by at least this much balance.
     mapping(Currency currency => uint256 amount) public totalAmounts;
 
     constructor(IPositionManager _positionManager) {
@@ -48,6 +56,8 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
             positionAmounts.currency1Amount = (positionAmounts.currency1Amount + _currency1Amount).toUint128();
         }
         amounts[_tokenId] = positionAmounts;
+
+        emit AmountsReceived(_tokenId, _currency0Amount, _currency1Amount);
     }
 
     /// @inheritdoc IClaimableRecipient
@@ -92,14 +102,19 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
     }
 
-    /// @notice Transfer policy consulted once per claim, before any payout. Defaults to paying the
+    /// @notice Transfer policy consulted once per claim, before any payout. Receives the claimed
+    ///         position, its currencies, and each side's attributed amount; defaults to paying the
     ///         full available amounts to the caller.
     /// @dev Zero recipients revert — burning must be an explicit 0xdead. Amounts below the available
     ///      balance leave the remainder attributed and claimable later.
+    /// @return The receiver of the currency0 payout
+    /// @return The currency0 amount to pay out; at most the available amount
+    /// @return The receiver of the currency1 payout
+    /// @return The currency1 amount to pay out; at most the available amount
     function _beforeClaimTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         virtual
-        returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1)
+        returns (address, uint256, address, uint256)
     {
         return (msg.sender, _available0, msg.sender, _available1);
     }
@@ -116,6 +131,11 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
 
     /// @notice Decrements attribution before transferring, so code running during a payout cannot
     ///         attribute the in-flight funds.
+    /// @param _tokenId The position being claimed
+    /// @param _currency The currency to pay out
+    /// @param _recipient The receiver of the payout
+    /// @param _toSend The amount to pay out
+    /// @param _isCurrency0 Whether `_currency` is the position's currency0
     function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
         private
     {
@@ -128,6 +148,8 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
     }
 
     /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
+    /// @param _currency The currency being attributed
+    /// @param _amount The amount to attribute
     function _attribute(Currency _currency, uint256 _amount) private {
         uint256 balance = _currency.balanceOfSelf();
         uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;

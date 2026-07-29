@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {InstantLaunchTestBase} from "../../base/InstantLaunchTestBase.sol";
 import {InstantLaunchStrategy} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../../src/periphery/FeeSplitter.sol";
+import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -18,6 +19,8 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// ├── when a required address is zero
 /// │   └── it reverts with ZeroAddress
 /// ├── when the fee splitter uses a different PositionManager
+/// │   └── it reverts with PositionManagerMismatch
+/// ├── when the beneficiary vault uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
 /// ├── when the beneficiary vault is zero
 /// │   └── it deploys with creator fees disabled
@@ -71,6 +74,20 @@ contract ConstructorTest is InstantLaunchTestBase {
             )
         );
         new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
+    }
+
+    function test_WhenBeneficiaryVaultUsesDifferentPositionManager() public {
+        // Registration proves custody against the vault's PositionManager; a mismatch would revert
+        // every launch at registration.
+        IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
+        BeneficiaryVault mismatched = new BeneficiaryVault(otherPositionManager, tokenJar, address(0xdead));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
+            )
+        );
+        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, INITIAL_TICK);
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {

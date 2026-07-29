@@ -34,7 +34,7 @@ contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
         Currency _currency1,
         uint256 _available0,
         uint256 _available1
-    ) internal override returns (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) {
+    ) internal override returns (address, uint256, address, uint256) {
         if (_ownerOf(_tokenId) == address(0)) {
             bytes32 callerGraffiti = keccak256(abi.encode(msg.sender));
             bytes32 graffiti0 = _graffitiOf(_currency0);
