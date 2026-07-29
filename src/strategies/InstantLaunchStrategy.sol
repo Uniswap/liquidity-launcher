@@ -94,8 +94,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Thrown when the fee splitter is not bound to the same PositionManager as this strategy.
     /// @param splitterPositionManager The fee splitter's PositionManager
     error PositionManagerMismatch(address splitterPositionManager);
-    /// @notice Thrown at deployment when the full supply does not fit in a single position.
-    error UnrealizableLaunch();
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
     /// @notice Thrown when the configured fee beneficiary is the zero address or the launcher.
@@ -151,13 +149,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         initialTick = _initialTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
 
-        // The whole supply must fit in one position. Clamping instead would pass the resolve step below
-        // and then silently burn the unplaced remainder of every launch's supply as dust.
-        uint256 liquidity = FullMath.mulDiv(
-            TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK)
+        positionLiquidity = SafeCastLib.toUint128(
+            FullMath.mulDiv(
+                TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK)
+            )
         );
-        if (liquidity > Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING)) revert UnrealizableLaunch();
-        positionLiquidity = SafeCastLib.toUint128(liquidity);
     }
 
     /// @inheritdoc IStrategy
