@@ -7,6 +7,9 @@ import {BaseClaimRecipientWithCallback} from "./BaseClaimRecipientWithCallback.s
 
 /// @title CompoundingClaimRecipient
 /// @notice Claims attributed amounts through an executor and compounds assets deposited into PositionManager
+/// @dev Compounds only into the claimed position's existing range. Once either of that range's boundary ticks
+///      holds `maxLiquidityPerTick`, no increase is possible and every claim on the position reverts, so
+///      positions assigned here MUST use boundary ticks that are costly to saturate.
 contract CompoundingClaimRecipient is BaseClaimRecipientWithCallback {
     /// @notice Thrown when the minimum liquidity increase is zero
     error MinLiquidityIncreaseIsZero();

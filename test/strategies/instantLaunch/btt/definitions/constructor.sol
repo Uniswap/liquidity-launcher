@@ -9,6 +9,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 
 /// @title ConstructorTest
 /// @notice BTT tests for InstantLaunchStrategy.constructor
@@ -24,13 +25,12 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the maximum usable tick
 /// │   └── it reverts with InvalidTickRange
-/// ├── when the initial tick does not exceed the minimum usable tick
+/// ├── when the initial tick does not exceed the launch floor
 /// │   └── it reverts with InvalidTickRange
-/// ├── when the supply does not fit in a single position
-/// │   └── it reverts with UnrealizableLaunch
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
-///     └── it derives a position liquidity that fits in a single position
+///     ├── it derives a position liquidity that fits in a single position
+///     └── it prices saturating the launch floor tick above the total supply
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         // The beneficiary vault is not among the required addresses; see the zero-vault case below.
@@ -74,7 +74,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
-        initialTick = int24(bound(initialTick, LOWEST_REALIZABLE_TICK, TickMath.maxUsableTick(strategy.TICK_SPACING())));
+        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK, TickMath.maxUsableTick(strategy.TICK_SPACING())));
         vm.assume(initialTick % strategy.TICK_SPACING() != 0);
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
@@ -87,48 +87,25 @@ contract ConstructorTest is InstantLaunchTestBase {
         _deployStrategy(TickMath.maxUsableTick(tickSpacing) + tickSpacing);
     }
 
-    function test_WhenInitialTickEqualsMinimumUsableTick() public {
-        int24 minUsable = TickMath.minUsableTick(strategy.TICK_SPACING());
+    function test_WhenInitialTickEqualsLaunchFloor() public {
+        int24 floorTick = strategy.MIN_LAUNCH_TICK();
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
-        _deployStrategy(minUsable);
+        _deployStrategy(floorTick);
     }
 
-    function test_fuzz_WhenInitialTickIsBelowMinimumUsableTick(int24 initialTick) public {
+    function test_fuzz_WhenInitialTickIsBelowLaunchFloor(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
-        // Aligned ticks at or below the min usable tick, so the floor check is what reverts rather than alignment.
-        initialTick = int24(
-            bound(initialTick, type(int24).min / tickSpacing, TickMath.minUsableTick(tickSpacing) / tickSpacing)
-        ) * tickSpacing;
+        // Aligned ticks at or below the launch floor, so the floor check is what reverts rather than alignment.
+        initialTick = int24(bound(initialTick, type(int24).min / tickSpacing, strategy.MIN_LAUNCH_TICK() / tickSpacing))
+            * tickSpacing;
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(initialTick);
     }
 
-    function test_WhenSupplyDoesNotFitInSinglePosition() public {
-        int24 tickSpacing = strategy.TICK_SPACING();
-        vm.expectRevert(InstantLaunchStrategy.UnrealizableLaunch.selector);
-        _deployStrategy(LOWEST_REALIZABLE_TICK - tickSpacing);
-    }
-
-    function test_fuzz_WhenSupplyDoesNotFitInSinglePosition(int24 initialTick) public {
-        int24 tickSpacing = strategy.TICK_SPACING();
-        // Aligned ticks between the min usable tick (exclusive) and the realizability boundary (exclusive):
-        // deep enough that the full supply's liquidity exceeds maxLiquidityPerTick.
-        initialTick = int24(
-            bound(
-                initialTick,
-                TickMath.minUsableTick(tickSpacing) / tickSpacing + 1,
-                (LOWEST_REALIZABLE_TICK - tickSpacing) / tickSpacing
-            )
-        ) * tickSpacing;
-
-        vm.expectRevert(InstantLaunchStrategy.UnrealizableLaunch.selector);
-        _deployStrategy(initialTick);
-    }
-
-    function test_WhenInitialTickIsLowestRealizableTick_deploys() public {
-        InstantLaunchStrategy deployed = _deployStrategy(LOWEST_REALIZABLE_TICK);
-        assertEq(deployed.initialTick(), LOWEST_REALIZABLE_TICK);
+    function test_WhenInitialTickIsLowestLaunchTick_deploys() public {
+        InstantLaunchStrategy deployed = _deployStrategy(LOWEST_LAUNCH_TICK);
+        assertEq(deployed.initialTick(), LOWEST_LAUNCH_TICK);
     }
 
     function test_WhenInitialTickIsMaximumUsableTick_deploys() public {
@@ -148,10 +125,28 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertGt(strategy.positionLiquidity(), 0);
     }
 
+    function test_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply() public view {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        int24 floorTick = strategy.MIN_LAUNCH_TICK();
+        assertEq(floorTick % tickSpacing, 0);
+        assertGt(floorTick, TickMath.minUsableTick(tickSpacing));
+
+        // Tokens an external LP must hold to fill the floor tick's remaining maxLiquidityPerTick with the
+        // narrowest position above it, which would block every liquidity increase on the launch position.
+        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - strategy.positionLiquidity();
+        uint256 blockerCost = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(floorTick),
+            TickMath.getSqrtPriceAtTick(floorTick + tickSpacing),
+            blockerLiquidity,
+            true
+        );
+        assertGt(blockerCost, strategy.TOTAL_SUPPLY());
+    }
+
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         initialTick = int24(
-            bound(initialTick, LOWEST_REALIZABLE_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
         ) * tickSpacing;
 
         InstantLaunchStrategy deployed = _deployStrategy(initialTick);

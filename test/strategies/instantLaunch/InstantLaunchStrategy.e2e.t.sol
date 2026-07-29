@@ -78,7 +78,7 @@ contract InstantLaunchStrategyE2ETest is Test {
         assertEq(tick, INITIAL_TICK);
 
         (, PositionInfo info) = POSITION_MANAGER.getPoolAndPositionInfo(tokenId);
-        assertEq(info.tickLower(), TickMath.minUsableTick(strategy.TICK_SPACING()));
+        assertEq(info.tickLower(), strategy.MIN_LAUNCH_TICK());
         assertEq(info.tickUpper(), INITIAL_TICK);
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.positionLiquidity());
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
@@ -166,7 +166,7 @@ contract InstantLaunchStrategyE2ETest is Test {
 
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
         assertLt(sqrtPriceX96, strategy.initialSqrtPriceX96());
-        assertGt(sqrtPriceX96, TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(strategy.TICK_SPACING())));
+        assertGt(sqrtPriceX96, TickMath.getSqrtPriceAtTick(strategy.MIN_LAUNCH_TICK()));
 
         // Buys and sells both work immediately after — nothing gates the pool.
         swapRouter.swap{value: 1 ether}(
