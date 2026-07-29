@@ -34,6 +34,9 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 /// │   └── it reverts with InvalidFeeBeneficiary
 /// ├── when the configuration is valid
 /// │   └── it registers the beneficiary with the fee splitter
+/// ├── when the strategy has no beneficiary vault
+/// │   ├── it launches without registering a beneficiary
+/// │   └── it still requires a valid fee beneficiary
 /// ├── when either supply is not the fixed supply
 /// │   └── it reverts with InvalidSupply
 /// ├── when the token does not use 18 decimals
@@ -104,6 +107,32 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
 
         assertEq(beneficiaryVault.ownerOf(tokenId), launchFeeBeneficiary);
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
+    }
+
+    function test_WhenStrategyHasNoBeneficiaryVault_launchesWithoutRegisteringBeneficiary() public {
+        InstantLaunchStrategy vaultless = _deployStrategyWithoutBeneficiaryVault();
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        uint256 tokenId = POSITION_MANAGER.nextTokenId();
+
+        token.approve(address(vaultless), TOTAL_SUPPLY);
+        vaultless.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
+
+        // No beneficiary NFT is minted, so the vault flushes this position's share to its fallbacks.
+        assertEq(beneficiaryVault.balanceOf(launchFeeBeneficiary), 0);
+        // The position still reaches the splitter for permanent custody.
+        assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), address(feeSplitter));
+    }
+
+    function test_WhenStrategyHasNoBeneficiaryVault_stillRequiresValidFeeBeneficiary() public {
+        InstantLaunchStrategy vaultless = _deployStrategyWithoutBeneficiaryVault();
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        token.approve(address(vaultless), TOTAL_SUPPLY);
+
+        // configData encodes identically against every deployment, vault or not.
+        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.InvalidFeeBeneficiary.selector, address(0)));
+        vaultless.initializeDistribution(
+            address(token), TOTAL_SUPPLY, abi.encode(InstantLaunchConfig({feeBeneficiary: address(0)})), bytes32(0)
+        );
     }
 
     function test_WhenDistributionAmountIsNotFixedSupply() public {

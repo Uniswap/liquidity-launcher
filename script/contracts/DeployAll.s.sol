@@ -48,10 +48,14 @@ contract DeployAllScript is Script {
         vm.setEnv("BENEFICIARY_VAULT", vm.toString(beneficiaryVaultAddress));
         address compoundingClaimRecipientAddress = compoundingClaimRecipientDeployer.run();
         vm.setEnv("COMPOUNDING_CLAIM_RECIPIENT", vm.toString(compoundingClaimRecipientAddress));
-        address feeSplitterAddress = feeSplitterDeployer.run();
+        // Deploy both variants of the fee splitter
+        address feeSplitterWithCreatorFeeAddress = feeSplitterDeployer.deployWithCreatorFee();
+        address feeSplitterWithoutCreatorFeeAddress = feeSplitterDeployer.deployWithoutCreatorFee();
 
-        // Deploy strategy contracts
-        address instantLaunchStrategyAddress =
-            instantLaunchStrategyDeployer.run(feeSplitterAddress, beneficiaryVaultAddress);
+        // Deploy strategy contracts, one with and one without creator fee
+        address instantLaunchWithCreatorFeeAddress =
+            instantLaunchStrategyDeployer.run(feeSplitterWithCreatorFeeAddress, beneficiaryVaultAddress);
+        address instantLaunchWithoutCreatorFeeAddress =
+            instantLaunchStrategyDeployer.run(feeSplitterWithoutCreatorFeeAddress, address(0));
     }
 }
