@@ -38,7 +38,7 @@ struct InstantLaunchConfig {
 /// @dev Standalone and single-purpose, with no graduation or hook. Every pool parameter is fixed at
 ///      deployment; one instance launches every token at the same price band. Pairs 1B-supply /
 ///      18-decimal tokens against native ETH (currency0); the token is always currency1. The position spans
-///      from the min usable tick up to the initial tick — the token side of the opening price — so buys walk
+///      from `MIN_LAUNCH_TICK` up to the initial tick — the token side of the opening price — so buys walk
 ///      the price downward through the available supply.
 /// @custom:security-contact security@uniswap.org
 contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
@@ -51,6 +51,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     uint24 public constant LP_FEE = 2_500;
     /// @notice Tick spacing
     int24 public constant TICK_SPACING = 60;
+    /// @notice Lower tick of every launch position, and the exclusive floor for `initialTick`.
+    /// @dev Filling a tick's `maxLiquidityPerTick` blocks every later liquidity increase on a position
+    ///      bounded by it. This value is high enough that doing so at this shared boundary costs more than
+    ///      the total supply, so it cannot be done at any price; deeper floors only make it expensive.
+    int24 public constant MIN_LAUNCH_TICK = -208_980;
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -89,8 +94,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Thrown when the fee splitter is not bound to the same PositionManager as this strategy.
     /// @param splitterPositionManager The fee splitter's PositionManager
     error PositionManagerMismatch(address splitterPositionManager);
-    /// @notice Thrown at deployment when the full supply does not fit in a single position.
-    error UnrealizableLaunch();
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
     /// @notice Thrown when the configured fee beneficiary is the zero address or the launcher.
@@ -131,11 +134,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (_feeSplitter.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
         }
-        // The tick must be aligned and leave a non-empty usable range below it: the launch position spans
-        // [minUsableTick, initialTick] on the token side of the price.
+        // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
+        // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.
         if (
             _initialTick % TICK_SPACING != 0 || _initialTick > TickMath.maxUsableTick(TICK_SPACING)
-                || _initialTick <= TickMath.minUsableTick(TICK_SPACING)
+                || _initialTick <= MIN_LAUNCH_TICK
         ) revert InvalidTickRange();
 
         launcher = _launcher;
@@ -146,15 +149,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         initialTick = _initialTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
 
-        // The whole supply must fit in one position. Clamping instead would pass the resolve step below
-        // and then silently burn the unplaced remainder of every launch's supply as dust.
-        uint256 liquidity = FullMath.mulDiv(
-            TOTAL_SUPPLY,
-            FixedPoint96.Q96,
-            initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(TICK_SPACING))
+        positionLiquidity = SafeCastLib.toUint128(
+            FullMath.mulDiv(
+                TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK)
+            )
         );
-        if (liquidity > Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING)) revert UnrealizableLaunch();
-        positionLiquidity = SafeCastLib.toUint128(liquidity);
     }
 
     /// @inheritdoc IStrategy
@@ -198,8 +197,8 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             PositionDefinition[] memory definitions = new PositionDefinition[](1);
             definitions[0] = PositionDefinition({
                 // The token is currency1, so its single-sided range sits below the opening price:
-                // from the min usable tick up to the initial tick.
-                offsetLower: TickMath.minUsableTick(TICK_SPACING) - initialTick,
+                // from the launch floor up to the initial tick.
+                offsetLower: MIN_LAUNCH_TICK - initialTick,
                 offsetUpper: 0,
                 weight: PositionPlanner.MPS,
                 overridePositionRecipient: address(0)

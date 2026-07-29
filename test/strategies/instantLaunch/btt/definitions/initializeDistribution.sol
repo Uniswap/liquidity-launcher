@@ -201,7 +201,7 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
         // One position, spanning the token side of the price, holding the precomputed liquidity.
         assertEq(POSITION_MANAGER.nextTokenId(), tokenId + 1);
         (, PositionInfo info) = POSITION_MANAGER.getPoolAndPositionInfo(tokenId);
-        assertEq(info.tickLower(), TickMath.minUsableTick(strategy.TICK_SPACING()));
+        assertEq(info.tickLower(), strategy.MIN_LAUNCH_TICK());
         assertEq(info.tickUpper(), INITIAL_TICK);
         assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.positionLiquidity());
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
