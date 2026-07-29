@@ -118,8 +118,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 
 | Version | Chain | Address | Fee Splitter | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x5B37F9a24e9CAb142Ca758A69a28Bf57B4c714D9` | [`0xf139e6835B1494c9AC57133B1Dc052B097328199`](#fee-splitter) | `dd232edf5962a47841e9e7d2f9062a2fc50ad377` |
-| v3.1.0 | Robinhood Chain | `0x42cdE2f72B2292BE3973c59811b8901627930b2d` | [`0xF165D5B169106e13bFB568C52af5d11977365630`](#fee-splitter) | `dd232edf5962a47841e9e7d2f9062a2fc50ad377` |
+| v3.1.0 | Robinhood Chain | `0x60D73b21cDf2EA846ab3d58699BBbb8F29d72491` | [`0x7198C32a497c09497e04C86cf8F77A244A9E4b8F`](#fee-splitter) | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
+| v3.1.0 | Robinhood Chain | `0xFCe92C70f1fc017b72f6DD7a00D9E38725C7fBd1` | [`0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23`](#fee-splitter) | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
 
 #### TokenSplitter
 
@@ -137,8 +137,8 @@ Deployed per chain with immutable fee splits. Multiple deployments may exist on 
 
 | Version | Chain | Address | Fee Splits | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0xf139e6835B1494c9AC57133B1Dc052B097328199` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `0b06e9f6964f64da52932e3729772e306bba8f3d` |
-| v3.1.0 | Robinhood Chain | `0xF165D5B169106e13bFB568C52af5d11977365630` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `0b06e9f6964f64da52932e3729772e306bba8f3d` |
+| v3.1.0 | Robinhood Chain | `0x7198C32a497c09497e04C86cf8F77A244A9E4b8F` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
+| v3.1.0 | Robinhood Chain | `0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
 
 #### UERC20BeneficiaryVault
 
@@ -146,7 +146,7 @@ Deployed to a different address on each chain. Distributes and attributes creato
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0xF3b8653B53d75ec9925d88b051CcFDabbd4894f5` | `0b06e9f6964f64da52932e3729772e306bba8f3d` |
+| v3.1.0 | Robinhood Chain | `0x587D2fDDDF14F6f84022b51e8c3a473eB88C4544` | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
 
 #### CompoundingClaimRecipient
 
@@ -154,7 +154,7 @@ Deployed to a different address on each chain. Permissionlessly compounds LP fee
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x3fC7BA967295C10AFD2Ad4f098Dce3a71e6b8c73` | `0b06e9f6964f64da52932e3729772e306bba8f3d` |
+| v3.1.0 | Robinhood Chain | `0x666DA63451A502A323677C2Ef5F763181358be9b` | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
 
 #### InitializerHook
 
