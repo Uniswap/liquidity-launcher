@@ -33,7 +33,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
         minLiquidityIncrease = uint128(bound(minLiquidityIncrease, 1, type(uint128).max));
         positionRecipient = new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), minLiquidityIncrease);
 
-        assertEq(positionRecipient.MIN_LIQUIDITY_INCREASE(), minLiquidityIncrease);
+        assertEq(positionRecipient.minLiquidityIncrease(), minLiquidityIncrease);
         assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
     }
 

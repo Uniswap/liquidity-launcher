@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {IClaimableRecipient} from "./IClaimableRecipient.sol";
+
 /// @title IBeneficiaryVault
 /// @notice A transferable ERC721 claim on a position's attributed LP fees.
 /// @dev Fee attribution is permissionless and balance-backed; untracked surplus, including donations,
 ///      is attributable by the first caller.
-interface IBeneficiaryVault {
+interface IBeneficiaryVault is IClaimableRecipient {
     /// @notice Thrown when a registration caller does not custody the position in the PositionManager.
     /// @param tokenId The position token ID.
     /// @param sender The caller that failed the custody proof.
@@ -35,8 +37,10 @@ interface IBeneficiaryVault {
     function registerBeneficiary(uint256 tokenId, address beneficiary) external;
 
     /// @notice The receiver for unregistered positions' native fee shares.
+    /// @return The native fallback address.
     function nativeFallback() external view returns (address);
 
     /// @notice The receiver for unregistered positions' token fee shares.
+    /// @return The token fallback address.
     function tokenFallback() external view returns (address);
 }
