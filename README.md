@@ -118,8 +118,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 
 | Version | Chain | Address | Fee Splitter | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x36749151976Ff89554d5a921DF0f607B87CFadfc` | [`0xf139e6835B1494c9AC57133B1Dc052B097328199`](#fee-splitter) | `0b06e9f6964f64da52932e3729772e306bba8f3d` |
-| v3.1.0 | Robinhood Chain | `0xdf51998a65F11160a17392BcBc9eD0e03E0550cf` | [`0xF165D5B169106e13bFB568C52af5d11977365630`](#fee-splitter) | `0b06e9f6964f64da52932e3729772e306bba8f3d` |
+| v3.1.0 | Robinhood Chain | `0x5B37F9a24e9CAb142Ca758A69a28Bf57B4c714D9` | [`0xf139e6835B1494c9AC57133B1Dc052B097328199`](#fee-splitter) | `dd232edf5962a47841e9e7d2f9062a2fc50ad377` |
+| v3.1.0 | Robinhood Chain | `0x42cdE2f72B2292BE3973c59811b8901627930b2d` | [`0xF165D5B169106e13bFB568C52af5d11977365630`](#fee-splitter) | `dd232edf5962a47841e9e7d2f9062a2fc50ad377` |
 
 #### TokenSplitter
 
