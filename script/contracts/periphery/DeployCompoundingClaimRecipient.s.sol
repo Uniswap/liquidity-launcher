@@ -11,8 +11,11 @@ import {console} from "forge-std/console.sol";
 /// @title DeployCompoundingClaimRecipientScript
 /// @notice Deploys a CompoundingClaimRecipient contract for the given chain
 contract DeployCompoundingClaimRecipientScript is Script, Parameters {
-    // @notice Default required minimum liquidity amounts increase for compounding LP fees
-    uint256 public constant MIN_LIQUIDITY_INCREASE = 1e18;
+    /// @notice Default required minimum liquidity amounts increase for compounding LP fees.
+    /// @dev 0.2% of an `InstantLaunchStrategy` position's liquidity, which is ~$10 of assets to add at a $5k
+    ///      launch FDV and ~$2.8k at $100M. `cost(dL)/value(L)` equals `dL/L` regardless of price, so this
+    ///      stays at 0.2% of the position across the band; only the dollar figure moves with the position.
+    uint128 public constant MIN_LIQUIDITY_INCREASE = 1e20;
 
     function run() public returns (address compoundingClaimRecipient) {
         DeployParameters memory params = getParameters(block.chainid);
