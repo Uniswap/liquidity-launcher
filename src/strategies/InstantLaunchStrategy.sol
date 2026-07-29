@@ -52,9 +52,10 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Tick spacing
     int24 public constant TICK_SPACING = 60;
     /// @notice Lower tick of every launch position, and the exclusive floor for `initialTick`.
-    /// @dev Above the min usable tick so that filling this boundary's `maxLiquidityPerTick` — which blocks
-    ///      every later liquidity increase on the launch position — costs a large share of the supply.
-    int24 public constant MIN_LAUNCH_TICK = -255_060;
+    /// @dev Filling a tick's `maxLiquidityPerTick` blocks every later liquidity increase on a position
+    ///      bounded by it. This value is high enough that doing so at this shared boundary costs more than
+    ///      the total supply, so it cannot be done at any price; deeper floors only make it expensive.
+    int24 public constant MIN_LAUNCH_TICK = -208_980;
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 

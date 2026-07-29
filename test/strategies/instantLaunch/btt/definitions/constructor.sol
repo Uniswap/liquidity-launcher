@@ -30,12 +30,10 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick does not exceed the launch floor
 /// │   └── it reverts with InvalidTickRange
-/// ├── when the supply does not fit in a single position
-/// │   └── it reverts with UnrealizableLaunch
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
 ///     ├── it derives a position liquidity that fits in a single position
-///     └── it prices saturating the launch floor tick at a large share of the supply
+///     └── it prices saturating the launch floor tick above the total supply
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         zeroIndex = uint8(bound(zeroIndex, 0, 4));
@@ -89,7 +87,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
-        initialTick = int24(bound(initialTick, LOWEST_REALIZABLE_TICK, TickMath.maxUsableTick(strategy.TICK_SPACING())));
+        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK, TickMath.maxUsableTick(strategy.TICK_SPACING())));
         vm.assume(initialTick % strategy.TICK_SPACING() != 0);
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
@@ -118,31 +116,9 @@ contract ConstructorTest is InstantLaunchTestBase {
         _deployStrategy(initialTick);
     }
 
-    function test_WhenSupplyDoesNotFitInSinglePosition() public {
-        int24 tickSpacing = strategy.TICK_SPACING();
-        vm.expectRevert(InstantLaunchStrategy.UnrealizableLaunch.selector);
-        _deployStrategy(LOWEST_REALIZABLE_TICK - tickSpacing);
-    }
-
-    function test_fuzz_WhenSupplyDoesNotFitInSinglePosition(int24 initialTick) public {
-        int24 tickSpacing = strategy.TICK_SPACING();
-        // Aligned ticks between the launch floor (exclusive) and the realizability boundary (exclusive):
-        // deep enough that the full supply's liquidity exceeds maxLiquidityPerTick.
-        initialTick = int24(
-            bound(
-                initialTick,
-                strategy.MIN_LAUNCH_TICK() / tickSpacing + 1,
-                (LOWEST_REALIZABLE_TICK - tickSpacing) / tickSpacing
-            )
-        ) * tickSpacing;
-
-        vm.expectRevert(InstantLaunchStrategy.UnrealizableLaunch.selector);
-        _deployStrategy(initialTick);
-    }
-
-    function test_WhenInitialTickIsLowestRealizableTick_deploys() public {
-        InstantLaunchStrategy deployed = _deployStrategy(LOWEST_REALIZABLE_TICK);
-        assertEq(deployed.initialTick(), LOWEST_REALIZABLE_TICK);
+    function test_WhenInitialTickIsLowestLaunchTick_deploys() public {
+        InstantLaunchStrategy deployed = _deployStrategy(LOWEST_LAUNCH_TICK);
+        assertEq(deployed.initialTick(), LOWEST_LAUNCH_TICK);
     }
 
     function test_WhenInitialTickIsMaximumUsableTick_deploys() public {
@@ -162,7 +138,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertGt(strategy.positionLiquidity(), 0);
     }
 
-    function test_WhenConfigurationIsValid_saturatingLaunchFloorCostsLargeSupplyShare() public view {
+    function test_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply() public view {
         int24 tickSpacing = strategy.TICK_SPACING();
         int24 floorTick = strategy.MIN_LAUNCH_TICK();
         assertEq(floorTick % tickSpacing, 0);
@@ -177,13 +153,13 @@ contract ConstructorTest is InstantLaunchTestBase {
             blockerLiquidity,
             true
         );
-        assertGt(blockerCost, strategy.TOTAL_SUPPLY() / 20);
+        assertGt(blockerCost, strategy.TOTAL_SUPPLY());
     }
 
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         initialTick = int24(
-            bound(initialTick, LOWEST_REALIZABLE_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
         ) * tickSpacing;
 
         InstantLaunchStrategy deployed = _deployStrategy(initialTick);
