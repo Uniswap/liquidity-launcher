@@ -10,10 +10,8 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 
 /// @title BaseClaimRecipient
 /// @notice Shared amount attribution and claim mechanics for LP position recipients.
-/// @dev This base pays out and nothing more: it exposes a single empty `_afterClaim` hook. Recipients
-///      that need to call back into an executor should inherit `BaseClaimRecipientWithCallback`, which
-///      overrides `_afterClaim` with the before/callback/after flow. Recipients that don't (e.g. creator
-///      fees paid straight to a beneficiary) inherit this base directly and never run a callback.
+/// @dev `_afterClaim` is an empty hook; recipients that call back into an executor inherit
+///      `BaseClaimRecipientWithCallback`.
 abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
@@ -39,121 +37,118 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         positionManager = _positionManager;
     }
 
-    /// @notice Receive ETH
-    receive() external payable {}
-
     /// @inheritdoc IClaimableRecipient
-    function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
-        PoolKey memory poolKey = _getPoolKey(_tokenId);
+    function onAmountsReceived(uint256 tokenId, uint256 currency0Amount, uint256 currency1Amount) external override {
+        PoolKey memory poolKey = _getPoolKey(tokenId);
 
-        Amounts memory positionAmounts = amounts[_tokenId];
-        if (_currency0Amount != 0) {
-            _attribute(poolKey.currency0, _currency0Amount);
-            positionAmounts.currency0Amount = (positionAmounts.currency0Amount + _currency0Amount).toUint128();
+        Amounts memory positionAmounts = amounts[tokenId];
+        if (currency0Amount != 0) {
+            _attribute(poolKey.currency0, currency0Amount);
+            positionAmounts.currency0Amount = (positionAmounts.currency0Amount + currency0Amount).toUint128();
         }
-        if (_currency1Amount != 0) {
-            _attribute(poolKey.currency1, _currency1Amount);
-            positionAmounts.currency1Amount = (positionAmounts.currency1Amount + _currency1Amount).toUint128();
+        if (currency1Amount != 0) {
+            _attribute(poolKey.currency1, currency1Amount);
+            positionAmounts.currency1Amount = (positionAmounts.currency1Amount + currency1Amount).toUint128();
         }
-        amounts[_tokenId] = positionAmounts;
+        amounts[tokenId] = positionAmounts;
 
-        emit AmountsReceived(_tokenId, _currency0Amount, _currency1Amount);
+        emit AmountsReceived(tokenId, currency0Amount, currency1Amount);
     }
 
     /// @inheritdoc IClaimableRecipient
-    function claim(uint256 _tokenId, uint256 _minCurrency0Amount, uint256 _minCurrency1Amount) external nonReentrant {
-        PoolKey memory poolKey = _getPoolKey(_tokenId);
+    function claim(uint256 tokenId, uint256 minCurrency0Amount, uint256 minCurrency1Amount)
+        external
+        override
+        nonReentrant
+    {
+        PoolKey memory poolKey = _getPoolKey(tokenId);
 
         Currency currency0 = poolKey.currency0;
         Currency currency1 = poolKey.currency1;
-        uint256 currency0Amount;
-        uint256 currency1Amount;
-        {
-            Amounts memory positionAmounts = amounts[_tokenId];
-            currency0Amount = positionAmounts.currency0Amount;
-            currency1Amount = positionAmounts.currency1Amount;
-        }
+        Amounts memory positionAmounts = amounts[tokenId];
+        uint256 currency0Amount = positionAmounts.currency0Amount;
+        uint256 currency1Amount = positionAmounts.currency1Amount;
 
-        if (currency0Amount < _minCurrency0Amount) {
-            revert InsufficientAmountReceived(currency0, currency0Amount, _minCurrency0Amount);
+        if (currency0Amount < minCurrency0Amount) {
+            revert InsufficientAmountReceived(currency0, currency0Amount, minCurrency0Amount);
         }
-        if (currency1Amount < _minCurrency1Amount) {
-            revert InsufficientAmountReceived(currency1, currency1Amount, _minCurrency1Amount);
+        if (currency1Amount < minCurrency1Amount) {
+            revert InsufficientAmountReceived(currency1, currency1Amount, minCurrency1Amount);
         }
 
         (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
-            _beforeClaimTransfer(_tokenId, currency0, currency1, currency0Amount, currency1Amount);
+            _beforeClaimTransfer(tokenId, currency0, currency1, currency0Amount, currency1Amount);
         if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
         if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
         if (toSend0 > currency0Amount) revert InsufficientAmountReceived(currency0, currency0Amount, toSend0);
         if (toSend1 > currency1Amount) revert InsufficientAmountReceived(currency1, currency1Amount, toSend1);
 
-        _payout(_tokenId, currency0, recipient0, toSend0, true);
-        _payout(_tokenId, currency1, recipient1, toSend1, false);
+        _payout(tokenId, currency0, recipient0, toSend0, true);
+        _payout(tokenId, currency1, recipient1, toSend1, false);
 
-        _afterClaim(poolKey, _tokenId, toSend0, toSend1);
+        _afterClaim(poolKey, tokenId, toSend0, toSend1);
 
-        emit Claimed(_tokenId, toSend0, toSend1, poolKey);
+        emit Claimed(tokenId, toSend0, toSend1, poolKey);
     }
 
     /// @notice Returns the pool key for an existing position
-    function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
-        (poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);
-        if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
+    function _getPoolKey(uint256 tokenId) internal view returns (PoolKey memory poolKey) {
+        (poolKey,) = positionManager.getPoolAndPositionInfo(tokenId);
+        if (poolKey.tickSpacing == 0) revert InvalidPosition(tokenId);
     }
 
-    /// @notice Transfer policy consulted once per claim, before any payout. Receives the claimed
-    ///         position, its currencies, and each side's attributed amount; defaults to paying the
+    /// @notice Transfer policy consulted once per claim, before any payout; defaults to paying the
     ///         full available amounts to the caller.
-    /// @dev Zero recipients revert — burning must be an explicit 0xdead. Amounts below the available
-    ///      balance leave the remainder attributed and claimable later.
+    /// @dev Zero recipients revert; burns must target 0xdead. Amounts below the available balance
+    ///      leave the remainder claimable later.
     /// @return The receiver of the currency0 payout
     /// @return The currency0 amount to pay out; at most the available amount
     /// @return The receiver of the currency1 payout
     /// @return The currency1 amount to pay out; at most the available amount
-    function _beforeClaimTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
+    function _beforeClaimTransfer(uint256, Currency, Currency, uint256 available0, uint256 available1)
         internal
         virtual
         returns (address, uint256, address, uint256)
     {
-        return (msg.sender, _available0, msg.sender, _available1);
+        return (msg.sender, available0, msg.sender, available1);
     }
 
-    /// @notice Hook run at the end of `claim`, after both payouts. Empty by default; the base pays out
-    ///         and does nothing else. Overrides must not touch the attribution accounting.
-    /// @param _poolKey The claimed position's pool key
-    /// @param _tokenId The claimed position's token ID
-    /// @param _toSend0 The currency0 amount paid out in this claim
-    /// @param _toSend1 The currency1 amount paid out in this claim
-    function _afterClaim(PoolKey memory _poolKey, uint256 _tokenId, uint256 _toSend0, uint256 _toSend1)
-        internal
-        virtual {}
+    /// @notice Hook run after both payouts; empty by default. Overrides must not modify the
+    ///         attribution accounting.
+    /// @param poolKey The claimed position's pool key
+    /// @param tokenId The claimed position's token ID
+    /// @param toSend0 The currency0 amount paid out in this claim
+    /// @param toSend1 The currency1 amount paid out in this claim
+    function _afterClaim(PoolKey memory poolKey, uint256 tokenId, uint256 toSend0, uint256 toSend1) internal virtual {}
 
-    /// @notice Decrements attribution before transferring, so code running during a payout cannot
-    ///         attribute the in-flight funds.
-    /// @param _tokenId The position being claimed
-    /// @param _currency The currency to pay out
-    /// @param _recipient The receiver of the payout
-    /// @param _toSend The amount to pay out
-    /// @param _isCurrency0 Whether `_currency` is the position's currency0
-    function _payout(uint256 _tokenId, Currency _currency, address _recipient, uint256 _toSend, bool _isCurrency0)
-        private
-    {
-        if (_toSend == 0) return;
-        // casts are safe as _toSend is bounded by the attributed uint128 amount
-        if (_isCurrency0) amounts[_tokenId].currency0Amount -= uint128(_toSend);
-        else amounts[_tokenId].currency1Amount -= uint128(_toSend);
-        totalAmounts[_currency] -= _toSend;
-        _currency.transfer(_recipient, _toSend);
+    /// @notice Decrements attribution before transferring.
+    /// @param tokenId The position being claimed
+    /// @param currency The currency to pay out
+    /// @param recipient The receiver of the payout
+    /// @param toSend The amount to pay out
+    /// @param isCurrency0 Whether `currency` is the position's currency0
+    function _payout(uint256 tokenId, Currency currency, address recipient, uint256 toSend, bool isCurrency0) private {
+        if (toSend == 0) return;
+        // casts are safe as toSend is bounded by the attributed uint128 amount
+        if (isCurrency0) {
+            amounts[tokenId].currency0Amount -= uint128(toSend);
+        } else {
+            amounts[tokenId].currency1Amount -= uint128(toSend);
+        }
+        totalAmounts[currency] -= toSend;
+        currency.transfer(recipient, toSend);
     }
 
-    /// @notice Requires `_amount` to be backed by balance beyond the amounts already attributed.
-    /// @param _currency The currency being attributed
-    /// @param _amount The amount to attribute
-    function _attribute(Currency _currency, uint256 _amount) private {
-        uint256 balance = _currency.balanceOfSelf();
-        uint256 expectedTotalAmount = totalAmounts[_currency] + _amount;
-        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(_currency, balance, expectedTotalAmount);
-        totalAmounts[_currency] = expectedTotalAmount;
+    /// @notice Requires `amount` to be backed by balance beyond the amounts already attributed.
+    /// @param currency The currency being attributed
+    /// @param amount The amount to attribute
+    function _attribute(Currency currency, uint256 amount) private {
+        uint256 balance = currency.balanceOfSelf();
+        uint256 expectedTotalAmount = totalAmounts[currency] + amount;
+        if (balance < expectedTotalAmount) revert InsufficientAmountReceived(currency, balance, expectedTotalAmount);
+        totalAmounts[currency] = expectedTotalAmount;
     }
+
+    /// @notice Receive ETH
+    receive() external payable {}
 }

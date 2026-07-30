@@ -25,7 +25,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
     }
 
     function test_Constructor_WhenMinimumLiquidityIncreaseIsZero_Reverts() public {
-        vm.expectRevert(CompoundingClaimRecipient.MinLiquidityIncreaseIsZero.selector);
+        vm.expectRevert(CompoundingClaimRecipient.ZeroMinLiquidityIncrease.selector);
         new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), 0);
     }
 
@@ -72,9 +72,9 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                CompoundingClaimRecipient.NotEnoughLiquidityAdded.selector,
-                uint256(liquidityBefore) + type(uint128).max,
-                liquidityBefore
+                CompoundingClaimRecipient.InsufficientLiquidityIncrease.selector,
+                liquidityBefore,
+                uint256(liquidityBefore) + type(uint128).max
             )
         );
         noopExecutor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);

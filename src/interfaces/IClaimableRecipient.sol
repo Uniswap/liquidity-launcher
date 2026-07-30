@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.0;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -19,7 +19,7 @@ interface IClaimableRecipient {
     /// @param expected The amount required
     error InsufficientAmountReceived(Currency currency, uint256 received, uint256 expected);
 
-    /// @notice Thrown when a transfer policy returns the zero address.
+    /// @notice Thrown when a transfer policy returns the zero address
     /// @param currency The currency whose recipient is zero
     error InvalidTransferRecipient(Currency currency);
 
@@ -37,11 +37,10 @@ interface IClaimableRecipient {
     event AmountsReceived(uint256 indexed tokenId, uint256 currency0Amount, uint256 currency1Amount);
 
     /// @notice Claims a position's attributed amounts; the payout is determined by the recipient's
-    ///         transfer policy.
-    /// @dev Amounts are transferred FIRST. Whether the caller is then called back through `onClaimed`
-    ///      is fixed by the recipient's base, not by any runtime interface probe: recipients inheriting
-    ///      `BaseClaimRecipientWithCallback` invoke it unconditionally, so their callers MUST implement
-    ///      `IClaimExecutor`; recipients inheriting `BaseClaimRecipient` never call back.
+    ///         transfer policy
+    /// @dev Amounts are transferred before any callback. Recipients inheriting
+    ///      `BaseClaimRecipientWithCallback` call back into the caller, which MUST implement
+    ///      `IClaimExecutor`; recipients inheriting `BaseClaimRecipient` never call back
     /// @param tokenId The token ID of the position
     /// @param minCurrency0Amount The minimum acceptable currency0 amount
     /// @param minCurrency1Amount The minimum acceptable currency1 amount
@@ -53,15 +52,13 @@ interface IClaimableRecipient {
     /// @return currency1Amount The claimable currency1 amount
     function amounts(uint256 tokenId) external view returns (uint128 currency0Amount, uint128 currency1Amount);
 
-    /// @notice The PositionManager that positions and their pool keys are resolved against.
-    /// @return The recipient's PositionManager.
+    /// @notice The PositionManager that positions and their pool keys are resolved against
     function positionManager() external view returns (IPositionManager);
 
-    /// @notice MUST be called after transferring amounts in to register the new balance. Failure to
-    ///         do so will result in a loss of funds attribution.
+    /// @notice Attributes transferred-in amounts to a position; MUST be called after the transfer,
+    ///         otherwise the funds go unattributed
     /// @dev Permissionless and balance-backed; the position's currencies are resolved from the
-    ///      PositionManager, never from the caller. Implementations MUST NOT revert for a position they
-    ///      serve: sources that push before notifying do not swallow it, so a revert reverts their call.
+    ///      PositionManager. Implementations MUST NOT revert for a position they serve
     /// @param tokenId The token ID of the position
     /// @param currency0Amount The amount of currency0 received
     /// @param currency1Amount The amount of currency1 received

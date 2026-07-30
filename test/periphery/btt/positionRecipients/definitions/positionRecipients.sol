@@ -410,9 +410,9 @@ contract PositionRecipientsBTTTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                CompoundingClaimRecipient.NotEnoughLiquidityAdded.selector,
-                uint256(INITIAL_LIQUIDITY) + 1,
-                INITIAL_LIQUIDITY
+                CompoundingClaimRecipient.InsufficientLiquidityIncrease.selector,
+                INITIAL_LIQUIDITY,
+                uint256(INITIAL_LIQUIDITY) + 1
             )
         );
         executor.execute(recipient, TOKEN_ID, 0, 0);

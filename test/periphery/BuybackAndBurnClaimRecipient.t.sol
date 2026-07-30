@@ -33,7 +33,6 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
 
         assertEq(positionRecipient.minCurrency1BurnAmount(), _minTokenBurnAmount);
-        assertEq(Currency.unwrap(positionRecipient.currency()), NATIVE);
         assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
     }
 
@@ -47,7 +46,7 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
     }
 
     function test_RevertsIfMinTokenBurnAmountIsZero() public {
-        vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidMinCurrency1BurnAmount.selector);
+        vm.expectRevert(BuybackAndBurnClaimRecipient.ZeroMinCurrency1BurnAmount.selector);
         new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 0);
     }
 

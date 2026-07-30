@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.0;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -27,15 +27,14 @@ interface IFeeSplitter {
     /// @param tokenAmount The token fees collected.
     event FeesCollected(uint256 indexed tokenId, address indexed token, uint256 nativeAmount, uint256 tokenAmount);
 
-    /// @notice Emitted for each nonzero amount pushed to a recipient. Native pushes are force-sent,
-    ///         so the recipient is always the configured one.
+    /// @notice Emitted for each nonzero amount pushed to a recipient. Native amounts are force-sent.
     /// @param recipient The receiver of the share.
     /// @param currency The currency sent; address(0) is native ETH.
     /// @param amount The amount sent.
     event FeesForwarded(address indexed recipient, Currency indexed currency, uint256 amount);
 
     /// @notice Thrown when a balance exceeds the maximum allowed.
-    /// @param tokenId The position whose collection realized the balance.
+    /// @param tokenId The position being collected.
     error BalanceExceedsMaxAllowed(uint256 tokenId);
 
     /// @notice Thrown when no splits are configured.
@@ -88,14 +87,13 @@ interface IFeeSplitter {
     /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
     ///      splitter, otherwise the PositionManager reverts. A recipient that reverts its notification
     ///      reverts this call, leaving those fees in the pool; other token IDs are unaffected.
-    ///      Unlike `increaseLiquidity`, collection cannot run inside an existing PoolManager unlock:
-    ///      it reverts with PoolManagerAlreadyUnlocked so recipients are never notified mid-lock.
+    ///      Reverts with `PoolManagerAlreadyUnlocked` when the PoolManager is already unlocked.
     /// @param tokenIds The position token IDs to collect.
     function collectFees(uint256[] calldata tokenIds) external;
 
     /// @notice Increases the liquidity of a position held by the splitter using funds already sent to
     ///         the PositionManager; excess funding is taken back to the caller.
-    /// @dev Permissionless. All fees MUST be collected first; reverts with UncollectedFees otherwise.
+    /// @dev Permissionless. Reverts with `UncollectedFees` if the position has uncollected fees.
     ///      If the PoolManager is already unlocked the actions run in that lock, so the increase can be
     ///      funded from a flash loan. Such callers MUST open the lock via `poolManager.unlock()` (entering
     ///      through `PositionManager.modifyLiquidities` reverts ContractLocked) and increase before swapping.
@@ -113,10 +111,8 @@ interface IFeeSplitter {
     ) external;
 
     /// @notice The canonical v4 PositionManager holding the LP positions.
-    /// @return The PositionManager this splitter collects through.
     function positionManager() external view returns (IPositionManager);
 
     /// @notice The full immutable split configuration.
-    /// @return The configured fee splits.
     function getSplits() external view returns (FeeSplit[] memory);
 }
