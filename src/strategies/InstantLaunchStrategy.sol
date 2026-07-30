@@ -23,6 +23,7 @@ import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
 import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @notice The launch configuration carried in `configData`.
 /// @param feeBeneficiary The freely chosen recipient of the fee splitter's beneficiary share.
@@ -31,15 +32,7 @@ struct InstantLaunchConfig {
 }
 
 /// @title InstantLaunchStrategy
-/// @notice `IStrategy` that launches a fixed-supply token directly into a hookless native-ETH v4 pool,
-///         with the entire supply in a single-sided LP position. Plugs into `LiquidityLauncher.distributeToken`:
-///         the launcher approves this strategy and calls `initializeDistribution`, and the strategy pulls
-///         the full supply from it.
-/// @dev Standalone and single-purpose, with no graduation or hook. Every pool parameter is fixed at
-///      deployment; one instance launches every token at the same price band. Pairs 1B-supply /
-///      18-decimal tokens against native ETH (currency0); the token is always currency1. The position spans
-///      from `MIN_LAUNCH_TICK` up to the initial tick — the token side of the opening price — so buys walk
-///      the price downward through the available supply.
+/// @notice Launches a fixed-supply token directly into a hookless native-ETH v4 pool with a single-sided LP position
 /// @custom:security-contact security@uniswap.org
 contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
@@ -51,11 +44,10 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     uint24 public constant LP_FEE = 2_500;
     /// @notice Tick spacing
     int24 public constant TICK_SPACING = 60;
-    /// @notice Lower tick of every launch position, and the exclusive floor for `initialTick`.
-    /// @dev Filling a tick's `maxLiquidityPerTick` blocks every later liquidity increase on a position
-    ///      bounded by it. This value is high enough that doing so at this shared boundary costs more than
-    ///      the total supply, so it cannot be done at any price; deeper floors only make it expensive.
+    /// @notice Lower and upper tick of every launch position ensuring that in order to overflow maxLiquidityPerTick,
+    ///         an attacker would require more than the total supply of the token which is not possible.
     int24 public constant MIN_LAUNCH_TICK = -208_980;
+    int24 public constant MAX_INITIAL_TICK = 251_340;
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -143,7 +135,8 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
         // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.
         if (
-            _initialTick % TICK_SPACING != 0 || _initialTick > TickMath.maxUsableTick(TICK_SPACING)
+            _initialTick % TICK_SPACING != 0
+                || _initialTick > FixedPointMathLib.min(MAX_INITIAL_TICK, TickMath.maxUsableTick(TICK_SPACING))
                 || _initialTick <= MIN_LAUNCH_TICK
         ) revert InvalidTickRange();
 
