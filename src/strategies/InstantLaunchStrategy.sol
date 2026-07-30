@@ -57,7 +57,9 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     ///      bounded by it, which strands the fees of any compounding recipient. This is the lowest aligned
     ///      tick at which doing so costs more than `TOTAL_SUPPLY` for every `initialTick` the constructor
     ///      accepts, so it cannot be funded at any price. The constructor proves the property rather than
-    ///      trusting this value; deeper floors are cheaper to fill and are rejected there.
+    ///      trusting this value; deeper floors are cheaper to fill and are rejected there. Closed form: with
+    ///      `r` the square-root price ratio across one spacing, this is the lowest aligned tick whose
+    ///      square-root price exceeds `TOTAL_SUPPLY * (r + 1) / (maxLiquidityPerTick * (r - 1))`.
     int24 public constant MIN_LAUNCH_TICK = -195_120;
     /// @notice Native an attacker must post to fill a boundary tick's allowance, below which a launch is
     ///         rejected.
@@ -171,10 +173,9 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         initialTick = _initialTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
 
+        uint160 floorSqrtPriceX96 = TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK);
         uint128 liquidity = SafeCastLib.toUint128(
-            FullMath.mulDiv(
-                TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK)
-            )
+            FullMath.mulDiv(TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - floorSqrtPriceX96)
         );
         // The whole supply must fit in one position. Clamping instead would pass the resolve step in
         // `initializeDistribution` and then silently burn the unplaced remainder of every launch as dust.
@@ -182,35 +183,29 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (liquidity >= maxLiquidityPerTick) revert UnrealizableLaunch();
         positionLiquidity = liquidity;
 
-        // Both of the position's boundary ticks must be unaffordable to fill: v4 raises `liquidityGross` at
-        // the lower and the upper tick alike, so filling either one blocks every later increase.
-        uint128 headroom = maxLiquidityPerTick - liquidity;
-        _requireUnfillableTick(MIN_LAUNCH_TICK, headroom);
-        _requireUnfillableTick(_initialTick, headroom);
-    }
-
-    /// @notice Reverts unless filling `_tick` to its liquidity allowance is unaffordable in both currencies.
-    /// @dev A blocker needs a position with `_tick` as one of its boundaries, and the narrowest such band is
-    ///      the cheapest. Which currency funds it follows from where the price sits rather than from the
-    ///      blocker's choice — but the price can be moved anywhere outside the launch range for free, so both
-    ///      fundings have to be prohibitive. The band below `_tick` is the cheapest token-funded one and the
-    ///      band above it the cheapest native-funded one, because the square root of the price grows with the
-    ///      tick while its reciprocal shrinks; the mirrored pairings cost strictly more and need no check.
-    ///      Amounts round down, since what matters is the least a blocker could get away with.
-    /// @param _tick The boundary tick to price
-    /// @param _headroom The liquidity left at `_tick` once the launch position occupies its share
-    function _requireUnfillableTick(int24 _tick, uint128 _headroom) private pure {
-        uint160 sqrtPriceAtTickX96 = TickMath.getSqrtPriceAtTick(_tick);
-
-        uint256 tokenCost = SqrtPriceMath.getAmount1Delta(
-            TickMath.getSqrtPriceAtTick(_tick - TICK_SPACING), sqrtPriceAtTickX96, _headroom, false
-        );
-        if (tokenCost <= TOTAL_SUPPLY) revert SaturableBoundaryTick(_tick, tokenCost);
-
-        uint256 nativeCost = SqrtPriceMath.getAmount0Delta(
-            sqrtPriceAtTickX96, TickMath.getSqrtPriceAtTick(_tick + TICK_SPACING), _headroom, false
-        );
-        if (nativeCost <= MIN_NATIVE_PIN_COST) revert SaturableBoundaryTick(_tick, nativeCost);
+        // v4 raises `liquidityGross` at both of a position's boundary ticks and caps it at
+        // `maxLiquidityPerTick`, so filling either boundary blocks every later increase on the launch
+        // position, and with it every compounding claim on its fees. A blocker needs a position with that
+        // boundary as one of its own and the narrowest such band is the cheapest, while which currency funds
+        // it follows from where the price sits rather than from the blocker's choice. Both fundings must
+        // therefore be prohibitive, each checked at the boundary where it is cheapest: one spacing of token
+        // cost scales with the square root of the price, one spacing of native cost with its reciprocal.
+        // Costs round down, pricing the least a blocker could get away with.
+        {
+            uint128 headroom = maxLiquidityPerTick - liquidity;
+            // Cheapest token blocker: the band below the floor. Exceeding the fixed supply makes it
+            // unfundable outright, and it bounds the token door at `initialTick`, which costs strictly more.
+            uint256 tokenCost = SqrtPriceMath.getAmount1Delta(
+                TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK - TICK_SPACING), floorSqrtPriceX96, headroom, false
+            );
+            if (tokenCost <= TOTAL_SUPPLY) revert SaturableBoundaryTick(MIN_LAUNCH_TICK, tokenCost);
+            // Cheapest native blocker: the band above `initialTick`. Native has no fixed supply, so the bar
+            // is MIN_NATIVE_PIN_COST. This bounds the native door at the floor, which costs strictly more.
+            uint256 nativeCost = SqrtPriceMath.getAmount0Delta(
+                initialSqrtPriceX96, TickMath.getSqrtPriceAtTick(_initialTick + TICK_SPACING), headroom, false
+            );
+            if (nativeCost <= MIN_NATIVE_PIN_COST) revert SaturableBoundaryTick(_initialTick, nativeCost);
+        }
     }
 
     /// @inheritdoc IStrategy

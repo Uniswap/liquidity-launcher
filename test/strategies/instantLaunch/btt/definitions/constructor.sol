@@ -147,13 +147,8 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_WhenInitialTickIsOneSpacingAboveHighestLaunchTick() public {
         // One spacing higher and the upper boundary's native door drops under MIN_NATIVE_PIN_COST. Asserting
         // the exact edge means a change to the supply, the spacing or the cap cannot move it unnoticed.
-        int24 tickSpacing = strategy.TICK_SPACING();
-        int24 rejected = HIGHEST_LAUNCH_TICK + tickSpacing;
-        uint128 headroom = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing)
-            - _expectedPositionLiquidity(rejected, strategy.MIN_LAUNCH_TICK());
-        uint256 nativeCost = SqrtPriceMath.getAmount0Delta(
-            TickMath.getSqrtPriceAtTick(rejected), TickMath.getSqrtPriceAtTick(rejected + tickSpacing), headroom, false
-        );
+        int24 rejected = HIGHEST_LAUNCH_TICK + strategy.TICK_SPACING();
+        uint256 nativeCost = _expectedNativeCost(rejected);
 
         vm.expectRevert(
             abi.encodeWithSelector(InstantLaunchStrategy.SaturableBoundaryTick.selector, rejected, nativeCost)
@@ -225,6 +220,40 @@ contract ConstructorTest is InstantLaunchTestBase {
             assertGt(SqrtPriceMath.getAmount0Delta(at, above, headroom, false), deployed.MIN_NATIVE_PIN_COST());
             assertGt(SqrtPriceMath.getAmount0Delta(below, at, headroom, false), deployed.MIN_NATIVE_PIN_COST());
         }
+    }
+
+    /// @dev Every aligned tick above the ceiling is rejected, not only the first one: the native door gets
+    ///      monotonically cheaper as the tick rises, which is the property the constructor's single
+    ///      upper-boundary check relies on.
+    function test_fuzz_WhenUpperBoundaryIsAffordable(int24 initialTick) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        initialTick = int24(
+            bound(
+                initialTick,
+                HIGHEST_LAUNCH_TICK / tickSpacing + 1,
+                TickMath.maxUsableTick(tickSpacing) / tickSpacing - 1
+            )
+        ) * tickSpacing;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                InstantLaunchStrategy.SaturableBoundaryTick.selector, initialTick, _expectedNativeCost(initialTick)
+            )
+        );
+        _deployStrategy(initialTick);
+    }
+
+    /// @dev The cheapest native blocker at `initialTick`, mirroring the constructor's pricing.
+    function _expectedNativeCost(int24 initialTick) internal view returns (uint256) {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        uint128 headroom = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing)
+            - _expectedPositionLiquidity(initialTick, strategy.MIN_LAUNCH_TICK());
+        return SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(initialTick),
+            TickMath.getSqrtPriceAtTick(initialTick + tickSpacing),
+            headroom,
+            false
+        );
     }
 
     /// @dev Mirrors the constructor's own derivation, for tests that need it before deployment.
