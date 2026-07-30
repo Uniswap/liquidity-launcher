@@ -111,9 +111,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         int24 tickSpacing = strategy.TICK_SPACING();
         // Aligned ticks above the cap, up to and beyond the maximum usable tick.
         initialTick = int24(
-            bound(
-                initialTick, strategy.MAX_INITIAL_TICK() / tickSpacing + 1, type(int24).max / tickSpacing
-            )
+            bound(initialTick, strategy.MAX_INITIAL_TICK() / tickSpacing + 1, type(int24).max / tickSpacing)
         ) * tickSpacing;
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
