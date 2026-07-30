@@ -12,6 +12,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -53,9 +54,16 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     int24 public constant TICK_SPACING = 60;
     /// @notice Lower tick of every launch position, and the exclusive floor for `initialTick`.
     /// @dev Filling a tick's `maxLiquidityPerTick` blocks every later liquidity increase on a position
-    ///      bounded by it. This value is high enough that doing so at this shared boundary costs more than
-    ///      the total supply, so it cannot be done at any price; deeper floors only make it expensive.
-    int24 public constant MIN_LAUNCH_TICK = -208_980;
+    ///      bounded by it, which strands the fees of any compounding recipient. This is the lowest aligned
+    ///      tick at which doing so costs more than `TOTAL_SUPPLY` for every `initialTick` the constructor
+    ///      accepts, so it cannot be funded at any price. The constructor proves the property rather than
+    ///      trusting this value; deeper floors are cheaper to fill and are rejected there.
+    int24 public constant MIN_LAUNCH_TICK = -195_120;
+    /// @notice Native an attacker must post to fill a boundary tick's allowance, below which a launch is
+    ///         rejected.
+    /// @dev The native-side counterpart to "more than the token supply would be needed": on the order of
+    ///      the entire circulating ETH supply, so the native door is unfundable rather than merely costly.
+    uint256 public constant MIN_NATIVE_PIN_COST = 120_000_000 ether;
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -95,6 +103,13 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     ///         PositionManager as this strategy.
     /// @param mismatchedPositionManager The mismatched PositionManager
     error PositionManagerMismatch(address mismatchedPositionManager);
+    /// @notice Thrown at deployment when the full supply does not fit in a single position.
+    error UnrealizableLaunch();
+    /// @notice Thrown at deployment when a launch boundary tick is affordable to fill to its liquidity
+    ///         allowance, which would block every later liquidity increase on the launch position.
+    /// @param tick The boundary tick that can be filled
+    /// @param cost The cheapest amount that fills it
+    error SaturableBoundaryTick(int24 tick, uint256 cost);
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
     /// @notice Thrown when the configured fee beneficiary is the zero address or the launcher.
@@ -141,9 +156,10 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             revert PositionManagerMismatch(address(_beneficiaryVault.positionManager()));
         }
         // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
-        // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.
+        // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price. One spacing of headroom above
+        // it is required so the band that prices the native door below exists.
         if (
-            _initialTick % TICK_SPACING != 0 || _initialTick > TickMath.maxUsableTick(TICK_SPACING)
+            _initialTick % TICK_SPACING != 0 || _initialTick + TICK_SPACING > TickMath.maxUsableTick(TICK_SPACING)
                 || _initialTick <= MIN_LAUNCH_TICK
         ) revert InvalidTickRange();
 
@@ -155,11 +171,46 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         initialTick = _initialTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
 
-        positionLiquidity = SafeCastLib.toUint128(
+        uint128 liquidity = SafeCastLib.toUint128(
             FullMath.mulDiv(
                 TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK)
             )
         );
+        // The whole supply must fit in one position. Clamping instead would pass the resolve step in
+        // `initializeDistribution` and then silently burn the unplaced remainder of every launch as dust.
+        uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
+        if (liquidity >= maxLiquidityPerTick) revert UnrealizableLaunch();
+        positionLiquidity = liquidity;
+
+        // Both of the position's boundary ticks must be unaffordable to fill: v4 raises `liquidityGross` at
+        // the lower and the upper tick alike, so filling either one blocks every later increase.
+        uint128 headroom = maxLiquidityPerTick - liquidity;
+        _requireUnfillableTick(MIN_LAUNCH_TICK, headroom);
+        _requireUnfillableTick(_initialTick, headroom);
+    }
+
+    /// @notice Reverts unless filling `_tick` to its liquidity allowance is unaffordable in both currencies.
+    /// @dev A blocker needs a position with `_tick` as one of its boundaries, and the narrowest such band is
+    ///      the cheapest. Which currency funds it follows from where the price sits rather than from the
+    ///      blocker's choice — but the price can be moved anywhere outside the launch range for free, so both
+    ///      fundings have to be prohibitive. The band below `_tick` is the cheapest token-funded one and the
+    ///      band above it the cheapest native-funded one, because the square root of the price grows with the
+    ///      tick while its reciprocal shrinks; the mirrored pairings cost strictly more and need no check.
+    ///      Amounts round down, since what matters is the least a blocker could get away with.
+    /// @param _tick The boundary tick to price
+    /// @param _headroom The liquidity left at `_tick` once the launch position occupies its share
+    function _requireUnfillableTick(int24 _tick, uint128 _headroom) private pure {
+        uint160 sqrtPriceAtTickX96 = TickMath.getSqrtPriceAtTick(_tick);
+
+        uint256 tokenCost = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(_tick - TICK_SPACING), sqrtPriceAtTickX96, _headroom, false
+        );
+        if (tokenCost <= TOTAL_SUPPLY) revert SaturableBoundaryTick(_tick, tokenCost);
+
+        uint256 nativeCost = SqrtPriceMath.getAmount0Delta(
+            sqrtPriceAtTickX96, TickMath.getSqrtPriceAtTick(_tick + TICK_SPACING), _headroom, false
+        );
+        if (nativeCost <= MIN_NATIVE_PIN_COST) revert SaturableBoundaryTick(_tick, nativeCost);
     }
 
     /// @inheritdoc IStrategy

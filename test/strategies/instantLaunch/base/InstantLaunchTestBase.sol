@@ -48,9 +48,14 @@ abstract contract InstantLaunchTestBase is Test {
 
     uint256 internal constant TOTAL_SUPPLY = 1_000_000_000 ether;
     int24 internal constant INITIAL_TICK = 121_980;
-    /// @dev Lowest deployable initial tick: one spacing above the launch floor. The full supply fits under
-    ///      maxLiquidityPerTick at every tick above the floor, so the floor check is the only lower bound.
-    int24 internal constant LOWEST_LAUNCH_TICK = -208_920;
+    /// @dev Lowest deployable initial tick: one spacing above the launch floor. This is also the tightest
+    ///      permitted range, where the launch position occupies the most of each boundary tick's allowance
+    ///      and filling one is therefore cheapest — the worst case for the constructor's boundary checks.
+    int24 internal constant LOWEST_LAUNCH_TICK = -195_060;
+    /// @dev Highest deployable initial tick. Above this the native cost of filling the upper boundary tick
+    ///      falls under `MIN_NATIVE_PIN_COST`, so the constructor rejects it. Asserted, not assumed, in
+    ///      `ConstructorTest`, so a change to the supply or the tick spacing surfaces here.
+    int24 internal constant HIGHEST_LAUNCH_TICK = 251_340;
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");

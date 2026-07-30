@@ -11,6 +11,9 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 
 /// @title ConstructorTest
 /// @notice BTT tests for InstantLaunchStrategy.constructor
@@ -26,14 +29,16 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it deploys with creator fees disabled
 /// ├── when the initial tick is not aligned
 /// │   └── it reverts with InvalidTickRange
-/// ├── when the initial tick exceeds the maximum usable tick
+/// ├── when the initial tick leaves no spacing below the maximum usable tick
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick does not exceed the launch floor
 /// │   └── it reverts with InvalidTickRange
+/// ├── when filling a boundary tick is affordable
+/// │   └── it reverts with SaturableBoundaryTick
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
 ///     ├── it derives a position liquidity that fits in a single position
-///     └── it prices saturating the launch floor tick above the total supply
+///     └── it prices filling both boundary ticks out of reach in both currencies
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         // The beneficiary vault is not among the required addresses; see the zero-vault case below.
@@ -104,6 +109,15 @@ contract ConstructorTest is InstantLaunchTestBase {
         _deployStrategy(TickMath.maxUsableTick(tickSpacing) + tickSpacing);
     }
 
+    function test_WhenInitialTickLeavesNoSpacingBelowMaximumUsableTick() public {
+        // The band above the upper boundary prices its native door, so the top spacing is not deployable:
+        // there is no tick above `maxUsableTick` to form it with.
+        int24 maxUsable = TickMath.maxUsableTick(strategy.TICK_SPACING());
+
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(maxUsable);
+    }
+
     function test_WhenInitialTickEqualsLaunchFloor() public {
         int24 floorTick = strategy.MIN_LAUNCH_TICK();
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
@@ -125,10 +139,27 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(deployed.initialTick(), LOWEST_LAUNCH_TICK);
     }
 
-    function test_WhenInitialTickIsMaximumUsableTick_deploys() public {
-        int24 maxUsable = TickMath.maxUsableTick(strategy.TICK_SPACING());
-        InstantLaunchStrategy deployed = _deployStrategy(maxUsable);
-        assertEq(deployed.initialTick(), maxUsable);
+    function test_WhenInitialTickIsHighestLaunchTick_deploys() public {
+        InstantLaunchStrategy deployed = _deployStrategy(HIGHEST_LAUNCH_TICK);
+        assertEq(deployed.initialTick(), HIGHEST_LAUNCH_TICK);
+    }
+
+    function test_WhenInitialTickIsOneSpacingAboveHighestLaunchTick() public {
+        // One spacing higher and the upper boundary's native door drops under MIN_NATIVE_PIN_COST. Asserting
+        // the exact edge means a change to the supply, the spacing or the cap cannot move it unnoticed.
+        int24 tickSpacing = strategy.TICK_SPACING();
+        int24 rejected = HIGHEST_LAUNCH_TICK + tickSpacing;
+        uint128 headroom = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing)
+            - _expectedPositionLiquidity(rejected, strategy.MIN_LAUNCH_TICK());
+        uint256 nativeCost = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(rejected), TickMath.getSqrtPriceAtTick(rejected + tickSpacing), headroom, false
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(InstantLaunchStrategy.SaturableBoundaryTick.selector, rejected, nativeCost)
+        );
+        _deployStrategy(rejected);
+        assertLe(nativeCost, strategy.MIN_NATIVE_PIN_COST(), "the rejected tick was affordable for another reason");
     }
 
     function test_WhenConfigurationIsValid_storesConfiguration() public view {
@@ -148,26 +179,62 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(floorTick % tickSpacing, 0);
         assertGt(floorTick, TickMath.minUsableTick(tickSpacing));
 
-        // Tokens an external LP must hold to fill the floor tick's remaining maxLiquidityPerTick with the
-        // narrowest position above it, which would block every liquidity increase on the launch position.
+        // Tokens an external LP must hold to fill the floor tick's remaining maxLiquidityPerTick, using the
+        // narrowest position below it — the cheapest way to do so, and enough to block every liquidity
+        // increase on the launch position. Rounded down, since a blocker only needs the least that works.
         uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - strategy.positionLiquidity();
         uint256 blockerCost = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(floorTick - tickSpacing),
             TickMath.getSqrtPriceAtTick(floorTick),
-            TickMath.getSqrtPriceAtTick(floorTick + tickSpacing),
             blockerLiquidity,
-            true
+            false
         );
         assertGt(blockerCost, strategy.TOTAL_SUPPLY());
     }
 
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
-        initialTick = int24(
-            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
-        ) * tickSpacing;
+        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, HIGHEST_LAUNCH_TICK / tickSpacing))
+            * tickSpacing;
 
         InstantLaunchStrategy deployed = _deployStrategy(initialTick);
         assertGt(deployed.positionLiquidity(), 0);
-        assertLe(deployed.positionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+        assertLt(deployed.positionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+    }
+
+    /// @dev The invariant the constructor exists to enforce, recomputed independently of it: for any tick it
+    ///      accepts, filling either boundary tick costs more than the supply in token and more than
+    ///      MIN_NATIVE_PIN_COST in native. Both bands per boundary are priced, so the cheapest is covered.
+    function test_fuzz_WhenConfigurationIsValid_neitherBoundaryTickIsFillable(int24 initialTick) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, HIGHEST_LAUNCH_TICK / tickSpacing))
+            * tickSpacing;
+
+        InstantLaunchStrategy deployed = _deployStrategy(initialTick);
+        uint128 headroom = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+
+        int24[2] memory boundaries = [deployed.MIN_LAUNCH_TICK(), initialTick];
+        for (uint256 i; i < boundaries.length; i++) {
+            int24 boundary = boundaries[i];
+            uint160 below = TickMath.getSqrtPriceAtTick(boundary - tickSpacing);
+            uint160 at = TickMath.getSqrtPriceAtTick(boundary);
+            uint160 above = TickMath.getSqrtPriceAtTick(boundary + tickSpacing);
+
+            assertGt(SqrtPriceMath.getAmount1Delta(below, at, headroom, false), deployed.TOTAL_SUPPLY());
+            assertGt(SqrtPriceMath.getAmount1Delta(at, above, headroom, false), deployed.TOTAL_SUPPLY());
+            assertGt(SqrtPriceMath.getAmount0Delta(at, above, headroom, false), deployed.MIN_NATIVE_PIN_COST());
+            assertGt(SqrtPriceMath.getAmount0Delta(below, at, headroom, false), deployed.MIN_NATIVE_PIN_COST());
+        }
+    }
+
+    /// @dev Mirrors the constructor's own derivation, for tests that need it before deployment.
+    function _expectedPositionLiquidity(int24 initialTick, int24 floorTick) internal pure returns (uint128) {
+        return SafeCastLib.toUint128(
+            FullMath.mulDiv(
+                TOTAL_SUPPLY,
+                FixedPoint96.Q96,
+                uint256(TickMath.getSqrtPriceAtTick(initialTick) - TickMath.getSqrtPriceAtTick(floorTick))
+            )
+        );
     }
 }
