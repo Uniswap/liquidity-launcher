@@ -145,7 +145,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_WhenInitialTickIsOneSpacingAboveHighestLaunchTick() public {
-        // One spacing higher and the upper boundary's native door drops under MIN_NATIVE_PIN_COST. Asserting
+        // One spacing higher and the upper boundary's native door drops under MIN_NATIVE_SATURATION_COST. Asserting
         // the exact edge means a change to the supply, the spacing or the cap cannot move it unnoticed.
         int24 rejected = HIGHEST_LAUNCH_TICK + strategy.TICK_SPACING();
         uint256 nativeCost = _expectedNativeCost(rejected);
@@ -154,7 +154,9 @@ contract ConstructorTest is InstantLaunchTestBase {
             abi.encodeWithSelector(InstantLaunchStrategy.SaturableBoundaryTick.selector, rejected, nativeCost)
         );
         _deployStrategy(rejected);
-        assertLe(nativeCost, strategy.MIN_NATIVE_PIN_COST(), "the rejected tick was affordable for another reason");
+        assertLe(
+            nativeCost, strategy.MIN_NATIVE_SATURATION_COST(), "the rejected tick was affordable for another reason"
+        );
     }
 
     function test_WhenConfigurationIsValid_storesConfiguration() public view {
@@ -199,7 +201,7 @@ contract ConstructorTest is InstantLaunchTestBase {
 
     /// @dev The invariant the constructor exists to enforce, recomputed independently of it: for any tick it
     ///      accepts, filling either boundary tick costs more than the supply in token and more than
-    ///      MIN_NATIVE_PIN_COST in native. Both bands per boundary are priced, so the cheapest is covered.
+    ///      MIN_NATIVE_SATURATION_COST in native. Both bands per boundary are priced, so the cheapest is covered.
     function test_fuzz_WhenConfigurationIsValid_neitherBoundaryTickIsFillable(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, HIGHEST_LAUNCH_TICK / tickSpacing))
@@ -217,8 +219,8 @@ contract ConstructorTest is InstantLaunchTestBase {
 
             assertGt(SqrtPriceMath.getAmount1Delta(below, at, headroom, false), deployed.TOTAL_SUPPLY());
             assertGt(SqrtPriceMath.getAmount1Delta(at, above, headroom, false), deployed.TOTAL_SUPPLY());
-            assertGt(SqrtPriceMath.getAmount0Delta(at, above, headroom, false), deployed.MIN_NATIVE_PIN_COST());
-            assertGt(SqrtPriceMath.getAmount0Delta(below, at, headroom, false), deployed.MIN_NATIVE_PIN_COST());
+            assertGt(SqrtPriceMath.getAmount0Delta(at, above, headroom, false), deployed.MIN_NATIVE_SATURATION_COST());
+            assertGt(SqrtPriceMath.getAmount0Delta(below, at, headroom, false), deployed.MIN_NATIVE_SATURATION_COST());
         }
     }
 

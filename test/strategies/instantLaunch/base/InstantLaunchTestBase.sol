@@ -53,7 +53,7 @@ abstract contract InstantLaunchTestBase is Test {
     ///      and filling one is therefore cheapest — the worst case for the constructor's boundary checks.
     int24 internal constant LOWEST_LAUNCH_TICK = -195_060;
     /// @dev Highest deployable initial tick. Above this the native cost of filling the upper boundary tick
-    ///      falls under `MIN_NATIVE_PIN_COST`, so the constructor rejects it. Asserted, not assumed, in
+    ///      falls under `MIN_NATIVE_SATURATION_COST`, so the constructor rejects it. Asserted, not assumed, in
     ///      `ConstructorTest`, so a change to the supply or the tick spacing surfaces here.
     int24 internal constant HIGHEST_LAUNCH_TICK = 251_340;
 

@@ -61,11 +61,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     ///      `r` the square-root price ratio across one spacing, this is the lowest aligned tick whose
     ///      square-root price exceeds `TOTAL_SUPPLY * (r + 1) / (maxLiquidityPerTick * (r - 1))`.
     int24 public constant MIN_LAUNCH_TICK = -195_120;
-    /// @notice Native an attacker must post to fill a boundary tick's allowance, below which a launch is
-    ///         rejected.
-    /// @dev The native-side counterpart to "more than the token supply would be needed": on the order of
-    ///      the entire circulating ETH supply, so the native door is unfundable rather than merely costly.
-    uint256 public constant MIN_NATIVE_PIN_COST = 120_000_000 ether;
+    /// @notice Least native a blocker must post to saturate a boundary tick, below which a launch is rejected.
+    /// @dev The native counterpart to "more than the token supply exists". Native has no fixed supply, so
+    ///      this cannot be an absolute impossibility like the token side; on the order of the entire
+    ///      circulating ETH supply is the closest equivalent. It is what bounds `initialTick` from above.
+    uint256 public constant MIN_NATIVE_SATURATION_COST = 120_000_000 ether;
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -200,11 +200,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             );
             if (tokenCost <= TOTAL_SUPPLY) revert SaturableBoundaryTick(MIN_LAUNCH_TICK, tokenCost);
             // Cheapest native blocker: the band above `initialTick`. Native has no fixed supply, so the bar
-            // is MIN_NATIVE_PIN_COST. This bounds the native door at the floor, which costs strictly more.
+            // is MIN_NATIVE_SATURATION_COST. This bounds the native door at the floor, which costs strictly more.
             uint256 nativeCost = SqrtPriceMath.getAmount0Delta(
                 initialSqrtPriceX96, TickMath.getSqrtPriceAtTick(_initialTick + TICK_SPACING), headroom, false
             );
-            if (nativeCost <= MIN_NATIVE_PIN_COST) revert SaturableBoundaryTick(_initialTick, nativeCost);
+            if (nativeCost <= MIN_NATIVE_SATURATION_COST) revert SaturableBoundaryTick(_initialTick, nativeCost);
         }
     }
 
