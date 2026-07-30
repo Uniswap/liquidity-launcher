@@ -13,7 +13,6 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
@@ -23,7 +22,6 @@ import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
 import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @notice The launch configuration carried in `configData`.
 /// @param feeBeneficiary The freely chosen recipient of the fee splitter's beneficiary share.
@@ -47,7 +45,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Lower and upper tick of every launch position ensuring that in order to overflow maxLiquidityPerTick,
     ///         an attacker would require more than the total supply of the token which is not possible.
     int24 public constant MIN_LAUNCH_TICK = -208_980;
-    int24 public constant MAX_INITIAL_TICK = 251_340;
+    int24 public constant MAX_INITIAL_TICK = 251_340; // less than maxUsableTick for the given TICK_SPACING
     /// @notice Sink for burned tokens (unrecoverable).
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -134,11 +132,9 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         }
         // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
         // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.
-        if (
-            _initialTick % TICK_SPACING != 0
-                || _initialTick > FixedPointMathLib.min(MAX_INITIAL_TICK, TickMath.maxUsableTick(TICK_SPACING))
-                || _initialTick <= MIN_LAUNCH_TICK
-        ) revert InvalidTickRange();
+        if (_initialTick % TICK_SPACING != 0 || _initialTick > MAX_INITIAL_TICK || _initialTick <= MIN_LAUNCH_TICK) {
+            revert InvalidTickRange();
+        }
 
         launcher = _launcher;
         poolManager = _poolManager;
