@@ -26,6 +26,8 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it deploys with creator fees disabled
 /// ├── when the initial tick is not aligned
 /// │   └── it reverts with InvalidTickRange
+/// ├── when the initial tick exceeds the maximum initial tick
+/// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the maximum usable tick
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick does not exceed the launch floor
@@ -91,8 +93,28 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
-        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK, TickMath.maxUsableTick(strategy.TICK_SPACING())));
+        // Bounded to the valid tick range so alignment is the only violated condition.
+        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK, strategy.MAX_INITIAL_TICK()));
         vm.assume(initialTick % strategy.TICK_SPACING() != 0);
+
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(initialTick);
+    }
+
+    function test_WhenInitialTickExceedsMaxInitialTick() public {
+        int24 firstTickAboveCap = strategy.MAX_INITIAL_TICK() + strategy.TICK_SPACING();
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(firstTickAboveCap);
+    }
+
+    function test_fuzz_WhenInitialTickExceedsMaxInitialTick(int24 initialTick) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        // Aligned ticks above the cap, up to and beyond the maximum usable tick.
+        initialTick = int24(
+            bound(
+                initialTick, strategy.MAX_INITIAL_TICK() / tickSpacing + 1, type(int24).max / tickSpacing
+            )
+        ) * tickSpacing;
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(initialTick);
@@ -125,10 +147,11 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(deployed.initialTick(), LOWEST_LAUNCH_TICK);
     }
 
-    function test_WhenInitialTickIsMaximumUsableTick_deploys() public {
-        int24 maxUsable = TickMath.maxUsableTick(strategy.TICK_SPACING());
-        InstantLaunchStrategy deployed = _deployStrategy(maxUsable);
-        assertEq(deployed.initialTick(), maxUsable);
+    function test_WhenInitialTickIsMaxInitialTick_deploys() public {
+        int24 maxInitial = strategy.MAX_INITIAL_TICK();
+        InstantLaunchStrategy deployed = _deployStrategy(maxInitial);
+        assertEq(deployed.initialTick(), maxInitial);
+        assertGt(deployed.positionLiquidity(), 0);
     }
 
     function test_WhenConfigurationIsValid_storesConfiguration() public view {
@@ -163,7 +186,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         initialTick = int24(
-            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, TickMath.maxUsableTick(tickSpacing) / tickSpacing)
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.MAX_INITIAL_TICK() / tickSpacing)
         ) * tickSpacing;
 
         InstantLaunchStrategy deployed = _deployStrategy(initialTick);
