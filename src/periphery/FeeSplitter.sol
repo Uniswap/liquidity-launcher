@@ -21,17 +21,17 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 /// @title FeeSplitter
 /// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
 ///         collects their fees and pushes independent fixed splits for native ETH and token fees.
-/// @dev Positions sent to this contract are irrecoverable: no code path transfers or approves them out.
-/// @dev Never deposit uncollectable positions: restricted or non-standard currency1, or hooks needing hookData.
+/// @dev Positions sent to this contract are permanently locked and cannot be removed.
+/// @dev Positions requiring hookData are not supported and should not be sent to this contract.
 /// @custom:security-contact security@uniswap.org
 contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
 
-    /// @notice The denominator for fee splits: each side's shares sum to this.
+    /// @notice The denominator for fee splits
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    /// @notice The maximum possible balance
+    /// @notice The maximum possible balance to prevent overflows
     uint256 public constant MAX_BALANCE_ALLOWED = type(uint256).max / BPS_DENOMINATOR;
 
     /// @inheritdoc IFeeSplitter
@@ -40,11 +40,10 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     /// @notice The PoolManager the PositionManager is bound to.
     IPoolManager public immutable poolManager;
 
-    /// @notice The fee splits pushed on every distribution; validated at construction and never changed.
+    /// @notice The fee splits. Immutable after construction.
     FeeSplit[] internal _splits;
 
     /// @param _positionManager The canonical v4 PositionManager.
-    /// @param splits_ The fee splits; each side's shares must sum to 10,000 bps.
     constructor(IPositionManager _positionManager, FeeSplit[] memory splits_) {
         positionManager = _positionManager;
         poolManager = _positionManager.poolManager();
@@ -60,8 +59,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     function collectFees(uint256[] calldata tokenIds) external override nonReentrant {
         uint256 count = tokenIds.length;
         if (count == 0) revert NoTokenIds();
-        // Collection opens its own lock so distribution and every recipient notification run with the
-        // PoolManager locked; failing here is self-describing where the PoolManager's would not be.
+        // collect opens its own lock so revert if the pool manager is already unlocked
         if (poolManager.isUnlocked()) revert PoolManagerAlreadyUnlocked();
         for (uint256 i; i < count; i++) {
             uint256 tokenId = tokenIds[i];
@@ -73,8 +71,7 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
     }
 
     /// @inheritdoc IFeeSplitter
-    /// @dev All fees MUST be collected first; reverts with UncollectedFees otherwise. The PositionManager
-    ///      must already hold the WETH and token funding; excess is taken back to the caller.
+    /// @dev Reverts if fees are not collected first
     function increaseLiquidity(
         uint256 tokenId,
         uint256 liquidity,
@@ -170,9 +167,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         emit FeesCollected(tokenId, Currency.unwrap(tokenCurrency), nativeAmount, tokenAmount);
     }
 
-    /// @notice Pushes each split's floor share of both sides; rounding dust stays in this contract
-    ///         and is flushed through the next distribution.
-    /// @param tokenId The collected position, passed through to callback recipients for attribution.
+    /// @notice Distributes amounts to each recipient based on the configured splits
+    /// @param tokenId The collected position tokenId
     /// @param tokenCurrency The position's currency1.
     /// @param nativeAmount The native ETH amount to distribute.
     /// @param tokenAmount The currency1 amount to distribute.
@@ -187,8 +183,8 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
             if (recipientNativeAmount != 0) _transfer(CurrencyLibrary.ADDRESS_ZERO, recipient, recipientNativeAmount);
             if (recipientTokenAmount != 0) _transfer(tokenCurrency, recipient, recipientTokenAmount);
             if (split.useCallback) {
-                // Requires that recipients never revert for a legitimate pool and token: a revert reverts
-                // the collect, deliberately, since swallowing it would leave the transfers unattributed.
+                // Recipients implementing callbacks must NOT revert as it will cause the entire collect to revert
+                // Callers should exclude tokenIds which consistently revert from callbacks.
                 IClaimableRecipient(recipient).onAmountsReceived(tokenId, recipientNativeAmount, recipientTokenAmount);
             }
         }

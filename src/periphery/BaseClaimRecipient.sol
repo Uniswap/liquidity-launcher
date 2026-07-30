@@ -10,10 +10,6 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 
 /// @title BaseClaimRecipient
 /// @notice Shared amount attribution and claim mechanics for LP position recipients.
-/// @dev This base pays out and nothing more: it exposes a single empty `_afterClaim` hook. Recipients
-///      that need to call back into an executor should inherit `BaseClaimRecipientWithCallback`, which
-///      overrides `_afterClaim` with the before/callback/after flow. Recipients that don't (e.g. creator
-///      fees paid straight to a beneficiary) inherit this base directly and never run a callback.
 abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
@@ -31,8 +27,7 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
     /// @inheritdoc IClaimableRecipient
     mapping(uint256 tokenId => Amounts amounts) public override amounts;
 
-    /// @notice The total attributed amount per currency across all positions; every attribution must be
-    ///         backed by at least this much balance.
+    /// @notice The total attributed amount per currency across all positions
     mapping(Currency currency => uint256 amount) public totalAmounts;
 
     constructor(IPositionManager _positionManager) {
@@ -102,15 +97,11 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         if (poolKey.tickSpacing == 0) revert InvalidPosition(_tokenId);
     }
 
-    /// @notice Transfer policy consulted once per claim, before any payout. Receives the claimed
-    ///         position, its currencies, and each side's attributed amount; defaults to paying the
-    ///         full available amounts to the caller.
-    /// @dev Zero recipients revert — burning must be an explicit 0xdead. Amounts below the available
-    ///      balance leave the remainder attributed and claimable later.
+    /// @notice Transfer policy consulted once per claim, before amounts are transferred
     /// @return The receiver of the currency0 payout
-    /// @return The currency0 amount to pay out; at most the available amount
+    /// @return The currency0 amount to pay out
     /// @return The receiver of the currency1 payout
-    /// @return The currency1 amount to pay out; at most the available amount
+    /// @return The currency1 amount to pay out
     function _beforeClaimTransfer(uint256, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         virtual
@@ -119,8 +110,7 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         return (msg.sender, _available0, msg.sender, _available1);
     }
 
-    /// @notice Hook run at the end of `claim`, after both payouts. Empty by default; the base pays out
-    ///         and does nothing else. Overrides must not touch the attribution accounting.
+    /// @notice Hook run at the end of `claim`, after both amounts are transferred
     /// @param _poolKey The claimed position's pool key
     /// @param _tokenId The claimed position's token ID
     /// @param _toSend0 The currency0 amount paid out in this claim
@@ -129,8 +119,7 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         internal
         virtual {}
 
-    /// @notice Decrements attribution before transferring, so code running during a payout cannot
-    ///         attribute the in-flight funds.
+    /// @notice Helper function to process a payout and update accounting
     /// @param _tokenId The position being claimed
     /// @param _currency The currency to pay out
     /// @param _recipient The receiver of the payout

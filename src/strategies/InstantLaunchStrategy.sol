@@ -24,7 +24,7 @@ import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
 
 /// @notice The launch configuration carried in `configData`.
-/// @param feeBeneficiary The freely chosen recipient of the fee splitter's beneficiary share.
+/// @param feeBeneficiary The recipient which will receive creator fees if enabled
 struct InstantLaunchConfig {
     address feeBeneficiary;
 }
@@ -46,25 +46,24 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     ///         an attacker would require more than the total supply of the token which is not possible.
     int24 public constant MIN_LAUNCH_TICK = -208_980;
     int24 public constant MAX_INITIAL_TICK = 251_340; // less than maxUsableTick for the given TICK_SPACING
-    /// @notice Sink for burned tokens (unrecoverable).
+    /// @notice Canonical burn address
     address internal constant BURN_ADDRESS = address(0xdead);
 
-    /// @notice The only address permitted to drive distributions — set to the canonical LiquidityLauncher
-    ///         so launches must route through `distributeToken`.
+    /// @notice The LiquidityLauncher instance which can initialize distributions.
     address public immutable launcher;
     /// @notice The v4 position manager that mints the launch position.
     IPositionManager public immutable positionManager;
     /// @notice The v4 pool manager.
     IPoolManager public immutable poolManager;
-    /// @notice The singleton fee splitter that permanently holds every launch position and
+    /// @notice The singleton fee splitter that permanently locks every launch position and
     ///         permissionlessly distributes its fees.
     IFeeSplitter public immutable feeSplitter;
-    /// @notice The vault that registers each launch's fee beneficiary and vaults their fee share.
-    ///         Zero when this instance launches without a creator fee share.
+    /// @notice The vault that registers each launch's fee beneficiary and collects their fee share.
+    /// @dev Can be the zero address to opt out of creator fees.
     IBeneficiaryVault public immutable beneficiaryVault;
-    /// @notice Aligned tick at which the pool opens (highest price); the position's upper bound.
+    /// @notice Tick at which the pool opens
     int24 public immutable initialTick;
-    /// @notice Initial pool square-root price.
+    /// @notice Initial pool sqrt price derived from the initial tick.
     uint160 public immutable initialSqrtPriceX96;
     /// @notice Liquidity of the single-sided launch position holding the full supply.
     uint128 public immutable positionLiquidity;
@@ -112,8 +111,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         IBeneficiaryVault _beneficiaryVault,
         int24 _initialTick
     ) {
-        // The beneficiary vault is deliberately absent from this check: a zero vault opts the instance
-        // out of creator fees, leaving every launch's position unregistered.
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
                 || address(_feeSplitter) == address(0)
@@ -140,6 +137,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         poolManager = _poolManager;
         positionManager = _positionManager;
         feeSplitter = _feeSplitter;
+        // The beneficiary vault is optional. Setting it to the zero address opts out of creator fees for all launches.
         beneficiaryVault = _beneficiaryVault;
         initialTick = _initialTick;
         initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
@@ -152,24 +150,18 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     }
 
     /// @inheritdoc IStrategy
-    /// @dev Called by `LiquidityLauncher.distributeToken`, which approves `totalSupply` to this strategy
-    ///      first. Pulls exactly `totalSupply` from `msg.sender` (fully consuming the allowance, as the
-    ///      launcher's post-call guard requires), then builds the launch pool. `configData` must carry
-    ///      the abi-encoded `InstantLaunchConfig` naming the launch's fee beneficiary, registered
-    ///      directly with `beneficiaryVault` before the position moves to the splitter. A beneficiary is
-    ///      required even when no vault is configured, so `configData` encodes identically against every
-    ///      deployment; without a vault it goes unused and the launch carries no creator share. `salt` is
-    ///      unused — this singleton strategy uses fixed parameters.
+    /// @param configData The abi-encoded `InstantLaunchConfig` containing the address to route creator fees to.
+    /// @dev If creator fees are not enabled, the configData is not used but must be provided.
     function initializeDistribution(address token, uint256 totalSupply, bytes calldata configData, bytes32)
         external
         override
         nonReentrant
     {
-        // Only accept distributions routed through the configured launcher.
         if (msg.sender != launcher) revert OnlyLauncher();
         if (configData.length == 0) revert InvalidConfigData();
         InstantLaunchConfig memory config = abi.decode(configData, (InstantLaunchConfig));
         _validateFeeBeneficiary(config.feeBeneficiary);
+        // Only accept standard tokens
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
@@ -200,23 +192,22 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             });
 
             definitions.validate();
-            // The position is minted to this strategy and handed to the fee splitter below, which
-            // provides permanent custody and permissionless per-pool fee distribution (see FeeSplitter).
+            // The position is minted to this strategy and transferred to the fee splitter below
             (Position[] memory positions,) = definitions.resolve(
                 initialSqrtPriceX96, TICK_SPACING, CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}), address(this)
             );
-            // Exactly the precomputed uncapped position: anything else means part of the supply
-            // was left unplaced, and the sub-liquidity-unit rounding dust is burned below.
+            // Require exact liquidity to be added
             if (positions.length != 1 || positions[0].liquidity != positionLiquidity) revert InvalidPositions();
-
+            // Encode the position into a plan
             plan = positions.toPlan(key, ActionConstants.MSG_SENDER);
         }
 
         IERC20(token).safeTransfer(address(positionManager), TOTAL_SUPPLY);
+        // Cache the next tokenId which will be minted
         uint256 tokenId = positionManager.nextTokenId();
         positionManager.modifyLiquidities(abi.encode(plan.actions, plan.params), block.timestamp);
 
-        // Burn any dust from creating the initial position
+        // Burn any dust leftover from creating the initial position
         uint256 balanceNow = IERC20(token).balanceOf(address(this));
         if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
@@ -227,22 +218,20 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (address(beneficiaryVault) != address(0)) {
             beneficiaryVault.registerBeneficiary(tokenId, config.feeBeneficiary);
         }
+        // Transfer the position to the fee splitter
         IERC721(address(positionManager)).transferFrom(address(this), address(feeSplitter), tokenId);
     }
 
     /// @notice Validates a launch's fee beneficiary.
-    /// @dev The beneficiary is freely chosen by the launch configuration; it carries no claim of
-    ///      authorship. Zero is rejected, and so is the launcher: fees held by the launcher are
-    ///      sweepable by anyone via distributeToken. The beneficiary vault additionally rejects
-    ///      itself at registration.
+    /// @dev Cannot be the zero address or the liquidity launcher.
     function _validateFeeBeneficiary(address feeBeneficiary) private view {
         if (feeBeneficiary == address(0) || feeBeneficiary == launcher) {
             revert InvalidFeeBeneficiary(feeBeneficiary);
         }
     }
 
-    /// @notice Pulls exactly `amount` of `token` from `msg.sender`, guarding against callback/FoT tokens
-    ///         via a balance-diff check and protecting any pre-existing strategy balance.
+    /// @notice Pulls exactly `amount` of `token` from `msg.sender`
+    /// @dev Reverts if the amount received was less than expected due to fee-on-transfer tokens.
     /// @param token The token to pull.
     /// @param amount The amount to pull.
     /// @return balanceBefore The strategy's token balance before the pull.
@@ -253,6 +242,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (received != amount) revert TokenAmountMismatch(received, amount);
     }
 
-    /// @notice Accepts ETH so a launch cannot be griefed from leftover ETH in the PositionManager
+    /// @notice Accept ETH
     receive() external payable {}
 }
