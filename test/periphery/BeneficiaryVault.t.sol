@@ -294,7 +294,7 @@ contract BeneficiaryVaultTest is Test {
         vault.claim(tokenId, 0, 0);
     }
 
-    function test_claim_approvedOperatorReceivesBoth() public {
+    function test_claim_approvedOperatorPaysOwner() public {
         uint256 tokenId = _mintPosition(address(this));
         _register(tokenId, address(this), beneficiary);
         _credit(vault, tokenId, 1 ether, 2 ether);
@@ -303,8 +303,25 @@ contract BeneficiaryVaultTest is Test {
         vault.approve(operator, tokenId);
         vm.prank(operator);
         vault.claim(tokenId, 1 ether, 2 ether);
-        assertEq(operator.balance, 1 ether);
-        assertEq(token.balanceOf(operator), 2 ether);
+        assertEq(operator.balance, 0);
+        assertEq(token.balanceOf(operator), 0);
+        assertEq(beneficiary.balance, 1 ether);
+        assertEq(token.balanceOf(beneficiary), 2 ether);
+    }
+
+    function test_claim_setApprovalForAllOperatorPaysOwner() public {
+        uint256 tokenId = _mintPosition(address(this));
+        _register(tokenId, address(this), beneficiary);
+        _credit(vault, tokenId, 1 ether, 2 ether);
+        address operator = makeAddr("operator");
+        vm.prank(beneficiary);
+        vault.setApprovalForAll(operator, true);
+        vm.prank(operator);
+        vault.claim(tokenId, 1 ether, 2 ether);
+        assertEq(operator.balance, 0);
+        assertEq(token.balanceOf(operator), 0);
+        assertEq(beneficiary.balance, 1 ether);
+        assertEq(token.balanceOf(beneficiary), 2 ether);
     }
 
     function test_claim_unregisteredPositionFlushesBothFallbacksPermissionlessly() public {

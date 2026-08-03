@@ -113,7 +113,8 @@ contract UERC20BeneficiaryVaultTest is Test {
         return new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), tokenCreator);
     }
 
-    /// @notice A registered position keeps the base NFT semantics: only its holder may claim.
+    /// @notice A registered position keeps the base NFT semantics: only its holder or an approved
+    ///         operator may claim, and payouts always go to the holder.
     function test_claim_registeredPositionUsesBaseSemantics() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
@@ -126,6 +127,24 @@ contract UERC20BeneficiaryVaultTest is Test {
 
         vm.prank(beneficiary);
         vault.claim(tokenId, 0, 0);
+        assertEq(beneficiary.balance, 1 ether);
+        assertEq(token.balanceOf(beneficiary), 2 ether);
+    }
+
+    function test_claim_approvedOperatorPaysRegisteredOwner() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+        vault.registerBeneficiary(tokenId, beneficiary);
+        _credit(tokenId, 1 ether, address(token), 2 ether);
+
+        address operator = makeAddr("operator");
+        vm.prank(beneficiary);
+        vault.approve(operator, tokenId);
+        vm.prank(operator);
+        vault.claim(tokenId, 0, 0);
+
+        assertEq(operator.balance, 0);
+        assertEq(token.balanceOf(operator), 0);
         assertEq(beneficiary.balance, 1 ether);
         assertEq(token.balanceOf(beneficiary), 2 ether);
     }
