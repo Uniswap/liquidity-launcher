@@ -98,7 +98,7 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
     /// @param tokenId The position token ID
     /// @param minCurrency0Amount The minimum acceptable currency0 amount
     /// @param minCurrency1Amount The minimum acceptable currency1 amount
-    function claimExternal(
+    function claimFrom(
         IClaimableRecipient source,
         uint256 tokenId,
         uint256 minCurrency0Amount,

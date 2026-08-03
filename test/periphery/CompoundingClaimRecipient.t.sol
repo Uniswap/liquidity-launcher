@@ -107,7 +107,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
         assertEq(Currency.wrap(USDC).balanceOf(address(positionRecipient)), recipientCurrency1Before);
     }
 
-    function test_ClaimExternal_WhenRecipientOwnsNft_AttributesExternalShare() public {
+    function test_ClaimFrom_WhenRecipientOwnsNft_AttributesExternalShare() public {
         positionRecipient = new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
         beneficiaryVault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
         FeeSplitter splitter = _productionSplitter(address(beneficiaryVault), address(positionRecipient));
@@ -120,7 +120,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
         (uint256 vaultNative,) = beneficiaryVault.amounts(FORK_TOKEN_ID);
         assertGt(vaultNative, 0);
 
-        positionRecipient.claimExternal(beneficiaryVault, FORK_TOKEN_ID, 0, 0);
+        positionRecipient.claimFrom(beneficiaryVault, FORK_TOKEN_ID, 0, 0);
 
         (uint256 vaultNativeAfter,) = beneficiaryVault.amounts(FORK_TOKEN_ID);
         (uint256 recipientNative,) = positionRecipient.amounts(FORK_TOKEN_ID);
@@ -128,7 +128,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
         assertGe(recipientNative, vaultNative);
     }
 
-    function test_ClaimExternal_WhenRecipientDoesNotOwnNft_Reverts() public {
+    function test_ClaimFrom_WhenRecipientDoesNotOwnNft_Reverts() public {
         positionRecipient = new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
         beneficiaryVault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
         FeeSplitter splitter = _productionSplitter(address(beneficiaryVault), address(positionRecipient));
@@ -144,10 +144,10 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
                 IBeneficiaryVault.NotApprovedOrOwner.selector, FORK_TOKEN_ID, address(positionRecipient)
             )
         );
-        positionRecipient.claimExternal(beneficiaryVault, FORK_TOKEN_ID, 0, 0);
+        positionRecipient.claimFrom(beneficiaryVault, FORK_TOKEN_ID, 0, 0);
     }
 
-    function test_ClaimExternal_WhenExternalShareIsPulledFirst_ExecutorCompoundsAll() public {
+    function test_ClaimFrom_WhenExternalShareIsPulledFirst_ExecutorCompoundsAll() public {
         positionRecipient = new CompoundingClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
         beneficiaryVault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
         FeeSplitter splitter = _productionSplitter(address(beneficiaryVault), address(positionRecipient));
@@ -163,7 +163,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
         assertGt(recipientNativeBefore, 0);
         assertGt(recipientTokenBefore, 0);
 
-        positionRecipient.claimExternal(beneficiaryVault, FORK_TOKEN_ID, 0, 0);
+        positionRecipient.claimFrom(beneficiaryVault, FORK_TOKEN_ID, 0, 0);
 
         uint128 liquidityBefore = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);
         executor.setFeeSplitter(IFeeSplitter(address(splitter)), 1);

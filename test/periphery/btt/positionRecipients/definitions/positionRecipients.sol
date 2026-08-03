@@ -202,7 +202,7 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// │   └── it reverts
 /// ├── when the executor deposits both currencies
 /// │   └── it increases liquidity
-/// └── claimExternal
+/// └── claimFrom
 ///     ├── when this contract owns the beneficiary NFT
 ///     │   └── it attributes the external amounts here
 ///     ├── when this contract does not own the beneficiary NFT
@@ -451,7 +451,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(manager.getPositionLiquidity(TOKEN_ID), INITIAL_LIQUIDITY + liquidityIncrease);
     }
 
-    function test_CompoundingClaimExternal_WhenRecipientOwnsNft_AttributesExternalAmounts() public {
+    function test_CompoundingClaimFrom_WhenRecipientOwnsNft_AttributesExternalAmounts() public {
         BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
         CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
         uint256 vaultFees0 = 1 ether;
@@ -459,7 +459,7 @@ contract PositionRecipientsBTTTest is Test {
         _notifyAmounts(vault, poolKey, vaultFees0, vaultFees1);
         vault.mintBeneficiary(TOKEN_ID, address(recipient));
 
-        recipient.claimExternal(vault, TOKEN_ID, 0, 0);
+        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
 
         (uint256 vaultAmount0, uint256 vaultAmount1) = vault.amounts(TOKEN_ID);
         assertEq(vaultAmount0, 0);
@@ -471,7 +471,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(poolKey.currency1.balanceOf(address(recipient)), vaultFees1);
     }
 
-    function test_CompoundingClaimExternal_WhenRecipientDoesNotOwnNft_Reverts() public {
+    function test_CompoundingClaimFrom_WhenRecipientDoesNotOwnNft_Reverts() public {
         BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
         CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
         _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
@@ -480,10 +480,10 @@ contract PositionRecipientsBTTTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, TOKEN_ID, address(recipient))
         );
-        recipient.claimExternal(vault, TOKEN_ID, 0, 0);
+        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
     }
 
-    function test_CompoundingClaimExternal_WhenExternalMinimumIsNotMet_Reverts(uint256 minimum) public {
+    function test_CompoundingClaimFrom_WhenExternalMinimumIsNotMet_Reverts(uint256 minimum) public {
         minimum = bound(minimum, FEES_0 + 1, type(uint128).max);
         BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
         CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
@@ -493,22 +493,22 @@ contract PositionRecipientsBTTTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum)
         );
-        recipient.claimExternal(vault, TOKEN_ID, minimum, 0);
+        recipient.claimFrom(vault, TOKEN_ID, minimum, 0);
     }
 
-    function test_CompoundingClaimExternal_WhenExternalAmountsAreZero_SucceedsWithoutAttribution() public {
+    function test_CompoundingClaimFrom_WhenExternalAmountsAreZero_SucceedsWithoutAttribution() public {
         BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
         CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
         vault.mintBeneficiary(TOKEN_ID, address(recipient));
 
-        recipient.claimExternal(vault, TOKEN_ID, 0, 0);
+        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
 
         (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
         assertEq(recipientAmount0, 0);
         assertEq(recipientAmount1, 0);
     }
 
-    function test_CompoundingClaimExternal_WhenExternalShareIsPulledFirst_ExecutorCanCompoundAll(uint128 liquidityIncrease)
+    function test_CompoundingClaimFrom_WhenExternalShareIsPulledFirst_ExecutorCanCompoundAll(uint128 liquidityIncrease)
         public
     {
         liquidityIncrease = uint128(bound(liquidityIncrease, 1, 100_000 ether));
@@ -527,7 +527,7 @@ contract PositionRecipientsBTTTest is Test {
         _notifyAmounts(vault, poolKey, vaultFees0, vaultFees1);
         vault.mintBeneficiary(TOKEN_ID, address(recipient));
 
-        recipient.claimExternal(vault, TOKEN_ID, 0, 0);
+        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
         executor.execute(recipient, TOKEN_ID, 0, 0);
 
         (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
