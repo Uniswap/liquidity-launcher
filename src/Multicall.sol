@@ -7,7 +7,8 @@ import {IMulticall} from "./interfaces/IMulticall.sol";
 /// @notice Enables calling multiple methods in a single call to the contract
 abstract contract Multicall is IMulticall {
     /// @inheritdoc IMulticall
-    function multicall(bytes[] calldata data) external returns (bytes[] memory results) {
+    /// @dev Payable so a batch can carry native for `callWithValue`.
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results) {
         results = new bytes[](data.length);
         for (uint256 i = 0; i < data.length; i++) {
             (bool success, bytes memory result) = address(this).delegatecall(data[i]);
@@ -21,5 +22,23 @@ abstract contract Multicall is IMulticall {
 
             results[i] = result;
         }
+
+        // Native must not be left behind, so a batch either forwards all of it or sweeps the remainder.
+        if (address(this).balance != 0) revert NativeNotSwept(address(this).balance);
+    }
+
+    /// @inheritdoc IMulticall
+    function callWithValue(address target, uint256 value, bytes calldata data)
+        external
+        payable
+        returns (bytes memory returnData)
+    {
+        (bool success, bytes memory result) = target.call{value: value}(data);
+        if (!success) {
+            assembly {
+                revert(add(result, 0x20), mload(result))
+            }
+        }
+        return result;
     }
 }

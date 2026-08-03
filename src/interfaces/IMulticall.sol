@@ -4,8 +4,23 @@ pragma solidity ^0.8.0;
 /// @title IMulticall
 /// @notice Interface for the Multicall contract
 interface IMulticall {
+    /// @notice Thrown when a batch ends with native still held by this contract
+    /// @param balance The native left behind
+    error NativeNotSwept(uint256 balance);
+
     /// @notice Call multiple functions in the current contract and return the data from all of them if they all succeed
     /// @param data The encoded function data for each of the calls to make to this contract
     /// @return results The results from each of the calls passed in via data
-    function multicall(bytes[] calldata data) external returns (bytes[] memory results);
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results);
+
+    /// @notice Forwards a call with native from this contract's balance to an external target
+    /// @dev Intended for use inside `multicall`. Sends the explicit `value` amount, not `msg.value`.
+    /// @param target The contract to call
+    /// @param value The native to send from this contract's balance
+    /// @param data The calldata to forward
+    /// @return returnData The returndata from the target
+    function callWithValue(address target, uint256 value, bytes calldata data)
+        external
+        payable
+        returns (bytes memory returnData);
 }

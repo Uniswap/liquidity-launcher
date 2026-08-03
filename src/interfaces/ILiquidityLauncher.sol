@@ -44,7 +44,7 @@ interface ILiquidityLauncher {
         uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
-    ) external returns (address tokenAddress);
+    ) external payable returns (address tokenAddress);
 
     /// @notice Pulls `amount` of `token` from `msg.sender` into this contract via Permit2.
     /// @dev Intended to be batched with `distributeToken` inside `multicall` so the deposited tokens
@@ -52,7 +52,7 @@ interface ILiquidityLauncher {
     ///      for this contract
     /// @param token The token to pull
     /// @param amount The amount to pull (uint160 — Permit2 allowance type)
-    function depositToken(address token, uint160 amount) external;
+    function depositToken(address token, uint160 amount) external payable;
 
     /// @notice Distribute tokens already held by this contract via one or more strategies
     /// @dev The launcher must already hold `distribution.amount` of `tokenAddress`. The launcher
@@ -63,7 +63,13 @@ interface ILiquidityLauncher {
     /// @param tokenAddress The address of the token to distribute
     /// @param distribution Distribution instructions
     /// @param salt The salt to pass into the strategy contract if needed
-    function distributeToken(address tokenAddress, Distribution memory distribution, bytes32 salt) external;
+    function distributeToken(address tokenAddress, Distribution memory distribution, bytes32 salt) external payable;
+
+    /// @notice Sends native held by this contract to `recipient`
+    /// @dev A batch must end with this whenever it carries more native than it forwards, since `multicall`
+    ///      rejects native left behind.
+    /// @param recipient The receiver of the native
+    function sweepNative(address recipient) external payable;
 
     /// @notice Calculates the graffiti that will be used for a token creation
     /// @param originalCreator The address that will be set as the original creator
