@@ -121,7 +121,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, creator));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, tokenId, creator));
         vault.claim(tokenId, 0, 0);
 
         vm.prank(beneficiary);
@@ -181,7 +181,7 @@ contract UERC20BeneficiaryVaultTest is Test {
 
         // The creator's graffiti no longer helps once the NFT names someone else.
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, creator));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, tokenId, creator));
         vault.claim(tokenId, 0, 0);
 
         vm.prank(beneficiary);

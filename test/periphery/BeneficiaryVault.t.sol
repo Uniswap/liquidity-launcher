@@ -287,11 +287,24 @@ contract BeneficiaryVaultTest is Test {
         assertEq(vault.totalAmounts(Currency.wrap(address(token))), 0);
     }
 
-    function test_claim_nonOwnerReverts() public {
+    function test_claim_notApprovedOrOwnerReverts() public {
         uint256 tokenId = _mintPosition(address(this));
         _register(tokenId, address(this), beneficiary);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, tokenId, address(this)));
         vault.claim(tokenId, 0, 0);
+    }
+
+    function test_claim_approvedOperatorReceivesBoth() public {
+        uint256 tokenId = _mintPosition(address(this));
+        _register(tokenId, address(this), beneficiary);
+        _credit(vault, tokenId, 1 ether, 2 ether);
+        address operator = makeAddr("operator");
+        vm.prank(beneficiary);
+        vault.approve(operator, tokenId);
+        vm.prank(operator);
+        vault.claim(tokenId, 1 ether, 2 ether);
+        assertEq(operator.balance, 1 ether);
+        assertEq(token.balanceOf(operator), 2 ether);
     }
 
     function test_claim_unregisteredPositionFlushesBothFallbacksPermissionlessly() public {
@@ -316,7 +329,7 @@ contract BeneficiaryVaultTest is Test {
         vm.prank(beneficiary);
         vault.transferFrom(beneficiary, newOwner, tokenId);
         vm.prank(beneficiary);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, beneficiary));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, tokenId, beneficiary));
         vault.claim(tokenId, 0, 0);
         vm.prank(newOwner);
         vault.claim(tokenId, 0, 0);

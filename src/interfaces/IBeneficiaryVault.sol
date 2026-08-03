@@ -17,10 +17,10 @@ interface IBeneficiaryVault is IClaimableRecipient {
     /// @param beneficiary The invalid beneficiary.
     error InvalidBeneficiary(address beneficiary);
 
-    /// @notice Thrown when a caller is not the position's current beneficiary NFT holder.
+    /// @notice Thrown when a caller is not the beneficiary NFT owner or an approved operator.
     /// @param tokenId The position token ID.
     /// @param caller The unauthorized caller.
-    error NotBeneficiary(uint256 tokenId, address caller);
+    error NotApprovedOrOwner(uint256 tokenId, address caller);
 
     /// @notice Thrown when a fallback is zero or this contract.
     /// @param fallbackRecipient The invalid fallback.

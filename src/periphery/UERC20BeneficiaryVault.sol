@@ -10,6 +10,8 @@ import {BeneficiaryVault} from "./BeneficiaryVault.sol";
 /// @title UERC20BeneficiaryVault
 /// @notice A BeneficiaryVault whose unregistered positions can also be claimed by the creator of the
 ///         UERC20 token based on the token's immutable graffiti.
+/// @dev This contract is NOT intended to be used by aggregator contracts like Multicall3 as
+///      the `graffiti` could be set to a contract which cannot receive ETH.
 contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
     using CurrencyLibrary for Currency;
 
