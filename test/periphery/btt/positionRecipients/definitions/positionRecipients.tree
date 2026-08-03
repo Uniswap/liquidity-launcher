@@ -25,5 +25,14 @@ PositionRecipientsBTTTest
 └── CompoundingPositionRecipient
     ├── when the liquidity increase is below the minimum
     │   └── it reverts
-    └── when the executor deposits both currencies
-        └── it increases liquidity
+    ├── when the executor deposits both currencies
+    │   └── it increases liquidity
+    └── claimExternal
+        ├── when this contract owns the beneficiary NFT
+        │   └── it attributes the external amounts here
+        ├── when this contract does not own the beneficiary NFT
+        │   └── it reverts
+        ├── when the external minimum is not met
+        │   └── it reverts
+        └── when the external share is pulled first
+            └── the executor can compound all attributed amounts

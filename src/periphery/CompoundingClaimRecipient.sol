@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 import {BaseClaimRecipientWithCallback} from "./BaseClaimRecipientWithCallback.sol";
 
 /// @title CompoundingClaimRecipient
