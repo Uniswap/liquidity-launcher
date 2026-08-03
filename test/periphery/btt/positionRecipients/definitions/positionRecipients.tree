@@ -34,6 +34,8 @@ PositionRecipientsBTTTest
         │   └── it reverts
         ├── when the external minimum is not met
         │   └── it reverts
+        ├── when the external payout reenters
+        │   └── it reverts
         └── when the external share is pulled first
             └── the executor can compound all attributed amounts
 └── UERC20BeneficiaryVault

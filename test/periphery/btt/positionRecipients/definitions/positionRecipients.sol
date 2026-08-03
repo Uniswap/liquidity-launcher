@@ -125,6 +125,37 @@ contract MockReentrantERC20 is MockERC20 {
     }
 }
 
+contract MockReentrantClaimFromERC20 is MockERC20 {
+    BaseClaimRecipient internal immutable recipient;
+    IClaimableRecipient internal immutable source;
+    uint256 internal immutable tokenId;
+
+    bool public reentryAttempted;
+    bytes public reentryRevertData;
+
+    constructor(
+        BaseClaimRecipient _recipient,
+        IClaimableRecipient _source,
+        uint256 _tokenId,
+        uint256 initialSupply
+    ) MockERC20("Reentrant ClaimFrom Token", "REENTRANT", initialSupply, msg.sender) {
+        recipient = _recipient;
+        source = _source;
+        tokenId = _tokenId;
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        bool success = super.transfer(to, amount);
+        if (!reentryAttempted && to == address(recipient) && msg.sender == address(source)) {
+            reentryAttempted = true;
+            (, reentryRevertData) = address(recipient).call(
+                abi.encodeWithSelector(BaseClaimRecipient.claimFrom.selector, source, tokenId, 0, 0)
+            );
+        }
+        return success;
+    }
+}
+
 contract BaseClaimRecipientHarness is BaseClaimRecipient {
     constructor(IPositionManager positionManager) BaseClaimRecipient(positionManager) {}
 }
@@ -225,6 +256,8 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     ├── when this contract does not own the beneficiary NFT
 ///     │   └── it reverts
 ///     └── when the external minimum is not met
+///         └── it reverts
+///     └── when the external payout reenters
 ///         └── it reverts
 ///
 /// UERC20BeneficiaryVault
@@ -537,6 +570,31 @@ contract PositionRecipientsBTTTest is Test {
             abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum)
         );
         recipient.claimFrom(vault, TOKEN_ID, minimum, 0);
+    }
+
+    function test_BaseRecipientClaimFrom_WhenExternalPayoutReenters_Reverts() public {
+        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
+        MockReentrantClaimFromERC20 reentrantToken =
+            new MockReentrantClaimFromERC20(recipient, vault, TOKEN_ID, 1_000_000 ether);
+        MockERC20 honestToken = new MockERC20("Honest Token", "HONEST", 1_000_000 ether, address(this));
+        PoolKey memory reentrantPool = PoolKey(
+            Currency.wrap(address(reentrantToken)), Currency.wrap(address(honestToken)), 3000, 60, IHooks(address(0))
+        );
+        _configure(reentrantPool, FEES_0, FEES_1, 1 ether);
+        _notifyAmounts(vault, reentrantPool, FEES_0, FEES_1);
+        vault.mintBeneficiary(TOKEN_ID, address(recipient));
+
+        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
+
+        assertTrue(reentrantToken.reentryAttempted());
+        assertEq(reentrantToken.reentryRevertData(), abi.encodeWithSelector(ReentrancyGuardTransient.Reentrancy.selector));
+        (uint256 vaultAmount0, uint256 vaultAmount1) = vault.amounts(TOKEN_ID);
+        assertEq(vaultAmount0, 0);
+        assertEq(vaultAmount1, 0);
+        (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
+        assertEq(recipientAmount0, FEES_0);
+        assertEq(recipientAmount1, FEES_1);
     }
 
     function test_CompoundingClaimFrom_WhenExternalAmountsAreZero_SucceedsWithoutAttribution() public {
