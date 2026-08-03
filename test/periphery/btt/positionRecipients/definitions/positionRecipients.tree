@@ -36,3 +36,24 @@ PositionRecipientsBTTTest
         │   └── it reverts
         └── when the external share is pulled first
             └── the executor can compound all attributed amounts
+└── UERC20BeneficiaryVault
+    ├── register
+    │   ├── when the caller matches currency1 graffiti
+    │   │   └── it mints the beneficiary NFT
+    │   ├── when the caller matches currency0 graffiti
+    │   │   └── it mints the beneficiary NFT
+    │   ├── when the caller is not the token creator
+    │   │   └── it reverts
+    │   ├── when the NFT already exists
+    │   │   └── it reverts
+    │   └── when the position does not exist
+    │       └── it reverts
+    └── claim
+        ├── when unregistered and launcher graffiti is present
+        │   └── it reverts for any caller without flushing
+        ├── when registered
+        │   └── it pays the NFT owner
+        ├── when registered and the caller is not approved or owner
+        │   └── it reverts
+        └── when unregistered with no readable graffiti
+            └── it flushes to the fallbacks

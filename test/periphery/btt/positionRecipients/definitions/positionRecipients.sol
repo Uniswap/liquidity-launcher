@@ -10,7 +10,9 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
+import {MockUERC20} from "../../../../mocks/MockUERC20.sol";
 import {IClaimExecutor} from "../../../../../src/interfaces/IClaimExecutor.sol";
 import {IClaimableRecipient} from "../../../../../src/interfaces/IClaimableRecipient.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
@@ -20,7 +22,10 @@ import {BaseClaimRecipientWithCallback} from "../../../../../src/periphery/BaseC
 import {BuybackAndBurnClaimRecipient} from "../../../../../src/periphery/BuybackAndBurnClaimRecipient.sol";
 import {CompoundingClaimRecipient} from "../../../../../src/periphery/CompoundingClaimRecipient.sol";
 import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.sol";
+import {UERC20BeneficiaryVault} from "../../../../../src/periphery/UERC20BeneficiaryVault.sol";
 import {IBeneficiaryVault} from "../../../../../src/interfaces/IBeneficiaryVault.sol";
+import {IUERC20BeneficiaryVault} from "../../../../../src/interfaces/IUERC20BeneficiaryVault.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
 import {MockClaimExecutor} from "../../../MockClaimExecutor.sol";
 import {MockCompoundingClaimExecutor} from "../../../MockCompoundingClaimExecutor.sol";
@@ -139,6 +144,18 @@ contract BeneficiaryVaultHarness is BeneficiaryVault {
     }
 }
 
+/// @dev ERC20 whose `graffiti()` returns fewer than 32 bytes so `_graffitiOf` treats it as unset.
+contract MockShortGraffitiToken is MockERC20 {
+    constructor(address recipient) MockERC20("Short Graffiti", "SHORT", 1_000_000 ether, recipient) {}
+
+    function graffiti() external pure {
+        assembly {
+            mstore(0, 0x01)
+            return(0, 1)
+        }
+    }
+}
+
 contract RevertingLPFeesExecutor is MockClaimExecutor {
     error CallbackFailed();
 
@@ -209,14 +226,40 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     │   └── it reverts
 ///     └── when the external minimum is not met
 ///         └── it reverts
+///
+/// UERC20BeneficiaryVault
+/// ├── register
+/// │   ├── when the caller matches currency1 graffiti
+/// │   │   └── it mints the beneficiary NFT
+/// │   ├── when the caller matches currency0 graffiti
+/// │   │   └── it mints the beneficiary NFT
+/// │   ├── when the caller is not the token creator
+/// │   │   └── it reverts
+/// │   ├── when the NFT already exists
+/// │   │   └── it reverts
+/// │   └── when the position does not exist
+/// │       └── it reverts
+/// └── claim
+///     ├── when unregistered and launcher graffiti is present
+///     │   └── it reverts for any caller without flushing
+///     ├── when registered
+///     │   └── it pays the NFT owner
+///     ├── when registered and the caller is not approved or owner
+///     │   └── it reverts
+///     └── when unregistered with no readable graffiti
+///         └── it flushes to the fallbacks
 contract PositionRecipientsBTTTest is Test {
     uint256 internal constant TOKEN_ID = 1;
     uint256 internal constant FEES_0 = 2 ether;
     uint256 internal constant FEES_1 = 3 ether;
     uint128 internal constant INITIAL_LIQUIDITY = 100 ether;
+    address internal constant NATIVE_FALLBACK = address(0xdead);
+    address internal constant TOKEN_FALLBACK = address(0xbeef);
 
     address internal operator = makeAddr("operator");
     address internal feeRecipient = makeAddr("feeRecipient");
+    address internal creator = makeAddr("creator");
+    address internal stranger = makeAddr("stranger");
 
     MockPositionManager internal manager;
     MockERC20 internal tokenA;
@@ -536,6 +579,211 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(manager.getPositionLiquidity(TOKEN_ID), INITIAL_LIQUIDITY + liquidityIncrease);
         assertEq(executor.lastCurrency0Received(), splitterFees0 + vaultFees0);
         assertEq(executor.lastCurrency1Received(), splitterFees1 + vaultFees1);
+    }
+
+    function test_UERC20Vault_register_WhenCreatorMatchesCurrency1_MintsNft() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID);
+
+        assertEq(vault.ownerOf(TOKEN_ID), creator);
+    }
+
+    function test_UERC20Vault_register_WhenCreatorMatchesCurrency0_MintsNft() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 launchToken,) = _tokenPairWithLaunchToken(creator);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID);
+
+        assertEq(vault.ownerOf(TOKEN_ID), creator);
+        assertEq(Currency.unwrap(key.currency0), address(launchToken));
+    }
+
+    function test_UERC20Vault_register_WhenCallerIsNotCreator_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, stranger));
+        vault.register(TOKEN_ID);
+    }
+
+    function test_UERC20Vault_register_WhenNftAlreadyExists_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID);
+
+        vm.prank(creator);
+        vm.expectRevert(ERC721.TokenAlreadyExists.selector);
+        vault.register(TOKEN_ID);
+    }
+
+    function test_UERC20Vault_register_WhenPositionDoesNotExist_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+        uint256 invalidTokenId = TOKEN_ID + 1;
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, invalidTokenId));
+        vault.register(invalidTokenId);
+    }
+
+    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_RevertsForCreator() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, creator));
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
+        (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
+        assertEq(amount0, FEES_0);
+        assertEq(amount1, FEES_1);
+    }
+
+    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_RevertsForStranger() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, stranger));
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
+    }
+
+    function test_UERC20Vault_claim_WhenRegistered_PaysOwner() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID);
+        vm.prank(creator);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(creator.balance, FEES_0);
+        assertEq(token.balanceOf(creator), FEES_1);
+        (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+    }
+
+    function test_UERC20Vault_claim_WhenRegisteredAndCallerIsNotApprovedOrOwner_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key,) = _nativeUerc20Pool(creator);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, TOKEN_ID, stranger));
+        vault.claim(TOKEN_ID, 0, 0);
+    }
+
+    function test_UERC20Vault_claim_WhenPlainTokenUnregistered_FlushesToFallbacks() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockERC20 token) = _nativePlainPool();
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(stranger);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
+        (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+    }
+
+    function test_UERC20Vault_claim_WhenGraffitiStaticcallFails_FlushesToFallbacks() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
+        token.setGraffitiReverts(true);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(stranger);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
+    }
+
+    function test_UERC20Vault_claim_WhenGraffitiReturnsWrongLength_FlushesToFallbacks() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        MockShortGraffitiToken token = new MockShortGraffitiToken(address(this));
+        PoolKey memory key =
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(token)), 3000, 60, IHooks(address(0)));
+        _configureUerc20Pool(key, FEES_0, FEES_1);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(stranger);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
+    }
+
+    function _deployUerc20Vault() internal returns (UERC20BeneficiaryVault) {
+        return new UERC20BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+    }
+
+    function _configureUerc20Pool(PoolKey memory key, uint256 fee0, uint256 fee1) internal {
+        manager.configure(key, TOKEN_ID, fee0, fee1, INITIAL_LIQUIDITY, 1 ether);
+        if (key.currency0.isAddressZero()) {
+            vm.deal(address(manager), fee0);
+        } else {
+            IERC20(Currency.unwrap(key.currency0)).transfer(address(manager), fee0);
+        }
+        IERC20(Currency.unwrap(key.currency1)).transfer(address(manager), fee1);
+    }
+
+    function _notifyVault(UERC20BeneficiaryVault vault, PoolKey memory key, uint256 amount0, uint256 amount1)
+        internal
+    {
+        if (key.currency0.isAddressZero()) {
+            vm.deal(address(vault), address(vault).balance + amount0);
+        } else {
+            IERC20(Currency.unwrap(key.currency0)).transfer(address(vault), amount0);
+        }
+        IERC20(Currency.unwrap(key.currency1)).transfer(address(vault), amount1);
+        vault.onAmountsReceived(TOKEN_ID, amount0, amount1);
+    }
+
+    function _nativeUerc20Pool(address tokenCreator) internal returns (PoolKey memory key, MockUERC20 token) {
+        token = new MockUERC20("Launch", "LAUNCH", 1_000_000 ether, address(this), tokenCreator);
+        key = PoolKey(Currency.wrap(address(0)), Currency.wrap(address(token)), 3000, 60, IHooks(address(0)));
+        _configureUerc20Pool(key, FEES_0, FEES_1);
+    }
+
+    function _nativePlainPool() internal returns (PoolKey memory key, MockERC20 token) {
+        token = new MockERC20("Plain", "PLAIN", 1_000_000 ether, address(this));
+        key = PoolKey(Currency.wrap(address(0)), Currency.wrap(address(token)), 3000, 60, IHooks(address(0)));
+        _configureUerc20Pool(key, FEES_0, FEES_1);
+    }
+
+    function _tokenPairWithLaunchToken(address tokenCreator)
+        internal
+        returns (PoolKey memory key, MockUERC20 launchToken, MockERC20 other)
+    {
+        launchToken = new MockUERC20("Launch", "LAUNCH", 1_000_000 ether, address(this), tokenCreator);
+        other = new MockERC20("Other", "OTHER", 1_000_000 ether, address(this));
+        while (address(launchToken) > address(other)) {
+            launchToken = new MockUERC20("Launch", "LAUNCH", 1_000_000 ether, address(this), tokenCreator);
+        }
+        key = PoolKey(Currency.wrap(address(launchToken)), Currency.wrap(address(other)), 3000, 60, IHooks(address(0)));
+        _configureUerc20Pool(key, FEES_0, FEES_1);
     }
 
     function _configure(PoolKey memory key, uint256 fee0, uint256 fee1, uint128 liquidityIncrease) internal {
