@@ -1,0 +1,13 @@
+CallWithValueTest
+└── multicall
+    └── callWithValue
+        ├── when the target call succeeds
+        │   ├── it forwards value from the launcher balance
+        │   ├── it forwards calldata to the target
+        │   └── it leaves the launcher with zero native
+        ├── when the target call reverts
+        │   └── it bubbles the revert through multicall
+        ├── when the batch carries more native than callWithValue spends
+        │   └── it reverts with NativeNotSwept
+        └── when the batch overfunds but ends with sweepNative
+            └── it returns the remainder to the recipient
