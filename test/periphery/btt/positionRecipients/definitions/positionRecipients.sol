@@ -245,7 +245,9 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     ├── when unregistered and launcher graffiti is present
 ///     │   ├── when the caller is the token creator
 ///     │   │   └── it auto-registers and pays the caller
-///     │   └── when the caller is not the token creator
+///     │   ├── when the caller is the position owner
+///     │   │   └── it auto-registers and pays the caller
+///     │   └── when the caller is neither the creator nor the position owner
 ///     │       └── it reverts without flushing
 ///     ├── when registered
 ///     │   └── it pays the NFT owner
@@ -622,7 +624,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(other.balanceOf(creator), FEES_1);
     }
 
-    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_PositionOwnerWhoIsNotCreator_Reverts() public {
+    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_PositionOwnerAutoRegistersAndPays() public {
         UERC20BeneficiaryVault vault = _deployUerc20Vault();
         (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
         address custodian = makeAddr("custodian");
@@ -630,14 +632,16 @@ contract PositionRecipientsBTTTest is Test {
         _notifyVault(vault, key, FEES_0, FEES_1);
 
         vm.prank(custodian);
-        vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, custodian));
         vault.claim(TOKEN_ID, 0, 0);
 
+        assertEq(vault.ownerOf(TOKEN_ID), custodian);
+        assertEq(custodian.balance, FEES_0);
+        assertEq(token.balanceOf(custodian), FEES_1);
         assertEq(NATIVE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
-        assertEq(amount0, FEES_0);
-        assertEq(amount1, FEES_1);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
     }
 
     function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_RevertsForStranger() public {

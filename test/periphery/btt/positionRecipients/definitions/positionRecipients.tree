@@ -49,7 +49,9 @@ PositionRecipientsBTTTest
         ├── when unregistered and launcher graffiti is present
         │   ├── when the caller is the token creator
         │   │   └── it auto-registers and pays the caller
-        │   └── when the caller is not the token creator
+        │   ├── when the caller is the position owner
+        │   │   └── it auto-registers and pays the caller
+        │   └── when the caller is neither the creator nor the position owner
         │       └── it reverts without flushing
         ├── when registered
         │   └── it pays the NFT owner

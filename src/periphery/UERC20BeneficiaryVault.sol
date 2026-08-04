@@ -63,8 +63,6 @@ contract UERC20BeneficiaryVault is BeneficiaryVault {
     ) internal override returns (address, uint256, address, uint256) {
         // If the tokens have graffiti but the position is not registered
         if (!_exists(tokenId) && (_graffitiOf(currency0) != bytes32(0) || _graffitiOf(currency1) != bytes32(0))) {
-            // revert if not authorized
-            if (!_isTokenCreator(msg.sender, tokenId)) revert NotAuthorized(tokenId, msg.sender);
             // otherwise, register the position
             registerBeneficiary(tokenId, msg.sender);
         }
