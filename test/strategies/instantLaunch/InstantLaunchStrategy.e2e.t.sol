@@ -33,7 +33,7 @@ contract InstantLaunchStrategyE2ETest is Test {
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
-    int24 internal constant INITIAL_TICK = 121_980;
+    int24 internal constant INITIAL_TICK = 121_975;
     address internal constant BURN_ADDRESS = address(0xdead);
 
     address internal tokenJar = makeAddr("tokenJar");
