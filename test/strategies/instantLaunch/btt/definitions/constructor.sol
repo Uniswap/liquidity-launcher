@@ -35,7 +35,8 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
 ///     ├── it derives a position liquidity that fits in a single position
-///     └── it prices saturating the launch floor tick above the total supply
+///     ├── it prices saturating the launch floor tick above the total supply
+///     └── it prices saturating the maximum initial tick above the ETH supply
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         // The beneficiary vault is not among the required addresses; see the zero-vault case below.
@@ -179,6 +180,28 @@ contract ConstructorTest is InstantLaunchTestBase {
             true
         );
         assertGt(blockerCost, strategy.TOTAL_SUPPLY());
+    }
+
+    function test_WhenConfigurationIsValid_saturatingMaxInitialTickExceedsEthSupply() public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        int24 capTick = strategy.MAX_INITIAL_TICK();
+        assertEq(capTick % tickSpacing, 0);
+        assertLt(capTick, TickMath.maxUsableTick(tickSpacing));
+
+        InstantLaunchStrategy deployed = _deployStrategy(capTick);
+
+        // ETH an external LP must hold to fill the upper tick's remaining maxLiquidityPerTick with the
+        // narrowest position above the opening price, which would block every liquidity increase on the
+        // launch position. Ranges above the price are funded in ETH, and their cost falls as the tick
+        // rises, so the cap is the binding case.
+        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+        uint256 blockerCost = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(capTick),
+            TickMath.getSqrtPriceAtTick(capTick + tickSpacing),
+            blockerLiquidity,
+            true
+        );
+        assertGt(blockerCost, ETH_SUPPLY);
     }
 
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
