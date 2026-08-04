@@ -12,9 +12,9 @@ import {BeneficiaryVault} from "./BeneficiaryVault.sol";
 /// @title UERC20BeneficiaryVault
 /// @notice A BeneficiaryVault whose unregistered positions can also be registered by the creator of the
 ///         UERC20 token based on the token's immutable graffiti.
-/// @dev Positions paired with a launcher-created UERC20 must call `register` before `claim`. Creators
-///      whose graffiti is a contract should pass an EOA or compounding recipient as `beneficiary` so
-///      payouts are not sent to an address that cannot receive ETH.
+/// @dev Tokens with graffiti set to a public aggregator contract like Multicall3 are NOT supported.
+/// @dev If a contract is intended to be the beneficiary, it MUST be able to call `claim`
+///      or transfer the beneficiary NFT in order to receive accrued amounts.
 contract UERC20BeneficiaryVault is BeneficiaryVault {
     using CurrencyLibrary for Currency;
 
