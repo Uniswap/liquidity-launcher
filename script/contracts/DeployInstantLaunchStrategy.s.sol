@@ -10,7 +10,7 @@ import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 
 contract DeployInstantLaunchStrategyScript is Script, Parameters {
-    int24 public constant initialTick = 198_060;
+    int24 public constant initialTick = 198_050;
 
     function run(address feeSplitter, address beneficiaryVault) public returns (address instantLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
