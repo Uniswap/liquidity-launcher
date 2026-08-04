@@ -2,9 +2,9 @@
 pragma solidity ^0.8.26;
 
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IUERC20BeneficiaryVault} from "../interfaces/IUERC20BeneficiaryVault.sol";
 import {IUERC20} from "../interfaces/external/IUERC20.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {BeneficiaryVault} from "./BeneficiaryVault.sol";
@@ -15,8 +15,13 @@ import {BeneficiaryVault} from "./BeneficiaryVault.sol";
 /// @dev Positions paired with a launcher-created UERC20 must call `register` before `claim`. Creators
 ///      whose graffiti is a contract should pass an EOA or compounding recipient as `beneficiary` so
 ///      payouts are not sent to an address that cannot receive ETH.
-contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
+contract UERC20BeneficiaryVault is BeneficiaryVault {
     using CurrencyLibrary for Currency;
+
+    /// @notice Thrown when the caller is not authorized for the position.
+    /// @param tokenId The position token ID.
+    /// @param caller The unauthorized caller.
+    error NotAuthorized(uint256 tokenId, address caller);
 
     /// @param _positionManager The canonical v4 PositionManager
     /// @param _nativeFallback Trusted receiver for unregistered positions' native fee shares
@@ -25,12 +30,25 @@ contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
         BeneficiaryVault(_positionManager, _nativeFallback, _tokenFallback)
     {}
 
-    /// @inheritdoc IUERC20BeneficiaryVault
-    function register(uint256 tokenId, address beneficiary) external {
+    /// @notice Override the BeneficiaryVault's registerBeneficiary to also support registering
+    ///         positions via checking the token's graffiti.
+    /// @notice Supports both synchronous (atomic register + transfer) and asynchronous registration.
+    /// @dev If the token's graffiti is a public aggregator contract like Multicall3,
+    ///      this function MUST be called in the same transaction as the position's creation
+    ///      otherwise the beneficiary NFT can be claimed by anyone.
+    function registerBeneficiary(uint256 tokenId, address beneficiary) external override(BeneficiaryVault) {
+        // Never have two beneficiary NFTs for the same position. Transferring should be done via ERC721.transferFrom
         if (_exists(tokenId)) revert ERC721.TokenAlreadyExists();
-        if (!_isTokenCreator(msg.sender, tokenId)) revert NotAuthorized(tokenId, msg.sender);
+        // Reject invalid beneficiary addresses
         if (beneficiary == address(0) || beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
-        _mint(beneficiary, tokenId);
+        // Always allow position owner to set beneficiary regardless of graffiti
+        if (IERC721(address(positionManager)).ownerOf(tokenId) == msg.sender) {
+            _mint(beneficiary, tokenId);
+        } else {
+            // Async registration is only supported for the original creator of the position within UERC20.graffiti()
+            if (!_isTokenCreator(msg.sender, tokenId)) revert NotAuthorized(tokenId, msg.sender);
+            _mint(beneficiary, tokenId);
+        }
     }
 
     /// @inheritdoc BeneficiaryVault
@@ -43,15 +61,11 @@ contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
         uint256 available0,
         uint256 available1
     ) internal override returns (address, uint256, address, uint256) {
-        if (_ownerOf(tokenId) == address(0) && _hasLauncherGraffiti(currency0, currency1)) {
+        // Require that the original creator from UERC20.graffiti() has registered the position before claiming.
+        if ((_graffitiOf(currency0) != bytes32(0) || _graffitiOf(currency1) != bytes32(0)) && !_exists(tokenId)) {
             revert NotAuthorized(tokenId, msg.sender);
         }
         return super._beforeClaimTransfer(tokenId, currency0, currency1, available0, available1);
-    }
-
-    /// @notice Returns whether either side of the pair reports launcher graffiti.
-    function _hasLauncherGraffiti(Currency currency0, Currency currency1) private view returns (bool) {
-        return _graffitiOf(currency0) != bytes32(0) || _graffitiOf(currency1) != bytes32(0);
     }
 
     /// @notice Checks if `caller` matches either side's UERC20 graffiti.

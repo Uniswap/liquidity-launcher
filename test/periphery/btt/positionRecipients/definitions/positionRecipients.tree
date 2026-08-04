@@ -39,7 +39,9 @@ PositionRecipientsBTTTest
         └── when the external share is pulled first
             └── the executor can compound all attributed amounts
 └── UERC20BeneficiaryVault
-    ├── register
+    ├── registerBeneficiary
+    │   ├── when the caller owns the position
+    │   │   └── it mints the beneficiary NFT to the recipient
     │   ├── when the caller matches currency1 graffiti
     │   │   └── it mints the beneficiary NFT to the recipient
     │   ├── when the caller matches currency0 graffiti
@@ -48,7 +50,7 @@ PositionRecipientsBTTTest
     │   │   └── it mints to that address
     │   ├── when the beneficiary is invalid
     │   │   └── it reverts
-    │   ├── when the caller is not the token creator
+    │   ├── when the caller is not the position owner or token creator
     │   │   └── it reverts
     │   ├── when the NFT already exists
     │   │   └── it reverts
