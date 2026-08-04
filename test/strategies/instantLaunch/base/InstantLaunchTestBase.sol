@@ -52,7 +52,7 @@ abstract contract InstantLaunchTestBase is Test {
     int24 internal constant INITIAL_TICK = 121_975;
     /// @dev Lowest deployable initial tick: one spacing above the launch floor. The full supply fits under
     ///      maxLiquidityPerTick at every tick above the floor, so the floor check is the only lower bound.
-    int24 internal constant LOWEST_LAUNCH_TICK = -173_950;
+    int24 internal constant LOWEST_LAUNCH_TICK = -160_075;
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");

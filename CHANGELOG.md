@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- `InstantLaunchStrategy` tick spacing reduced from 60 to 25, matching the 25 bps LP fee. `MIN_LAUNCH_TICK` moves from -208,980 to -173,975 (the deepest 25-aligned floor at which saturating the floor tick's remaining `maxLiquidityPerTick` costs more than the token supply) and `MAX_INITIAL_TICK` moves from 251,340 to 251,325 (the nearest aligned tick at or below the previous cap; saturating the upper tick there costs ~21M ETH). Deployed initial ticks must now be multiples of 25; the deployment script's tick moves from 198,060 to 198,050
+- `InstantLaunchStrategy` tick spacing reduced from 60 to 25, matching the 25 bps LP fee. `MIN_LAUNCH_TICK` moves from -208,980 to -160,100 and `MAX_INITIAL_TICK` from 251,340 to 251,325. Deployed initial ticks must now be multiples of 25; the deployment script's tick moves from 198,060 to 198,050
 
 ## [3.0.0]
 Token Launcher v3.0.0 is a major release with breaking changes. It is not backwards compatible with v2.0.0.

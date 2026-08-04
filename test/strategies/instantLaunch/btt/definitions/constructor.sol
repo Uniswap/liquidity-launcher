@@ -35,8 +35,8 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
 ///     ├── it derives a position liquidity that fits in a single position
-///     ├── it prices saturating the launch floor tick above the total supply
-///     └── it prices saturating the maximum initial tick above the blocker cost floor
+///     ├── it prices saturating the launch floor tick from either side above the total supply
+///     └── it prices saturating the maximum initial tick from either side above the blocker cost floors
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         // The beneficiary vault is not among the required addresses; see the zero-vault case below.
@@ -164,22 +164,56 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertGt(strategy.positionLiquidity(), 0);
     }
 
-    function test_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply() public view {
+    function test_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply() public {
         int24 tickSpacing = strategy.TICK_SPACING();
         int24 floorTick = strategy.MIN_LAUNCH_TICK();
         assertEq(floorTick % tickSpacing, 0);
         assertGt(floorTick, TickMath.minUsableTick(tickSpacing));
+        assertGt(floorTick - tickSpacing, TickMath.minUsableTick(tickSpacing));
 
-        // Tokens an external LP must hold to fill the floor tick's remaining maxLiquidityPerTick with the
-        // narrowest position above it, which would block every liquidity increase on the launch position.
-        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - strategy.positionLiquidity();
-        uint256 blockerCost = SqrtPriceMath.getAmount1Delta(
+        // positionLiquidity peaks at the lowest deployable tick, leaving the least remaining capacity at
+        // the floor, so this deployment prices the cheapest blocker over the whole legal tick domain.
+        (uint256 costAbove, uint256 costBelow) = _floorBlockerCosts(_deployStrategy(LOWEST_LAUNCH_TICK));
+        assertGt(costAbove, strategy.TOTAL_SUPPLY());
+        assertGt(costBelow, strategy.TOTAL_SUPPLY());
+    }
+
+    function test_fuzz_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply(int24 initialTick) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        initialTick = int24(
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.MAX_INITIAL_TICK() / tickSpacing)
+        ) * tickSpacing;
+
+        (uint256 costAbove, uint256 costBelow) = _floorBlockerCosts(_deployStrategy(initialTick));
+        assertGt(costAbove, strategy.TOTAL_SUPPLY());
+        assertGt(costBelow, strategy.TOTAL_SUPPLY());
+    }
+
+    /// @notice Tokens an external LP must hold to fill the floor tick's remaining maxLiquidityPerTick with
+    ///         the narrowest position on either side of it, which would block every liquidity increase on
+    ///         the launch position. `liquidityGross` accrues at both a position's lower and upper tick, so
+    ///         the floor can be loaded from the range above it or the range below it.
+    function _floorBlockerCosts(InstantLaunchStrategy deployed)
+        private
+        view
+        returns (uint256 costAbove, uint256 costBelow)
+    {
+        int24 tickSpacing = deployed.TICK_SPACING();
+        int24 floorTick = deployed.MIN_LAUNCH_TICK();
+        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+
+        costAbove = SqrtPriceMath.getAmount1Delta(
             TickMath.getSqrtPriceAtTick(floorTick),
             TickMath.getSqrtPriceAtTick(floorTick + tickSpacing),
             blockerLiquidity,
             true
         );
-        assertGt(blockerCost, strategy.TOTAL_SUPPLY());
+        costBelow = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(floorTick - tickSpacing),
+            TickMath.getSqrtPriceAtTick(floorTick),
+            blockerLiquidity,
+            true
+        );
     }
 
     function test_WhenConfigurationIsValid_saturatingMaxInitialTickIsProhibitivelyExpensive() public {
@@ -190,18 +224,24 @@ contract ConstructorTest is InstantLaunchTestBase {
 
         InstantLaunchStrategy deployed = _deployStrategy(capTick);
 
-        // ETH an external LP must hold to fill the upper tick's remaining maxLiquidityPerTick with the
-        // narrowest position above the opening price, which would block every liquidity increase on the
-        // launch position. Ranges above the price are funded in ETH, and their cost falls as the tick
-        // rises, so the cap is the binding case.
+        // The launch position opens at its upper tick, so the range above that tick is funded in ETH and
+        // the range below it in tokens. Both load the same liquidityGross, so both must be costly. The ETH
+        // side gets cheaper as the tick rises, which makes the cap the binding deployment for it.
         uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
-        uint256 blockerCost = SqrtPriceMath.getAmount0Delta(
+        uint256 costAbove = SqrtPriceMath.getAmount0Delta(
             TickMath.getSqrtPriceAtTick(capTick),
             TickMath.getSqrtPriceAtTick(capTick + tickSpacing),
             blockerLiquidity,
             true
         );
-        assertGt(blockerCost, UPPER_TICK_BLOCKER_COST_FLOOR);
+        uint256 costBelow = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(capTick - tickSpacing),
+            TickMath.getSqrtPriceAtTick(capTick),
+            blockerLiquidity,
+            true
+        );
+        assertGt(costAbove, UPPER_TICK_BLOCKER_COST_FLOOR);
+        assertGt(costBelow, strategy.TOTAL_SUPPLY());
     }
 
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
