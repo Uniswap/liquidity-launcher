@@ -41,7 +41,7 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy, ReentrancyGuardT
     }
 
     /// @inheritdoc INativeStrategy
-    /// @dev Spends the forwarded native; the route MUST sweep any remainder to its own recipient.
+    /// @dev Spends the forwarded native; the route MUST sweep any remainder to its own recipient. Reports native as `address(0)`.
     function initializeWithNative(bytes calldata configData, bytes32) external payable override nonReentrant {
         if (msg.sender != launcher) revert OnlyLauncher();
         UniversalRouterConfig memory config = abi.decode(configData, (UniversalRouterConfig));

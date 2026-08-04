@@ -7,6 +7,7 @@ pragma solidity ^0.8.26;
 // naming them and the token lands at the address the client predicted.
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -27,7 +28,6 @@ import {UniversalRouterStrategy, UniversalRouterConfig} from "../../src/strategi
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
-import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {IUniversalRouter} from "../../src/interfaces/external/IUniversalRouter.sol";
 import {MockUniversalRouter} from "../mocks/MockUniversalRouter.sol";
@@ -54,6 +54,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     MockUniversalRouter internal router;
 
     address internal creator = makeAddr("creator");
+    address internal attacker = makeAddr("attacker");
 
     function setUp() public {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -212,43 +213,62 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         assertEq(IERC20(inputToken).balanceOf(creator), inputAmount / 2, "unused input was not returned");
     }
 
-    /// @notice A batch that hands out less native than it carried has to sweep the rest, or it reverts.
-    function test_batchThatLeavesNative_reverts() public {
+    /// @notice Overfunding a batch is a caller error that strands the excess in the launcher: there is no
+    ///         refund path, so the amounts forwarded must add up to the value sent.
+    function test_overfundedBatch_strandsTheExcess() public {
         uint256 buyAmount = 1 ether;
         vm.deal(creator, buyAmount + 0.4 ether);
         address token = _predictToken(creator);
         PoolKey memory key = _poolKeyFor(token);
 
-        // Hands the strategy 1 but carries 1.4, with no sweep appended.
-        bytes[] memory calls = _launchAndBuyCalls(token, key, buyAmount, 0);
-
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IMulticall.NativeNotSwept.selector, 0.4 ether));
-        launcher.multicall{value: buyAmount + 0.4 ether}(calls);
+        launcher.multicall{value: buyAmount + 0.4 ether}(_launchAndBuyCalls(token, key, buyAmount, 0));
+
+        assertEq(address(launcher).balance, 0.4 ether, "excess did not stay in the launcher");
+        assertEq(creator.balance, 0, "creator was refunded");
     }
 
-    /// @notice The check is absolute, so native forced in must be swept by the batch as well. Documents the
-    ///         tradeoff: a wei pushed in grieves every batch that does not end with a sweep.
-    function test_forcedNative_mustBeSweptByTheBatch() public {
+    /// @notice Native already sitting in the launcher, forced in or stranded by an earlier caller, does not
+    ///         affect a batch: nothing reads the launcher's balance.
+    function test_strayNative_doesNotAffectABatch() public {
         vm.deal(address(launcher), 1 wei);
 
         bytes[] memory calls = new bytes[](1);
         calls[0] = _createTokenCall();
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IMulticall.NativeNotSwept.selector, 1 wei));
         launcher.multicall(calls);
 
-        // Appending a sweep clears it and the same batch goes through.
-        bytes[] memory swept = new bytes[](2);
-        swept[0] = _createTokenCall();
-        swept[1] = abi.encodeCall(LiquidityLauncher.sweepNative, (creator));
+        assertEq(address(launcher).balance, 1 wei, "stray native was consumed");
+    }
 
+    /// @notice Regression for the reentrancy finding: a router that reenters to divert native earmarked for a
+    ///         later hand-off breaks that hand-off, so the whole batch reverts and the theft gains nothing.
+    function test_reentrantRouterCannotDivertEarmarkedNative() public {
+        DivertingRouter diverter = new DivertingRouter(launcher, address(routerStrategy), attacker);
+        address token = _predictToken(creator);
+        PoolKey memory key = _poolKeyFor(token);
+
+        UniversalRouterConfig memory divertConfig = UniversalRouterConfig({
+            router: diverter, recipient: creator, route: abi.encode(bytes(""), new bytes[](0), block.timestamp)
+        });
+
+        // 1 ether to the diverting route, 1 ether earmarked for a second hand-off.
+        bytes[] memory calls = new bytes[](4);
+        calls[0] = _createTokenCall();
+        calls[1] = _instantLaunchCall(token);
+        calls[2] = abi.encodeCall(
+            LiquidityLauncher.distributeWithNative,
+            (address(routerStrategy), abi.encode(divertConfig), bytes32(0), 1 ether)
+        );
+        calls[3] = _buyCall(token, key, 1 ether, 0);
+
+        vm.deal(creator, 2 ether);
         vm.prank(creator);
-        launcher.multicall(swept);
+        vm.expectRevert();
+        launcher.multicall{value: 2 ether}(calls);
 
-        assertEq(address(launcher).balance, 0);
-        assertEq(creator.balance, 1 wei);
+        assertEq(attacker.balance, 0, "attacker kept diverted native");
     }
 
     function test_initializeDistribution_onlyLauncher() public {
@@ -284,6 +304,45 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         vm.prank(creator);
         vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
         launcher.multicall{value: 1 ether}(calls);
+    }
+
+    /// @notice The launcher records the native path, and the strategy no longer publishes a token
+    ///         distribution for a call that distributes no token.
+    /// @notice The native path reports through the same events as the token path, with `address(0)` as the token,
+    ///         so one indexer subscription covers both.
+    function test_nativePath_reportsNativeAsTokenZero() public {
+        uint256 buyAmount = 1 ether;
+        vm.deal(creator, buyAmount);
+        address token = _predictToken(creator);
+        PoolKey memory key = _poolKeyFor(token);
+
+        bytes[] memory calls = _launchAndBuyCalls(token, key, buyAmount, 0);
+
+        vm.recordLogs();
+        vm.prank(creator);
+        launcher.multicall{value: buyAmount}(calls);
+
+        bytes32 tokenDistributed = keccak256("TokenDistributed(address,address,uint256)");
+        bytes32 distributionInitialized = keccak256("DistributionInitialized(address,address,uint256)");
+        bool sawLauncher;
+        bool sawStrategy;
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].topics.length != 3) continue;
+            bool nativeToken = address(uint160(uint256(logs[i].topics[1]))) == address(0);
+            if (logs[i].topics[0] == tokenDistributed && logs[i].emitter == address(launcher) && nativeToken) {
+                sawLauncher = true;
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), address(routerStrategy));
+                assertEq(abi.decode(logs[i].data, (uint256)), buyAmount);
+            }
+            if (logs[i].topics[0] == distributionInitialized && logs[i].emitter == address(routerStrategy)) {
+                sawStrategy = true;
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), address(0));
+                assertEq(abi.decode(logs[i].data, (uint256)), buyAmount);
+            }
+        }
+        assertTrue(sawLauncher, "launcher did not record the native path");
+        assertTrue(sawStrategy, "strategy did not record the native path");
     }
 
     /// @notice A router with no code reverts instead of consuming the forwarded native. The typed `execute`
@@ -423,5 +482,22 @@ contract MockPayToken {
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
         return true;
+    }
+}
+
+/// @notice Router that tries to divert the launcher's un-forwarded native to a third party mid-batch.
+contract DivertingRouter is IUniversalRouter {
+    LiquidityLauncher immutable launcher;
+    address immutable strategy;
+    address immutable attacker;
+
+    constructor(LiquidityLauncher _launcher, address _strategy, address _attacker) {
+        launcher = _launcher;
+        strategy = _strategy;
+        attacker = _attacker;
+    }
+
+    function execute(bytes calldata, bytes[] calldata, uint256) external payable override {
+        launcher.distributeWithNative(attacker, abi.encode(uint256(0)), bytes32(0), address(launcher).balance);
     }
 }

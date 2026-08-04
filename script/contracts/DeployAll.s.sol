@@ -12,6 +12,7 @@ import {DeployFeeSplitterScript} from "./periphery/DeployFeeSplitter.s.sol";
 import {DeployCompoundingClaimRecipientScript} from "./periphery/DeployCompoundingClaimRecipient.s.sol";
 import {DeployInstantLaunchStrategyScript} from "./DeployInstantLaunchStrategy.s.sol";
 import {console} from "forge-std/console.sol";
+import {DeployUniversalRouterStrategyScript} from "./DeployUniversalRouterStrategy.s.sol";
 
 contract DeployAllScript is Script {
     DeployLiquidityLauncherScript public liquidityLauncherDeployer;
@@ -23,6 +24,7 @@ contract DeployAllScript is Script {
     DeployFeeSplitterScript public feeSplitterDeployer;
     DeployCompoundingClaimRecipientScript public compoundingClaimRecipientDeployer;
     DeployInstantLaunchStrategyScript public instantLaunchStrategyDeployer;
+    DeployUniversalRouterStrategyScript public universalRouterStrategyDeployer;
 
     constructor() {
         liquidityLauncherDeployer = new DeployLiquidityLauncherScript();
@@ -33,6 +35,7 @@ contract DeployAllScript is Script {
         feeSplitterDeployer = new DeployFeeSplitterScript();
         compoundingClaimRecipientDeployer = new DeployCompoundingClaimRecipientScript();
         instantLaunchStrategyDeployer = new DeployInstantLaunchStrategyScript();
+        universalRouterStrategyDeployer = new DeployUniversalRouterStrategyScript();
     }
 
     function run(IDistributorFactory initializerFactory) public {
@@ -57,5 +60,6 @@ contract DeployAllScript is Script {
             instantLaunchStrategyDeployer.run(feeSplitterWithCreatorFeeAddress, uerc20BeneficiaryVaultAddress);
         address instantLaunchWithoutCreatorFeeAddress =
             instantLaunchStrategyDeployer.run(feeSplitterWithoutCreatorFeeAddress, address(0));
+        address universalRouterStrategyAddress = universalRouterStrategyDeployer.run();
     }
 }

@@ -17,7 +17,7 @@ interface ILiquidityLauncher {
     event TokenCreated(address indexed tokenAddress);
 
     /// @notice Emitted when a token is distributed
-    /// @param tokenAddress The address of the token that was distributed
+    /// @param tokenAddress The address of the token that was distributed, `address(0)` for native
     /// @param strategy The strategy that pulled the distributed tokens
     /// @param amount The amount of tokens that were distributed
     event TokenDistributed(address indexed tokenAddress, address indexed strategy, uint256 amount);
@@ -74,12 +74,6 @@ interface ILiquidityLauncher {
     function distributeWithNative(address strategy, bytes calldata configData, bytes32 salt, uint256 nativeAmount)
         external
         payable;
-
-    /// @notice Sends native held by this contract to `recipient`
-    /// @dev A batch must end with this whenever it carries more native than it forwards, since `multicall`
-    ///      rejects native left behind.
-    /// @param recipient The receiver of the native
-    function sweepNative(address recipient) external payable;
 
     /// @notice Calculates the graffiti that will be used for a token creation
     /// @param originalCreator The address that will be set as the original creator
