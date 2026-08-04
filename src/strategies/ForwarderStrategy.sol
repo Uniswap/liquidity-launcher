@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {IStrategy} from "../interfaces/IStrategy.sol";
 import {INativeStrategy} from "../interfaces/INativeStrategy.sol";
 
@@ -19,13 +20,12 @@ struct ForwarderConfig {
 /// @title ForwarderStrategy
 /// @notice Forwards a caller-supplied call to any target alongside a token or native distribution.
 /// @dev Use this strategy when a launch needs to perform arbitrary external calls in the same
-///      transaction as a distribution — for example, routing a buy through an aggregator or router.
-///      Supports native payment via `initializeWithNative` and ERC-20 funding via
-///      `initializeDistribution`. Holds no balance between calls: there is no `receive` and both
-///      entry points are launcher-only. The call MUST name its own recipient for everything it
-///      produces, including unspent native, which this strategy cannot receive back.
+///      transaction as a distribution. Supports native payment via `initializeWithNative`
+///      and ERC-20 funding via `initializeDistribution`.
+/// @dev This contract MUST NOT hold balance or approvals between calls. Any permissions given to
+///      this contract can be exploited by any caller.
 /// @custom:security-contact security@uniswap.org
-contract ForwarderStrategy is IStrategy, INativeStrategy {
+contract ForwarderStrategy is IStrategy, INativeStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
     /// @notice The only address allowed to run this strategy
@@ -40,7 +40,7 @@ contract ForwarderStrategy is IStrategy, INativeStrategy {
 
     /// @inheritdoc INativeStrategy
     /// @dev Spends the forwarded native; the call sweeps any remainder itself.
-    function initializeWithNative(bytes calldata configData, bytes32) external payable override {
+    function initializeWithNative(bytes calldata configData, bytes32) external payable override nonReentrant {
         if (msg.sender != launcher) revert OnlyLauncher();
         ForwarderConfig memory config = abi.decode(configData, (ForwarderConfig));
         _call(config.target, config.data, msg.value);
@@ -52,6 +52,7 @@ contract ForwarderStrategy is IStrategy, INativeStrategy {
     function initializeDistribution(address token, uint256 amount, bytes calldata configData, bytes32)
         external
         override
+        nonReentrant
     {
         if (msg.sender != launcher) revert OnlyLauncher();
         ForwarderConfig memory config = abi.decode(configData, (ForwarderConfig));

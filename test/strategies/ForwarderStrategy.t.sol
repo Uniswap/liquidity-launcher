@@ -28,8 +28,10 @@ import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {IUniversalRouter} from "../interfaces/IUniversalRouter.sol";
 import {MockUniversalRouter} from "../mocks/MockUniversalRouter.sol";
+import {ReentrantForwarderTarget} from "../mocks/ReentrantForwarderTarget.sol";
 
 contract ForwarderStrategyTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -263,6 +265,28 @@ contract ForwarderStrategyTest is Test, DeployPermit2 {
         forwarderStrategy.initializeWithNative{value: 1 ether}("", bytes32(0));
 
         assertEq(address(forwarderStrategy).balance, 0);
+    }
+
+    /// @notice LL → Forwarder → third party → LL → Forwarder must revert on the nested forwarder entry.
+    function test_reentrantForwarderThroughLauncher_reverts() public {
+        ReentrantForwarderTarget reentrantTarget = new ReentrantForwarderTarget(launcher, address(forwarderStrategy));
+
+        ForwarderConfig memory config = ForwarderConfig({
+            target: address(reentrantTarget),
+            recipient: creator,
+            data: abi.encodeCall(ReentrantForwarderTarget.triggerReentry, ())
+        });
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            LiquidityLauncher.distributeWithNative,
+            (address(forwarderStrategy), abi.encode(config), bytes32(0), 1 ether)
+        );
+
+        vm.deal(creator, 1 ether);
+        vm.prank(creator);
+        vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
+        launcher.multicall{value: 1 ether}(calls);
     }
 
     // ── helpers ──
