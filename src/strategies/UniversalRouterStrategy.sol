@@ -45,9 +45,9 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy, ReentrancyGuardT
         if (msg.sender != launcher) revert OnlyLauncher();
         UniversalRouterConfig memory config = abi.decode(configData, (UniversalRouterConfig));
 
+        // No `DistributionInitialized`: nothing is distributed here, and the launcher emits
+        // `NativeDistributed` for this path.
         _execute(config.router, config.route, msg.value);
-
-        emit DistributionInitialized(address(this), address(0), msg.value);
     }
 
     /// @inheritdoc IStrategy

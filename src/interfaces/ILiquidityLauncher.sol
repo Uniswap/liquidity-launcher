@@ -22,6 +22,11 @@ interface ILiquidityLauncher {
     /// @param amount The amount of tokens that were distributed
     event TokenDistributed(address indexed tokenAddress, address indexed strategy, uint256 amount);
 
+    /// @notice Emitted when a strategy is run with native instead of a distributed token
+    /// @param strategy The strategy that was run
+    /// @param nativeAmount The native amount forwarded to it
+    event NativeDistributed(address indexed strategy, uint256 nativeAmount);
+
     /// @notice Creates a token via the configured factory.
     /// @dev When `recipient == address(this)`, the newly minted tokens are held in the launcher
     ///      and ANY caller can subsequently invoke `distributeToken` on them with arbitrary strategy

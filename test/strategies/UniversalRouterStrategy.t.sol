@@ -7,6 +7,7 @@ pragma solidity ^0.8.26;
 // naming them and the token lands at the address the client predicted.
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -303,6 +304,40 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         vm.prank(creator);
         vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
         launcher.multicall{value: 1 ether}(calls);
+    }
+
+    /// @notice The launcher records the native path, and the strategy no longer publishes a token
+    ///         distribution for a call that distributes no token.
+    function test_nativePath_emitsNativeDistributed() public {
+        uint256 buyAmount = 1 ether;
+        vm.deal(creator, buyAmount);
+        address token = _predictToken(creator);
+        PoolKey memory key = _poolKeyFor(token);
+
+        bytes[] memory calls = _launchAndBuyCalls(token, key, buyAmount, 0);
+
+        vm.recordLogs();
+        vm.prank(creator);
+        launcher.multicall{value: buyAmount}(calls);
+
+        bytes32 nativeDistributed = keccak256("NativeDistributed(address,uint256)");
+        bytes32 distributionInitialized = keccak256("DistributionInitialized(address,address,uint256)");
+        bool sawNative;
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].topics[0] == nativeDistributed && logs[i].emitter == address(launcher)) {
+                sawNative = true;
+                assertEq(address(uint160(uint256(logs[i].topics[1]))), address(routerStrategy));
+                assertEq(abi.decode(logs[i].data, (uint256)), buyAmount);
+            }
+            // the strategy must not report a distribution of token 0x0 with a wei amount
+            if (logs[i].topics[0] == distributionInitialized && logs[i].emitter == address(routerStrategy)) {
+                assertTrue(
+                    address(uint160(uint256(logs[i].topics[2]))) != address(0), "wei published as a token supply"
+                );
+            }
+        }
+        assertTrue(sawNative, "launcher did not record the native path");
     }
 
     /// @notice A router with no code reverts instead of consuming the forwarded native. The typed `execute`

@@ -74,6 +74,8 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         INativeStrategy(strategy).initializeWithNative{value: nativeAmount}(
             configData, keccak256(abi.encode(msg.sender, salt))
         );
+
+        emit NativeDistributed(strategy, nativeAmount);
     }
 
     /// @inheritdoc ILiquidityLauncher
