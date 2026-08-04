@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Multicall} from "./Multicall.sol";
 import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {IStrategy} from "./interfaces/IStrategy.sol";
+import {INativeStrategy} from "./interfaces/INativeStrategy.sol";
 import {ILiquidityLauncher} from "./interfaces/ILiquidityLauncher.sol";
 import {ITokenFactory} from "@uniswap/uerc20-factory/src/interfaces/ITokenFactory.sol";
 import {Distribution} from "./types/Distribution.sol";
@@ -27,7 +28,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         uint128 initialSupply,
         address recipient,
         bytes calldata tokenData
-    ) external override returns (address tokenAddress) {
+    ) external payable override returns (address tokenAddress) {
         if (recipient == address(0)) {
             revert RecipientCannotBeZeroAddress();
         }
@@ -38,14 +39,18 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     }
 
     /// @inheritdoc ILiquidityLauncher
-    function depositToken(address token, uint160 amount) external override {
+    function depositToken(address token, uint160 amount) external payable override {
         // Pulls tokens from msg.sender via permit2 so the deposit can be batched with `distributeToken`
         // in a single multicall (preceded by a `permit` call for first-time approvals).
         permit2.transferFrom(msg.sender, address(this), amount, token);
     }
 
     /// @inheritdoc ILiquidityLauncher
-    function distributeToken(address token, Distribution calldata distribution, bytes32 salt) external override {
+    function distributeToken(address token, Distribution calldata distribution, bytes32 salt)
+        external
+        payable
+        override
+    {
         // Approve the strategy to pull `distribution.amount` from this contract. The strategy is
         // expected to consume the full allowance via `safeTransferFrom` inside `initializeDistribution`.
         IERC20(token).forceApprove(distribution.strategy, distribution.amount);
@@ -59,6 +64,18 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
         if (IERC20(token).allowance(address(this), distribution.strategy) != 0) revert AllowanceNotFullyConsumed();
 
         emit TokenDistributed(token, distribution.strategy, distribution.amount);
+    }
+
+    /// @inheritdoc ILiquidityLauncher
+    function distributeWithNative(address strategy, bytes calldata configData, bytes32 salt, uint256 nativeAmount)
+        external
+        payable
+    {
+        INativeStrategy(strategy).initializeWithNative{value: nativeAmount}(
+            configData, keccak256(abi.encode(msg.sender, salt))
+        );
+
+        emit TokenDistributed(address(0), strategy, nativeAmount);
     }
 
     /// @inheritdoc ILiquidityLauncher
