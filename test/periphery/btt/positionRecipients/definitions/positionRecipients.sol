@@ -126,7 +126,7 @@ contract MockReentrantERC20 is MockERC20 {
 }
 
 contract MockReentrantClaimFromERC20 is MockERC20 {
-    BaseClaimRecipient internal immutable recipient;
+    CompoundingClaimRecipient internal immutable recipient;
     IClaimableRecipient internal immutable source;
     uint256 internal immutable tokenId;
 
@@ -134,7 +134,7 @@ contract MockReentrantClaimFromERC20 is MockERC20 {
     bytes public reentryRevertData;
 
     constructor(
-        BaseClaimRecipient _recipient,
+        CompoundingClaimRecipient _recipient,
         IClaimableRecipient _source,
         uint256 _tokenId,
         uint256 initialSupply
@@ -148,9 +148,8 @@ contract MockReentrantClaimFromERC20 is MockERC20 {
         bool success = super.transfer(to, amount);
         if (!reentryAttempted && to == address(recipient) && msg.sender == address(source)) {
             reentryAttempted = true;
-            (, reentryRevertData) = address(recipient).call(
-                abi.encodeWithSelector(BaseClaimRecipient.claimFrom.selector, source, tokenId, 0, 0)
-            );
+            (, reentryRevertData) = address(recipient)
+                .call(abi.encodeWithSelector(CompoundingClaimRecipient.claimFrom.selector, source, tokenId, 0, 0));
         }
         return success;
     }
@@ -572,8 +571,8 @@ contract PositionRecipientsBTTTest is Test {
         recipient.claimFrom(vault, TOKEN_ID, minimum, 0);
     }
 
-    function test_BaseRecipientClaimFrom_WhenExternalPayoutReenters_Reverts() public {
-        BaseClaimRecipientHarness recipient = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+    function test_CompoundingClaimFrom_WhenExternalPayoutReenters_Reverts() public {
+        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
         BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
         MockReentrantClaimFromERC20 reentrantToken =
             new MockReentrantClaimFromERC20(recipient, vault, TOKEN_ID, 1_000_000 ether);
@@ -588,7 +587,9 @@ contract PositionRecipientsBTTTest is Test {
         recipient.claimFrom(vault, TOKEN_ID, 0, 0);
 
         assertTrue(reentrantToken.reentryAttempted());
-        assertEq(reentrantToken.reentryRevertData(), abi.encodeWithSelector(ReentrancyGuardTransient.Reentrancy.selector));
+        assertEq(
+            reentrantToken.reentryRevertData(), abi.encodeWithSelector(ReentrancyGuardTransient.Reentrancy.selector)
+        );
         (uint256 vaultAmount0, uint256 vaultAmount1) = vault.amounts(TOKEN_ID);
         assertEq(vaultAmount0, 0);
         assertEq(vaultAmount1, 0);
@@ -807,9 +808,7 @@ contract PositionRecipientsBTTTest is Test {
         IERC20(Currency.unwrap(key.currency1)).transfer(address(manager), fee1);
     }
 
-    function _notifyVault(UERC20BeneficiaryVault vault, PoolKey memory key, uint256 amount0, uint256 amount1)
-        internal
-    {
+    function _notifyVault(UERC20BeneficiaryVault vault, PoolKey memory key, uint256 amount0, uint256 amount1) internal {
         if (key.currency0.isAddressZero()) {
             vm.deal(address(vault), address(vault).balance + amount0);
         } else {

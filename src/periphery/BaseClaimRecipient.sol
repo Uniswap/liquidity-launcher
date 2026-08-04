@@ -91,25 +91,6 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         emit Claimed(_tokenId, toSend0, toSend1, poolKey);
     }
 
-    /// @notice Pulls attributed amounts from another claim recipient into this recipient's accounting.
-    /// @dev The external recipient enforces its own authorization (e.g. beneficiary NFT ownership). Payout
-    ///      semantics depend on that recipient.
-    /// @param source The recipient from which to pull amounts
-    /// @param tokenId The position token ID
-    /// @param minCurrency0Amount The minimum acceptable currency0 amount
-    /// @param minCurrency1Amount The minimum acceptable currency1 amount
-    function claimFrom(
-        IClaimableRecipient source,
-        uint256 tokenId,
-        uint256 minCurrency0Amount,
-        uint256 minCurrency1Amount
-    ) external nonReentrant {
-        (uint256 currency0Amount, uint256 currency1Amount) = source.amounts(tokenId);
-        // Min amounts are validated by the external recipient
-        source.claim(tokenId, minCurrency0Amount, minCurrency1Amount);
-        onAmountsReceived(tokenId, currency0Amount, currency1Amount);
-    }
-
     /// @notice Returns the pool key for an existing position
     function _getPoolKey(uint256 _tokenId) internal view returns (PoolKey memory poolKey) {
         (poolKey,) = positionManager.getPoolAndPositionInfo(_tokenId);

@@ -45,4 +45,25 @@ contract CompoundingClaimRecipient is BaseClaimRecipientWithCallback {
             revert NotEnoughLiquidityAdded(requiredLiquidityAmount, actualLiquidityAmount);
         }
     }
+
+    /// @notice Pulls a beneficiary vault's attributed fee share into this recipient's accounting.
+    /// @dev For split fee setups where this recipient owns the beneficiary NFT and receives the
+    ///      compounding callback. The vault enforces NFT ownership on `claim`; pulled amounts are
+    ///      re-attributed here so a subsequent `claim` can compound the direct splitter share and
+    ///      the vault share in one executor callback.
+    /// @param source The beneficiary vault (or other external recipient) to pull from
+    /// @param tokenId The position token ID
+    /// @param minCurrency0Amount Minimum currency0 the external recipient must pay out
+    /// @param minCurrency1Amount Minimum currency1 the external recipient must pay out
+    function claimFrom(
+        IClaimableRecipient source,
+        uint256 tokenId,
+        uint256 minCurrency0Amount,
+        uint256 minCurrency1Amount
+    ) external nonReentrant {
+        (uint256 currency0Amount, uint256 currency1Amount) = source.amounts(tokenId);
+        // Min amounts are validated by the external recipient
+        source.claim(tokenId, minCurrency0Amount, minCurrency1Amount);
+        onAmountsReceived(tokenId, currency0Amount, currency1Amount);
+    }
 }
