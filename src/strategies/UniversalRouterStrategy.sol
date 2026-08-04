@@ -10,15 +10,11 @@ import {IUniversalRouter} from "../interfaces/external/IUniversalRouter.sol";
 /// @notice The route to run, carried in `configData`.
 /// @param router The Universal Router to forward the route to.
 /// @param recipient Receiver of any distributed token the route did not use.
-/// @param commands The Universal Router commands.
-/// @param inputs The Universal Router inputs, one per command.
-/// @param deadline The deadline the route must execute by.
+/// @param data ABI-encoded `IUniversalRouter.execute(commands, inputs, deadline)` calldata.
 struct UniversalRouterConfig {
     IUniversalRouter router;
     address recipient;
-    bytes commands;
-    bytes[] inputs;
-    uint256 deadline;
+    bytes data;
 }
 
 /// @title UniversalRouterStrategy
@@ -36,8 +32,8 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy {
 
     /// @notice Thrown when anything but the launcher runs this strategy
     error OnlyLauncher();
-    /// @notice Thrown when no route was supplied
-    error EmptyRoute();
+    /// @notice Thrown when `data` is not a call to `IUniversalRouter.execute`
+    error InvalidCall();
 
     constructor(address _launcher) {
         launcher = _launcher;
@@ -46,8 +42,9 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy {
     /// @inheritdoc INativeStrategy
     /// @dev Spends the forwarded native; the route sweeps any remainder itself.
     function initializeWithNative(bytes calldata configData, bytes32) external payable override {
-        UniversalRouterConfig memory config = _route(configData);
-        config.router.execute{value: msg.value}(config.commands, config.inputs, config.deadline);
+        if (msg.sender != launcher) revert OnlyLauncher();
+        UniversalRouterConfig memory config = abi.decode(configData, (UniversalRouterConfig));
+        _call(config.router, config.data, msg.value);
         emit DistributionInitialized(address(this), address(0), msg.value);
     }
 
@@ -57,10 +54,11 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy {
         external
         override
     {
-        UniversalRouterConfig memory config = _route(configData);
+        if (msg.sender != launcher) revert OnlyLauncher();
+        UniversalRouterConfig memory config = abi.decode(configData, (UniversalRouterConfig));
         if (amount != 0) IERC20(token).safeTransferFrom(launcher, address(config.router), amount);
 
-        config.router.execute(config.commands, config.inputs, config.deadline);
+        _call(config.router, config.data, 0);
 
         uint256 unused = IERC20(token).balanceOf(address(this));
         if (unused != 0) IERC20(token).safeTransfer(config.recipient, unused);
@@ -68,10 +66,14 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy {
         emit DistributionInitialized(address(this), token, amount);
     }
 
-    /// @notice Decodes the route and rejects an empty one
-    function _route(bytes calldata configData) private view returns (UniversalRouterConfig memory config) {
-        if (msg.sender != launcher) revert OnlyLauncher();
-        config = abi.decode(configData, (UniversalRouterConfig));
-        if (config.commands.length == 0) revert EmptyRoute();
+    /// @notice Forwards `data` to the router and bubbles up any revert
+    function _call(IUniversalRouter router, bytes memory data, uint256 value) private {
+        if (data.length < 4 || bytes4(data) != IUniversalRouter.execute.selector) revert InvalidCall();
+        (bool success, bytes memory returnData) = address(router).call{value: value}(data);
+        if (!success) {
+            assembly {
+                revert(add(returnData, 32), mload(returnData))
+            }
+        }
     }
 }
