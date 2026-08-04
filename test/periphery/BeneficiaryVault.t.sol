@@ -15,6 +15,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
 import {BaseClaimRecipient} from "../../src/periphery/BaseClaimRecipient.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
@@ -234,16 +235,28 @@ contract BeneficiaryVaultTest is Test {
         vault.registerBeneficiary(tokenId, address(0));
     }
 
-    function test_registerBeneficiary_currentCustodianOverridesStaleRegistration() public {
+    function test_registerBeneficiary_revertsWhenNftAlreadyExists() public {
+        uint256 tokenId = _mintPosition(address(this));
+        _register(tokenId, address(this), beneficiary);
+
+        vm.expectRevert(ERC721.TokenAlreadyExists.selector);
+        vault.registerBeneficiary(tokenId, makeAddr("other"));
+    }
+
+    function test_registerBeneficiary_newPositionOwnerCannotOverrideExistingRegistration() public {
         uint256 tokenId = _mintPosition(address(this));
         address stale = makeAddr("stale");
         _register(tokenId, address(this), stale);
         address custodian = makeAddr("custodian");
         IERC721(address(POSITION_MANAGER)).transferFrom(address(this), custodian, tokenId);
-        _register(tokenId, custodian, beneficiary);
-        assertEq(vault.ownerOf(tokenId), beneficiary);
-        assertEq(vault.balanceOf(stale), 0);
-        assertEq(vault.balanceOf(beneficiary), 1);
+
+        vm.prank(custodian);
+        vm.expectRevert(ERC721.TokenAlreadyExists.selector);
+        vault.registerBeneficiary(tokenId, beneficiary);
+
+        assertEq(vault.ownerOf(tokenId), stale);
+        assertEq(vault.balanceOf(stale), 1);
+        assertEq(vault.balanceOf(beneficiary), 0);
     }
 
     /// forge-config: default.isolate = true

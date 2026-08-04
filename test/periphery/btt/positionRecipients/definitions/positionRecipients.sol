@@ -223,6 +223,28 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// ├── when the executor deposits both currencies
 /// │   └── it increases liquidity
 ///
+/// BeneficiaryVault
+/// ├── registerBeneficiary
+/// │   ├── when the caller owns the position
+/// │   │   └── it mints the beneficiary NFT to the recipient
+/// │   ├── when the caller does not own the position
+/// │   │   └── it reverts
+/// │   ├── when the beneficiary is invalid
+/// │   │   └── it reverts
+/// │   ├── when the NFT already exists
+/// │   │   └── it reverts
+/// │   ├── when a new position owner tries to register again
+/// │   │   └── it reverts and keeps the original beneficiary
+/// │   └── when the position does not exist
+/// │       └── it reverts
+/// └── claim
+///     ├── when registered
+///     │   └── it pays the NFT owner
+///     ├── when registered and the caller is not the beneficiary
+///     │   └── it reverts
+///     └── when unregistered
+///         └── it flushes to the fallbacks
+///
 /// UERC20BeneficiaryVault
 /// ├── registerBeneficiary
 /// │   ├── when the caller owns the position
@@ -501,6 +523,113 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(manager.getPositionLiquidity(TOKEN_ID), INITIAL_LIQUIDITY + liquidityIncrease);
     }
 
+    function test_BeneficiaryVault_registerBeneficiary_WhenCallerOwnsPosition_MintsNft() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        address custodian = makeAddr("custodian");
+        manager.setPositionOwner(custodian);
+
+        vm.prank(custodian);
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+
+        assertEq(vault.ownerOf(TOKEN_ID), feeRecipient);
+    }
+
+    function test_BeneficiaryVault_registerBeneficiary_WhenCallerDoesNotOwnPosition_Reverts() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotPositionOwner.selector, TOKEN_ID, stranger));
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+    }
+
+    function test_BeneficiaryVault_registerBeneficiary_WhenBeneficiaryIsZero_Reverts() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(0)));
+        vault.registerBeneficiary(TOKEN_ID, address(0));
+    }
+
+    function test_BeneficiaryVault_registerBeneficiary_WhenBeneficiaryIsVault_Reverts() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(vault)));
+        vault.registerBeneficiary(TOKEN_ID, address(vault));
+    }
+
+    function test_BeneficiaryVault_registerBeneficiary_WhenNftAlreadyExists_Reverts() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+
+        vm.expectRevert(ERC721.TokenAlreadyExists.selector);
+        vault.registerBeneficiary(TOKEN_ID, creator);
+    }
+
+    function test_BeneficiaryVault_registerBeneficiary_WhenNewPositionOwnerTriesAgain_RevertsAndKeepsOriginal() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        address originalBeneficiary = makeAddr("originalBeneficiary");
+        address newCustodian = makeAddr("newCustodian");
+
+        vault.registerBeneficiary(TOKEN_ID, originalBeneficiary);
+        manager.setPositionOwner(newCustodian);
+
+        vm.prank(newCustodian);
+        vm.expectRevert(ERC721.TokenAlreadyExists.selector);
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+
+        assertEq(vault.ownerOf(TOKEN_ID), originalBeneficiary);
+        assertEq(vault.balanceOf(originalBeneficiary), 1);
+        assertEq(vault.balanceOf(feeRecipient), 0);
+    }
+
+    function test_BeneficiaryVault_registerBeneficiary_WhenPositionDoesNotExist_Reverts() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        uint256 invalidTokenId = TOKEN_ID + 1;
+
+        vm.expectRevert(MockPositionManager.InvalidTokenId.selector);
+        vault.registerBeneficiary(invalidTokenId, feeRecipient);
+    }
+
+    function test_BeneficiaryVault_claim_WhenRegistered_PaysOwner() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
+
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+        vm.prank(feeRecipient);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(IERC20(Currency.unwrap(poolKey.currency0)).balanceOf(feeRecipient), FEES_0);
+        assertEq(IERC20(Currency.unwrap(poolKey.currency1)).balanceOf(feeRecipient), FEES_1);
+        (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+    }
+
+    function test_BeneficiaryVault_claim_WhenRegisteredAndCallerIsNotBeneficiary_Reverts() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
+
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, TOKEN_ID, stranger));
+        vault.claim(TOKEN_ID, 0, 0);
+    }
+
+    function test_BeneficiaryVault_claim_WhenUnregistered_FlushesToFallbacks() public {
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
+
+        vm.prank(stranger);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(IERC20(Currency.unwrap(poolKey.currency0)).balanceOf(TOKEN_FALLBACK), FEES_0);
+        assertEq(IERC20(Currency.unwrap(poolKey.currency1)).balanceOf(TOKEN_FALLBACK), FEES_1);
+        (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+    }
+
     function test_UERC20Vault_registerBeneficiary_WhenCallerOwnsPosition_MintsNft() public {
         UERC20BeneficiaryVault vault = _deployUerc20Vault();
         _nativeUerc20Pool(creator);
@@ -744,6 +873,11 @@ contract PositionRecipientsBTTTest is Test {
 
         assertEq(NATIVE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
+    }
+
+    function _deployBeneficiaryVault() internal returns (BeneficiaryVault) {
+        manager.setPositionOwner(address(this));
+        return new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
     }
 
     function _deployUerc20Vault() internal returns (UERC20BeneficiaryVault) {

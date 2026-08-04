@@ -27,6 +27,27 @@ PositionRecipientsBTTTest
     │   └── it reverts
     ├── when the executor deposits both currencies
     │   └── it increases liquidity
+├── BeneficiaryVault
+│   ├── registerBeneficiary
+│   │   ├── when the caller owns the position
+│   │   │   └── it mints the beneficiary NFT to the recipient
+│   │   ├── when the caller does not own the position
+│   │   │   └── it reverts
+│   │   ├── when the beneficiary is invalid
+│   │   │   └── it reverts
+│   │   ├── when the NFT already exists
+│   │   │   └── it reverts
+│   │   ├── when a new position owner tries to register again
+│   │   │   └── it reverts and keeps the original beneficiary
+│   │   └── when the position does not exist
+│   │       └── it reverts
+│   └── claim
+│       ├── when registered
+│       │   └── it pays the NFT owner
+│       ├── when registered and the caller is not the beneficiary
+│       │   └── it reverts
+│       └── when unregistered
+│           └── it flushes to the fallbacks
 └── UERC20BeneficiaryVault
     ├── registerBeneficiary
     │   ├── when the caller owns the position
