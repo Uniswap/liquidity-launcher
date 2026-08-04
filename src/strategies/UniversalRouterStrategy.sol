@@ -23,8 +23,9 @@ struct UniversalRouterConfig {
 /// @dev Funded either by native forwarded to `initializeWithNative` or by an allowance on the distributed
 ///      token in `initializeDistribution`. `execute` is the only call this strategy can make, and it holds no
 ///      balance between calls: there is no `receive` and both entry points are launcher-only.
-///      The route MUST name its own recipient for everything it produces, including unspent native, which
-///      this strategy cannot receive back.
+///      Use `TAKE` with an explicit recipient, never `TAKE_ALL`: it pays `msgSender()`, which here is this
+///      strategy, and output stranded here is claimable by anyone. Unspent native must likewise be swept
+///      by the route to its own recipient; this strategy cannot receive it back.
 /// @custom:security-contact security@uniswap.org
 contract UniversalRouterStrategy is IStrategy, INativeStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
@@ -40,7 +41,7 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy, ReentrancyGuardT
     }
 
     /// @inheritdoc INativeStrategy
-    /// @dev Spends the forwarded native; the route sweeps any remainder itself. Reports native as `address(0)`.
+    /// @dev Spends the forwarded native; the route MUST sweep any remainder to its own recipient. Reports native as `address(0)`.
     function initializeWithNative(bytes calldata configData, bytes32) external payable override nonReentrant {
         if (msg.sender != launcher) revert OnlyLauncher();
         UniversalRouterConfig memory config = abi.decode(configData, (UniversalRouterConfig));

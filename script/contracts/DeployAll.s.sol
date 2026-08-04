@@ -25,7 +25,7 @@ contract DeployAllScript is Script {
     DeployCompoundingClaimRecipientScript public compoundingClaimRecipientDeployer;
     DeployInstantLaunchStrategyScript public instantLaunchStrategyDeployer;
     DeployUniversalRouterStrategyScript public universalRouterStrategyDeployer;
-    
+
     constructor() {
         liquidityLauncherDeployer = new DeployLiquidityLauncherScript();
         lbpStrategyDeployer = new DeployLBPStrategyScript();

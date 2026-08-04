@@ -10,10 +10,8 @@ import {DeployParameters, Parameters} from "./Parameters.sol";
 contract DeployUniversalRouterStrategyScript is Script, Parameters {
     function run() public returns (address universalRouterStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
-        bytes memory bytecode = abi.encodePacked(
-            type(UniversalRouterStrategy).creationCode,
-            abi.encode(LIQUIDITY_LAUNCHER)
-        );
+        bytes memory bytecode =
+            abi.encodePacked(type(UniversalRouterStrategy).creationCode, abi.encode(LIQUIDITY_LAUNCHER));
         bytes32 initCodeHash = keccak256(bytecode);
 
         bytes32 salt = bytes32(0);
