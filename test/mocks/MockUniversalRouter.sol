@@ -10,7 +10,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IUniversalRouter} from "../../src/interfaces/external/IUniversalRouter.sol";
+import {IUniversalRouter} from "../interfaces/IUniversalRouter.sol";
 
 /// @title MockUniversalRouter
 /// @notice Stands in for the Universal Router in strategy tests: runs one exact-input v4 buy and, like the

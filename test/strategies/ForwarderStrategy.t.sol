@@ -23,15 +23,15 @@ import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20Metada
 import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {Distribution} from "../../src/types/Distribution.sol";
 import {InstantLaunchStrategy, InstantLaunchConfig} from "../../src/strategies/InstantLaunchStrategy.sol";
-import {UniversalRouterStrategy, UniversalRouterConfig} from "../../src/strategies/UniversalRouterStrategy.sol";
+import {ForwarderStrategy, ForwarderConfig} from "../../src/strategies/ForwarderStrategy.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
-import {IUniversalRouter} from "../../src/interfaces/external/IUniversalRouter.sol";
+import {IUniversalRouter} from "../interfaces/IUniversalRouter.sol";
 import {MockUniversalRouter} from "../mocks/MockUniversalRouter.sol";
 
-contract UniversalRouterStrategyTest is Test, DeployPermit2 {
+contract ForwarderStrategyTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
 
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
@@ -48,7 +48,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     FeeSplitter internal feeSplitter;
     BeneficiaryVault internal beneficiaryVault;
     InstantLaunchStrategy internal instantLaunch;
-    UniversalRouterStrategy internal routerStrategy;
+    ForwarderStrategy internal forwarderStrategy;
     MockUniversalRouter internal router;
 
     address internal creator = makeAddr("creator");
@@ -75,7 +75,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         );
 
         router = new MockUniversalRouter(POOL_MANAGER);
-        routerStrategy = new UniversalRouterStrategy(address(launcher));
+        forwarderStrategy = new ForwarderStrategy(address(launcher));
     }
 
     /// @notice The point of the design: one transaction, no aggregator, EOA stays the creator of record.
@@ -94,8 +94,8 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         assertGt(IERC20(token).balanceOf(creator), 0, "creator received no tokens");
         // Nothing is left anywhere in the path.
         assertEq(address(launcher).balance, 0, "launcher kept native");
-        assertEq(address(routerStrategy).balance, 0, "strategy kept native");
-        assertEq(IERC20(token).balanceOf(address(routerStrategy)), 0, "strategy kept tokens");
+        assertEq(address(forwarderStrategy).balance, 0, "strategy kept native");
+        assertEq(IERC20(token).balanceOf(address(forwarderStrategy)), 0, "strategy kept tokens");
         // Still the EOA's graffiti, which is what an aggregator in front of the launcher would cost.
         assertEq(token, _predictToken(creator));
         assertTrue(token != _predictToken(address(router)));
@@ -116,7 +116,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         calls[2] = abi.encodeCall(
             LiquidityLauncher.distributeWithNative,
             (
-                address(routerStrategy),
+                address(forwarderStrategy),
                 abi.encode(_route(key, buyAmount, address(0), 0)),
                 bytes32(0),
                 buyAmount + 0.4 ether
@@ -128,7 +128,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
 
         // The unspent 0.4 came back to the creator rather than sticking in the strategy or the router.
         assertEq(creator.balance, 0.4 ether, "leftover native was not swept to the creator");
-        assertEq(address(routerStrategy).balance, 0);
+        assertEq(address(forwarderStrategy).balance, 0);
         assertGt(IERC20(token).balanceOf(creator), 0);
     }
 
@@ -191,7 +191,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
             LiquidityLauncher.distributeToken.selector,
             inputToken,
             Distribution({
-                strategy: address(routerStrategy),
+                strategy: address(forwarderStrategy),
                 amount: inputAmount,
                 configData: abi.encode(_route(key, 0, inputToken, inputAmount))
             }),
@@ -204,7 +204,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         // approve the router itself — which is what makes paying in another token possible here.
         assertEq(IERC20(inputToken).balanceOf(address(router)), inputAmount / 2, "router was not funded");
         assertEq(IERC20(inputToken).balanceOf(address(launcher)), 0, "launcher kept the input token");
-        assertEq(IERC20(inputToken).balanceOf(address(routerStrategy)), 0, "strategy kept the input token");
+        assertEq(IERC20(inputToken).balanceOf(address(forwarderStrategy)), 0, "strategy kept the input token");
         assertEq(IERC20(inputToken).allowance(creator, address(router)), 0, "creator approved the router");
         // What the route did not use came back to the creator, which is all this strategy owes on this path.
         assertEq(IERC20(inputToken).balanceOf(creator), inputAmount / 2, "unused input was not returned");
@@ -250,8 +250,8 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     }
 
     function test_initializeDistribution_onlyLauncher() public {
-        vm.expectRevert(UniversalRouterStrategy.OnlyLauncher.selector);
-        routerStrategy.initializeDistribution(address(0), 0, "", bytes32(0));
+        vm.expectRevert(ForwarderStrategy.OnlyLauncher.selector);
+        forwarderStrategy.initializeDistribution(address(0), 0, "", bytes32(0));
     }
 
     /// @notice The native entry point is the only way native reaches the strategy, and only the launcher may
@@ -259,28 +259,10 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     function test_initializeWithNative_onlyLauncher() public {
         vm.deal(creator, 1 ether);
         vm.prank(creator);
-        vm.expectRevert(UniversalRouterStrategy.OnlyLauncher.selector);
-        routerStrategy.initializeWithNative{value: 1 ether}("", bytes32(0));
+        vm.expectRevert(ForwarderStrategy.OnlyLauncher.selector);
+        forwarderStrategy.initializeWithNative{value: 1 ether}("", bytes32(0));
 
-        assertEq(address(routerStrategy).balance, 0);
-    }
-
-    function test_initializeWithNative_invalidRouterCall() public {
-        UniversalRouterConfig memory config =
-            UniversalRouterConfig({router: router, recipient: creator, data: hex"deadbeef"});
-
-        vm.deal(address(launcher), 1 ether);
-        vm.prank(address(launcher));
-        vm.expectRevert(UniversalRouterStrategy.InvalidCall.selector);
-        routerStrategy.initializeWithNative{value: 1 ether}(abi.encode(config), bytes32(0));
-    }
-
-    function test_initializeDistribution_invalidRouterCall() public {
-        UniversalRouterConfig memory config = UniversalRouterConfig({router: router, recipient: creator, data: hex"00"});
-
-        vm.prank(address(launcher));
-        vm.expectRevert(UniversalRouterStrategy.InvalidCall.selector);
-        routerStrategy.initializeDistribution(address(0), 0, abi.encode(config), bytes32(0));
+        assertEq(address(forwarderStrategy).balance, 0);
     }
 
     // ── helpers ──
@@ -303,12 +285,12 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     function _route(PoolKey memory key, uint256 nativeIn, address payToken, uint256 payAmount)
         internal
         view
-        returns (UniversalRouterConfig memory)
+        returns (ForwarderConfig memory)
     {
         bytes[] memory inputs = new bytes[](1);
         inputs[0] = abi.encode(key, nativeIn, payToken, payAmount, creator);
-        return UniversalRouterConfig({
-            router: router,
+        return ForwarderConfig({
+            target: address(router),
             recipient: creator,
             data: abi.encodeWithSelector(
                 IUniversalRouter.execute.selector,
@@ -359,7 +341,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         erc20Amount; // the native entry point has no token leg
         return abi.encodeCall(
             LiquidityLauncher.distributeWithNative,
-            (address(routerStrategy), abi.encode(_route(key, nativeAmount, address(0), 0)), bytes32(0), nativeAmount)
+            (address(forwarderStrategy), abi.encode(_route(key, nativeAmount, address(0), 0)), bytes32(0), nativeAmount)
         );
     }
 
