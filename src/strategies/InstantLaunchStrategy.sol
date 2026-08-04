@@ -45,9 +45,9 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Lower tick of every launch position ensuring that in order to overflow maxLiquidityPerTick,
     ///         an attacker would require more than the total supply of the token which is not possible.
     int24 public constant MIN_LAUNCH_TICK = -173_975;
-    /// @notice Highest initial tick ensuring that in order to overflow maxLiquidityPerTick at the launch
-    ///         position's upper tick, an attacker would require more than the total ETH supply.
-    int24 public constant MAX_INITIAL_TICK = 216_350;
+    /// @notice Highest initial tick, keeping saturating maxLiquidityPerTick at the launch position's
+    ///         upper tick prohibitively expensive.
+    int24 public constant MAX_INITIAL_TICK = 251_325;
     /// @notice Canonical burn address
     address internal constant BURN_ADDRESS = address(0xdead);
 
