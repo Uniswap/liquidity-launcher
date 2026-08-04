@@ -41,9 +41,13 @@ PositionRecipientsBTTTest
 └── UERC20BeneficiaryVault
     ├── register
     │   ├── when the caller matches currency1 graffiti
-    │   │   └── it mints the beneficiary NFT
+    │   │   └── it mints the beneficiary NFT to the recipient
     │   ├── when the caller matches currency0 graffiti
-    │   │   └── it mints the beneficiary NFT
+    │   │   └── it mints the beneficiary NFT to the recipient
+    │   ├── when the caller specifies a different beneficiary
+    │   │   └── it mints to that address
+    │   ├── when the beneficiary is invalid
+    │   │   └── it reverts
     │   ├── when the caller is not the token creator
     │   │   └── it reverts
     │   ├── when the NFT already exists

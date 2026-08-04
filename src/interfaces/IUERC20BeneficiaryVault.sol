@@ -12,7 +12,8 @@ interface IUERC20BeneficiaryVault is IBeneficiaryVault {
     /// @param caller The unauthorized caller.
     error NotAuthorized(uint256 tokenId, address caller);
 
-    /// @notice Registers the caller as beneficiary when they match the pair's UERC20 graffiti.
+    /// @notice Mints the beneficiary NFT to `beneficiary` when the caller matches the pair's UERC20 graffiti.
     /// @param tokenId The position token ID.
-    function register(uint256 tokenId) external;
+    /// @param beneficiary The receiver of the beneficiary NFT.
+    function register(uint256 tokenId, address beneficiary) external;
 }

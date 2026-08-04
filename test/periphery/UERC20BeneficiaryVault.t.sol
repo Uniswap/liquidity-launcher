@@ -149,7 +149,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         uint256 tokenId = _mintNativePosition(address(token), address(this));
 
         vm.prank(creator);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
 
         assertEq(vault.ownerOf(tokenId), creator);
     }
@@ -160,7 +160,7 @@ contract UERC20BeneficiaryVaultTest is Test {
 
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotAuthorized.selector, tokenId, stranger));
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
     }
 
     function test_register_revertsWhenAlreadyRegistered() public {
@@ -168,11 +168,11 @@ contract UERC20BeneficiaryVaultTest is Test {
         uint256 tokenId = _mintNativePosition(address(token), address(this));
 
         vm.prank(creator);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
 
         vm.prank(creator);
         vm.expectRevert(ERC721.TokenAlreadyExists.selector);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
     }
 
     function test_claim_afterRegister_creatorReceivesBoth() public {
@@ -181,7 +181,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
@@ -214,7 +214,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
@@ -233,7 +233,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
@@ -262,7 +262,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         _creditPair(tokenId, address(launchToken), 2 ether, address(other), 3 ether);
 
         vm.prank(creator);
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
@@ -304,11 +304,34 @@ contract UERC20BeneficiaryVaultTest is Test {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotAuthorized.selector, tokenId, creator));
-        vault.register(tokenId);
+        vault.register(tokenId, creator);
 
         vm.prank(stranger);
-        vault.register(tokenId);
+        vault.register(tokenId, stranger);
         assertEq(vault.ownerOf(tokenId), stranger);
+    }
+
+    function test_register_mintsToSpecifiedBeneficiary() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(creator);
+        vault.register(tokenId, beneficiary);
+
+        assertEq(vault.ownerOf(tokenId), beneficiary);
+    }
+
+    function test_register_revertsWhenBeneficiaryIsInvalid() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(0)));
+        vault.register(tokenId, address(0));
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(vault)));
+        vault.register(tokenId, address(vault));
     }
 
     receive() external payable {}

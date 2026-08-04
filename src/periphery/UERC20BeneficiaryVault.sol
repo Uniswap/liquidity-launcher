@@ -12,10 +12,9 @@ import {BeneficiaryVault} from "./BeneficiaryVault.sol";
 /// @title UERC20BeneficiaryVault
 /// @notice A BeneficiaryVault whose unregistered positions can also be registered by the creator of the
 ///         UERC20 token based on the token's immutable graffiti.
-/// @dev Positions paired with a launcher-created UERC20 must call `register` before `claim`. This
-///      contract is NOT intended for aggregator launches where graffiti names a contract that cannot
-///      receive ETH; those creators should register via Multicall3, transfer the NFT to an EOA, then
-///      claim.
+/// @dev Positions paired with a launcher-created UERC20 must call `register` before `claim`. Creators
+///      whose graffiti is a contract should pass an EOA or compounding recipient as `beneficiary` so
+///      payouts are not sent to an address that cannot receive ETH.
 contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
     using CurrencyLibrary for Currency;
 
@@ -27,10 +26,11 @@ contract UERC20BeneficiaryVault is IUERC20BeneficiaryVault, BeneficiaryVault {
     {}
 
     /// @inheritdoc IUERC20BeneficiaryVault
-    function register(uint256 tokenId) external {
+    function register(uint256 tokenId, address beneficiary) external {
         if (_exists(tokenId)) revert ERC721.TokenAlreadyExists();
         if (!_isTokenCreator(msg.sender, tokenId)) revert NotAuthorized(tokenId, msg.sender);
-        _mint(msg.sender, tokenId);
+        if (beneficiary == address(0) || beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
+        _mint(beneficiary, tokenId);
     }
 
     /// @inheritdoc BeneficiaryVault

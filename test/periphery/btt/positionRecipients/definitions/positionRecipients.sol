@@ -262,9 +262,13 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// UERC20BeneficiaryVault
 /// ├── register
 /// │   ├── when the caller matches currency1 graffiti
-/// │   │   └── it mints the beneficiary NFT
+/// │   │   └── it mints the beneficiary NFT to the recipient
 /// │   ├── when the caller matches currency0 graffiti
-/// │   │   └── it mints the beneficiary NFT
+/// │   │   └── it mints the beneficiary NFT to the recipient
+/// │   ├── when the caller specifies a different beneficiary
+/// │   │   └── it mints to that address
+/// │   ├── when the beneficiary is invalid
+/// │   │   └── it reverts
 /// │   ├── when the caller is not the token creator
 /// │   │   └── it reverts
 /// │   ├── when the NFT already exists
@@ -645,7 +649,7 @@ contract PositionRecipientsBTTTest is Test {
         _nativeUerc20Pool(creator);
 
         vm.prank(creator);
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
 
         assertEq(vault.ownerOf(TOKEN_ID), creator);
     }
@@ -655,10 +659,38 @@ contract PositionRecipientsBTTTest is Test {
         (PoolKey memory key, MockUERC20 launchToken,) = _tokenPairWithLaunchToken(creator);
 
         vm.prank(creator);
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
 
         assertEq(vault.ownerOf(TOKEN_ID), creator);
         assertEq(Currency.unwrap(key.currency0), address(launchToken));
+    }
+
+    function test_UERC20Vault_register_WhenBeneficiaryIsSpecified_MintsToRecipient() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID, feeRecipient);
+
+        assertEq(vault.ownerOf(TOKEN_ID), feeRecipient);
+    }
+
+    function test_UERC20Vault_register_WhenBeneficiaryIsZero_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(0)));
+        vault.register(TOKEN_ID, address(0));
+    }
+
+    function test_UERC20Vault_register_WhenBeneficiaryIsVault_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(vault)));
+        vault.register(TOKEN_ID, address(vault));
     }
 
     function test_UERC20Vault_register_WhenCallerIsNotCreator_Reverts() public {
@@ -667,7 +699,7 @@ contract PositionRecipientsBTTTest is Test {
 
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, stranger));
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
     }
 
     function test_UERC20Vault_register_WhenNftAlreadyExists_Reverts() public {
@@ -675,11 +707,11 @@ contract PositionRecipientsBTTTest is Test {
         _nativeUerc20Pool(creator);
 
         vm.prank(creator);
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
 
         vm.prank(creator);
         vm.expectRevert(ERC721.TokenAlreadyExists.selector);
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
     }
 
     function test_UERC20Vault_register_WhenPositionDoesNotExist_Reverts() public {
@@ -689,7 +721,7 @@ contract PositionRecipientsBTTTest is Test {
 
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, invalidTokenId));
-        vault.register(invalidTokenId);
+        vault.register(invalidTokenId, creator);
     }
 
     function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_RevertsForCreator() public {
@@ -727,7 +759,7 @@ contract PositionRecipientsBTTTest is Test {
         _notifyVault(vault, key, FEES_0, FEES_1);
 
         vm.prank(creator);
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
         vm.prank(creator);
         vault.claim(TOKEN_ID, 0, 0);
 
@@ -738,13 +770,29 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(amount1, 0);
     }
 
+    function test_UERC20Vault_claim_WhenRegisteredToDifferentBeneficiary_PaysBeneficiary() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(creator);
+        vault.register(TOKEN_ID, feeRecipient);
+        vm.prank(feeRecipient);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(creator.balance, 0);
+        assertEq(token.balanceOf(creator), 0);
+        assertEq(feeRecipient.balance, FEES_0);
+        assertEq(token.balanceOf(feeRecipient), FEES_1);
+    }
+
     function test_UERC20Vault_claim_WhenRegisteredAndCallerIsNotApprovedOrOwner_Reverts() public {
         UERC20BeneficiaryVault vault = _deployUerc20Vault();
         (PoolKey memory key,) = _nativeUerc20Pool(creator);
         _notifyVault(vault, key, FEES_0, FEES_1);
 
         vm.prank(creator);
-        vault.register(TOKEN_ID);
+        vault.register(TOKEN_ID, creator);
 
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, TOKEN_ID, stranger));
