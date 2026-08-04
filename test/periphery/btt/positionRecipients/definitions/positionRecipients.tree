@@ -47,7 +47,10 @@ PositionRecipientsBTTTest
     │       └── it reverts
     └── claim
         ├── when unregistered and launcher graffiti is present
-        │   └── it reverts for any caller without flushing
+        │   ├── when the caller is the token creator
+        │   │   └── it auto-registers and pays the caller
+        │   └── when the caller is not the token creator
+        │       └── it reverts without flushing
         ├── when registered
         │   └── it pays the NFT owner
         ├── when registered and the caller is not the beneficiary

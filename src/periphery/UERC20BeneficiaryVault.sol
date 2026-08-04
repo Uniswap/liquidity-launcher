@@ -36,7 +36,7 @@ contract UERC20BeneficiaryVault is BeneficiaryVault {
     /// @dev If the token's graffiti is a public aggregator contract like Multicall3,
     ///      this function MUST be called in the same transaction as the position's creation
     ///      otherwise the beneficiary NFT can be claimed by anyone.
-    function registerBeneficiary(uint256 tokenId, address beneficiary) external override(BeneficiaryVault) {
+    function registerBeneficiary(uint256 tokenId, address beneficiary) public override(BeneficiaryVault) {
         // Never have two beneficiary NFTs for the same position. Transferring should be done via ERC721.transferFrom
         if (_exists(tokenId)) revert ERC721.TokenAlreadyExists();
         // Reject invalid beneficiary addresses
@@ -61,9 +61,12 @@ contract UERC20BeneficiaryVault is BeneficiaryVault {
         uint256 available0,
         uint256 available1
     ) internal override returns (address, uint256, address, uint256) {
-        // Require that the original creator from UERC20.graffiti() has registered the position before claiming.
-        if ((_graffitiOf(currency0) != bytes32(0) || _graffitiOf(currency1) != bytes32(0)) && !_exists(tokenId)) {
-            revert NotAuthorized(tokenId, msg.sender);
+        // If the tokens have graffiti but the position is not registered
+        if (!_exists(tokenId) && (_graffitiOf(currency0) != bytes32(0) || _graffitiOf(currency1) != bytes32(0))) {
+            // revert if not authorized
+            if (!_isTokenCreator(msg.sender, tokenId)) revert NotAuthorized(tokenId, msg.sender);
+            // otherwise, register the position
+            registerBeneficiary(tokenId, msg.sender);
         }
         return super._beforeClaimTransfer(tokenId, currency0, currency1, available0, available1);
     }

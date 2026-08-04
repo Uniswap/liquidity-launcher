@@ -243,7 +243,10 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// │       └── it reverts
 /// └── claim
 ///     ├── when unregistered and launcher graffiti is present
-///     │   └── it reverts for any caller without flushing
+///     │   ├── when the caller is the token creator
+///     │   │   └── it auto-registers and pays the caller
+///     │   └── when the caller is not the token creator
+///     │       └── it reverts without flushing
 ///     ├── when registered
 ///     │   └── it pays the NFT owner
 ///     ├── when registered and the caller is not the beneficiary
@@ -588,13 +591,46 @@ contract PositionRecipientsBTTTest is Test {
         vault.registerBeneficiary(invalidTokenId, creator);
     }
 
-    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_RevertsForCreator() public {
+    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_CreatorAutoRegistersAndPays() public {
         UERC20BeneficiaryVault vault = _deployUerc20Vault();
         (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
         _notifyVault(vault, key, FEES_0, FEES_1);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, creator));
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(vault.ownerOf(TOKEN_ID), creator);
+        assertEq(creator.balance, FEES_0);
+        assertEq(token.balanceOf(creator), FEES_1);
+        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
+        (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
+    }
+
+    function test_UERC20Vault_claim_WhenUnregisteredWithGraffitiOnCurrency0_CreatorAutoRegistersAndPays() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 launchToken, MockERC20 other) = _tokenPairWithLaunchToken(creator);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(creator);
+        vault.claim(TOKEN_ID, 0, 0);
+
+        assertEq(vault.ownerOf(TOKEN_ID), creator);
+        assertEq(launchToken.balanceOf(creator), FEES_0);
+        assertEq(other.balanceOf(creator), FEES_1);
+    }
+
+    function test_UERC20Vault_claim_WhenUnregisteredWithGraffiti_PositionOwnerWhoIsNotCreator_Reverts() public {
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        (PoolKey memory key, MockUERC20 token) = _nativeUerc20Pool(creator);
+        address custodian = makeAddr("custodian");
+        manager.setPositionOwner(custodian);
+        _notifyVault(vault, key, FEES_0, FEES_1);
+
+        vm.prank(custodian);
+        vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, custodian));
         vault.claim(TOKEN_ID, 0, 0);
 
         assertEq(NATIVE_FALLBACK.balance, 0);
