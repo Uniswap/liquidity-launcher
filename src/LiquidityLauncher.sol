@@ -2,8 +2,8 @@
 pragma solidity 0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Multicall} from "./Multicall.sol";
 import {IAllowanceTransfer, Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {IStrategy} from "./interfaces/IStrategy.sol";
@@ -80,7 +80,7 @@ contract LiquidityLauncher is ILiquidityLauncher, Multicall, Permit2Forwarder {
     /// @inheritdoc ILiquidityLauncher
     function sweepNative(address recipient) external payable {
         uint256 balance = address(this).balance;
-        if (balance != 0) Address.sendValue(payable(recipient), balance);
+        if (balance != 0) SafeTransferLib.safeTransferETH(recipient, balance);
     }
 
     /// @inheritdoc ILiquidityLauncher
