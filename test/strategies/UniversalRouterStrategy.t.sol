@@ -308,7 +308,9 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
 
     /// @notice The launcher records the native path, and the strategy no longer publishes a token
     ///         distribution for a call that distributes no token.
-    function test_nativePath_emitsNativeDistributed() public {
+    /// @notice The native path reports through the same events as the token path, with `address(0)` as the token,
+    ///         so one indexer subscription covers both.
+    function test_nativePath_reportsNativeAsTokenZero() public {
         uint256 buyAmount = 1 ether;
         vm.deal(creator, buyAmount);
         address token = _predictToken(creator);
@@ -320,24 +322,27 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         vm.prank(creator);
         launcher.multicall{value: buyAmount}(calls);
 
-        bytes32 nativeDistributed = keccak256("NativeDistributed(address,uint256)");
+        bytes32 tokenDistributed = keccak256("TokenDistributed(address,address,uint256)");
         bytes32 distributionInitialized = keccak256("DistributionInitialized(address,address,uint256)");
-        bool sawNative;
+        bool sawLauncher;
+        bool sawStrategy;
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; i++) {
-            if (logs[i].topics[0] == nativeDistributed && logs[i].emitter == address(launcher)) {
-                sawNative = true;
-                assertEq(address(uint160(uint256(logs[i].topics[1]))), address(routerStrategy));
+            if (logs[i].topics.length != 3) continue;
+            bool nativeToken = address(uint160(uint256(logs[i].topics[1]))) == address(0);
+            if (logs[i].topics[0] == tokenDistributed && logs[i].emitter == address(launcher) && nativeToken) {
+                sawLauncher = true;
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), address(routerStrategy));
                 assertEq(abi.decode(logs[i].data, (uint256)), buyAmount);
             }
-            // the strategy must not report a distribution of token 0x0 with a wei amount
             if (logs[i].topics[0] == distributionInitialized && logs[i].emitter == address(routerStrategy)) {
-                assertTrue(
-                    address(uint160(uint256(logs[i].topics[2]))) != address(0), "wei published as a token supply"
-                );
+                sawStrategy = true;
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), address(0));
+                assertEq(abi.decode(logs[i].data, (uint256)), buyAmount);
             }
         }
-        assertTrue(sawNative, "launcher did not record the native path");
+        assertTrue(sawLauncher, "launcher did not record the native path");
+        assertTrue(sawStrategy, "strategy did not record the native path");
     }
 
     /// @notice A router with no code reverts instead of consuming the forwarded native. The typed `execute`

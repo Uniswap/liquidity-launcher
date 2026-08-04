@@ -40,14 +40,14 @@ contract UniversalRouterStrategy is IStrategy, INativeStrategy, ReentrancyGuardT
     }
 
     /// @inheritdoc INativeStrategy
-    /// @dev Spends the forwarded native; the route sweeps any remainder itself.
+    /// @dev Spends the forwarded native; the route sweeps any remainder itself. Reports native as `address(0)`.
     function initializeWithNative(bytes calldata configData, bytes32) external payable override nonReentrant {
         if (msg.sender != launcher) revert OnlyLauncher();
         UniversalRouterConfig memory config = abi.decode(configData, (UniversalRouterConfig));
 
-        // No `DistributionInitialized`: nothing is distributed here, and the launcher emits
-        // `NativeDistributed` for this path.
         _execute(config.router, config.route, msg.value);
+
+        emit DistributionInitialized(address(this), address(0), msg.value);
     }
 
     /// @inheritdoc IStrategy
