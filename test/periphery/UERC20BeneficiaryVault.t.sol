@@ -116,29 +116,11 @@ contract UERC20BeneficiaryVaultTest is Test {
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, tokenId, creator));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, creator));
         vault.claim(tokenId, 0, 0);
 
         vm.prank(beneficiary);
         vault.claim(tokenId, 0, 0);
-        assertEq(beneficiary.balance, 1 ether);
-        assertEq(token.balanceOf(beneficiary), 2 ether);
-    }
-
-    function test_claim_approvedOperatorPaysRegisteredOwner() public {
-        MockUERC20 token = _launchToken(creator);
-        uint256 tokenId = _mintNativePosition(address(token), address(this));
-        vault.registerBeneficiary(tokenId, beneficiary);
-        _credit(tokenId, 1 ether, address(token), 2 ether);
-
-        address operator = makeAddr("operator");
-        vm.prank(beneficiary);
-        vault.approve(operator, tokenId);
-        vm.prank(operator);
-        vault.claim(tokenId, 0, 0);
-
-        assertEq(operator.balance, 0);
-        assertEq(token.balanceOf(operator), 0);
         assertEq(beneficiary.balance, 1 ether);
         assertEq(token.balanceOf(beneficiary), 2 ether);
     }
@@ -241,7 +223,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         _credit(tokenId, 3 ether, address(token), 4 ether);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, tokenId, creator));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, creator));
         vault.claim(tokenId, 0, 0);
 
         vm.prank(beneficiary);

@@ -27,17 +27,6 @@ PositionRecipientsBTTTest
     │   └── it reverts
     ├── when the executor deposits both currencies
     │   └── it increases liquidity
-    └── claimFrom
-        ├── when this contract owns the beneficiary NFT
-        │   └── it attributes the external amounts here
-        ├── when this contract does not own the beneficiary NFT
-        │   └── it reverts
-        ├── when the external minimum is not met
-        │   └── it reverts
-        ├── when the external payout reenters
-        │   └── it reverts
-        └── when the external share is pulled first
-            └── the executor can compound all attributed amounts
 └── UERC20BeneficiaryVault
     ├── registerBeneficiary
     │   ├── when the caller owns the position
@@ -61,7 +50,7 @@ PositionRecipientsBTTTest
         │   └── it reverts for any caller without flushing
         ├── when registered
         │   └── it pays the NFT owner
-        ├── when registered and the caller is not approved or owner
+        ├── when registered and the caller is not the beneficiary
         │   └── it reverts
         └── when unregistered with no readable graffiti
             └── it flushes to the fallbacks

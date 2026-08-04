@@ -137,36 +137,6 @@ contract MockReentrantERC20 is MockERC20 {
     }
 }
 
-contract MockReentrantClaimFromERC20 is MockERC20 {
-    CompoundingClaimRecipient internal immutable recipient;
-    IClaimableRecipient internal immutable source;
-    uint256 internal immutable tokenId;
-
-    bool public reentryAttempted;
-    bytes public reentryRevertData;
-
-    constructor(
-        CompoundingClaimRecipient _recipient,
-        IClaimableRecipient _source,
-        uint256 _tokenId,
-        uint256 initialSupply
-    ) MockERC20("Reentrant ClaimFrom Token", "REENTRANT", initialSupply, msg.sender) {
-        recipient = _recipient;
-        source = _source;
-        tokenId = _tokenId;
-    }
-
-    function transfer(address to, uint256 amount) public override returns (bool) {
-        bool success = super.transfer(to, amount);
-        if (!reentryAttempted && to == address(recipient) && msg.sender == address(source)) {
-            reentryAttempted = true;
-            (, reentryRevertData) = address(recipient)
-                .call(abi.encodeWithSelector(CompoundingClaimRecipient.claimFrom.selector, source, tokenId, 0, 0));
-        }
-        return success;
-    }
-}
-
 contract BaseClaimRecipientHarness is BaseClaimRecipient {
     constructor(IPositionManager positionManager) BaseClaimRecipient(positionManager) {}
 }
@@ -175,15 +145,6 @@ contract BaseClaimRecipientHarness is BaseClaimRecipient {
 ///      onClaimed callback (with the before/after hooks) — the surface the callback tests exercise.
 contract BaseClaimRecipientWithCallbackHarness is BaseClaimRecipientWithCallback {
     constructor(IPositionManager positionManager) BaseClaimRecipientWithCallback(positionManager) {}
-}
-
-/// @dev Test harness that can mint beneficiary NFTs without position custody proofs.
-contract BeneficiaryVaultHarness is BeneficiaryVault {
-    constructor(IPositionManager positionManager) BeneficiaryVault(positionManager, address(0xdead), address(0xbeef)) {}
-
-    function mintBeneficiary(uint256 tokenId, address beneficiary) external {
-        _mint(beneficiary, tokenId);
-    }
 }
 
 /// @dev ERC20 whose `graffiti()` returns fewer than 32 bytes so `_graffitiOf` treats it as unset.
@@ -261,15 +222,6 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// │   └── it reverts
 /// ├── when the executor deposits both currencies
 /// │   └── it increases liquidity
-/// └── claimFrom
-///     ├── when this contract owns the beneficiary NFT
-///     │   └── it attributes the external amounts here
-///     ├── when this contract does not own the beneficiary NFT
-///     │   └── it reverts
-///     └── when the external minimum is not met
-///         └── it reverts
-///     └── when the external payout reenters
-///         └── it reverts
 ///
 /// UERC20BeneficiaryVault
 /// ├── registerBeneficiary
@@ -294,7 +246,7 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     │   └── it reverts for any caller without flushing
 ///     ├── when registered
 ///     │   └── it pays the NFT owner
-///     ├── when registered and the caller is not approved or owner
+///     ├── when registered and the caller is not the beneficiary
 ///     │   └── it reverts
 ///     └── when unregistered with no readable graffiti
 ///         └── it flushes to the fallbacks
@@ -544,120 +496,6 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(manager.getPositionLiquidity(TOKEN_ID), INITIAL_LIQUIDITY + liquidityIncrease);
     }
 
-    function test_CompoundingClaimFrom_WhenRecipientOwnsNft_AttributesExternalAmounts() public {
-        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
-        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
-        uint256 vaultFees0 = 1 ether;
-        uint256 vaultFees1 = 2 ether;
-        _notifyAmounts(vault, poolKey, vaultFees0, vaultFees1);
-        vault.mintBeneficiary(TOKEN_ID, address(recipient));
-
-        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
-
-        (uint256 vaultAmount0, uint256 vaultAmount1) = vault.amounts(TOKEN_ID);
-        assertEq(vaultAmount0, 0);
-        assertEq(vaultAmount1, 0);
-        (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
-        assertEq(recipientAmount0, vaultFees0);
-        assertEq(recipientAmount1, vaultFees1);
-        assertEq(poolKey.currency0.balanceOf(address(recipient)), vaultFees0);
-        assertEq(poolKey.currency1.balanceOf(address(recipient)), vaultFees1);
-    }
-
-    function test_CompoundingClaimFrom_WhenRecipientDoesNotOwnNft_Reverts() public {
-        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
-        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
-        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
-        vault.mintBeneficiary(TOKEN_ID, feeRecipient);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, TOKEN_ID, address(recipient))
-        );
-        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
-    }
-
-    function test_CompoundingClaimFrom_WhenExternalMinimumIsNotMet_Reverts(uint256 minimum) public {
-        minimum = bound(minimum, FEES_0 + 1, type(uint128).max);
-        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
-        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
-        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
-        vault.mintBeneficiary(TOKEN_ID, address(recipient));
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0, minimum)
-        );
-        recipient.claimFrom(vault, TOKEN_ID, minimum, 0);
-    }
-
-    function test_CompoundingClaimFrom_WhenExternalPayoutReenters_Reverts() public {
-        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
-        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
-        MockReentrantClaimFromERC20 reentrantToken =
-            new MockReentrantClaimFromERC20(recipient, vault, TOKEN_ID, 1_000_000 ether);
-        MockERC20 honestToken = new MockERC20("Honest Token", "HONEST", 1_000_000 ether, address(this));
-        PoolKey memory reentrantPool = PoolKey(
-            Currency.wrap(address(reentrantToken)), Currency.wrap(address(honestToken)), 3000, 60, IHooks(address(0))
-        );
-        _configure(reentrantPool, FEES_0, FEES_1, 1 ether);
-        _notifyAmounts(vault, reentrantPool, FEES_0, FEES_1);
-        vault.mintBeneficiary(TOKEN_ID, address(recipient));
-
-        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
-
-        assertTrue(reentrantToken.reentryAttempted());
-        assertEq(
-            reentrantToken.reentryRevertData(), abi.encodeWithSelector(ReentrancyGuardTransient.Reentrancy.selector)
-        );
-        (uint256 vaultAmount0, uint256 vaultAmount1) = vault.amounts(TOKEN_ID);
-        assertEq(vaultAmount0, 0);
-        assertEq(vaultAmount1, 0);
-        (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
-        assertEq(recipientAmount0, FEES_0);
-        assertEq(recipientAmount1, FEES_1);
-    }
-
-    function test_CompoundingClaimFrom_WhenExternalAmountsAreZero_SucceedsWithoutAttribution() public {
-        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
-        CompoundingClaimRecipient recipient = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
-        vault.mintBeneficiary(TOKEN_ID, address(recipient));
-
-        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
-
-        (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
-        assertEq(recipientAmount0, 0);
-        assertEq(recipientAmount1, 0);
-    }
-
-    function test_CompoundingClaimFrom_WhenExternalShareIsPulledFirst_ExecutorCanCompoundAll(uint128 liquidityIncrease)
-        public
-    {
-        liquidityIncrease = uint128(bound(liquidityIncrease, 1, 100_000 ether));
-        _configure(poolKey, FEES_0, FEES_1, liquidityIncrease);
-        BeneficiaryVaultHarness vault = new BeneficiaryVaultHarness(IPositionManager(address(manager)));
-        CompoundingClaimRecipient recipient =
-            new CompoundingClaimRecipient(IPositionManager(address(manager)), liquidityIncrease);
-        MockCompoundingClaimExecutor executor =
-            new MockCompoundingClaimExecutor(IPositionManager(address(manager)), IWETH9(address(0)));
-        executor.setFeeSplitter(IFeeSplitter(address(manager)), liquidityIncrease);
-        uint256 splitterFees0 = 4 ether;
-        uint256 splitterFees1 = 5 ether;
-        uint256 vaultFees0 = 1 ether;
-        uint256 vaultFees1 = 2 ether;
-        _notifyAmounts(recipient, poolKey, splitterFees0, splitterFees1);
-        _notifyAmounts(vault, poolKey, vaultFees0, vaultFees1);
-        vault.mintBeneficiary(TOKEN_ID, address(recipient));
-
-        recipient.claimFrom(vault, TOKEN_ID, 0, 0);
-        executor.execute(recipient, TOKEN_ID, 0, 0);
-
-        (uint256 recipientAmount0, uint256 recipientAmount1) = recipient.amounts(TOKEN_ID);
-        assertEq(recipientAmount0, 0);
-        assertEq(recipientAmount1, 0);
-        assertEq(manager.getPositionLiquidity(TOKEN_ID), INITIAL_LIQUIDITY + liquidityIncrease);
-        assertEq(executor.lastCurrency0Received(), splitterFees0 + vaultFees0);
-        assertEq(executor.lastCurrency1Received(), splitterFees1 + vaultFees1);
-    }
-
     function test_UERC20Vault_registerBeneficiary_WhenCallerOwnsPosition_MintsNft() public {
         UERC20BeneficiaryVault vault = _deployUerc20Vault();
         _nativeUerc20Pool(creator);
@@ -812,7 +650,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(token.balanceOf(feeRecipient), FEES_1);
     }
 
-    function test_UERC20Vault_claim_WhenRegisteredAndCallerIsNotApprovedOrOwner_Reverts() public {
+    function test_UERC20Vault_claim_WhenRegisteredAndCallerIsNotBeneficiary_Reverts() public {
         UERC20BeneficiaryVault vault = _deployUerc20Vault();
         (PoolKey memory key,) = _nativeUerc20Pool(creator);
         _notifyVault(vault, key, FEES_0, FEES_1);
@@ -821,7 +659,7 @@ contract PositionRecipientsBTTTest is Test {
         vault.registerBeneficiary(TOKEN_ID, creator);
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotApprovedOrOwner.selector, TOKEN_ID, stranger));
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, TOKEN_ID, stranger));
         vault.claim(TOKEN_ID, 0, 0);
     }
 

@@ -43,8 +43,8 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
     }
 
     /// @inheritdoc BaseClaimRecipient
-    /// @dev The beneficiary NFT owner receives the full amounts; an approved operator may trigger
-    ///      the claim on the owner's behalf. Unregistered positions pay out to the per-side fallbacks.
+    /// @dev The owner of the beneficiary NFT receives the full amounts; unregistered positions pay out
+    ///      to the per-side fallbacks.
     function _beforeClaimTransfer(
         uint256 _tokenId,
         Currency _currency0,
@@ -58,8 +58,8 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
             return
                 (_currency0.isAddressZero() ? nativeFallback : tokenFallback, _available0, tokenFallback, _available1);
         }
-        if (!_isApprovedOrOwner(msg.sender, _tokenId)) revert NotApprovedOrOwner(_tokenId, msg.sender);
-        return (owner, _available0, owner, _available1);
+        if (msg.sender != owner) revert NotBeneficiary(_tokenId, msg.sender);
+        return (msg.sender, _available0, msg.sender, _available1);
     }
 
     /// @inheritdoc ERC721
