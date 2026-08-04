@@ -265,6 +265,24 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         assertEq(address(routerStrategy).balance, 0);
     }
 
+    function test_initializeWithNative_invalidRouterCall() public {
+        UniversalRouterConfig memory config =
+            UniversalRouterConfig({router: router, recipient: creator, data: hex"deadbeef"});
+
+        vm.deal(address(launcher), 1 ether);
+        vm.prank(address(launcher));
+        vm.expectRevert(UniversalRouterStrategy.InvalidCall.selector);
+        routerStrategy.initializeWithNative{value: 1 ether}(abi.encode(config), bytes32(0));
+    }
+
+    function test_initializeDistribution_invalidRouterCall() public {
+        UniversalRouterConfig memory config = UniversalRouterConfig({router: router, recipient: creator, data: hex"00"});
+
+        vm.prank(address(launcher));
+        vm.expectRevert(UniversalRouterStrategy.InvalidCall.selector);
+        routerStrategy.initializeDistribution(address(0), 0, abi.encode(config), bytes32(0));
+    }
+
     // ── helpers ──
 
     function _predictToken(address who) internal view returns (address) {
@@ -292,9 +310,12 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         return UniversalRouterConfig({
             router: router,
             recipient: creator,
-            commands: hex"10", // V4_SWAP
-            inputs: inputs,
-            deadline: block.timestamp
+            data: abi.encodeWithSelector(
+                IUniversalRouter.execute.selector,
+                hex"10",
+                inputs,
+                block.timestamp // V4_SWAP
+            )
         });
     }
 
