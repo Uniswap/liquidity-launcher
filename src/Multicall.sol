@@ -22,8 +22,5 @@ abstract contract Multicall is IMulticall {
 
             results[i] = result;
         }
-
-        // Native must not be left behind, so a batch either forwards all of it or sweeps the remainder.
-        if (address(this).balance != 0) revert NativeNotSwept(address(this).balance);
     }
 }

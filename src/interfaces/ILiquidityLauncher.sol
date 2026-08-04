@@ -75,12 +75,6 @@ interface ILiquidityLauncher {
         external
         payable;
 
-    /// @notice Sends native held by this contract to `recipient`
-    /// @dev A batch must end with this whenever it carries more native than it forwards, since `multicall`
-    ///      rejects native left behind.
-    /// @param recipient The receiver of the native
-    function sweepNative(address recipient) external payable;
-
     /// @notice Calculates the graffiti that will be used for a token creation
     /// @param originalCreator The address that will be set as the original creator
     /// @return graffiti The graffiti bytes32 that will be used
