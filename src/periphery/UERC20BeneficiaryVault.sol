@@ -11,8 +11,11 @@ import {BeneficiaryVault} from "./BeneficiaryVault.sol";
 
 /// @title UERC20BeneficiaryVault
 /// @notice A BeneficiaryVault whose unregistered positions can also be registered by the creator of the
-///         UERC20 token based on the token's immutable graffiti.
+///         UERC20 token based on the token's graffiti.
 /// @dev Tokens with graffiti set to a public aggregator contract like Multicall3 are NOT supported.
+/// @dev MUST NOT be used for positions whose pool pairs two tokens that both expose `graffiti()`.
+///      Either token's creator passes the registration check, so whichever claims first receives both
+///      currency sides and keeps the transferable beneficiary NFT.
 /// @dev If a contract is intended to be the beneficiary, it MUST be able to call `claim`
 ///      or transfer the beneficiary NFT in order to receive accrued amounts.
 contract UERC20BeneficiaryVault is BeneficiaryVault {
@@ -70,7 +73,8 @@ contract UERC20BeneficiaryVault is BeneficiaryVault {
     }
 
     /// @notice Checks if `caller` matches either side's UERC20 graffiti.
-    /// @dev The edge case where both currencies have unique creators is NOT supported.
+    /// @dev Matching either side is sufficient, so a pool pairing two tokens with distinct creators
+    ///      authorizes both of them and is NOT supported.
     function _isTokenCreator(address caller, uint256 tokenId) private view returns (bool) {
         PoolKey memory poolKey = _getPoolKey(tokenId);
         bytes32 callerGraffiti = keccak256(abi.encode(caller));
