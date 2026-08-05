@@ -47,10 +47,12 @@ abstract contract InstantLaunchTestBase is Test {
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
     uint256 internal constant TOTAL_SUPPLY = 1_000_000_000 ether;
-    int24 internal constant INITIAL_TICK = 121_980;
+    /// @dev Minimum ETH cost to saturate the launch position's upper tick at MAX_INITIAL_TICK.
+    uint256 internal constant UPPER_TICK_BLOCKER_COST_FLOOR = 20_000_000 ether;
+    int24 internal constant INITIAL_TICK = 121_975;
     /// @dev Lowest deployable initial tick: one spacing above the launch floor. The full supply fits under
     ///      maxLiquidityPerTick at every tick above the floor, so the floor check is the only lower bound.
-    int24 internal constant LOWEST_LAUNCH_TICK = -208_920;
+    int24 internal constant LOWEST_LAUNCH_TICK = -160_075;
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");

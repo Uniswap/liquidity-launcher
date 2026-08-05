@@ -67,6 +67,7 @@ interface ILiquidityLauncher {
 
     /// @notice Runs a strategy that spends native instead of a distributed token
     /// @dev Forwards `nativeAmount` with the call. There is no token leg, so nothing is approved.
+    ///      The `nativeAmount`s across a batch MUST sum to `msg.value`; native left behind is not refundable.
     /// @param strategy The strategy to run
     /// @param configData Arbitrary, strategy-specific parameters
     /// @param salt Domain separator, hashed together with the caller
