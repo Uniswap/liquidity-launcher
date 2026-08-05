@@ -14,10 +14,13 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
 
     function run(address feeSplitter, address beneficiaryVault) public returns (address instantLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
+        address liquidityLauncher = vm.envAddress("LIQUIDITY_LAUNCHER");
+        if (liquidityLauncher == address(0)) revert("env: LIQUIDITY_LAUNCHER not set");
+
         bytes memory bytecode = abi.encodePacked(
             type(InstantLaunchStrategy).creationCode,
             abi.encode(
-                LIQUIDITY_LAUNCHER,
+                liquidityLauncher,
                 params.positionManager,
                 params.poolManager,
                 IFeeSplitter(feeSplitter),
