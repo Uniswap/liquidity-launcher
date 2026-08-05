@@ -119,8 +119,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 
 | Version | Chain | Address | Fee Splitter | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0xC4398ba26D3d5bB2697df30fEd3208141Af188F1` | [`0x6CC1b74Fc1BE1ff373Fa07f3381856f38103e653`](#fee-splitter) | `b8899ee86c26758fff48dd4f950f991ad4197312` |
-| v3.1.1 | Robinhood Chain | `0x3fe607E7236DDa841bC805dDe8821339f012dcE3` | [`0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23`](#fee-splitter) | `b8899ee86c26758fff48dd4f950f991ad4197312` |
+| v3.1.1 | Robinhood Chain | `0x3f556B542105D5EFBBefe7C766a4919C76B960Fb` | [`0x6CC1b74Fc1BE1ff373Fa07f3381856f38103e653`](#fee-splitter) | `b8899ee86c26758fff48dd4f950f991ad4197312` |
+| v3.1.1 | Robinhood Chain | `0x36bdB859518C89F764337cd5C24762d2Aa650f3C` | [`0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23`](#fee-splitter) | `b8899ee86c26758fff48dd4f950f991ad4197312` |
 
 #### UniversalRouterStrategy
 
@@ -128,7 +128,7 @@ Deployed to a different address on each chain. Runs a caller-supplied Universal 
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0xB7fF4d94C3fB06ec4D715cFa4DDdf3f18d16e945` | `b8899ee86c26758fff48dd4f950f991ad4197312` |
+| v3.1.1 | Robinhood Chain | `0x4962907c62eBC529E84de899d081A53Ca9Ed05dD` | `b8899ee86c26758fff48dd4f950f991ad4197312` |
 
 #### TokenSplitter
 
