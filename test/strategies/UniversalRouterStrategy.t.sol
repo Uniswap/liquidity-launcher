@@ -29,6 +29,7 @@ import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
+import {INativeStrategy} from "../../src/interfaces/INativeStrategy.sol";
 import {IUniversalRouter} from "../../src/interfaces/external/IUniversalRouter.sol";
 import {MockUniversalRouter} from "../mocks/MockUniversalRouter.sol";
 import {ReentrantRouter} from "../mocks/ReentrantRouter.sol";
@@ -245,7 +246,8 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     /// @notice Regression for the reentrancy finding: a router that reenters to divert native earmarked for a
     ///         later hand-off breaks that hand-off, so the whole batch reverts and the theft gains nothing.
     function test_reentrantRouterCannotDivertEarmarkedNative() public {
-        DivertingRouter diverter = new DivertingRouter(launcher, address(routerStrategy), attacker);
+        NativeSinkStrategy sink = new NativeSinkStrategy(attacker);
+        DivertingRouter diverter = new DivertingRouter(launcher, address(sink));
         address token = _predictToken(creator);
         PoolKey memory key = _poolKeyFor(token);
 
@@ -485,19 +487,31 @@ contract MockPayToken {
     }
 }
 
+/// @notice Accepts native from the launcher and forwards it to a beneficiary.
+contract NativeSinkStrategy is INativeStrategy {
+    address immutable beneficiary;
+
+    constructor(address _beneficiary) {
+        beneficiary = _beneficiary;
+    }
+
+    function initializeWithNative(bytes calldata, bytes32) external payable {
+        (bool success,) = beneficiary.call{value: msg.value}("");
+        require(success);
+    }
+}
+
 /// @notice Router that tries to divert the launcher's un-forwarded native to a third party mid-batch.
 contract DivertingRouter is IUniversalRouter {
     LiquidityLauncher immutable launcher;
-    address immutable strategy;
-    address immutable attacker;
+    address immutable sinkStrategy;
 
-    constructor(LiquidityLauncher _launcher, address _strategy, address _attacker) {
+    constructor(LiquidityLauncher _launcher, address _sinkStrategy) {
         launcher = _launcher;
-        strategy = _strategy;
-        attacker = _attacker;
+        sinkStrategy = _sinkStrategy;
     }
 
     function execute(bytes calldata, bytes[] calldata, uint256) external payable override {
-        launcher.distributeWithNative(attacker, abi.encode(uint256(0)), bytes32(0), address(launcher).balance);
+        launcher.distributeWithNative(sinkStrategy, abi.encode(uint256(0)), bytes32(0), address(launcher).balance);
     }
 }
