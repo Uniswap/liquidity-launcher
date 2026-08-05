@@ -41,7 +41,8 @@ contract DeployAllScript is Script {
     function run(IDistributorFactory initializerFactory) public {
         console.log("Deploying all contracts on chain", block.chainid);
 
-        liquidityLauncherDeployer.run();
+        address liquidityLauncherAddress = liquidityLauncherDeployer.run();
+        vm.setEnv("LIQUIDITY_LAUNCHER", vm.toString(liquidityLauncherAddress));
         address lbpStrategyAddress = lbpStrategyDeployer.run(initializerFactory);
         tokenSplitterDeployer.run();
         initializerHookDeployer.run(lbpStrategyAddress);

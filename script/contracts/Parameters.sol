@@ -14,7 +14,6 @@ struct DeployParameters {
 
 /// @title Parameters
 contract Parameters {
-    address public constant LIQUIDITY_LAUNCHER = 0x7A6C474b4DcD35b72203D2B569EAfE4C9b5C768e;
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public constant DEFAULT_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     uint160 public constant DEFAULT_HOOK_FLAGS = Hooks.BEFORE_INITIALIZE_FLAG;
