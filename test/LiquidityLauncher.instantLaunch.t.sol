@@ -39,7 +39,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     IPoolManager internal constant POOL_MANAGER = IPoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
-    int24 internal constant INITIAL_TICK = 121_980;
+    int24 internal constant INITIAL_TICK = 121_975;
     uint128 internal constant TOTAL_SUPPLY = 1_000_000_000 ether;
 
     LiquidityLauncher internal launcher;
