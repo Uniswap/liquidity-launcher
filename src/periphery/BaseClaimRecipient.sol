@@ -38,7 +38,7 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
     receive() external payable {}
 
     /// @inheritdoc IClaimableRecipient
-    function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) external {
+    function onAmountsReceived(uint256 _tokenId, uint256 _currency0Amount, uint256 _currency1Amount) public {
         PoolKey memory poolKey = _getPoolKey(_tokenId);
 
         Amounts memory positionAmounts = amounts[_tokenId];

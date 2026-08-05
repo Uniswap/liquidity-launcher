@@ -14,9 +14,9 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {ActionConstants} from "@uniswap/v4-periphery/src/libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {ERC721} from "solady/tokens/ERC721.sol";
 import {UERC20BeneficiaryVault} from "../../src/periphery/UERC20BeneficiaryVault.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
-import {IUERC20BeneficiaryVault} from "../../src/interfaces/IUERC20BeneficiaryVault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockUERC20} from "../mocks/MockUERC20.sol";
 
@@ -47,7 +47,6 @@ contract UERC20BeneficiaryVaultTest is Test {
         vm.deal(address(this), 10_000 ether);
     }
 
-    /// @dev Mints a native/`launchToken` position, so the launch token is currency1.
     function _mintNativePosition(address launchToken, address owner) internal returns (uint256 tokenId) {
         PoolKey memory key = PoolKey({
             currency0: CurrencyLibrary.ADDRESS_ZERO,
@@ -59,7 +58,6 @@ contract UERC20BeneficiaryVaultTest is Test {
         return _mint(key, owner, 100 ether, 100 ether, 100 ether);
     }
 
-    /// @dev Mints a `low`/`high` token pair position, so a launch token can sit in currency0.
     function _mintTokenPairPosition(address low, address high, address owner) internal returns (uint256 tokenId) {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(low),
@@ -95,14 +93,12 @@ contract UERC20BeneficiaryVaultTest is Test {
         POSITION_MANAGER.modifyLiquidities{value: value}(abi.encode(actions, params), block.timestamp);
     }
 
-    /// @dev Credits a native/token position, i.e. native as currency0.
     function _credit(uint256 tokenId, uint256 nativeAmount, address token, uint256 tokenAmount) internal {
         if (nativeAmount != 0) vm.deal(address(vault), address(vault).balance + nativeAmount);
         if (tokenAmount != 0) IERC20(token).transfer(address(vault), tokenAmount);
         vault.onAmountsReceived(tokenId, nativeAmount, tokenAmount);
     }
 
-    /// @dev Credits a token pair position.
     function _creditPair(uint256 tokenId, address token0, uint256 amount0, address token1, uint256 amount1) internal {
         if (amount0 != 0) IERC20(token0).transfer(address(vault), amount0);
         if (amount1 != 0) IERC20(token1).transfer(address(vault), amount1);
@@ -113,7 +109,6 @@ contract UERC20BeneficiaryVaultTest is Test {
         return new MockUERC20("Launched", "LAUNCH", 1_000_000 ether, address(this), tokenCreator);
     }
 
-    /// @notice A registered position keeps the base NFT semantics: only its holder may claim.
     function test_claim_registeredPositionUsesBaseSemantics() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
@@ -130,12 +125,44 @@ contract UERC20BeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(beneficiary), 2 ether);
     }
 
-    /// @notice The creator of an unregistered position's currency1 claims both sides and is registered.
-    function test_claim_creatorOfCurrency1() public {
+    function test_register_mintsBeneficiaryNftToCreator() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(creator);
+        vault.registerBeneficiary(tokenId, creator);
+
+        assertEq(vault.ownerOf(tokenId), creator);
+    }
+
+    function test_register_revertsForNonCreator() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, tokenId, stranger));
+        vault.registerBeneficiary(tokenId, creator);
+    }
+
+    function test_register_revertsWhenAlreadyRegistered() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(creator);
+        vault.registerBeneficiary(tokenId, creator);
+
+        vm.prank(creator);
+        vm.expectRevert(ERC721.TokenAlreadyExists.selector);
+        vault.registerBeneficiary(tokenId, creator);
+    }
+
+    function test_claim_afterRegister_creatorReceivesBoth() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
+        vm.prank(creator);
+        vault.registerBeneficiary(tokenId, creator);
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
@@ -144,11 +171,9 @@ contract UERC20BeneficiaryVaultTest is Test {
         (uint128 credited0, uint128 credited1) = vault.amounts(tokenId);
         assertEq(credited0, 0);
         assertEq(credited1, 0);
-        assertEq(vault.ownerOf(tokenId), creator, "the proven claim registers the creator");
     }
 
-    /// @notice Once minted, the position is registered like any other: later claims never re-read graffiti.
-    function test_claim_secondClaimRunsBasePathWithoutGraffiti() public {
+    function test_claim_unregisteredCreatorAutoRegistersAndReceivesFees() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
         _credit(tokenId, 1 ether, address(token), 2 ether);
@@ -156,7 +181,26 @@ contract UERC20BeneficiaryVaultTest is Test {
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
-        // A graffiti read would now revert, proving the base path no longer consults it.
+        assertEq(vault.ownerOf(tokenId), creator);
+        assertEq(creator.balance, 1 ether);
+        assertEq(token.balanceOf(creator), 2 ether);
+        assertEq(nativeFallback.balance, 0);
+        assertEq(token.balanceOf(tokenFallback), 0);
+        (uint128 credited0, uint128 credited1) = vault.amounts(tokenId);
+        assertEq(credited0, 0);
+        assertEq(credited1, 0);
+    }
+
+    function test_claim_secondClaimRunsBasePathWithoutGraffiti() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+        _credit(tokenId, 1 ether, address(token), 2 ether);
+
+        vm.prank(creator);
+        vault.registerBeneficiary(tokenId, creator);
+        vm.prank(creator);
+        vault.claim(tokenId, 0, 0);
+
         token.setGraffitiReverts(true);
         _credit(tokenId, 3 ether, address(token), 4 ether);
         vm.prank(creator);
@@ -166,12 +210,13 @@ contract UERC20BeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(creator), 6 ether);
     }
 
-    /// @notice The minted NFT is transferable, which moves the claim right with it.
-    function test_claim_mintedNftTransfersTheClaimRight() public {
+    function test_claim_nftTransferMovesClaimRight() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
+        vm.prank(creator);
+        vault.registerBeneficiary(tokenId, creator);
         vm.prank(creator);
         vault.claim(tokenId, 0, 0);
 
@@ -179,7 +224,6 @@ contract UERC20BeneficiaryVaultTest is Test {
         vault.transferFrom(creator, beneficiary, tokenId);
         _credit(tokenId, 3 ether, address(token), 4 ether);
 
-        // The creator's graffiti no longer helps once the NFT names someone else.
         vm.prank(creator);
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, tokenId, creator));
         vault.claim(tokenId, 0, 0);
@@ -190,11 +234,9 @@ contract UERC20BeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(beneficiary), 4 ether);
     }
 
-    /// @notice The launch token can sort into currency0 on a token pair, as LBP launches allow.
-    function test_claim_creatorOfCurrency0() public {
+    function test_register_creatorOfCurrency0() public {
         MockUERC20 launchToken = _launchToken(creator);
         MockERC20 other = new MockERC20("Other", "OTHER", 1_000_000 ether, address(this));
-        // Ensure the launch token is the lower address, i.e. currency0.
         while (address(launchToken) > address(other)) {
             launchToken = _launchToken(creator);
         }
@@ -203,19 +245,21 @@ contract UERC20BeneficiaryVaultTest is Test {
         _creditPair(tokenId, address(launchToken), 2 ether, address(other), 3 ether);
 
         vm.prank(creator);
+        vault.registerBeneficiary(tokenId, creator);
+        vm.prank(creator);
         vault.claim(tokenId, 0, 0);
+
         assertEq(launchToken.balanceOf(creator), 2 ether);
         assertEq(other.balanceOf(creator), 3 ether);
     }
 
-    /// @notice A stranger cannot claim, and nothing is flushed to the fallbacks in their place.
     function test_claim_revertsForNonCreatorAndDoesNotFlush() public {
         MockUERC20 token = _launchToken(creator);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
         _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotTokenCreator.selector, tokenId, stranger));
+        vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, tokenId, stranger));
         vault.claim(tokenId, 0, 0);
 
         assertEq(nativeFallback.balance, 0);
@@ -225,7 +269,6 @@ contract UERC20BeneficiaryVaultTest is Test {
         assertEq(credited1, 2 ether);
     }
 
-    /// @notice A position with no launcher-created token still flushes to the fallbacks.
     function test_claim_nonLauncherTokenStillFlushes() public {
         MockERC20 token = new MockERC20("Plain", "PLAIN", 1_000_000 ether, address(this));
         uint256 tokenId = _mintNativePosition(address(token), address(this));
@@ -238,20 +281,69 @@ contract UERC20BeneficiaryVaultTest is Test {
         assertEq(token.balanceOf(tokenFallback), 2 ether);
     }
 
-    /// @notice Graffiti naming someone else lets only that address claim.
-    function test_claim_onlyTheNamedCreatorCanClaim() public {
+    function test_register_onlyNamedCreatorCanRegister() public {
         MockUERC20 token = _launchToken(stranger);
         uint256 tokenId = _mintNativePosition(address(token), address(this));
-        _credit(tokenId, 1 ether, address(token), 2 ether);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(IUERC20BeneficiaryVault.NotTokenCreator.selector, tokenId, creator));
-        vault.claim(tokenId, 0, 0);
+        vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, tokenId, creator));
+        vault.registerBeneficiary(tokenId, creator);
 
         vm.prank(stranger);
-        vault.claim(tokenId, 0, 0);
-        assertEq(stranger.balance, 1 ether);
-        assertEq(token.balanceOf(stranger), 2 ether);
+        vault.registerBeneficiary(tokenId, stranger);
+        assertEq(vault.ownerOf(tokenId), stranger);
+    }
+
+    function test_register_mintsToSpecifiedBeneficiary() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(creator);
+        vault.registerBeneficiary(tokenId, beneficiary);
+
+        assertEq(vault.ownerOf(tokenId), beneficiary);
+    }
+
+    function test_registerBeneficiary_positionOwnerCanRegisterWithoutBeingCreator() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vault.registerBeneficiary(tokenId, beneficiary);
+
+        assertEq(vault.ownerOf(tokenId), beneficiary);
+    }
+
+    function test_registerBeneficiary_positionOwnerCanRegisterNonLauncherPosition() public {
+        MockERC20 token = new MockERC20("Plain", "PLAIN", 1_000_000 ether, address(this));
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vault.registerBeneficiary(tokenId, beneficiary);
+
+        assertEq(vault.ownerOf(tokenId), beneficiary);
+    }
+
+    function test_registerBeneficiary_invalidBeneficiaryRevertsForPositionOwner() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(0)));
+        vault.registerBeneficiary(tokenId, address(0));
+
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(vault)));
+        vault.registerBeneficiary(tokenId, address(vault));
+    }
+
+    function test_register_revertsWhenBeneficiaryIsInvalid() public {
+        MockUERC20 token = _launchToken(creator);
+        uint256 tokenId = _mintNativePosition(address(token), address(this));
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(0)));
+        vault.registerBeneficiary(tokenId, address(0));
+
+        vm.prank(creator);
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidBeneficiary.selector, address(vault)));
+        vault.registerBeneficiary(tokenId, address(vault));
     }
 
     receive() external payable {}

@@ -4,8 +4,11 @@ pragma solidity ^0.8.26;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IWETH9} from "@uniswap/v4-periphery/src/interfaces/external/IWETH9.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IClaimableRecipient} from "../../src/interfaces/IClaimableRecipient.sol";
+import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 import {CompoundingClaimRecipient} from "../../src/periphery/CompoundingClaimRecipient.sol";
+import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {MockClaimExecutor} from "./MockClaimExecutor.sol";
@@ -17,6 +20,9 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
 
     CompoundingClaimRecipient internal positionRecipient;
     MockCompoundingClaimExecutor internal executor;
+    BeneficiaryVault internal beneficiaryVault;
+    address internal nativeFallback = makeAddr("nativeFallback");
+    address internal tokenFallback = makeAddr("tokenFallback");
 
     function setUp() public override {
         super.setUp();
@@ -99,6 +105,13 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
         assertGt(executor.lastCurrency1Received(), 0);
         assertEq(Currency.wrap(NATIVE).balanceOf(address(positionRecipient)), recipientCurrency0Before);
         assertEq(Currency.wrap(USDC).balanceOf(address(positionRecipient)), recipientCurrency1Before);
+    }
+
+    function _productionSplitter(address vault, address recipient) internal returns (FeeSplitter splitter) {
+        FeeSplit[] memory splits = new FeeSplit[](2);
+        splits[0] = FeeSplit({recipient: vault, nativeBps: 4_000, tokenBps: 0, useCallback: true});
+        splits[1] = FeeSplit({recipient: recipient, nativeBps: 6_000, tokenBps: 10_000, useCallback: true});
+        splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
     }
 
     function _callbackSplitter(address recipient) internal returns (FeeSplitter splitter) {

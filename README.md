@@ -25,11 +25,14 @@ Liquidity Launcher provides a streamlined approach for projects to:
 
 The primary strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
-The repository also includes an instant-launch strategy:
+The repository also includes several direct strategies:
 
-- `InstantLaunchStrategy` creates a v4 pool and one or more token-side positions from caller-supplied configuration. Each launch uses an initializer hook that reserves the pool key for the strategy.
+- `InstantLaunchStrategy` launches a fixed-supply token directly into a hookless native-ETH v4 pool as a single-sided position, permanently locked in the `FeeSplitter` for permissionless fee distribution.
+- `UniversalRouterStrategy` runs a caller-supplied Universal Router route, so a launch and a buy fit in one transaction.
+- `TokenSplitter` splits a distribution across N recipients without taking custody.
+- `MerkleClaimFactory` deploys and funds a `MerkleClaim` (Uniswap's audited merkle distributor) for claim-based distributions.
 
-See the [Technical Reference](./docs/TechnicalReference.md#instantlaunchstrategy) for configuration, lifecycle, and trust assumptions.
+See the [Technical Reference](./docs/TechnicalReference.md#distribution-strategies) for configuration, lifecycle, and trust assumptions.
 
 ## Installation
 
@@ -38,7 +41,7 @@ This project uses Foundry for development and testing. To get started:
 ```bash
 # Clone the repository with submodules
 git clone --recurse-submodules <repository-url>
-cd liquidity-launcher
+cd token-launcher
 
 # If you already cloned without submodules
 git submodule update --init --recursive
@@ -70,15 +73,16 @@ Most tests run locally. The periphery position-recipient tests fork mainnet and 
 
 ## LBP Hooks
 
-LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.hook`. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. `InitializerHook` gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool. `GatedSwapHook` already inherits `InitializerHook`.
+LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.poolParameters.hook`. Any nonzero hook MUST inherit `InitializerHook`, which gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool; the strategy verifies this via ERC165 during `initializeDistribution`. `GatedSwapHook` already inherits `InitializerHook`.
 
-If `hook` is `address(0)`, the migration destination is state-dependent: `hook = address(0)` means "prefer the hookless pool, but fall back to the strategy-hooked pool if the hookless pool already exists," so it does not guarantee the final pool is hookless. Migration first attempts to initialize the canonical hookless v4 pool `(currency0, currency1, fee, tickSpacing, address(0))`. If that pool was already initialized, `LBPStrategy` falls back to using its own address as the hook and initializes the strategy-hooked pool `(currency0, currency1, fee, tickSpacing, address(strategy))` instead. `LBPStrategy` is deployed at a valid `BEFORE_INITIALIZE` hook address and self-gates `beforeInitialize`, so this fallback does not require a separate `InitializerHook` deployment. The hookless pool is preferred for simpler routing; the strategy-hooked pool only preserves a migration path when the hookless key has already been consumed. See the [Deployment Guide](./docs/DeploymentGuide.md#lbp-hook-requirement) for details.
+If `hook` is `address(0)` (static-fee pools only), the migration destination is state-dependent: migration prefers the canonical hookless pool, but falls back to the strategy-hooked pool `(..., address(strategy))` if the hookless key was already initialized. Integrators should resolve the actual pool key from the `Migrated` event rather than assuming `address(0)`. See the [Deployment Guide](./docs/DeploymentGuide.md#lbp-hook-requirement) for details.
 
 ## Docs
 
 - [Technical Reference](./docs/TechnicalReference.md)
-- [Changelog](./CHANGELOG.md)
 - [Deployment Guide](./docs/DeploymentGuide.md)
+- [Changelog](./CHANGELOG.md)
+- [Whitepaper](./docs/whitepaper.pdf)
 
 ## Deployment Addresses
 
@@ -92,9 +96,10 @@ Canonical contract addresses by chain and version. Cross-references link to rela
 
 Deployed to the same address on all networks that use the canonical Permit2 deployment (`0x000000000022D473030F116dDEE9F6B43aC78BA3`).
 
-| Version | Address | Commit Hash |
-| --- | --- | --- |
-| v3.0.0 | `0x00004c4ccc709Ef590F7C81102C0689F0263D4e9` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
+| Version | Chain | Address | Commit Hash |
+| --- | --- | --- | --- |
+| v3.0.0 | | `0x00004c4ccc709Ef590F7C81102C0689F0263D4e9` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
+| v3.1.1 | Robinhood Chain | `0x7A6C474b4DcD35b72203D2B569EAfE4C9b5C768e` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 
 #### LBPStrategy
 
@@ -106,7 +111,7 @@ Deployed to a different address on each chain. Must be deployed to a valid v4 ho
 | v3.1.0 | Base | `0x34385dD739FE5464892BF0bA4CC42492804dA000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Unichain | `0x298eA05D0356B2Ae5cCAa3169E471783ee9EA000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Arbitrum | `0x8Af0775a70Cc94D71DFc0fE809435e833F2Fe000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
-| v3.1.0 | Robinhood Chain | `0x05d552391067389EE44fec3924157ed33F976000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
+| v3.1.1 | Robinhood Chain | `0x05d552391067389EE44fec3924157ed33F976000` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 | v3.1.0 | Avalanche | `0x57BD0A9Cd933c89Ba55e086D53031367b6406000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | XLayer | `0x58DF162fF41e5cB42B8515f75F90C1841938A000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Sepolia | `0x96641d91e223c766F45b19d09494F5925C3cE000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
@@ -118,8 +123,16 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 
 | Version | Chain | Address | Fee Splitter | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x9F67B864B565966dfCc2E0C6bA2483b2D5fF4b00` | [`0x7198C32a497c09497e04C86cf8F77A244A9E4b8F`](#fee-splitter) | `3e05da887285b469c993d0c009b88590c0dc10f7` |
-| v3.1.0 | Robinhood Chain | `0x16b63f1c8415FD68591c31FB3c6796a333DD640C` | [`0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23`](#fee-splitter) | `3e05da887285b469c993d0c009b88590c0dc10f7` |
+| v3.1.1 | Robinhood Chain | `0x3f556B542105D5EFBBefe7C766a4919C76B960Fb` | [`0x6CC1b74Fc1BE1ff373Fa07f3381856f38103e653`](#fee-splitter) | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.1.1 | Robinhood Chain | `0x36bdB859518C89F764337cd5C24762d2Aa650f3C` | [`0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23`](#fee-splitter) | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+
+#### UniversalRouterStrategy
+
+Deployed to a different address on each chain. Runs a caller-supplied Universal Router route so a launch and a buy can fit in one transaction.
+
+| Version | Chain | Address | Commit Hash |
+| --- | --- | --- | --- |
+| v3.1.1 | Robinhood Chain | `0x4962907c62eBC529E84de899d081A53Ca9Ed05dD` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 
 #### TokenSplitter
 
@@ -137,8 +150,8 @@ Deployed per chain with immutable fee splits. Multiple deployments may exist on 
 
 | Version | Chain | Address | Fee Splits | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x7198C32a497c09497e04C86cf8F77A244A9E4b8F` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
-| v3.1.0 | Robinhood Chain | `0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
+| v3.1.1 | Robinhood Chain | `0x6CC1b74Fc1BE1ff373Fa07f3381856f38103e653` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.1.1 | Robinhood Chain | `0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 
 #### UERC20BeneficiaryVault
 
@@ -146,7 +159,7 @@ Deployed to a different address on each chain. Distributes and attributes creato
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x587D2fDDDF14F6f84022b51e8c3a473eB88C4544` | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
+| v3.1.1 | Robinhood Chain | `0xa5889CaFCB1757218eA71730bee381Cc2a3F2CCC` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 
 #### CompoundingClaimRecipient
 
@@ -154,7 +167,7 @@ Deployed to a different address on each chain. Permissionlessly compounds LP fee
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.0 | Robinhood Chain | `0x666DA63451A502A323677C2Ef5F763181358be9b` | `c3f9506f152c49bcdabbb5f386398ef417db88b7` |
+| v3.1.1 | Robinhood Chain | `0x666DA63451A502A323677C2Ef5F763181358be9b` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 
 #### InitializerHook
 
@@ -162,7 +175,7 @@ Restricts pool initialization to a deployed LBPStrategy instance.
 
 | Version | Chain | Address | LBPStrategy | Salt | Commit Hash |
 | --- | --- | --- | --- | --- | --- |
-| v3.0.0 | Robinhood Chain | `0xD462a559337859369EF271814851A18F496ba000` | [`0x05d552391067389EE44fec3924157ed33F976000`](#lbpstrategy) | `0x0000000000000000000000000000000000000000000000000000000000002dcb` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
+| v3.1.1 | Robinhood Chain | `0xD462a559337859369EF271814851A18F496ba000` | [`0x05d552391067389EE44fec3924157ed33F976000`](#lbpstrategy) | `0x0000000000000000000000000000000000000000000000000000000000002dcb` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 
 ## Audits
 
@@ -181,10 +194,6 @@ The files under `src/` are covered under the Uniswap Labs bug bounty program on 
 ### Security contact
 
 [security@uniswap.org](mailto:security@uniswap.org)
-
-### Whitepaper
-
-[Liquidity Launcher whitepaper](./docs/whitepaper.pdf)
 
 ## License
 
