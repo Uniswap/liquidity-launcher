@@ -19,7 +19,8 @@ contract DeployFeeSplitterScript is Script, Parameters {
         returns (address feeSplitter)
     {
         // Optionally use a salt for deployment
-        bytes32 salt = bytes32(0);
+        bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
+
         bytes memory bytecode =
             abi.encodePacked(type(FeeSplitter).creationCode, abi.encode(params.positionManager, feeSplits));
         bytes32 initCodeHash = keccak256(bytecode);

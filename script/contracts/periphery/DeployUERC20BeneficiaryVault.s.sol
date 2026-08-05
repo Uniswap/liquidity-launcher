@@ -13,7 +13,8 @@ contract DeployUERC20BeneficiaryVaultScript is Script, Parameters {
         DeployParameters memory params = getParameters(block.chainid);
 
         // Optionally use a salt for deployment
-        bytes32 salt = bytes32(0);
+        bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
+
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(UERC20BeneficiaryVault).creationCode,

@@ -17,7 +17,8 @@ contract DeployUniversalRouterStrategyScript is Script, Parameters {
             abi.encodePacked(type(UniversalRouterStrategy).creationCode, abi.encode(liquidityLauncher));
         bytes32 initCodeHash = keccak256(bytecode);
 
-        bytes32 salt = bytes32(0);
+        bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
+
         address expectedAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
         if (expectedAddress.code.length > 0) {
             console.log("Skipping deployment of UniversalRouterStrategy as it already exists at", expectedAddress);

@@ -99,7 +99,7 @@ Deployed to the same address on all networks that use the canonical Permit2 depl
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
 | v3.0.0 | | `0x00004c4ccc709Ef590F7C81102C0689F0263D4e9` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
-| v3.1.1 | Robinhood Chain | `0x7A6C474b4DcD35b72203D2B569EAfE4C9b5C768e` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Robinhood Chain | `0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### LBPStrategy
 
@@ -123,8 +123,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 
 | Version | Chain | Address | Fee Splitter | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0x3f556B542105D5EFBBefe7C766a4919C76B960Fb` | [`0x6CC1b74Fc1BE1ff373Fa07f3381856f38103e653`](#fee-splitter) | `5ef0262b8e191360a212aac864a525dcf7a06605` |
-| v3.1.1 | Robinhood Chain | `0x36bdB859518C89F764337cd5C24762d2Aa650f3C` | [`0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23`](#fee-splitter) | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Robinhood Chain | `0x23f8209572b4a1C2AD88A42749E830791Fb027f1` | [`0xeFF166AAf189323c58dc27eD1206EB2C37FaACDf`](#fee-splitter) | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Robinhood Chain | `0xAD44D55E7f8337C3cE113fBb591486E85be104b2` | [`0x222D6d4f1ce59b0d48D5505114eC8Addc90A4359`](#fee-splitter) | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### UniversalRouterStrategy
 
@@ -132,15 +132,16 @@ Deployed to a different address on each chain. Runs a caller-supplied Universal 
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0x4962907c62eBC529E84de899d081A53Ca9Ed05dD` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Robinhood Chain | `0x1242c9439d589cAE85E121B1f79f2aF51e91DCEE` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### TokenSplitter
 
 Deployed to the same address on all networks.
 
-| Version | Address | Commit Hash |
-| --- | --- | --- |
-| v3.0.0 | `0x8B7DCeb5639DB986FCf86606C74e6300C40FE3cd` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
+| Version | Chain | Address | Commit Hash |
+| --- | --- | --- | --- |
+| v3.0.0 | | `0x8B7DCeb5639DB986FCf86606C74e6300C40FE3cd` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
+| v3.2.0 | Robinhood Chain | `0x4F5E3FBb9745358A92Da5674305FAb8D2B8a73cE` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 ### Periphery
 
@@ -150,8 +151,8 @@ Deployed per chain with immutable fee splits. Multiple deployments may exist on 
 
 | Version | Chain | Address | Fee Splits | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0x6CC1b74Fc1BE1ff373Fa07f3381856f38103e653` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `5ef0262b8e191360a212aac864a525dcf7a06605` |
-| v3.1.1 | Robinhood Chain | `0xDF50f4ea2207F9D2A753a3DaE729B36FDEF13b23` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Robinhood Chain | `0xeFF166AAf189323c58dc27eD1206EB2C37FaACDf` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Robinhood Chain | `0x222D6d4f1ce59b0d48D5505114eC8Addc90A4359` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### UERC20BeneficiaryVault
 
@@ -159,7 +160,7 @@ Deployed to a different address on each chain. Distributes and attributes creato
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0xa5889CaFCB1757218eA71730bee381Cc2a3F2CCC` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Robinhood Chain | `0xd35E9CA72F64C7F93BE30fad67524323396B36D7` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### CompoundingClaimRecipient
 
@@ -167,7 +168,7 @@ Deployed to a different address on each chain. Permissionlessly compounds LP fee
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.1.1 | Robinhood Chain | `0x666DA63451A502A323677C2Ef5F763181358be9b` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Robinhood Chain | `0xf9526Dd3361fe0ba6b7a99533ed471D3E808E99a` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### InitializerHook
 

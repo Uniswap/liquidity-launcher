@@ -16,8 +16,9 @@ contract DeployLiquidityLauncherScript is Script, Parameters {
 
         console.logBytes32(initCodeHash);
 
-        // Deploys to 0x00004c4ccc709Ef590F7C81102C0689F0263D4e9
-        bytes32 salt = 0xe503b94dfc0162b562e5d02083245f97b79e77e1241d35ee43a91a3d6e6c1492;
+        // bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
+        // Deploys to 0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0
+        bytes32 salt = 0xa8dfc290629f36db19306c77eb23c1b4f8a90d841bfb07158e8e6f752064de39;
         liquidityLauncherAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
 
         if (liquidityLauncherAddress.code.length > 0) {
