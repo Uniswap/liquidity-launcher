@@ -7,11 +7,13 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 /// @notice Interface for the Permit2Forwarder contract
 interface IPermit2Forwarder {
     /// @notice Allows forwarding a single permit to permit2
+    /// @dev This function is payable to allow multicall with native-based actions
     /// @param owner the owner of the tokens
     /// @param permitSingle the permit data
     /// @param signature the signature of the permit; abi.encodePacked(r, s, v)
     /// @return err the error returned by a reverting permit call, empty if successful
     function permit(address owner, IAllowanceTransfer.PermitSingle calldata permitSingle, bytes calldata signature)
         external
+        payable
         returns (bytes memory err);
 }
