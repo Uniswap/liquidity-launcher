@@ -114,6 +114,7 @@ Deployed to a different address on each chain. Must be deployed to a valid v4 ho
 | v3.1.1 | Robinhood Chain | `0x05d552391067389EE44fec3924157ed33F976000` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
 | v3.1.0 | Avalanche | `0x57BD0A9Cd933c89Ba55e086D53031367b6406000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | XLayer | `0x58DF162fF41e5cB42B8515f75F90C1841938A000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
+| v3.1.0 | Ink | `0xd749FAe4D01E8fd85B9e26555cB300018aFEA000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Sepolia | `0x96641d91e223c766F45b19d09494F5925C3cE000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Base Sepolia | `0xB06428b62c259eE982cE3D9BED47391dC9A5E000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 
