@@ -33,7 +33,7 @@ contract ProtocolFeeController is Ownable, IProtocolFeeController {
 
     /// @inheritdoc IProtocolFeeController
     /// @dev Recipient must be able to receive the currency transfers; a recipient that rejects the
-    ///      transfers will cause LBP migrations to revert until its pointed elsewhere.
+    ///      transfers will cause LBP migrations to revert until it is pointed elsewhere.
     function setProtocolFeeRecipient(address _recipient) external onlyOwner {
         protocolFeeRecipient = _recipient;
         emit ProtocolFeeRecipientUpdated(_recipient);

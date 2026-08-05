@@ -25,11 +25,14 @@ Liquidity Launcher provides a streamlined approach for projects to:
 
 The primary strategy is a Liquidity Bootstrapping Pool (LBP) that combines a price discovery auction with automated liquidity provisioning that delivers immediate trading liquidity.
 
-The repository also includes an instant-launch strategy:
+The repository also includes several direct strategies:
 
-- `InstantLaunchStrategy` creates a v4 pool and one or more token-side positions from caller-supplied configuration. Each launch uses an initializer hook that reserves the pool key for the strategy.
+- `InstantLaunchStrategy` launches a fixed-supply token directly into a hookless native-ETH v4 pool as a single-sided position, permanently locked in the `FeeSplitter` for permissionless fee distribution.
+- `UniversalRouterStrategy` runs a caller-supplied Universal Router route, so a launch and a buy fit in one transaction.
+- `TokenSplitter` splits a distribution across N recipients without taking custody.
+- `MerkleClaimFactory` deploys and funds a `MerkleClaim` (Uniswap's audited merkle distributor) for claim-based distributions.
 
-See the [Technical Reference](./docs/TechnicalReference.md#instantlaunchstrategy) for configuration, lifecycle, and trust assumptions.
+See the [Technical Reference](./docs/TechnicalReference.md#distribution-strategies) for configuration, lifecycle, and trust assumptions.
 
 ## Installation
 
@@ -38,7 +41,7 @@ This project uses Foundry for development and testing. To get started:
 ```bash
 # Clone the repository with submodules
 git clone --recurse-submodules <repository-url>
-cd liquidity-launcher
+cd token-launcher
 
 # If you already cloned without submodules
 git submodule update --init --recursive
@@ -70,15 +73,16 @@ Most tests run locally. The periphery position-recipient tests fork mainnet and 
 
 ## LBP Hooks
 
-LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.hook`. Any nonzero hook used in this `hook` field MUST inherit `InitializerHook`. The strategy enforces this by checking ERC165 support for `IInitializerHook` during `initializeDistribution`. `InitializerHook` gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool. `GatedSwapHook` already inherits `InitializerHook`.
+LBP distributions can configure a Uniswap v4 hook through `MigratorParameters.poolParameters.hook`. Any nonzero hook MUST inherit `InitializerHook`, which gates `beforeInitialize` so only the singleton `LBPStrategy` can initialize the committed pool; the strategy verifies this via ERC165 during `initializeDistribution`. `GatedSwapHook` already inherits `InitializerHook`.
 
-If `hook` is `address(0)`, the migration destination is state-dependent: `hook = address(0)` means "prefer the hookless pool, but fall back to the strategy-hooked pool if the hookless pool already exists," so it does not guarantee the final pool is hookless. Migration first attempts to initialize the canonical hookless v4 pool `(currency0, currency1, fee, tickSpacing, address(0))`. If that pool was already initialized, `LBPStrategy` falls back to using its own address as the hook and initializes the strategy-hooked pool `(currency0, currency1, fee, tickSpacing, address(strategy))` instead. `LBPStrategy` is deployed at a valid `BEFORE_INITIALIZE` hook address and self-gates `beforeInitialize`, so this fallback does not require a separate `InitializerHook` deployment. The hookless pool is preferred for simpler routing; the strategy-hooked pool only preserves a migration path when the hookless key has already been consumed. See the [Deployment Guide](./docs/DeploymentGuide.md#lbp-hook-requirement) for details.
+If `hook` is `address(0)` (static-fee pools only), the migration destination is state-dependent: migration prefers the canonical hookless pool, but falls back to the strategy-hooked pool `(..., address(strategy))` if the hookless key was already initialized. Integrators should resolve the actual pool key from the `Migrated` event rather than assuming `address(0)`. See the [Deployment Guide](./docs/DeploymentGuide.md#lbp-hook-requirement) for details.
 
 ## Docs
 
 - [Technical Reference](./docs/TechnicalReference.md)
-- [Changelog](./CHANGELOG.md)
 - [Deployment Guide](./docs/DeploymentGuide.md)
+- [Changelog](./CHANGELOG.md)
+- [Whitepaper](./docs/whitepaper.pdf)
 
 ## Deployment Addresses
 
@@ -190,10 +194,6 @@ The files under `src/` are covered under the Uniswap Labs bug bounty program on 
 ### Security contact
 
 [security@uniswap.org](mailto:security@uniswap.org)
-
-### Whitepaper
-
-[Liquidity Launcher whitepaper](./docs/whitepaper.pdf)
 
 ## License
 
