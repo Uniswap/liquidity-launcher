@@ -33,12 +33,12 @@ contract BeneficiaryVault is IBeneficiaryVault, BaseClaimRecipient, ERC721 {
     }
 
     /// @inheritdoc IBeneficiaryVault
-    function registerBeneficiary(uint256 tokenId, address beneficiary) external override {
+    function registerBeneficiary(uint256 tokenId, address beneficiary) external virtual override {
+        if (_exists(tokenId)) revert ERC721.TokenAlreadyExists();
         if (IERC721(address(positionManager)).ownerOf(tokenId) != msg.sender) {
             revert NotPositionOwner(tokenId, msg.sender);
         }
         if (beneficiary == address(0) || beneficiary == address(this)) revert InvalidBeneficiary(beneficiary);
-        if (_ownerOf(tokenId) != address(0)) _burn(tokenId);
         _mint(beneficiary, tokenId);
     }
 

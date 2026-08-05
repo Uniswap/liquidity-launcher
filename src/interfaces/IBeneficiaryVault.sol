@@ -26,12 +26,11 @@ interface IBeneficiaryVault is IClaimableRecipient {
     /// @param fallbackRecipient The invalid fallback.
     error InvalidFallback(address fallbackRecipient);
 
-    /// @notice Registers `beneficiary` as the recipient of `tokenId`'s fee stream, minting (or
-    ///         re-minting) the transferable beneficiary NFT with the position's tokenId.
+    /// @notice Registers `beneficiary` as the recipient of `tokenId`'s fee stream, minting the
+    ///         transferable beneficiary NFT with the position's tokenId.
     /// @dev Caller MUST own the position in the PositionManager, so registration must happen BEFORE
-    ///      transferring the position to a terminal custodian like the FeeSplitter. Re-registration
-    ///      replaces the beneficiary; unclaimed credits follow the NFT. The beneficiary cannot be
-    ///      zero or this contract; unregistered positions pay out to the fallbacks.
+    ///      transferring the position to a terminal custodian like the FeeSplitter. Registration is
+    ///      once per position and can be changed by transferring the beneficiary NFT.
     /// @param tokenId The position whose fee stream is being assigned.
     /// @param beneficiary The receiver of the beneficiary NFT.
     function registerBeneficiary(uint256 tokenId, address beneficiary) external;

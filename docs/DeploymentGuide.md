@@ -48,7 +48,7 @@ The launcher uses a **pull** flow: the strategy pulls tokens out of the launcher
 ```solidity
 struct Distribution {
     address strategy;
-    uint256 amount;
+    uint128 amount;
     bytes configData;
 }
 
@@ -68,6 +68,8 @@ The `salt` parameter is forwarded to the selected strategy after being domain-se
 Depending on the complexity of the strategy, you may need to pass additional parameters to it. These are passed in the `configData` parameter.
 
 `Distribution.strategy` is the contract that receives the launcher's temporary allowance and must pull the full `amount` from the launcher inside `initializeDistribution`. Strategies may create any number of additional contracts, but those contracts are not returned to the launcher; strategy-specific events or prediction helpers should be used when callers need downstream contract addresses.
+
+Strategies that spend native ETH instead of a distributed token (implementing `INativeStrategy`) are run with `distributeWithNative(strategy, configData, salt, nativeAmount)`, which forwards the native amount with the call; no token leg or approval is involved.
 
 > ⚠️ **Always batch token acquisition (`createToken` or `depositToken`) and `distributeToken` inside the same `multicall`.** Tokens that sit in the launcher between transactions can be distributed by anyone with arbitrary strategy parameters.
 
@@ -92,9 +94,9 @@ This fallback is intentional and an accepted operating mode. Hookless pools are 
 
 `migrate()` attempts pool initialization and liquidity creation through an internal self-call. There is no separate recovery step to configure. Launch creators, recipients, and integrators should understand the recovery path:
 
-- **If automated migration fails, `migrate()` enters recovery** in the same call's failure branch (`tryMigrate()` exposes the same recovery without reverting).
+- **If the internal migration attempt fails, `migrate()` enters recovery** in the same call's failure branch and emits `MigrationFailed`.
 - **Recovery returns funds to the configured `recipient`**: it sweeps any raised currency from the initializer and transfers that currency plus the reserved LP tokens (`reservedTokenAmountForLP`) to `recipient`, then emits `FundsRecovered`.
-- **The initializer reserve is consumed.** Recovery zeroes `reserves[initializer]`, so the same initializer **cannot be retried** through `LBPStrategy.migrate()` afterward.
+- **The initializer's pool-id reservation is consumed** at the top of `migrate()`, before the attempt, so the same initializer **cannot be retried** through `LBPStrategy.migrate()` afterward — on success or failure.
 - **Post-recovery liquidity is manual.** Recovery only returns the assets; it does not create a v4 position. Any desired liquidity must be created manually by the token creator, recipient, or another operator outside the strategy migration flow, subject to the selected pool and hook permissions.
 
 ## Example
@@ -106,7 +108,7 @@ The token is minted directly into the launcher and immediately distributed in a 
 ```solidity
 address liquidityLauncher = vm.envAddress("LIQUIDITY_LAUNCHER");
 address uerc20Factory = vm.envAddress("UERC20_FACTORY");
-address strategyFactory = vm.envAddress("STRATEGY_FACTORY");
+address strategy = vm.envAddress("STRATEGY");
 uint128 initialSupply = 1000000000000000000000000;
 
 bytes32 graffiti = LiquidityLauncher(liquidityLauncher).getGraffiti(msg.sender);
@@ -115,7 +117,7 @@ address precomputedToken = UERC20Factory(uerc20Factory).getUERC20Address(
 );
 
 Distribution memory distribution = Distribution({
-    strategy: strategyFactory,
+    strategy: strategy,
     amount: initialSupply,
     configData: "" // Add any strategy-specific parameters here
 });

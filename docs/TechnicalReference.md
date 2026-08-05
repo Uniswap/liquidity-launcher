@@ -4,21 +4,17 @@
 - [Core Components](#core-components)
     - [LiquidityLauncher](#liquiditylauncher)
     - [Token Factories](#token-factories)
-        - [UERC20Factory](#uerc20factory)
-        - [USUPERC20Factory](#usuperc20factory)
     - [Distribution Strategies](#distribution-strategies)
         - [InstantLaunchStrategy](#instantlaunchstrategy)
-        - [FullRangeLBPStrategy](#fullrangelbpstrategy)
-        - [AdvancedLBPStrategy](#advancedlbpstrategy)
-        - [GovernedLBPStrategy](#governedlbpstrategy)
-        - [VirtualLBPStrategy](#virtuallbpstrategy)
+        - [LBPStrategy](#lbpstrategy)
+        - [UniversalRouterStrategy](#universalrouterstrategy)
+        - [TokenSplitter](#tokensplitter)
+        - [MerkleClaimFactory](#merkleclaimfactory)
     - [Warnings](#warnings)
     - [Periphery contracts](#periphery-contracts)
-        - [TimelockedPositionRecipient](#timelockedpositionrecipient)
-        - [FeeSplitter](#feesplitter)
-        - [BuybackAndBurnClaimRecipient](#buybackandburnpositionrecipient)
-        - [CompoundingClaimRecipient](#compoundingpositionrecipient)
 - [Contract Interactions](#contract-interactions)
+    - [Typical Launch Flow](#typical-launch-flow)
+    - [LBP Hook Requirement](#lbp-hook-requirement)
 - [Key Interfaces](#key-interfaces)
 - [Important Safety Notes](#important-safety-notes)
 
@@ -26,98 +22,100 @@
 
 ### LiquidityLauncher
 
-The main entry point contract that orchestrates token creation and distribution. It provides three primary functions:
+The main entry point. It exposes four functions, designed to be batched with `multicall`:
 
-`createToken` deploys a new token through a specified factory contract. The launcher supports different token standards including basic ERC20 tokens (UERC20) and Superchain tokens (USUPERC20) that can be deployed deterministically. Tokens are created with metadata support including description, website, and image URIs.
+`createToken` deploys a new token through a caller-specified `ITokenFactory`. The launcher forwards name, symbol, decimals, supply, recipient, and factory-specific `tokenData`, plus a graffiti value derived from the caller (`keccak256(abi.encode(msg.sender))`) that factories can embed in the token. The factory address is not validated — callers choose which factory to trust.
 
 `depositToken` pulls an existing ERC20 balance from `msg.sender` into the launcher via Permit2. Used for the "distribute a token I already hold" flow; the caller must have a Permit2 allowance for the launcher (set in a prior tx or via `permit(...)` earlier in the same multicall).
 
-`distributeToken` hands off tokens already held by the launcher to a strategy. The launcher approves the strategy and the strategy pulls via `safeTransferFrom` inside its own `initializeDistribution` (a pull-flow design). Token acquisition (`createToken` or `depositToken`) and `distributeToken` MUST be batched in the same `multicall`; tokens left in the launcher between transactions can be distributed by any caller.
+`distributeToken` hands off tokens already held by the launcher to a strategy. The launcher force-approves the strategy for `distribution.amount` and the strategy pulls via `safeTransferFrom` inside its own `initializeDistribution`; the call reverts with `AllowanceNotFullyConsumed` if any allowance remains. Token acquisition (`createToken` or `depositToken`) and `distributeToken` MUST be batched in the same `multicall`; tokens left in the launcher between transactions can be distributed by any caller.
+
+`distributeWithNative` runs an `INativeStrategy` with forwarded native ETH instead of a distributed token. Nothing is approved; the strategy spends the forwarded value.
 
 ### Token Factories
 
-The system includes two token factory implementations:
+Token factories are external to this repository. The launcher calls any address implementing `ITokenFactory` (from [uerc20-factory](https://github.com/Uniswap/uerc20-factory)). The canonical factories are:
 
-#### UERC20Factory
-Creates standard ERC20 tokens with extended metadata. These tokens support Permit2 by default and include on-chain metadata storage. The factory uses CREATE2 for deterministic addresses based on token parameters.
-
-#### USUPERC20Factory
-Extends the basic factory with superchain capabilities. Tokens deployed through this factory can be created on multiple chains with the same address, though only the home chain holds the initial supply. This enables seamless cross-chain token deployment while maintaining consistency across networks.
+- **UERC20Factory** — standard ERC20 tokens with extended metadata, Permit2 support, and an immutable `graffiti()` recording the original creator. CREATE2 addresses derived from token parameters.
+- **USUPERC20Factory** — adds Superchain support: the same address on multiple chains, with only the home chain holding the initial supply.
 
 ### Distribution Strategies
-The distribution system is modular and supports direct-to-pool launches and auction-based launches.
+
+The distribution system is modular: any contract implementing `IStrategy` (or `INativeStrategy` for native-funded runs) can receive a distribution from the launcher.
 
 #### InstantLaunchStrategy
 
-`InstantLaunchStrategy` creates a v4 pool and token-side LP positions in one call. It has no auction or graduation step. The caller approves `totalSupply`, then calls `initializeDistribution` with ABI-encoded `InstantLaunchParameters`. The strategy pulls the tokens, registers any launch-hook configuration, initializes the pool, and mints the positions.
+`InstantLaunchStrategy` launches a fixed-supply token directly into a hookless, native-ETH-paired v4 pool in one call. There is no auction or graduation step, and nothing about the pool is caller-configurable — the launch shape is fixed at deployment:
 
-The caller configures:
+- Supply MUST be exactly 1,000,000,000 tokens with 18 decimals (`TOTAL_SUPPLY = 1e9 * 1e18`), and the token's reported `totalSupply()` must match.
+- The pool is `(native ETH, token)` with a 25 bps LP fee, tick spacing 60, and no hook. Initialization reverts if that pool key already exists.
+- The opening tick and the resulting position liquidity are immutables set at deployment.
 
-- The paired currency, initial price, fee, tick spacing, and hook.
-- Weighted `PositionDefinition[]` data. Weights MUST total `1e7`, and every resolved range MUST be entirely on the token side of the initial price.
-- The LP NFT recipient and optional per-position recipient overrides.
-- A recipient for rounding dust and tokens that cannot be placed because of per-tick liquidity limits.
-- Optional `LaunchConfig` data when the hook implements `ILaunchHook`.
+The full supply is placed as a single-sided position spanning `[MIN_LAUNCH_TICK, initialTick]` — entirely on the token side of the opening price. `MIN_LAUNCH_TICK` is chosen so that overflowing v4's per-tick max liquidity would require more than the total supply. Rounding dust left after minting is burned to `0xdead`.
 
-The launched token MUST be a standard ERC20, MUST differ from the paired currency, and MUST transfer exactly `totalSupply`. Fee-on-transfer and rebasing tokens are not supported. Position definitions allocate the full token budget, but the strategy does not guarantee that all tokens become liquidity: rounding and v4 liquidity limits can leave tokens for the configured sweep recipient. LP NFTs are owned and controlled by their configured recipients.
+`configData` MUST be a non-empty abi-encoded `InstantLaunchConfig` naming a `feeBeneficiary` (not zero, not the launcher), even when creator fees are disabled. If a `BeneficiaryVault` is configured, the strategy registers the beneficiary before parting with the position; a vault of `address(0)` opts out of creator fees for all launches.
 
-Hooks are trusted launch inputs. Every instant launch MUST configure an `IInitializerHook` that authorizes the calling strategy and has the required v4 permission bits. This gate prevents third parties from initializing the configured pool key first. An `ILaunchHook` also requires a nonempty `LaunchConfig`; other hooks reject launch configuration. `InstantLaunchStrategy` derives the token's currency ordering and overwrites `LaunchConfig.tokenIsCurrency0` before registration.
+The LP NFT is transferred to the singleton [`FeeSplitter`](../src/periphery/README.md), which locks it permanently and permissionlessly splits its fees between the configured recipients (including the beneficiary's share via the vault).
 
-`InstantLaunchStrategy` is inheritable. Derived strategies can reuse exact token intake and the full launch sequence, or override launch, position-planning, hook-registration, and sweep steps when their constraints allow a smaller implementation.
+Fee-on-transfer and rebasing tokens are not supported: the strategy requires the pulled amount to arrive exactly.
 
-`LaunchHook` restricts initialization to the strategy, rejects static-fee pools, blocks swaps before `swapStartBlock`, and applies `baseFee` at or after `windowEndBlock`. During the launch window, it uses the configured `IDynamicFeeModule` quote for the swap direction, or `baseFee` if no module is set. Module calls fail closed: a failed or malformed quote blocks initialization or reverts the affected swap. Preflight does not guarantee future quotes or economic behavior.
+`TokenLaunched` records the pool id, token, final position recipient (the fee splitter), and pool key.
 
-`TokenLaunched` records the pool key, initial price, and executed PositionManager plan. `TokensSwept` records tokens sent to the sweep recipient.
+#### LBPStrategy
 
-The LBP strategies below create a Continuous Clearing Auction and later migrate liquidity to v4. `LBPStrategy.migrate()` is a one-shot action: if migration succeeds, liquidity is deployed to v4; if it reverts, the strategy sweeps the held LP token reserves and raised currency to the initializer's configured `recipient`.
+`LBPStrategy` runs an auction-based launch: it deploys an auction contract (the *initializer*) through an external `IDistributorFactory` fixed at construction, and later migrates the raised funds plus reserved tokens into a v4 pool at the auction's clearing price.
 
-#### FullRangeLBPStrategy
-A simple implementation that migrates raised funds to Uniswap V4 as a single full-range position. It is the simplest strategy and is suitable for most use cases.
+`initializeDistribution` decodes `configData` as `(MigratorParameters, bytes initializerParams)`, validates the parameters, deploys the initializer, and splits the pulled supply: `totalSupply - reservedTokenAmountForLP` goes to the initializer for the auction, `reservedTokenAmountForLP` stays in the strategy until migration. The target pool id is reserved at registration so no other initializer can claim the same pool key.
 
-#### AdvancedLBPStrategy
-A more advanced strategy that uses any excess tokens or currency after the full-range position is created to seed one-sided positions.
+Key `MigratorParameters` fields:
 
-#### GovernedLBPStrategy
-A strategy that lets a trusted entity restrict swapping on the liquidity pool.
+- `migrationBlock` — earliest block `migrate()` can run; must be after the initializer's `endBlock`.
+- `reservedTokenAmountForLP` — token-side LP budget held by the strategy.
+- `recipient` — receives unused currency and tokens after migration, and the recovered funds if migration fails.
+- `positionRecipient` — default recipient of minted LP NFTs; individual `PositionDefinition`s may set an `overridePositionRecipient`.
+- `positionDefinitions` — abi-encoded `PositionDefinition[]` describing the weighted LP plan (see `PositionPlanner`).
+- `lpAllocationSchedule` — abi-encoded `LiquidityAllocationBracket[]` mapping currency raised to the share allocated to LP, bracket by bracket.
+- `poolParameters` — fee, tick spacing, and hook for the migrated pool. See [LBP Hook Requirement](#lbp-hook-requirement).
 
-#### VirtualLBPStrategy
-A strategy that implements a virtual token backed by an underlying token. This is useful for tokens with complex vesting or lockup schedules.
+Migration mechanics are covered in [Contract Interactions](#contract-interactions).
 
-The LBP strategies are provided as-is. Custom auction strategies can extend `LBPStrategyBase`.
+#### UniversalRouterStrategy
+
+`UniversalRouterStrategy` runs a caller-supplied Universal Router route, so a launch and a buy fit in one launcher `multicall`. `configData` is an abi-encoded `UniversalRouterConfig`: the router to use (so one deployment serves every router version), a recipient for any distributed token the route did not spend, and the route itself (`abi.encode(bytes commands, bytes[] inputs, uint256 deadline)`).
+
+Both entry points are launcher-only. `initializeDistribution` pays the distributed token to the router and executes the route; `initializeWithNative` executes the route with the forwarded native ETH. The strategy holds no balance between calls and has no `receive`, so routes MUST sweep their own outputs: use `TAKE` with an explicit recipient, never `TAKE_ALL` (which pays the strategy, where output is claimable by anyone), and route unspent native to the route's own recipient.
+
+#### TokenSplitter
+
+`TokenSplitter` splits a distribution across N recipients with no custody: tokens move directly from the launcher to each recipient via `safeTransferFrom`. `configData` is an abi-encoded `Split[]` of `(recipient, amount)` pairs whose amounts MUST sum to exactly `totalSupply`.
+
+#### MerkleClaimFactory
+
+`MerkleClaimFactory` deploys a `MerkleClaim` — Uniswap's audited `MerkleDistributorWithDeadline`, pinned to Solidity 0.8.17 and deployed from embedded creation code — and funds it with the distribution. `configData` is `abi.encode(bytes32 merkleRoot, address owner, uint256 endTime)`; an `endTime` of 0 disables the deadline. After `endTime`, the (trusted) owner can withdraw unclaimed tokens.
 
 ### Warnings
 
-Users should be aware that it is trivially easy to create a LBPStrategy and corresponding Auction with malicious parameters. This can lead to a loss of funds or a degraded experience. You must validate all parameters set on each contract in the system before interacting with them.
+It is trivially easy to create an LBPStrategy distribution and corresponding auction with malicious parameters, which can lead to loss of funds or a degraded experience. Validate all parameters set on each contract in the system before interacting with it.
 
-Since LBPStrategies cannot control the final price of the Auction, or how much currency is raised, it is possible to configure an Auction such that it is impossible to migrate the liquidity to V4. Users should be aware that malicious deployers can design such parameters so a failed migration returns the raised currency and reserved LP tokens to the configured `recipient` instead of creating the expected V4 liquidity.
+Since `LBPStrategy` cannot control the final price of the auction or how much currency is raised, it is possible to configure an auction that can never migrate to v4. Malicious deployers can design such parameters so a failed migration returns the raised currency and reserved LP tokens to the configured `recipient` instead of creating the expected v4 liquidity.
 
-We strongly recommend that a token with value such as ETH or USDC is used as the `currency`.
+We strongly recommend using a token with established value, such as ETH or USDC, as the `currency`.
 
 ### Periphery contracts
-The following periphery contracts are provided as examples.
 
-#### TimelockedPositionRecipient
-The `TimelockedPositionRecipient` contract is a utility contract for holding a v4 LP position until a timelock period has passed. It is used to ensure that the position is not transferred to the recipient before the timelock expires.
+Periphery contracts are documented in [`src/periphery/README.md`](../src/periphery/README.md). In brief:
 
-A deployed instance can be used as a `PositionDefinition.recipient` when using an LBPStrategy.
-
-#### FeeSplitter
-The `FeeSplitter` is a singleton custodian of native-ETH v4 LP positions with immutable, deploy-time fee splits. `collectFees(uint256[] tokenIds)` permissionlessly collects each position and pushes independent basis-point shares of native ETH (`currency0`) and token (`currency1`) in a single pass; native shares are force-sent. Position deposits carry no data: the splitter needs no knowledge of any recipient's implementation — the only alternative, a vault owning the position NFT itself, would break the splitter's custody model, so this decoupling is deliberate. A `useCallback` recipient receives one two-amount `onAmountsReceived` call after both transfers, and a failing notification reverts the call so the transfers and the fee realization are rolled back — no unattributed balance can exist on a recipient, whose accounting is permissionless. Failures are position-scoped, and `currency1` must be a standard, unrestricted token. `BeneficiaryVault` owns beneficiary registration: `registerBeneficiary(tokenId, beneficiary)` is authorized by position custody, so a depositor registers directly with the vault while still owning the position — BEFORE transferring it to the splitter, after which registration is final. It inherits BaseClaimRecipient's accounting, mints a transferable beneficiary NFT, gates claims to its NFT owner, and flushes unregistered shares to per-side fallbacks. Base recipients consult their `_beforeTransfer` policy once per claim, against the pre-transfer state; EOAs skip the optional executor callback, so security lives in before/after outcome checks. `InstantLaunchStrategy` requires an abi-encoded `InstantLaunchConfig` naming the fee beneficiary in `configData`; its vault rejects itself at registration. Positions held by the splitter are irrecoverable by design — there is no owner, operator, or exit path.
-
-#### UERC20BeneficiaryVault
-The `UERC20BeneficiaryVault` is a `BeneficiaryVault` that adds a second way to prove a claim, for positions whose custodian never called `registerBeneficiary` — `LBPStrategy` predates the vault and cannot be changed, so its positions reach the `FeeSplitter` with no beneficiary NFT and the creator's share would otherwise flush to the immutable fallbacks. Only positions with no NFT behave differently: the vault reads `graffiti()` on both sides of the pair through a `staticcall` that treats a failure or a non-`bytes32` return as no graffiti (so native and non-UERC20 currencies report `bytes32(0)`), and compares it against `keccak256(abi.encode(msg.sender))`, the same derivation as `LiquidityLauncher.getGraffiti`. Zero doubles as "no graffiti" safely because a caller's graffiti is a keccak256 hash and so is never zero. A match mints the caller the beneficiary NFT and then falls through to the base, which resolves the recipient from the fresh owner — so the proof runs once per position, every later claim takes the base's plain owner check, and the creator holds a transferable claim right. A position pairing a UERC20 whose graffiti names someone else reverts with `NotTokenCreator` instead of flushing, so nobody can push an unclaimed creator share to the fallbacks; a position with no UERC20 at all keeps the base flush behaviour. Graffiti records whoever called the `LiquidityLauncher`, so for a token created through an aggregator the aggregator is the prover, and the proof is per token rather than per position: any unregistered position pairing that token is claimable by its creator.
-
-#### BuybackAndBurnClaimRecipient
-The `BuybackAndBurnClaimRecipient` is a singleton receiving amounts from any number of native-ETH-paired positions. An `IClaimExecutor` calls `claim(tokenId, minCurrency0Amount, minCurrency1Amount)` and receives both attributed amounts. During the callback the executor may perform a buyback; after it returns, the recipient pulls the burn amount of the position's `currency1` from the executor and sends it to the burn address. It requires native ETH as `currency0`, derives the burn token from each position's `currency1`, and applies one minimum currency1 burn amount to every position. The full transaction reverts if either minimum or the burn requirement is not met. The contract is not intended to hold positions itself; it only receives amount notifications for positions held elsewhere (e.g. the `FeeSplitter`).
-
-#### CompoundingClaimRecipient
-The `CompoundingClaimRecipient` uses the same executor callback flow. The executor deposits ERC20 proceeds directly into PositionManager; for native pools it deposits WETH instead. After the callback, the recipient unwraps PositionManager's WETH balance, settles the available pool currencies, increases liquidity from the resulting deltas, and returns unused dust to the executor. The executor never receives approval over the position, and the transaction reverts unless the position's liquidity increases by at least `MIN_LIQUIDITY_INCREASE`.
+- **FeeSplitter** — zero-admin custodian of native-ETH v4 LP positions with immutable, deploy-time fee splits. `collectFees(uint256[] tokenIds)` permissionlessly collects each position and pushes independent basis-point shares of native ETH (`currency0`) and token (`currency1`); native shares are force-sent. Positions sent to it are irrecoverable by design.
+- **BeneficiaryVault** — a claim recipient whose transferable ERC721 represents a position's fee beneficiary. `registerBeneficiary(tokenId, beneficiary)` is authorized by position custody, so a depositor registers BEFORE transferring the position to a terminal custodian like the FeeSplitter. Unregistered positions pay out to immutable per-side fallbacks.
+- **UERC20BeneficiaryVault** — a `BeneficiaryVault` that also lets the creator of a launcher-created UERC20 claim unregistered positions pairing that token, proven through the token's `graffiti()`. Exists for custodians that predate the vault and never registered a beneficiary (e.g. `LBPStrategy` positions).
+- **BuybackAndBurnClaimRecipient** — pays a claim's attributed amounts to an `IClaimExecutor`, which may perform a buyback during the callback; afterwards the recipient pulls a fixed minimum of the position's `currency1` from the executor and sends it to the burn address.
+- **CompoundingClaimRecipient** — pays a claim's attributed amounts to an `IClaimExecutor` and requires the position's liquidity to have grown by at least `minLiquidityIncrease` when the callback returns. The executor performs the actual deposit and liquidity increase.
+- **TimelockedPositionRecipient** — holds v4 LP positions until a timelock block, after which anyone can approve the configured operator to transfer them.
+- **ProtocolFeeController** — governance-owned source of truth for the protocol fee on currency raised by a launch, with a global flat rate and optional per-currency progressive brackets. See the [periphery README](../src/periphery/README.md#protocolfeecontroller) for configuration details.
 
 ## Contract Interactions
 
 ### Typical Launch Flow
-
-The typical flow for launching a token involves several coordinated steps:
 
 #### 1. Token Creation and Distribution
 
@@ -128,93 +126,82 @@ Use `LiquidityLauncher.multicall` to atomically batch token acquisition with `di
 
 Either way, the strategy then pulls the tokens out of the launcher via `safeTransferFrom` inside its own `initializeDistribution`.
 
-For the LBP strategy, the distribution configuration includes:
-
-- **Allocation Split**: Division between auction and liquidity reserves
-- **Pool Parameters**: Fee tier and tick spacing for the Uniswap V4 pool
-- **Hook**: Optional Uniswap v4 hook address. Any hook used in the `hook` field MUST inherit `InitializerHook`
-  so `beforeInitialize` restricts pool initialization to the LBP strategy. The strategy checks ERC165 support for
-  `IInitializerHook` during `initializeDistribution`. If this field is `address(0)`, static-fee migration uses the
-  hookless pool unless that pool already exists, in which case it uses `LBPStrategy` itself as the hook. Dynamic-fee
-  pools must provide a nonzero hook with the fee logic.
-- **Auction Parameters**: Duration, pricing steps, and reserve price
-- **LP Recipient**: Address that will receive the liquidity position NFT
+For an instant launch, that is the whole lifecycle: the pool, position, and fee custody are final at the end of the `multicall`. The remaining steps apply to LBP launches.
 
 #### 2. Auction Phase
 
-The strategy deploys an auction contract and transfers the allocated tokens. The auction runs according to the specified parameters, allowing users to bid for tokens at decreasing prices.
+The strategy deploys the initializer and transfers it the auction supply. The auction runs according to the initializer's own parameters.
 
-#### 3. Price Discovery Notification
+#### 3. Migration to Uniswap V4
 
-Once the auction completes, it transfers the raised funds to the LBP Strategy and the strategy
-grabs the final clearing price.
+From `migrationBlock` onward, anyone can call `migrate(initializer)` to:
 
-#### 4. Migration to Uniswap V4
+- Verify the initializer is registered for the reserved pool id and consume the reservation (making the initializer one-shot — a second `migrate` call reverts with `InitializerNotRegistered`)
+- Sweep the raised currency from the initializer, checking it matches the initializer's reported `currencyRaised`
+- Apply the `lpAllocationSchedule` brackets to derive the currency-side LP budget
+- Initialize the v4 pool at the auction's clearing price
+- Mint liquidity according to the weighted `positionDefinitions`, plus an implicit full-range position from any leftover budget
+- Transfer each LP NFT to its `overridePositionRecipient` when set, otherwise to `positionRecipient` (the full-range fallback always goes to `positionRecipient`)
+- Sweep unused currency and unused reserved tokens to `recipient`
 
-After a configurable delay (`migrationBlock`), anyone can call `migrate()` to:
+Unsold auction tokens stay in the initializer and are claimed through the initializer's own `tokensRecipient` path.
 
-- Validate the initializer is registered, still has reserved LP tokens, and is past `migrationBlock`
-- Initialize the Uniswap V4 pool at the discovered price
-- Deploy liquidity according to the configured position definitions, plus an implicit full-range position minted from any leftover budget
-- Transfer each LP NFT to its `PositionDefinition.overridePositionRecipient` when set, otherwise to `MigratorParameters.positionRecipient`. The full-range fallback position is always minted to `MigratorParameters.positionRecipient`
+The actual pool initialization and liquidity creation run through an internal self-call (`tryMigrate`), so a failure can be caught and handled in the same transaction.
 
-`migrate()` attempts the actual pool initialization and liquidity creation through an internal self-call. A successful migration consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` call for the same initializer.
+#### 4. Migration Failure and Recovery
 
-A successful `migrate()` consumes the initializer's reservation in the strategy (`reserves[initializer]` is zeroed), which permanently blocks any future `migrate` or `recoverFunds` call for the same initializer.
+If the internal migration attempt reverts, `migrate()` catches the revert and treats the migration as terminal:
 
-**Note:** To optimize gas costs, any minimal dust amounts are foregone and locked in the PoolManager rather than being swept at the end of the migration process.
+- Sweeps any raised currency still held by the initializer to the strategy and forwards it to the configured `recipient`.
+- Transfers the held `reservedTokenAmountForLP` to `recipient`.
+- Emits `FundsRecovered` and `MigrationFailed`.
 
-#### 5. Migration Failure and Recovery
+The pool-id reservation was already consumed at the top of `migrate()`, so the same initializer cannot be retried. Recovery only returns assets; it creates no v4 position — any desired liquidity must be created manually afterwards. Because each initializer's reservation is consumable exactly once, one initializer's recovery cannot reach another initializer's reserves for the same token.
 
-If the internal migration attempt reverts after the initializer is eligible to migrate, `migrate()` catches the revert and treats the migration as terminal. It then:
+This prevents funds from being stuck behind a migration path that will never become valid.
 
-- Sweeps any raised currency still held by the initializer to the strategy.
-- Transfers the swept currency and the held `reservedTokenAmountForLP` to the initializer's configured `recipient`.
-- Zeroes `reserves[initializer]`, which blocks any future migration attempt for the same initializer.
-- Unsold auction tokens stay in the initializer and can be claimed through the initializer's own `tokensRecipient` path.
+**Note:** To optimize gas costs, minimal dust amounts may be foregone and locked in the PoolManager rather than swept at the end of migration.
 
-This behavior prevents funds from being stuck behind a migration path that is not expected to become valid later. Because each initializer's reserves are consumable exactly once, one initializer's failure recovery cannot reach into another initializer's held reserves on the same token.
+#### 5. Ways Migration Can Fail
 
-#### 6. Ways Migration Can Fail
+The strategy is written to make migration difficult to grief, but it cannot guarantee that every configured launch can create v4 liquidity. Treat migration safety as part of launch validation, especially when a launcher presents auctions as curated or safe.
 
-The strategy is written to make migration difficult to grief, but it cannot guarantee that every configured launch can create V4 liquidity. Users and integrators should treat migration safety as part of launch validation, especially when a launcher presents auctions as curated or safe.
+`migrate()` can revert before attempting migration if the initializer is not registered, the reservation was already consumed, or the current block is before `migrationBlock`. Failure recovery itself can revert if the token transfer to the configured `recipient` reverts (native currency is force-sent, so an ETH-rejecting recipient cannot block recovery — an ERC20 that blocks the recipient can).
 
-The public `migrate()` call can still revert before attempting migration if the initializer is not registered, the reserved LP tokens were already consumed, or the current block is before `migrationBlock`. It can also revert during failure recovery if the strategy cannot sweep or transfer assets to the configured `recipient`.
+The internal migration attempt can fail (triggering recovery) when, among other causes:
 
-Potential migration failure cases include:
+- **Malicious or non-standard token:** the launched token reverts, misbehaves on transfer, or blocks transfers to the PositionManager. Fee-on-transfer and rebasing tokens are unsupported and break accounting assumptions.
+- **Malicious hook:** a configured v4 hook can revert during pool initialization or liquidity modification, or make the committed pool unsafe for users. The `InitializerHook` check does not prove the hook's economic behavior is safe.
+- **Position definitions that resolve to nothing:** tiny budgets, extreme prices, or ranges that collapse after clamping and snapping can leave no mintable positions, which reverts with `NoPositionsCreated`.
+- **Pool or PositionManager state at migration time:** definitions that were valid at initialization can still fail during mint execution at the discovered price.
 
-- **Malicious or non-standard token:** The launched token can revert, return unexpected transfer behavior, block transfers to the PositionManager, or otherwise fail during LP funding or recovery. Fee-on-transfer and rebasing tokens are not supported and can also break accounting assumptions.
-- **Malicious hook:** A configured V4 hook can revert during pool initialization or liquidity modification, or implement behavior that makes the committed pool unsafe for users. The strategy checks that nonzero migration hooks inherit `InitializerHook`, but that check does not prove the hook's economic behavior is safe.
-- **Recipient unable to receive ETH:** If the raised currency is native ETH and the configured `recipient` rejects ETH, a successful migration can revert while sweeping leftovers, and a failed migration can also revert while trying to recover funds. In that case the public `migrate()` call reverts and the initializer remains pending until a later call can complete.
-- **Position definitions that resolve to zero value:** Position definitions can resolve to no usable liquidity because of tiny budgets, extreme prices, tick rounding, or ranges that collapse after clamping to usable ticks. This can cause the position plan to create no meaningful LP, or cause the internal migration attempt to fail and trigger recovery.
-- **Position definitions that cannot be created:** Position definitions can be syntactically valid at initialization but fail at migration time because the discovered price, tick spacing, max liquidity per tick, pool state, or PositionManager execution makes the final positions invalid or impossible to mint.
-- **Overlapping snapped ranges that exceed per-tick liquidity:** Position planning caps liquidity per position, but not aggregate liquidity per tick. Multiple position definitions can snap to overlapping tick ranges, and their combined liquidity can exceed Uniswap V4's per-tick max liquidity during mint execution, causing migration to revert.
-
-When the internal migration attempt fails and recovery succeeds, no V4 LP is created by the strategy; the raised currency and reserved LP tokens are returned to `recipient`. Users should validate the parameters set by the deployer before interacting with any strategies or associated contracts.
+When recovery succeeds, no v4 LP is created by the strategy; the raised currency and reserved LP tokens are returned to `recipient`.
 
 ### LBP Hook Requirement
 
-The `MigratorParameters.poolParameters.hook` field commits the exact Uniswap v4 hook used by the post-auction pool. Any nonzero hook configured in this field MUST inherit `InitializerHook`. `InitializerHook` enables the `BEFORE_INITIALIZE` permission, supports `IInitializerHook` via ERC165, and rejects pool initialization unless the PoolManager-reported sender is the singleton `LBPStrategy`. `LBPStrategy.initializeDistribution` checks this ERC165 support before storing the hook.
+`MigratorParameters.poolParameters.hook` commits the exact v4 hook for the post-auction pool. Any nonzero hook MUST inherit `InitializerHook`, which enables the `BEFORE_INITIALIZE` permission, supports `IInitializerHook` via ERC165, and rejects pool initialization unless the PoolManager-reported sender is its authorized address. During `initializeDistribution` the strategy verifies the hook's ERC165 support, that its `authorized()` is the strategy, that it is a valid v4 hook address for the configured fee, and that the target pool is not already initialized.
 
-This requirement protects the committed pool from permissionless initialization at an arbitrary price. Hooks that do not inherit `InitializerHook` MUST NOT be used in `MigratorParameters.poolParameters.hook`. `GatedSwapHook` already inherits `InitializerHook` and satisfies this requirement.
+This protects the committed pool from permissionless initialization at an arbitrary price. `GatedSwapHook` inherits `InitializerHook` and satisfies the requirement.
 
-`address(0)` is the only exception to the nonzero hook requirement for static-fee pools. With `hook == address(0)`, migration first targets the hookless pool. If that pool is already initialized, `LBPStrategy` switches the pool key to `hooks = IHooks(address(this))` and initializes the strategy-hooked pool. The strategy therefore must be deployed at an address with the `BEFORE_INITIALIZE` hook permission bit, and its self-initializer only permits pool initialization when the PoolManager-reported sender is the strategy itself. Dynamic-fee pools must configure a nonzero hook because `LBPStrategy` does not implement dynamic fee updates.
+`address(0)` is the only exception, and only for static-fee pools. With `hook == address(0)`, migration first targets the canonical hookless pool; if that pool is already initialized, the strategy switches the key to itself as the hook and initializes the strategy-hooked pool instead. `LBPStrategy` is deployed at a valid `BEFORE_INITIALIZE` hook address and rejects all `beforeInitialize` callbacks (v4 skips the callback when the sender is the hook itself, so self-initialization passes). Dynamic-fee pools must configure a nonzero hook, because the strategy implements no fee logic. See the [Deployment Guide](./DeploymentGuide.md#lbp-hook-requirement) for the integrator-facing details.
 
 ## Key Interfaces
 
-**ILiquidityLauncher** defines the main launcher interface for creating and distributing tokens.
+**ILiquidityLauncher** — the main launcher interface for creating and distributing tokens.
 
-**IDistributor** implemented by contracts that receive and distribute tokens (e.g. the LBP initializer). Distributors use a push based token model: the caller sends token funds to the distributor, then MUST call `onTokensReceived()` after funding so the distributor can capture post-funding setup atomically.
+**IStrategy** — implemented by strategies the launcher hands off to. `initializeDistribution()` is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom`; the launcher pre-approves the strategy for the full amount before invoking it. The function returns nothing; strategy-specific events or prediction helpers expose any child contracts.
 
-**IStrategy** implemented by strategies that the launcher hands off to. The `initializeDistribution()` function is responsible for pulling `totalSupply` of `token` from `msg.sender` (the launcher) via `safeTransferFrom` — the launcher pre-approves the strategy for the full amount before invoking it. The function does not return a downstream distributor; `Distribution.strategy` is the token-pulling strategy, and strategy-specific events or prediction helpers expose any child contracts.
+**INativeStrategy** — implemented by strategies funded with forwarded native ETH via `distributeWithNative` instead of a token allowance.
 
-**IDistributorFactory** implemented by factories that parent strategies use when they need a created distributor address, such as the LBP strategy's initializer factory. This minimal factory interface exposes `create(...)` and `getAddress(...)`; it does not fund the distributor, so the calling strategy remains responsible for token movement and `onTokensReceived()`.
+**IDistributor** — implemented by contracts that receive and distribute tokens (e.g. the LBP initializer). Distributors use a push-based token model: the caller sends token funds to the distributor, then MUST call `onTokensReceived()` so the distributor can capture post-funding setup atomically.
 
-**ITokenFactory** defines the interface for token creation factories, standardizing how different token types are deployed.
+**IDistributorFactory** — implemented by factories that parent strategies use to deploy distributors, such as the LBP strategy's initializer factory. Exposes `create(...)` and a sender-aware `getAddress(...)`; it does not fund the distributor, so the calling strategy remains responsible for token movement and `onTokensReceived()`.
+
+**ITokenFactory** — the token-creation interface (from uerc20-factory) that `createToken` calls into.
 
 ## Important Safety Notes
 
-⚠️ **Rebasing Tokens and Fee-on-Transfer Tokens are NOT compatible with LiquidityLauncher.** The system is designed for standard ERC20 tokens and will not function correctly with tokens that have dynamic balances or transfer fees.
+⚠️ **Rebasing tokens and fee-on-transfer tokens are NOT compatible with LiquidityLauncher.** The system is designed for standard ERC20 tokens and will not function correctly with tokens that have dynamic balances or transfer fees.
 
 ⚠️ **Always batch token acquisition and distribution inside a single `multicall`.** The launcher uses a pull-based hand-off: tokens must already be in the launcher when `distributeToken` is called. If tokens sit in the launcher between transactions — for example, because you `createToken(recipient=launcher)` or `depositToken` in one tx and `distributeToken` in another — **any caller can call `distributeToken` on them with an arbitrary strategy and arbitrary parameters and steal them.** The supported flows are:
 
