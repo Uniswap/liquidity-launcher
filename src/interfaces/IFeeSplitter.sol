@@ -73,7 +73,7 @@ interface IFeeSplitter {
     /// @param sender The rejected caller of onERC721Received.
     error NotPositionManager(address sender);
 
-    /// @notice Thrown when this contract does not own the position being increased.
+    /// @notice Thrown when this contract does not own the position being collected or increased.
     /// @param tokenId The position token ID.
     error NotOwner(uint256 tokenId);
 
@@ -85,8 +85,8 @@ interface IFeeSplitter {
     error PoolManagerAlreadyUnlocked();
 
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
-    /// @dev Permissionless. Positions must be native-ETH pairs and be owned by (or approved to) the
-    ///      splitter, otherwise the PositionManager reverts. A recipient that reverts its notification
+    /// @dev Permissionless. Positions must be native-ETH pairs and be owned by the splitter,
+    ///      otherwise the call reverts with NotOwner. A recipient that reverts its notification
     ///      reverts this call, leaving those fees in the pool; other token IDs are unaffected.
     ///      Unlike `increaseLiquidity`, collection cannot run inside an existing PoolManager unlock:
     ///      it reverts with PoolManagerAlreadyUnlocked so recipients are never notified mid-lock.

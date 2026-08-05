@@ -553,6 +553,19 @@ contract FeeSplitterTest is Test {
         assertLe(token.balanceOf(address(splitter)), 1);
     }
 
+    function test_collectFees_revertsIfSplitterDoesNotOwnPosition() public {
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPool(address(token));
+        uint256 tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        // Approval is not enough: an owner keeping custody could burn the position after a collect,
+        // permanently stranding the amounts attributed to claim recipients.
+        IERC721(address(POSITION_MANAGER)).approve(address(splitter), tokenId);
+        _accrueFees(key);
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.NotOwner.selector, tokenId));
+        splitter.collectFees(_single(tokenId));
+    }
+
     function test_increaseLiquidity_usesPositionManagerBalancesAndRefundsExcess() public {
         FeeSplitter splitter = _defaultSplitter();
         MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
