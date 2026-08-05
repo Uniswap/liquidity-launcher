@@ -1,16 +1,23 @@
 # Periphery
 
-Peripheral contracts used alongside LBP strategies.
+Peripheral contracts used alongside launch strategies.
 
 ## Contents
 
 | Contract | Purpose |
 | --- | --- |
-| [`TimelockedPositionRecipient`](./TimelockedPositionRecipient.sol) | Holds one or more v4 LP positions until a timelock block is reached, then approves a configured operator to transfer them. Base contract for the two recipients below. |
-| [`PositionFeesForwarder`](./PositionFeesForwarder.sol) | Adds a permissionless `collectFees(tokenId)` entrypoint that collects LP fees from a held position and forwards both sides to an immutable recipient. |
-| [`BuybackAndBurnPositionRecipient`](./BuybackAndBurnPositionRecipient.sol) | Adds a permissionless `collectFees(tokenId, minCurrency)` entrypoint that (a) pulls a minimum amount of `token` from the caller and burns it, (b) collects LP fees, (c) forwards the `token` side to the burn address, (d) forwards the `currency` side to the caller. Designed so MEV searchers can profitably trigger buyback-and-burns. |
+| [`BaseClaimRecipient`](./BaseClaimRecipient.sol) | Abstract base for LP position fee recipients: attributes received amounts per position (`onAmountsReceived`), pays them out through `claim(tokenId, min0, min1)`, and lets subclasses set the payout policy via `_beforeClaimTransfer`. |
+| [`BaseClaimRecipientWithCallback`](./BaseClaimRecipientWithCallback.sol) | A `BaseClaimRecipient` whose `claim` unconditionally calls the caller back through `IClaimExecutor.onClaimed`, bracketed by before/after hooks so the subclass can enforce what the executor must do with the funds. |
+| [`FeeSplitter`](./FeeSplitter.sol) | Singleton, zero-admin custodian of v4 native-ETH LP positions. Permissionless `collectFees(tokenIds[])` pushes immutable, independent bps splits of native ETH and token fees; native shares are force-sent. A recipient that reverts its callback reverts the whole call, so callers should exclude such token IDs — the skipped fees stay collectable in the pool. `currency1` must be a standard, unrestricted token. Positions are irrecoverable by design. |
+| [`BeneficiaryVault`](./BeneficiaryVault.sol) | A `BaseClaimRecipient` with transferable beneficiary NFTs. `registerBeneficiary(tokenId, beneficiary)` is authorized by position custody, so depositors register BEFORE transferring the position away. Only the NFT owner may claim attributed amounts; unregistered shares pay out to immutable per-side fallbacks. |
+| [`UERC20BeneficiaryVault`](./UERC20BeneficiaryVault.sol) | A `BeneficiaryVault` for positions whose custodian never registered a beneficiary (e.g. strategies that predate the vault). The creator of the launcher-created UERC20 in the pair proves themselves through the token's `graffiti()`; the first proven claim mints them the beneficiary NFT, and later claims use the base's plain owner check. An unregistered position pairing such a token reverts for anyone else rather than flushing the creator's share to the fallbacks. Do NOT use it for pools pairing two tokens that both expose `graffiti()`: either creator passes the check, and whichever claims first takes both currency sides. |
+| [`BuybackAndBurnClaimRecipient`](./BuybackAndBurnClaimRecipient.sol) | Callback recipient for native-ETH-paired positions: `claim` pays the attributed amounts to the caller, invokes `onClaimed` (during which the caller may perform a buyback), then pulls `minCurrency1BurnAmount` of the position's `currency1` from the caller and sends it to the burn address. Designed so MEV searchers can profitably trigger buyback-and-burns. |
+| [`CompoundingClaimRecipient`](./CompoundingClaimRecipient.sol) | Callback recipient that requires the claimed position's liquidity to grow by at least `minLiquidityIncrease` across the executor callback. The executor performs the deposit and liquidity increase; the recipient only snapshots and verifies. |
+| [`TimelockedPositionRecipient`](./TimelockedPositionRecipient.sol) | Holds v4 LP positions until a timelock block is reached, after which anyone can approve the configured operator to transfer them. |
 | [`ProtocolFeeController`](./ProtocolFeeController.sol) | Governance-controlled source of truth for the protocol fee applied to currency raised by a launch. Integrators call it at fee-settlement time to discover the fee amount and recipient. See below. |
-| [`SelfInitializerMixin`](../strategies/lbp/SelfInitializerMixin.sol) | Abstract mixin for v4 hooks that may only initialize their own pools (restricts `beforeInitialize` to self-calls). Used by strategies that must deterministically control the initial pool state. |
+| [`InitializerHook`](./hooks/InitializerHook.sol) | Base v4 hook that restricts pool initialization to a preset address. Any nonzero hook configured in `MigratorParameters.poolParameters.hook` MUST inherit it. |
+| [`GatedSwapHook`](./hooks/GatedSwapHook.sol) | An `InitializerHook` that also blocks swaps until a configured gatekeeper calls `approveSwaps()`. |
+| [`SelfInitializerMixin`](../strategies/lbp/SelfInitializerMixin.sol) | Abstract mixin for hooks that only initialize their own pools: it reverts every `beforeInitialize` callback, relying on v4 skipping the callback when the sender is the hook itself. |
 
 ## ProtocolFeeController
 
@@ -52,8 +59,6 @@ controller.setGlobalProtocolFeePips(0);
 For currencies that warrant a non-flat schedule, governance can install up to `MAX_PROTOCOL_FEE_TIERS` (3) progressive tiers. Progressive means each tier's pips rate only applies to the portion of the amount *within that tier's range* — the same pattern as income tax brackets. No cliff effects, no gaming around thresholds.
 
 A tier is `{ lowerThreshold, protocolFeePips }` where `lowerThreshold` is the **lower bound** of the bracket (in currency base units) and `protocolFeePips` is the fee rate in pips. The **first tier's lowerThreshold must be 0** and subsequent thresholds must be strictly ascending. The **last tier's rate** applies to all remaining currency above its lowerThreshold. This matches the bracket pattern used in `MigratorParams.LiquidityAllocationBracket`.
-
-To cap fees (stop charging beyond a certain amount), add a final tier with `protocolFeePips: 0`.
 
 ### Worked example
 

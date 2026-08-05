@@ -44,13 +44,19 @@ contract InitializerHook is BaseHook, IInitializerHook {
     }
 
     /// @inheritdoc BaseHook
-    function _beforeInitialize(address sender, PoolKey calldata, uint160) internal view override returns (bytes4) {
+    function _beforeInitialize(address sender, PoolKey calldata, uint160)
+        internal
+        view
+        virtual
+        override
+        returns (bytes4)
+    {
         if (sender != authorized) revert InvalidInitializer(sender, authorized);
         return IHooks.beforeInitialize.selector;
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public pure virtual override returns (bool) {
         return interfaceId == type(IInitializerHook).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }

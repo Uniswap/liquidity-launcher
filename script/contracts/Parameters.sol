@@ -9,6 +9,7 @@ struct DeployParameters {
     IPositionManager positionManager;
     IPoolManager poolManager;
     bytes32 salt; // salt required to deploy LBPStrategy contracts to valid v4 hook addresses across chains
+    bytes32 initializerHookSalt; // salt required to deploy InitializerHook contracts to valid v4 hook addresses across chains
 }
 
 /// @title Parameters
@@ -16,6 +17,8 @@ contract Parameters {
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public constant DEFAULT_CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     uint160 public constant DEFAULT_HOOK_FLAGS = Hooks.BEFORE_INITIALIZE_FLAG;
+    // Default preferred burn address per chain
+    address public constant DEFAULT_BURN_ADDRESS = address(0xdead);
 
     // Mainnet addresses: https://docs.uniswap.org/contracts/v4/deployments#ethereum-1
     IPositionManager public constant MAINNET_POSITION_MANAGER =
@@ -81,59 +84,78 @@ contract Parameters {
     /// @notice Thrown when parameters are not set for a given chainId
     error ParametersNotSetForChainId(uint256 chainId);
 
+    /// @notice Thrown when a parameter is not set for a given chainId
+    error ParameterNotSetForChainId(uint256 chainId, string name);
+
     mapping(uint256 chainId => DeployParameters) public parameters;
+    mapping(uint256 chainId => address) public tokenJar;
 
     constructor() {
         parameters[MAINNET_CHAIN_ID] = DeployParameters({
             positionManager: MAINNET_POSITION_MANAGER,
             poolManager: MAINNET_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000001cf9
+            salt: 0x0000000000000000000000000000000000000000000000000000000000001cf9,
+            initializerHookSalt: bytes32(0)
         });
         parameters[BASE_CHAIN_ID] = DeployParameters({
             positionManager: BASE_POSITION_MANAGER,
             poolManager: BASE_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000d9a3
+            salt: 0x000000000000000000000000000000000000000000000000000000000000d9a3,
+            initializerHookSalt: bytes32(0)
         });
         parameters[UNICHAIN_CHAIN_ID] = DeployParameters({
             positionManager: UNICHAIN_POSITION_MANAGER,
             poolManager: UNICHAIN_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000423b
+            salt: 0x000000000000000000000000000000000000000000000000000000000000423b,
+            initializerHookSalt: bytes32(0)
         });
         parameters[ARBITRUM_CHAIN_ID] = DeployParameters({
             positionManager: ARBITRUM_POSITION_MANAGER,
             poolManager: ARBITRUM_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000004efe
+            salt: 0x0000000000000000000000000000000000000000000000000000000000004efe,
+            initializerHookSalt: bytes32(0)
         });
         parameters[AVALANCHE_CHAIN_ID] = DeployParameters({
             positionManager: AVALANCHE_POSITION_MANAGER,
             poolManager: AVALANCHE_POOL_MANAGER,
-            salt: 0x00000000000000000000000000000000000000000000000000000000000001aa
+            salt: 0x00000000000000000000000000000000000000000000000000000000000001aa,
+            initializerHookSalt: bytes32(0)
         });
         parameters[XLAYER_CHAIN_ID] = DeployParameters({
             positionManager: XLAYER_POSITION_MANAGER,
             poolManager: XLAYER_POOL_MANAGER,
-            salt: 0x00000000000000000000000000000000000000000000000000000000000007d6
+            salt: 0x00000000000000000000000000000000000000000000000000000000000007d6,
+            initializerHookSalt: bytes32(0)
         });
         parameters[ROBINHOOD_CHAIN_ID] = DeployParameters({
             positionManager: ROBINHOOD_POSITION_MANAGER,
             poolManager: ROBINHOOD_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000907
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000907,
+            initializerHookSalt: 0x0000000000000000000000000000000000000000000000000000000000002dcb
         });
         parameters[INK_CHAIN_ID] = DeployParameters({
             positionManager: INK_POSITION_MANAGER,
             poolManager: INK_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000228c
+            salt: 0x000000000000000000000000000000000000000000000000000000000000228c,
+            initializerHookSalt: bytes32(0)
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
             poolManager: SEPOLIA_POOL_MANAGER,
-            salt: 0x00000000000000000000000000000000000000000000000000000000000074b9
+            salt: 0x00000000000000000000000000000000000000000000000000000000000074b9,
+            initializerHookSalt: bytes32(0)
         });
         parameters[BASE_SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: BASE_SEPOLIA_POSITION_MANAGER,
             poolManager: BASE_SEPOLIA_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000001ab5
+            salt: 0x0000000000000000000000000000000000000000000000000000000000001ab5,
+            initializerHookSalt: bytes32(0)
         });
+
+        // Set token jar addresses
+
+        // https://github.com/Uniswap/protocol-fees#robinhood-chain-chain-id-4663
+        tokenJar[ROBINHOOD_CHAIN_ID] = 0x2aC03e14Cfe755426DaAEe0a4994184Ce81482F8;
     }
 
     function getParameters(uint256 chainId) public view returns (DeployParameters memory) {
@@ -142,5 +164,12 @@ contract Parameters {
             revert ParametersNotSetForChainId(chainId);
         }
         return params;
+    }
+
+    function getTokenJar(uint256 chainId) public view returns (address tokenJarAddress) {
+        tokenJarAddress = tokenJar[chainId];
+        if (tokenJarAddress == address(0)) {
+            revert ParameterNotSetForChainId(chainId, "tokenJar");
+        }
     }
 }

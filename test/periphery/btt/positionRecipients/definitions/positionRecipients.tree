@@ -1,0 +1,82 @@
+PositionRecipientsBTTTest
+├── TimelockedPositionRecipient
+│   ├── when the timelock has not passed
+│   │   └── it reverts
+│   └── when the timelock has passed
+│       └── it approves the operator
+├── BasePositionRecipient
+│   ├── when currency0 minimum is not met
+│   │   └── it reverts for currency0
+│   ├── when currency1 minimum is not met
+│   │   └── it reverts for currency1
+│   ├── when the executor callback reverts
+│   │   └── it rolls back the claim
+│   ├── when the executor callback reenters
+│   │   └── it reverts
+│   ├── when currency0 transfer reenters amount notification
+│   │   └── it cannot attribute currency1 again
+│   └── when both minimums are met
+│       └── it transfers both amounts and invokes the executor
+├── BuybackAndBurnPositionRecipient
+│   ├── when currency0 is not native
+│   │   └── it reverts
+│   └── when currency0 is native
+│       └── it burns currency1
+└── CompoundingPositionRecipient
+    ├── when the liquidity increase is below the minimum
+    │   └── it reverts
+    ├── when the executor deposits both currencies
+    │   └── it increases liquidity
+├── BeneficiaryVault
+│   ├── registerBeneficiary
+│   │   ├── when the caller owns the position
+│   │   │   └── it mints the beneficiary NFT to the recipient
+│   │   ├── when the caller does not own the position
+│   │   │   └── it reverts
+│   │   ├── when the beneficiary is invalid
+│   │   │   └── it reverts
+│   │   ├── when the NFT already exists
+│   │   │   └── it reverts
+│   │   ├── when a new position owner tries to register again
+│   │   │   └── it reverts and keeps the original beneficiary
+│   │   └── when the position does not exist
+│   │       └── it reverts
+│   └── claim
+│       ├── when registered
+│       │   └── it pays the NFT owner
+│       ├── when registered and the caller is not the beneficiary
+│       │   └── it reverts
+│       └── when unregistered
+│           └── it flushes to the fallbacks
+└── UERC20BeneficiaryVault
+    ├── registerBeneficiary
+    │   ├── when the caller owns the position
+    │   │   └── it mints the beneficiary NFT to the recipient
+    │   ├── when the caller matches currency1 graffiti
+    │   │   └── it mints the beneficiary NFT to the recipient
+    │   ├── when the caller matches currency0 graffiti
+    │   │   └── it mints the beneficiary NFT to the recipient
+    │   ├── when the caller specifies a different beneficiary
+    │   │   └── it mints to that address
+    │   ├── when the beneficiary is invalid
+    │   │   └── it reverts
+    │   ├── when the caller is not the position owner or token creator
+    │   │   └── it reverts
+    │   ├── when the NFT already exists
+    │   │   └── it reverts
+    │   └── when the position does not exist
+    │       └── it reverts
+    └── claim
+        ├── when unregistered and launcher graffiti is present
+        │   ├── when the caller is the token creator
+        │   │   └── it auto-registers and pays the caller
+        │   ├── when the caller is the position owner
+        │   │   └── it auto-registers and pays the caller
+        │   └── when the caller is neither the creator nor the position owner
+        │       └── it reverts without flushing
+        ├── when registered
+        │   └── it pays the NFT owner
+        ├── when registered and the caller is not the beneficiary
+        │   └── it reverts
+        └── when unregistered with no readable graffiti
+            └── it flushes to the fallbacks
