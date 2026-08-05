@@ -16,6 +16,7 @@ contract Permit2Forwarder is IPermit2Forwarder {
     /// @inheritdoc IPermit2Forwarder
     function permit(address owner, IAllowanceTransfer.PermitSingle calldata permitSingle, bytes calldata signature)
         external
+        payable
         returns (bytes memory err)
     {
         // Keep batched calls from reverting if the permit was already consumed.
