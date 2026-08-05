@@ -7,8 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0]
+
+### Breaking changes
+- `PositionFeesForwarder` removed; instant launch positions are permanently locked in the `FeeSplitter` singleton instead [#192](https://github.com/Uniswap/token-launcher/pull/192)
+- `BuybackAndBurnPositionRecipient` replaced by `BuybackAndBurnClaimRecipient` on the callback-based claim recipient framework; periphery recipients expose `claim` instead of `collectFees` [#196](https://github.com/Uniswap/token-launcher/pull/196), [#207](https://github.com/Uniswap/token-launcher/pull/207), [#208](https://github.com/Uniswap/token-launcher/pull/208)
+
+### Added
+- `InstantLaunchStrategy` for fixed-supply, hookless native-ETH v4 pool launches with a single-sided LP position permanently locked in the fee splitter [#184](https://github.com/Uniswap/token-launcher/pull/184), [#191](https://github.com/Uniswap/token-launcher/pull/191), [#192](https://github.com/Uniswap/token-launcher/pull/192)
+- `FeeSplitter` singleton that permissionlessly collects and distributes native-ETH and token fees across immutable splits [#192](https://github.com/Uniswap/token-launcher/pull/192)
+- `BeneficiaryVault` and transferable fee-beneficiary ERC721 for creator fee registration and claims [#201](https://github.com/Uniswap/token-launcher/pull/201)
+- Callback-based claim recipients: `BaseClaimRecipient`, `BaseClaimRecipientWithCallback`, `CompoundingClaimRecipient`, and singleton `BuybackAndBurnClaimRecipient` [#196](https://github.com/Uniswap/token-launcher/pull/196), [#189](https://github.com/Uniswap/token-launcher/pull/189)
+- `UERC20BeneficiaryVault` so UERC20 creators can register unregistered positions via graffiti proof [#211](https://github.com/Uniswap/token-launcher/pull/211)
+- `UniversalRouterStrategy` and `LiquidityLauncher.distributeWithNative` to run a caller-supplied Universal Router route so a launch and buy fit in one transaction [#223](https://github.com/Uniswap/token-launcher/pull/223)
+- Deployment scripts for instant launch, universal router, fee splitter, and periphery contracts [#200](https://github.com/Uniswap/token-launcher/pull/200)
+
 ### Changed
-- `InstantLaunchStrategy` tick spacing reduced from 60 to 25, matching the 25 bps LP fee. `MIN_LAUNCH_TICK` moves from -208,980 to -160,100 and `MAX_INITIAL_TICK` from 251,340 to 251,325. Deployed initial ticks must now be multiples of 25; the deployment script's tick moves from 198,060 to 198,050
+- Raised the compounding claim recipient floor to 1e20 [#217](https://github.com/Uniswap/token-launcher/pull/217)
+- `InstantLaunchStrategy` uses tick spacing 25 to match the 25 bps LP fee, with `MIN_LAUNCH_TICK` at -160,100 and `MAX_INITIAL_TICK` at 251,325; deployed initial ticks must be multiples of 25 and the deployment script's tick moves from 198,060 to 198,050 [#230](https://github.com/Uniswap/token-launcher/pull/230)
+- Deploy scripts read the `LiquidityLauncher` address from env [#232](https://github.com/Uniswap/token-launcher/pull/232)
+
+### Fixed
+- Added `receive()` on `InstantLaunchStrategy` so stray ETH forwarded from the PositionManager does not brick the contract [#197](https://github.com/Uniswap/token-launcher/pull/197)
+- Enforced a verifiable, freely chosen fee beneficiary for launcher-created tokens [#192](https://github.com/Uniswap/token-launcher/pull/192)
+- Reverted `FeeSplitter.collectFees` when a recipient's fee notification fails [#209](https://github.com/Uniswap/token-launcher/pull/209)
+- Resolved OpenZeppelin audit notes N04–N09 and L-04 [#218](https://github.com/Uniswap/token-launcher/pull/218)
+- Fixed graffiti-based registration in `UERC20BeneficiaryVault` [#226](https://github.com/Uniswap/token-launcher/pull/226)
+- Removed the approval check in `FeeSplitter` distribution [#233](https://github.com/Uniswap/token-launcher/pull/233)
+
+### Removed
+- `PositionFeesForwarder` (superseded by `FeeSplitter`) [#192](https://github.com/Uniswap/token-launcher/pull/192)
+- `BuybackAndBurnPositionRecipient` (superseded by `BuybackAndBurnClaimRecipient`) [#196](https://github.com/Uniswap/token-launcher/pull/196)
 
 ## [3.0.0]
 Token Launcher v3.0.0 is a major release with breaking changes. It is not backwards compatible with v2.0.0.
