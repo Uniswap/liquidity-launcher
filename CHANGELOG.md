@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `InstantLaunchStrategy` tick spacing reduced from 60 to 25, matching the 25 bps LP fee. `MIN_LAUNCH_TICK` moves from -208,980 to -160,100 and `MAX_INITIAL_TICK` from 251,340 to 251,325. Deployed initial ticks must now be multiples of 25; the deployment script's tick moves from 198,060 to 198,050
+
 ## [3.0.0]
 Token Launcher v3.0.0 is a major release with breaking changes. It is not backwards compatible with v2.0.0.
 
