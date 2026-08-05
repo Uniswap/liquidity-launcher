@@ -136,7 +136,8 @@ contract Parameters {
         parameters[INK_CHAIN_ID] = DeployParameters({
             positionManager: INK_POSITION_MANAGER,
             poolManager: INK_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000228c
+            salt: 0x000000000000000000000000000000000000000000000000000000000000228c,
+            initializerHookSalt: bytes32(0)
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
