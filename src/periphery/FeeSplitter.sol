@@ -63,6 +63,9 @@ contract FeeSplitter is IFeeSplitter, IERC721Receiver, ReentrancyGuardTransient 
         if (poolManager.isUnlocked()) revert PoolManagerAlreadyUnlocked();
         for (uint256 i; i < count; i++) {
             uint256 tokenId = tokenIds[i];
+            if (IERC721(address(positionManager)).ownerOf(tokenId) != address(this)) {
+                revert NotOwner(tokenId);
+            }
             (Currency tokenCurrency, uint256 nativeAmount, uint256 tokenAmount) = _collect(tokenId);
             if (nativeAmount != 0 || tokenAmount != 0) {
                 _distribute(tokenId, tokenCurrency, nativeAmount, tokenAmount);
