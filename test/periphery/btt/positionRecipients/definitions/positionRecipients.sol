@@ -23,6 +23,7 @@ import {BuybackAndBurnClaimRecipient} from "../../../../../src/periphery/Buyback
 import {CompoundingClaimRecipient} from "../../../../../src/periphery/CompoundingClaimRecipient.sol";
 import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.sol";
 import {UERC20BeneficiaryVault} from "../../../../../src/periphery/UERC20BeneficiaryVault.sol";
+import {VestingClaimRecipient} from "../../../../../src/periphery/VestingClaimRecipient.sol";
 import {IBeneficiaryVault} from "../../../../../src/interfaces/IBeneficiaryVault.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
@@ -159,6 +160,52 @@ contract MockShortGraffitiToken is MockERC20 {
     }
 }
 
+/// @dev `claimFor` source that reports one pair of amounts from `amounts` and pays another on `claim`, so the
+///      gap between what a source promises and what it delivers is expressible. Reenters when a target is set.
+contract MockVestingSource {
+    Currency internal currency0;
+    Currency internal currency1;
+    uint128 internal reported0;
+    uint128 internal reported1;
+    uint256 internal payout0;
+    uint256 internal payout1;
+    VestingClaimRecipient internal reentryTarget;
+
+    function configure(
+        Currency _currency0,
+        Currency _currency1,
+        uint128 _reported0,
+        uint128 _reported1,
+        uint256 _payout0,
+        uint256 _payout1
+    ) external {
+        currency0 = _currency0;
+        currency1 = _currency1;
+        reported0 = _reported0;
+        reported1 = _reported1;
+        payout0 = _payout0;
+        payout1 = _payout1;
+    }
+
+    function setReentryTarget(VestingClaimRecipient _target) external {
+        reentryTarget = _target;
+    }
+
+    function amounts(uint256) external view returns (uint128, uint128) {
+        return (reported0, reported1);
+    }
+
+    function claim(uint256 tokenId, uint256, uint256) external {
+        if (address(reentryTarget) != address(0)) {
+            reentryTarget.claimFor(IClaimableRecipient(address(this)), tokenId, 0, 0);
+        }
+        if (payout0 != 0) currency0.transfer(msg.sender, payout0);
+        if (payout1 != 0) currency1.transfer(msg.sender, payout1);
+    }
+
+    receive() external payable {}
+}
+
 contract RevertingLPFeesExecutor is MockClaimExecutor {
     error CallbackFailed();
 
@@ -277,6 +324,46 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     │   └── it reverts
 ///     └── when unregistered with no readable graffiti
 ///         └── it flushes to the fallbacks
+///
+/// VestingClaimRecipient
+/// ├── constructor
+/// │   ├── when the recipient is zero
+/// │   │   └── it reverts
+/// │   ├── when the recipient is the contract itself
+/// │   │   └── it reverts
+/// │   └── when the parameters are valid
+/// │       └── it sets the configuration
+/// ├── onERC721Received
+/// │   └── when a beneficiary NFT is safe transferred in
+/// │       └── it accepts custody
+/// ├── claimFor
+/// │   ├── when the currency0 minimum is not met
+/// │   │   └── it reverts
+/// │   ├── when the currency1 minimum is not met
+/// │   │   └── it reverts
+/// │   ├── when both minimums are met
+/// │   │   └── it pulls the reported amounts and attributes them
+/// │   ├── when the source pays less than it reports
+/// │   │   └── it reverts
+/// │   └── when the source reenters
+/// │       └── it reverts
+/// └── claim
+///     ├── when the vesting clock is unset
+///     │   └── it starts the clock and releases nothing
+///     ├── when no blocks have passed since the last claim
+///     │   └── it releases nothing and keeps the clock
+///     ├── when the available amount is below the accrued cap
+///     │   └── it releases the full available amount
+///     ├── when the available amount exceeds the accrued cap
+///     │   └── it releases only the accrued cap
+///     ├── when a per block maximum is zero
+///     │   └── it never releases that currency
+///     ├── when the caller is not the recipient
+///     │   └── it still pays the pinned recipient
+///     ├── when the recipient notification reverts
+///     │   └── it rolls back the claim
+///     └── when the position does not exist
+///         └── it reverts
 contract PositionRecipientsBTTTest is Test {
     uint256 internal constant TOKEN_ID = 1;
     uint256 internal constant FEES_0 = 2 ether;
@@ -873,6 +960,249 @@ contract PositionRecipientsBTTTest is Test {
 
         assertEq(NATIVE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
+    }
+
+    function test_Vesting_constructor_WhenRecipientIsZero_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VestingClaimRecipient.InvalidRecipient.selector, IClaimableRecipient(address(0)))
+        );
+        new VestingClaimRecipient(IPositionManager(address(manager)), 1 ether, 1 ether, IClaimableRecipient(address(0)));
+    }
+
+    function test_Vesting_constructor_WhenRecipientIsSelf_Reverts() public {
+        address self = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(VestingClaimRecipient.InvalidRecipient.selector, IClaimableRecipient(self))
+        );
+        new VestingClaimRecipient(IPositionManager(address(manager)), 1 ether, 1 ether, IClaimableRecipient(self));
+    }
+
+    function test_Vesting_constructor_WhenParametersAreValid_SetsConfiguration(uint128 max0, uint128 max1) public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
+
+        assertEq(vesting.maxCurrency0PerBlock(), max0);
+        assertEq(vesting.maxCurrency1PerBlock(), max1);
+        assertEq(address(vesting.recipient()), address(pinned));
+        assertEq(address(vesting.positionManager()), address(manager));
+    }
+
+    function test_Vesting_onERC721Received_WhenNftIsSafeTransferredIn_AcceptsCustody() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+        manager.setPositionOwner(address(this));
+        vault.registerBeneficiary(TOKEN_ID, address(this));
+
+        vault.safeTransferFrom(address(this), address(vesting), TOKEN_ID);
+
+        assertEq(vault.ownerOf(TOKEN_ID), address(vesting));
+    }
+
+    function test_Vesting_claimFor_WhenCurrency0MinimumIsNotMet_Reverts(uint128 minimum) public {
+        minimum = uint128(bound(minimum, FEES_0 + 1, type(uint128).max));
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        MockVestingSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
+
+        vm.expectRevert(VestingClaimRecipient.InsufficientAmounts.selector);
+        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, minimum, 0);
+    }
+
+    function test_Vesting_claimFor_WhenCurrency1MinimumIsNotMet_Reverts(uint128 minimum) public {
+        minimum = uint128(bound(minimum, FEES_1 + 1, type(uint128).max));
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        MockVestingSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
+
+        vm.expectRevert(VestingClaimRecipient.InsufficientAmounts.selector);
+        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, 0, minimum);
+    }
+
+    function test_Vesting_claimFor_WhenBothMinimumsAreMet_PullsAndAttributes(uint128 minimum0, uint128 minimum1)
+        public
+    {
+        minimum0 = uint128(bound(minimum0, 0, FEES_0));
+        minimum1 = uint128(bound(minimum1, 0, FEES_1));
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        MockVestingSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
+
+        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, minimum0, minimum1);
+
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+        assertEq(vesting.totalAmounts(currency0), FEES_0);
+        assertEq(vesting.totalAmounts(currency1), FEES_1);
+        assertEq(currency0.balanceOf(address(vesting)), FEES_0);
+        assertEq(currency1.balanceOf(address(vesting)), FEES_1);
+    }
+
+    function test_Vesting_claimFor_WhenSourcePaysLessThanReported_Reverts() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        MockVestingSource source = _deploySource(uint128(FEES_0), 0, FEES_0 - 1, 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0 - 1, FEES_0
+            )
+        );
+        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, 0, 0);
+    }
+
+    function test_Vesting_claimFor_WhenSourceReenters_Reverts() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        MockVestingSource source = _deploySource(uint128(FEES_0), 0, FEES_0, 0);
+        source.setReentryTarget(vesting);
+
+        vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
+        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, 0, 0);
+    }
+
+    function test_Vesting_claim_WhenClockIsUnset_StartsClockAndReleasesNothing() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(1 ether, 1 ether);
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+
+        vm.expectEmit(address(vesting));
+        emit VestingClaimRecipient.VestingStarted(TOKEN_ID, block.number);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(vesting.lastClaimed(TOKEN_ID), block.number);
+        assertEq(currency0.balanceOf(address(pinned)), 0);
+        assertEq(currency1.balanceOf(address(pinned)), 0);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+    }
+
+    function test_Vesting_claim_WhenNoBlocksHavePassed_ReleasesNothingAndKeepsClock() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(1 ether, 1 ether);
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+        vesting.claim(TOKEN_ID, 0, 0);
+        uint256 startedAt = vesting.lastClaimed(TOKEN_ID);
+
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(vesting.lastClaimed(TOKEN_ID), startedAt);
+        assertEq(currency0.balanceOf(address(pinned)), 0);
+        assertEq(currency1.balanceOf(address(pinned)), 0);
+    }
+
+    function test_Vesting_claim_WhenAvailableIsBelowCap_ReleasesFullAmount(uint256 blocksPassed) public {
+        blocksPassed = bound(blocksPassed, 1, 1000);
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+        vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + blocksPassed);
+
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), FEES_0);
+        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, 0);
+        assertEq(amounts1, 0);
+        // the release is registered on the recipient through `_afterClaim`
+        (uint256 pinned0, uint256 pinned1) = pinned.amounts(TOKEN_ID);
+        assertEq(pinned0, FEES_0);
+        assertEq(pinned1, FEES_1);
+    }
+
+    function test_Vesting_claim_WhenAvailableExceedsCap_ReleasesOnlyAccruedCap(uint256 blocksPassed) public {
+        blocksPassed = bound(blocksPassed, 1, 4);
+        uint128 max0 = uint128(FEES_0 / 10);
+        uint128 max1 = uint128(FEES_1 / 10);
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+        vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + blocksPassed);
+
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        uint256 released0 = uint256(max0) * blocksPassed;
+        uint256 released1 = uint256(max1) * blocksPassed;
+        assertEq(currency0.balanceOf(address(pinned)), released0);
+        assertEq(currency1.balanceOf(address(pinned)), released1);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0 - released0);
+        assertEq(amounts1, FEES_1 - released1);
+    }
+
+    function test_Vesting_claim_WhenPerBlockMaximumIsZero_NeverReleasesThatCurrency() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(0, uint128(FEES_1));
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+        vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + 1000);
+
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), 0);
+        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
+        (uint256 amounts0,) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+    }
+
+    function test_Vesting_claim_WhenCallerIsNotRecipient_StillPaysPinnedRecipient() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+        vm.prank(stranger);
+        vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + 1);
+
+        vm.prank(stranger);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), FEES_0);
+        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
+        assertEq(currency0.balanceOf(stranger), 0);
+        assertEq(currency1.balanceOf(stranger), 0);
+    }
+
+    function test_Vesting_claim_WhenRecipientNotificationReverts_RollsBackClaim() public {
+        // a recipient that resolves positions against a different PositionManager cannot be notified
+        BaseClaimRecipientHarness foreign =
+            new BaseClaimRecipientHarness(IPositionManager(address(new MockPositionManager())));
+        VestingClaimRecipient vesting =
+            new VestingClaimRecipient(IPositionManager(address(manager)), uint128(FEES_0), uint128(FEES_1), foreign);
+        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, TOKEN_ID));
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(foreign)), 0);
+        assertEq(currency1.balanceOf(address(foreign)), 0);
+        assertEq(vesting.lastClaimed(TOKEN_ID), 0);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+    }
+
+    function test_Vesting_claim_WhenPositionDoesNotExist_Reverts() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        uint256 invalidTokenId = TOKEN_ID + 1;
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, invalidTokenId));
+        vesting.claim(invalidTokenId, 0, 0);
+    }
+
+    function _deployVesting(uint128 maxCurrency0PerBlock, uint128 maxCurrency1PerBlock)
+        internal
+        returns (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned)
+    {
+        pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        vesting = new VestingClaimRecipient(
+            IPositionManager(address(manager)), maxCurrency0PerBlock, maxCurrency1PerBlock, pinned
+        );
+    }
+
+    function _deploySource(uint128 reported0, uint128 reported1, uint256 payout0, uint256 payout1)
+        internal
+        returns (MockVestingSource source)
+    {
+        source = new MockVestingSource();
+        source.configure(currency0, currency1, reported0, reported1, payout0, payout1);
+        if (payout0 != 0) MockERC20(Currency.unwrap(currency0)).transfer(address(source), payout0);
+        if (payout1 != 0) MockERC20(Currency.unwrap(currency1)).transfer(address(source), payout1);
     }
 
     function _deployBeneficiaryVault() internal returns (BeneficiaryVault) {

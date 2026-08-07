@@ -80,3 +80,42 @@ PositionRecipientsBTTTest
         │   └── it reverts
         └── when unregistered with no readable graffiti
             └── it flushes to the fallbacks
+└── VestingClaimRecipient
+    ├── constructor
+    │   ├── when the recipient is zero
+    │   │   └── it reverts
+    │   ├── when the recipient is the contract itself
+    │   │   └── it reverts
+    │   └── when the parameters are valid
+    │       └── it sets the configuration
+    ├── onERC721Received
+    │   └── when a beneficiary NFT is safe transferred in
+    │       └── it accepts custody
+    ├── claimFor
+    │   ├── when the currency0 minimum is not met
+    │   │   └── it reverts
+    │   ├── when the currency1 minimum is not met
+    │   │   └── it reverts
+    │   ├── when both minimums are met
+    │   │   └── it pulls the reported amounts and attributes them
+    │   ├── when the source pays less than it reports
+    │   │   └── it reverts
+    │   └── when the source reenters
+    │       └── it reverts
+    └── claim
+        ├── when the vesting clock is unset
+        │   └── it starts the clock and releases nothing
+        ├── when no blocks have passed since the last claim
+        │   └── it releases nothing and keeps the clock
+        ├── when the available amount is below the accrued cap
+        │   └── it releases the full available amount
+        ├── when the available amount exceeds the accrued cap
+        │   └── it releases only the accrued cap
+        ├── when a per block maximum is zero
+        │   └── it never releases that currency
+        ├── when the caller is not the recipient
+        │   └── it still pays the pinned recipient
+        ├── when the recipient notification reverts
+        │   └── it rolls back the claim
+        └── when the position does not exist
+            └── it reverts
