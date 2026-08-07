@@ -8,6 +8,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 import {BaseClaimRecipient} from "./BaseClaimRecipient.sol";
+import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 
 /// @title VestingClaimRecipient
 /// @notice Contract which claims amounts from sources and releases them over time
@@ -15,7 +16,7 @@ import {BaseClaimRecipient} from "./BaseClaimRecipient.sol";
 /// @dev Positions are onboarded by transferring a beneficiary NFT in, or by attributing amounts directly through
 ///      `onAmountsReceived`. Neither is gated, so the per-tokenId release cap bounds one position's rate, not the
 ///      contract's aggregate rate across positions.
-contract VestingClaimRecipient is BaseClaimRecipient, IERC721Receiver {
+contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Receiver {
     /// @notice Thrown when a source reports less than the caller's required amounts
     error InsufficientAmounts();
 
@@ -85,19 +86,20 @@ contract VestingClaimRecipient is BaseClaimRecipient, IERC721Receiver {
         returns (address, uint256, address, uint256)
     {
         uint256 last = lastClaimed[_tokenId];
+        uint256 blockNumber = _getBlockNumberish();
         // The first claim only starts the clock. An unset entry is not block zero, so measuring against it
         // would release the whole attributed balance at once.
         if (last == 0) {
-            lastClaimed[_tokenId] = block.number;
-            emit VestingStarted(_tokenId, block.number);
+            lastClaimed[_tokenId] = blockNumber;
+            emit VestingStarted(_tokenId, blockNumber);
             return (address(recipient), 0, address(recipient), 0);
         }
 
         // Cap available amounts at the max per block for the given currency since last claim
-        uint256 blocksPassed = block.number - last;
+        uint256 blocksPassed = blockNumber - last;
         // Don't reset the last claimed block if no blocks have passed
         if (blocksPassed == 0) return (address(recipient), 0, address(recipient), 0);
-        lastClaimed[_tokenId] = block.number;
+        lastClaimed[_tokenId] = blockNumber;
 
         return (
             address(recipient),
