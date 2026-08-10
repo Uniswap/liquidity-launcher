@@ -103,14 +103,12 @@ PositionRecipientsBTTTest
     │   └── when the source reenters
     │       └── it reverts
     └── claim
-        ├── when the vesting clock is unset
-        │   └── it starts the clock and releases nothing
-        ├── when no blocks have passed since the last claim
-        │   └── it releases nothing and keeps the clock
-        ├── when the available amount is below the accrued cap
+        ├── when a claim was already processed this block
+        │   └── it releases nothing more
+        ├── when the available amount is below the per block maximum
         │   └── it releases the full available amount
-        ├── when the available amount exceeds the accrued cap
-        │   └── it releases only the accrued cap
+        ├── when the available amount exceeds the per block maximum
+        │   └── it releases the per block maximum each block
         ├── when a per block maximum is zero
         │   └── it never releases that currency
         ├── when the caller is not the recipient

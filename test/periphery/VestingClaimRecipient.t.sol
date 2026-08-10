@@ -92,14 +92,7 @@ contract VestingClaimRecipientTest is Test {
     function test_Integration_WhenClaimedEveryBlock_DripsToTheRecipientUnderTheCap() public {
         _onboardAndPull();
 
-        // the first claim only starts the clock
-        vm.prank(searcher);
-        vesting.claim(TOKEN_ID, 0, 0);
-        assertEq(Currency.wrap(address(0)).balanceOf(address(pinned)), 0);
-        assertEq(launchToken.balanceOf(address(pinned)), 0);
-
         for (uint256 i = 1; i <= 6; i++) {
-            vm.roll(block.number + 1);
             vm.prank(searcher);
             vesting.claim(TOKEN_ID, 0, 0);
 
@@ -113,6 +106,7 @@ contract VestingClaimRecipientTest is Test {
                 FixedPointMathLib.min(uint256(MAX_PER_BLOCK) * i, FEES_1),
                 "currency1 drip"
             );
+            vm.roll(block.number + 1);
         }
 
         // fully drained, and every unit was registered on the recipient
@@ -128,10 +122,6 @@ contract VestingClaimRecipientTest is Test {
         vm.assume(caller != address(0) && caller != address(vesting) && caller != address(pinned));
         vm.assume(caller.code.length == 0);
         _onboardAndPull();
-
-        vm.prank(caller);
-        vesting.claim(TOKEN_ID, 0, 0);
-        vm.roll(block.number + 1);
         uint256 callerBalanceBefore = caller.balance;
 
         vm.prank(caller);
@@ -152,7 +142,8 @@ contract VestingClaimRecipientTest is Test {
 
         vm.prank(searcher);
         vesting.claim(TOKEN_ID, 0, 0);
-        vm.roll(block.number + 2);
+        // the gap does not accrue: the second claim still releases at most one block's maximum
+        vm.roll(block.number + 3);
         vm.prank(searcher);
         vesting.claim(TOKEN_ID, 0, 0);
 
@@ -212,7 +203,7 @@ contract VestingClaimRecipientTest is Test {
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
         assertEq(amounts0, 0);
         assertEq(amounts1, 0);
-        assertEq(vesting.lastClaimed(TOKEN_ID), 0, "pulling nothing does not start the clock");
+        assertEq(vesting.lastClaimed(TOKEN_ID), 0, "claimFor does not process a release");
     }
 
     /// @notice Registers the beneficiary NFT for TOKEN_ID to `beneficiary`, authorised by position custody
@@ -281,8 +272,8 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         vesting.claim(type(uint256).max, 0, 0);
     }
 
-    function test_Fork_Claim_ReleasesUnderCapAgainstRealPosition(uint256 blocksPassed) public {
-        blocksPassed = bound(blocksPassed, 1, 5);
+    function test_Fork_Claim_ReleasesPerBlockMaxAgainstRealPosition(uint256 gapBlocks) public {
+        gapBlocks = bound(gapBlocks, 1, 1000);
         _attribute(FORK_CURRENCY0_FEES_AMOUNT, USDC_FEES);
         // the harness address may already hold mainnet balance at this fork, so assert deltas
         uint256 nativeBefore = address(pinned).balance;
@@ -290,14 +281,15 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
 
         vesting.claim(FORK_TOKEN_ID, 0, 0);
         assertEq(vesting.lastClaimed(FORK_TOKEN_ID), block.number);
-        assertEq(address(pinned).balance, nativeBefore, "the clock-start claim releases nothing");
+        assertEq(address(pinned).balance - nativeBefore, NATIVE_MAX_PER_BLOCK, "first claim releases one block's max");
 
-        vm.roll(block.number + blocksPassed);
+        // the gap does not accrue: the next claim releases at most one more block's maximum
+        vm.roll(block.number + gapBlocks);
         vm.prank(searcher);
         vesting.claim(FORK_TOKEN_ID, 0, 0);
 
-        uint256 expectedNative = uint256(NATIVE_MAX_PER_BLOCK) * blocksPassed;
-        uint256 expectedUsdc = uint256(USDC_MAX_PER_BLOCK) * blocksPassed;
+        uint256 expectedNative = uint256(NATIVE_MAX_PER_BLOCK) * 2;
+        uint256 expectedUsdc = uint256(USDC_MAX_PER_BLOCK) * 2;
         assertEq(address(pinned).balance - nativeBefore, expectedNative, "native release is capped");
         assertEq(Currency.wrap(USDC).balanceOf(address(pinned)) - usdcBefore, expectedUsdc, "USDC release is capped");
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(FORK_TOKEN_ID);

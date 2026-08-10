@@ -11,7 +11,7 @@ import {BaseClaimRecipient} from "./BaseClaimRecipient.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 
 /// @title VestingClaimRecipient
-/// @notice Contract which claims amounts from sources and releases them over time
+/// @notice Contract which claims amounts from sources and releases them at a capped per-block rate
 /// @dev Supports claiming from multiple sources but attributes all amounts to the canonical tokenId on PositionManager
 /// @dev Positions are onboarded by transferring a beneficiary NFT in, or by attributing amounts directly through
 ///      `onAmountsReceived`. Neither is gated, so the per-tokenId release cap bounds one position's rate, not the
@@ -33,11 +33,8 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @notice The receiver of every release, fixed at deploy
     IClaimableRecipient public immutable recipient;
 
-    /// @notice The block number when the last claim was made for a given tokenId, 0 until the first claim
+    /// @notice The block number of the last processed claim for a given tokenId, used to release at most once per block
     mapping(uint256 tokenId => uint256 lastClaimed) public lastClaimed;
-
-    /// @notice Emitted on the first claim for a tokenId, when its vesting clock starts
-    event VestingStarted(uint256 indexed tokenId, uint256 startBlock);
 
     constructor(
         IPositionManager _positionManager,
@@ -79,33 +76,23 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     }
 
     /// @inheritdoc BaseClaimRecipient
-    /// @notice Override to set a maximum cap on the amount of fees that can be claimed for a given tokenId in a time period
+    /// @notice Override to cap the amounts released for a given tokenId at the per-block maximums
+    /// @dev The cap does not accrue: at most one release of up to the maximums per block, regardless of
+    ///      how long the position went unclaimed
     function _beforeClaimTransfer(uint256 _tokenId, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         override
         returns (address, uint256, address, uint256)
     {
-        uint256 last = lastClaimed[_tokenId];
         uint256 blockNumber = _getBlockNumberish();
-        // The first claim only starts the clock. An unset entry is not block zero, so measuring against it
-        // would release the whole attributed balance at once.
-        if (last == 0) {
-            lastClaimed[_tokenId] = blockNumber;
-            emit VestingStarted(_tokenId, blockNumber);
-            return (address(recipient), 0, address(recipient), 0);
-        }
-
-        // Cap available amounts at the max per block for the given currency since last claim
-        uint256 blocksPassed = blockNumber - last;
-        // Don't reset the last claimed block if no blocks have passed
-        if (blocksPassed == 0) return (address(recipient), 0, address(recipient), 0);
+        if (lastClaimed[_tokenId] == blockNumber) return (address(recipient), 0, address(recipient), 0);
         lastClaimed[_tokenId] = blockNumber;
 
         return (
             address(recipient),
-            FixedPointMathLib.min(_available0, maxCurrency0PerBlock * blocksPassed),
+            FixedPointMathLib.min(_available0, maxCurrency0PerBlock),
             address(recipient),
-            FixedPointMathLib.min(_available1, maxCurrency1PerBlock * blocksPassed)
+            FixedPointMathLib.min(_available1, maxCurrency1PerBlock)
         );
     }
 
