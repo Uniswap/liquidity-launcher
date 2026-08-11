@@ -160,52 +160,6 @@ contract MockShortGraffitiToken is MockERC20 {
     }
 }
 
-/// @dev `claimFor` source that reports one pair of amounts from `amounts` and pays another on `claim`, so the
-///      gap between what a source promises and what it delivers is expressible. Reenters when a target is set.
-contract MockVestingSource {
-    Currency internal currency0;
-    Currency internal currency1;
-    uint128 internal reported0;
-    uint128 internal reported1;
-    uint256 internal payout0;
-    uint256 internal payout1;
-    VestingClaimRecipient internal reentryTarget;
-
-    function configure(
-        Currency _currency0,
-        Currency _currency1,
-        uint128 _reported0,
-        uint128 _reported1,
-        uint256 _payout0,
-        uint256 _payout1
-    ) external {
-        currency0 = _currency0;
-        currency1 = _currency1;
-        reported0 = _reported0;
-        reported1 = _reported1;
-        payout0 = _payout0;
-        payout1 = _payout1;
-    }
-
-    function setReentryTarget(VestingClaimRecipient _target) external {
-        reentryTarget = _target;
-    }
-
-    function amounts(uint256) external view returns (uint128, uint128) {
-        return (reported0, reported1);
-    }
-
-    function claim(uint256 tokenId, uint256, uint256) external {
-        if (address(reentryTarget) != address(0)) {
-            reentryTarget.claimFor(IClaimableRecipient(address(this)), tokenId, 0, 0);
-        }
-        if (payout0 != 0) currency0.transfer(msg.sender, payout0);
-        if (payout1 != 0) currency1.transfer(msg.sender, payout1);
-    }
-
-    receive() external payable {}
-}
-
 contract RevertingLPFeesExecutor is MockClaimExecutor {
     error CallbackFailed();
 
@@ -247,8 +201,31 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// BaseClaimRecipient
 /// ├── when either minimum is not met
 /// │   └── it reverts for the corresponding currency
-/// └── when currency0 transfer reenters fee notification
-///     └── it cannot attribute currency1 again
+/// ├── when currency0 transfer reenters fee notification
+/// │   └── it cannot attribute currency1 again
+/// └── claimFrom
+///     ├── when the currency0 minimum is not met
+///     │   └── it reverts
+///     ├── when the currency1 minimum is not met
+///     │   └── it reverts
+///     ├── when both minimums are met
+///     │   └── it pulls the reported amounts and attributes them
+///     ├── when the source pays less than it reports
+///     │   └── it reverts
+///     ├── when the source reenters claimFrom
+///     │   └── it reverts
+///     ├── when the source reports zero
+///     │   └── it is a no-op
+///     ├── when the source is a vault and the puller does not own the NFT
+///     │   └── it reverts
+///     ├── when the source is a vault and the puller owns the NFT
+///     │   └── it pulls and attributes
+///     ├── when the source requires an executor callback
+///     │   └── it reverts for a plain puller
+///     ├── when the source pays a pinned recipient instead of the puller
+///     │   └── it reverts on attribution
+///     └── when the puller cannot resolve the position
+///         └── it reverts after the source has paid
 ///
 /// BaseClaimRecipientWithCallback
 /// ├── when the executor callback reverts
@@ -336,17 +313,6 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// ├── onERC721Received
 /// │   └── when a beneficiary NFT is safe transferred in
 /// │       └── it accepts custody
-/// ├── claimFor
-/// │   ├── when the currency0 minimum is not met
-/// │   │   └── it reverts
-/// │   ├── when the currency1 minimum is not met
-/// │   │   └── it reverts
-/// │   ├── when both minimums are met
-/// │   │   └── it pulls the reported amounts and attributes them
-/// │   ├── when the source pays less than it reports
-/// │   │   └── it reverts
-/// │   └── when the source reenters
-/// │       └── it reverts
 /// └── claim
 ///     ├── when a claim was already processed this block
 ///     │   └── it releases nothing more
@@ -547,6 +513,88 @@ contract PositionRecipientsBTTTest is Test {
 
         vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
         executor.execute(recipient, TOKEN_ID);
+    }
+
+    function test_BaseRecipient_claimFrom_WhenSourceIsVaultAndPullerDoesNotOwnNft_Reverts() public {
+        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        vault.registerBeneficiary(TOKEN_ID, feeRecipient);
+        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
+
+        vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, TOKEN_ID, address(puller)));
+        puller.claimFrom(vault, TOKEN_ID, 0, 0);
+    }
+
+    function test_BaseRecipient_claimFrom_WhenSourceIsVaultAndPullerOwnsNft_PullsAndAttributes() public {
+        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        BeneficiaryVault vault = _deployBeneficiaryVault();
+        vault.registerBeneficiary(TOKEN_ID, address(puller));
+        _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
+
+        puller.claimFrom(vault, TOKEN_ID, 0, 0);
+
+        (uint256 amounts0, uint256 amounts1) = puller.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+        (uint256 vault0, uint256 vault1) = vault.amounts(TOKEN_ID);
+        assertEq(vault0, 0);
+        assertEq(vault1, 0);
+    }
+
+    function test_BaseRecipient_claimFrom_WhenSourceRequiresExecutorCallback_RevertsForPlainPuller() public {
+        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        BaseClaimRecipientWithCallbackHarness source =
+            new BaseClaimRecipientWithCallbackHarness(IPositionManager(address(manager)));
+        _notifyAmounts(source, poolKey, FEES_0, FEES_1);
+
+        // nested `source.claim` pays the puller then calls `IClaimExecutor(puller).onClaimed`, which plain
+        // BaseClaimRecipient harnesses do not implement
+        vm.expectRevert();
+        puller.claimFrom(source, TOKEN_ID, 0, 0);
+
+        (uint256 source0, uint256 source1) = source.amounts(TOKEN_ID);
+        assertEq(source0, FEES_0);
+        assertEq(source1, FEES_1);
+        (uint256 puller0, uint256 puller1) = puller.amounts(TOKEN_ID);
+        assertEq(puller0, 0);
+        assertEq(puller1, 0);
+    }
+
+    function test_BaseRecipient_claimFrom_WhenSourcePaysPinnedRecipient_RevertsOnAttribution() public {
+        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        (VestingClaimRecipient source, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _notifyAmounts(source, poolKey, FEES_0, FEES_1);
+
+        // vesting pays the pinned recipient, not msg.sender, so the puller never receives the funds and
+        // `onAmountsReceived` reverts — rolling the nested vesting claim back with the outer call
+        vm.expectRevert(
+            abi.encodeWithSelector(IClaimableRecipient.InsufficientAmountReceived.selector, currency0, 0, FEES_0)
+        );
+        puller.claimFrom(source, TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), 0);
+        assertEq(currency1.balanceOf(address(pinned)), 0);
+        (uint256 source0, uint256 source1) = source.amounts(TOKEN_ID);
+        assertEq(source0, FEES_0);
+        assertEq(source1, FEES_1);
+    }
+
+    function test_BaseRecipient_claimFrom_WhenPullerCannotResolvePosition_RevertsAfterSourcePaid() public {
+        // puller resolves positions against a different PositionManager than the funded source
+        BaseClaimRecipientHarness puller =
+            new BaseClaimRecipientHarness(IPositionManager(address(new MockPositionManager())));
+        BaseClaimRecipientHarness source = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        _notifyAmounts(source, poolKey, FEES_0, 0);
+
+        // source.claim would pay the puller, then puller.onAmountsReceived reverts InvalidPosition and
+        // rolls the nested claim back
+        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, TOKEN_ID));
+        puller.claimFrom(source, TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(puller)), 0);
+        (uint256 source0,) = source.amounts(TOKEN_ID);
+        assertEq(source0, FEES_0);
     }
 
     function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
@@ -997,64 +1045,6 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vault.ownerOf(TOKEN_ID), address(vesting));
     }
 
-    function test_Vesting_claimFor_WhenCurrency0MinimumIsNotMet_Reverts(uint128 minimum) public {
-        minimum = uint128(bound(minimum, FEES_0 + 1, type(uint128).max));
-        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
-        MockVestingSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
-
-        vm.expectRevert(VestingClaimRecipient.InsufficientAmounts.selector);
-        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, minimum, 0);
-    }
-
-    function test_Vesting_claimFor_WhenCurrency1MinimumIsNotMet_Reverts(uint128 minimum) public {
-        minimum = uint128(bound(minimum, FEES_1 + 1, type(uint128).max));
-        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
-        MockVestingSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
-
-        vm.expectRevert(VestingClaimRecipient.InsufficientAmounts.selector);
-        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, 0, minimum);
-    }
-
-    function test_Vesting_claimFor_WhenBothMinimumsAreMet_PullsAndAttributes(uint128 minimum0, uint128 minimum1)
-        public
-    {
-        minimum0 = uint128(bound(minimum0, 0, FEES_0));
-        minimum1 = uint128(bound(minimum1, 0, FEES_1));
-        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
-        MockVestingSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
-
-        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, minimum0, minimum1);
-
-        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
-        assertEq(amounts0, FEES_0);
-        assertEq(amounts1, FEES_1);
-        assertEq(vesting.totalAmounts(currency0), FEES_0);
-        assertEq(vesting.totalAmounts(currency1), FEES_1);
-        assertEq(currency0.balanceOf(address(vesting)), FEES_0);
-        assertEq(currency1.balanceOf(address(vesting)), FEES_1);
-    }
-
-    function test_Vesting_claimFor_WhenSourcePaysLessThanReported_Reverts() public {
-        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
-        MockVestingSource source = _deploySource(uint128(FEES_0), 0, FEES_0 - 1, 0);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector, currency0, FEES_0 - 1, FEES_0
-            )
-        );
-        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, 0, 0);
-    }
-
-    function test_Vesting_claimFor_WhenSourceReenters_Reverts() public {
-        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
-        MockVestingSource source = _deploySource(uint128(FEES_0), 0, FEES_0, 0);
-        source.setReentryTarget(vesting);
-
-        vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
-        vesting.claimFor(IClaimableRecipient(address(source)), TOKEN_ID, 0, 0);
-    }
-
     function test_Vesting_claim_WhenClaimAlreadyProcessedThisBlock_ReleasesNothingMore() public {
         uint128 max0 = uint128(FEES_0 / 10);
         uint128 max1 = uint128(FEES_1 / 10);
@@ -1176,16 +1166,6 @@ contract PositionRecipientsBTTTest is Test {
         vesting = new VestingClaimRecipient(
             IPositionManager(address(manager)), maxCurrency0PerBlock, maxCurrency1PerBlock, pinned
         );
-    }
-
-    function _deploySource(uint128 reported0, uint128 reported1, uint256 payout0, uint256 payout1)
-        internal
-        returns (MockVestingSource source)
-    {
-        source = new MockVestingSource();
-        source.configure(currency0, currency1, reported0, reported1, payout0, payout1);
-        if (payout0 != 0) MockERC20(Currency.unwrap(currency0)).transfer(address(source), payout0);
-        if (payout1 != 0) MockERC20(Currency.unwrap(currency1)).transfer(address(source), payout1);
     }
 
     function _deployBeneficiaryVault() internal returns (BeneficiaryVault) {

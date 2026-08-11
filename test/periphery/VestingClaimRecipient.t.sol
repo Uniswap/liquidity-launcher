@@ -22,7 +22,7 @@ import {
 
 /// @title VestingClaimRecipientTest
 /// @notice Integration tests for the vesting hot path: a beneficiary vault custodied by the vesting contract,
-///         drained by permissionless `claimFor`, then released to the pinned recipient under the per-block cap.
+///         drained by permissionless `claimFrom`, then released to the pinned recipient under the per-block cap.
 /// @dev Wired against `MockPositionManager` rather than a fork so the release schedule can be driven by
 ///      `vm.roll` across many blocks.
 contract VestingClaimRecipientTest is Test {
@@ -77,9 +77,9 @@ contract VestingClaimRecipientTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.NotBeneficiary.selector, TOKEN_ID, stranger));
         vault.claim(TOKEN_ID, 0, 0);
 
-        // only the vesting contract, and only through the permissionless `claimFor`
+        // only the vesting contract, and only through the permissionless `claimFrom`
         vm.prank(searcher);
-        vesting.claimFor(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
+        vesting.claimFrom(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
 
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
         assertEq(amounts0, FEES_0);
@@ -170,8 +170,8 @@ contract VestingClaimRecipientTest is Test {
         second.onAmountsReceived(TOKEN_ID, FEES_0, FEES_1);
 
         vm.startPrank(searcher);
-        vesting.claimFor(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
-        vesting.claimFor(second, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
+        vesting.claimFrom(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
+        vesting.claimFrom(second, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
         vm.stopPrank();
 
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
@@ -188,22 +188,22 @@ contract VestingClaimRecipientTest is Test {
         assertEq(vault.ownerOf(TOKEN_ID), address(vesting));
 
         vm.prank(searcher);
-        vesting.claimFor(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
+        vesting.claimFrom(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
 
         (uint256 amounts0,) = vesting.amounts(TOKEN_ID);
         assertEq(amounts0, FEES_0);
     }
 
-    function test_Integration_WhenSourceHasNothingToPay_ClaimForIsANoop() public {
+    function test_Integration_WhenSourceHasNothingToPay_ClaimFromIsANoop() public {
         _registerTo(address(vesting));
 
         vm.prank(searcher);
-        vesting.claimFor(vault, TOKEN_ID, 0, 0);
+        vesting.claimFrom(vault, TOKEN_ID, 0, 0);
 
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
         assertEq(amounts0, 0);
         assertEq(amounts1, 0);
-        assertEq(vesting.lastClaimed(TOKEN_ID), 0, "claimFor does not process a release");
+        assertEq(vesting.lastClaimed(TOKEN_ID), 0, "claimFrom does not process a release");
     }
 
     /// @notice Registers the beneficiary NFT for TOKEN_ID to `beneficiary`, authorised by position custody
@@ -228,7 +228,7 @@ contract VestingClaimRecipientTest is Test {
         _fundVault(FEES_0, FEES_1);
 
         vm.prank(searcher);
-        vesting.claimFor(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
+        vesting.claimFrom(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
     }
 }
 
@@ -297,7 +297,7 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         assertEq(amounts1, USDC_FEES - expectedUsdc);
     }
 
-    function test_Fork_ClaimFor_PullsFromRealBeneficiaryVault() public {
+    function test_Fork_ClaimFrom_PullsFromRealBeneficiaryVault() public {
         BeneficiaryVault vault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
         _yoinkPosition(FORK_TOKEN_ID, address(this));
         vault.registerBeneficiary(FORK_TOKEN_ID, address(vesting));
@@ -312,7 +312,7 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         vault.claim(FORK_TOKEN_ID, 0, 0);
 
         vm.prank(searcher);
-        vesting.claimFor(vault, FORK_TOKEN_ID, uint128(FORK_CURRENCY0_FEES_AMOUNT), uint128(USDC_FEES));
+        vesting.claimFrom(vault, FORK_TOKEN_ID, uint128(FORK_CURRENCY0_FEES_AMOUNT), uint128(USDC_FEES));
 
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(FORK_TOKEN_ID);
         assertEq(amounts0, FORK_CURRENCY0_FEES_AMOUNT);

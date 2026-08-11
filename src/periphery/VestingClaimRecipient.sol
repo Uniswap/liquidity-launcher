@@ -17,9 +17,6 @@ import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 ///      `onAmountsReceived`. Neither is gated, so the per-tokenId release cap bounds one position's rate, not the
 ///      contract's aggregate rate across positions.
 contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Receiver {
-    /// @notice Thrown when a source reports less than the caller's required amounts
-    error InsufficientAmounts();
-
     /// @notice Thrown when the pinned recipient is zero or this contract
     /// @param recipient The invalid recipient
     error InvalidRecipient(IClaimableRecipient recipient);
@@ -48,25 +45,6 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         maxCurrency0PerBlock = _maxCurrency0PerBlock;
         maxCurrency1PerBlock = _maxCurrency1PerBlock;
         recipient = _recipient;
-    }
-
-    /// @notice Claims fees from a source for a given tokenId and accounts them to the canonical pool associated with the tokenId from the PositionManager
-    /// @dev Only attributes to the canonical tokenId on PositionManager.
-    ///      Source contracts MUST ensure that their internal tokenId accounting is 1:1 with the V4 LP NFT id, otherwise amounts received here will be lost.
-    ///      Sources MUST pay out the full amount they report from `amounts`, so `currency1` MUST be a standard token that does not take a fee on transfer.
-    function claimFor(
-        IClaimableRecipient source,
-        uint256 tokenId,
-        uint128 minCurrency0Amount,
-        uint128 minCurrency1Amount
-    ) external nonReentrant {
-        (uint128 currency0Amount, uint128 currency1Amount) = source.amounts(tokenId);
-        // If the amounts are insufficient, revert
-        if (currency0Amount < minCurrency0Amount || currency1Amount < minCurrency1Amount) revert InsufficientAmounts();
-        // Claim the entire amount possible
-        source.claim(tokenId, currency0Amount, currency1Amount);
-        // Account the amount to the canonical pool associated with the tokenId from the PositionManager
-        onAmountsReceived(tokenId, currency0Amount, currency1Amount);
     }
 
     /// @inheritdoc IERC721Receiver

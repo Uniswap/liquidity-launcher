@@ -13,6 +13,9 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
+    /// @notice Thrown when a source reports less than the caller's required amounts
+    error InsufficientAmounts();
+
     /// @inheritdoc IClaimableRecipient
     IPositionManager public immutable override positionManager;
 
@@ -89,6 +92,24 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         _afterClaim(poolKey, _tokenId, toSend0, toSend1);
 
         emit Claimed(_tokenId, toSend0, toSend1, poolKey);
+    }
+
+    /// @inheritdoc IClaimableRecipient
+    function claimFrom(
+        IClaimableRecipient _source,
+        uint256 _tokenId,
+        uint128 _minCurrency0Amount,
+        uint128 _minCurrency1Amount
+    ) external nonReentrant {
+        (uint128 currency0Amount, uint128 currency1Amount) = _source.amounts(_tokenId);
+        // If the amounts are insufficient, revert
+        if (currency0Amount < _minCurrency0Amount || currency1Amount < _minCurrency1Amount) {
+            revert InsufficientAmounts();
+        }
+        // Claim the entire amount possible
+        _source.claim(_tokenId, currency0Amount, currency1Amount);
+        // Account the amount to the canonical pool associated with the tokenId from the PositionManager
+        onAmountsReceived(_tokenId, currency0Amount, currency1Amount);
     }
 
     /// @notice Returns the pool key for an existing position
