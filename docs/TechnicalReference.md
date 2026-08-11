@@ -15,6 +15,7 @@
 - [Contract Interactions](#contract-interactions)
     - [Typical Launch Flow](#typical-launch-flow)
     - [LBP Hook Requirement](#lbp-hook-requirement)
+    - [LP Fee Flow for Searchers](#lp-fee-flow-for-searchers)
 - [Key Interfaces](#key-interfaces)
 - [Important Safety Notes](#important-safety-notes)
 
@@ -184,6 +185,79 @@ When recovery succeeds, no v4 LP is created by the strategy; the raised currency
 This protects the committed pool from permissionless initialization at an arbitrary price. `GatedSwapHook` inherits `InitializerHook` and satisfies the requirement.
 
 `address(0)` is the only exception, and only for static-fee pools. With `hook == address(0)`, migration first targets the canonical hookless pool; if that pool is already initialized, the strategy switches the key to itself as the hook and initializes the strategy-hooked pool instead. `LBPStrategy` is deployed at a valid `BEFORE_INITIALIZE` hook address and rejects all `beforeInitialize` callbacks (v4 skips the callback when the sender is the hook itself, so self-initialization passes). Dynamic-fee pools must configure a nonzero hook, because the strategy implements no fee logic. See the [Deployment Guide](./DeploymentGuide.md#lbp-hook-requirement) for the integrator-facing details.
+
+### LP Fee Flow for Searchers
+
+LP fees accrue on v4 positions held by a [`FeeSplitter`](../src/periphery/FeeSplitter.sol). Anyone can collect them; what happens next depends on the recipient.
+
+| Role | Who | Actions |
+| --- | --- | --- |
+| **Keeper** | Anyone | Index new positions; call `FeeSplitter.collectFees` to push splits into ClaimRecipients |
+| **Incentivized executor** | Contract implementing [`IClaimExecutor`](../src/interfaces/IClaimExecutor.sol) | `claim` on `CompoundingClaimRecipient` or `BuybackAndBurnClaimRecipient` (mandatory `onClaimed` callback) |
+| **Beneficiary** | FEEB NFT owner | `claim` on `BeneficiaryVault` / `UERC20BeneficiaryVault` |
+
+Track FeeSplitter deploy addresses and read `getSplits()` for recipients. FeeSplitter and BuybackAndBurn are native-ETH pairs only. See the [periphery README](../src/periphery/README.md) for contract details.
+
+#### Contracts to index
+
+```mermaid
+flowchart TB
+    subgraph Discovery
+        ILS[InstantLaunchStrategy]
+        PM[v4 PositionManager]
+        ILS -->|"TokenLaunched"| Discover[New positions]
+        PM -->|"Transfer to FeeSplitter"| Discover
+    end
+
+    subgraph Custody
+        FS[FeeSplitter]
+    end
+
+    Discover --> FS
+
+    subgraph Keeper
+        Collect["collectFees"]
+    end
+
+    subgraph Incentivized_Executor
+        Compound[CompoundingClaimRecipient]
+        Buyburn[BuybackAndBurnClaimRecipient]
+    end
+
+    subgraph Beneficiary
+        Vault[BeneficiaryVault]
+        UVault[UERC20BeneficiaryVault]
+    end
+
+    Collect --> FS
+    FS --> Vault
+    FS --> UVault
+    FS --> Compound
+    FS --> Buyburn
+```
+
+#### Fee flow
+
+```mermaid
+flowchart TD
+    Accrued[Fees accrue on position] -->|"Keeper"| Collect["FeeSplitter.collectFees"]
+    Collect --> Forward[Push splits to ClaimRecipients]
+    Forward --> Attributed[Amounts attributed]
+
+    Attributed --> Branch{Recipient}
+
+    Branch -->|Vault| VaultClaim["Beneficiary claims"]
+    Branch -->|Compounding| CompClaim["Executor claims, compounds via onClaimed"]
+    Branch -->|BuybackAndBurn| BurnClaim["Executor claims, buyback and burn via onClaimed"]
+```
+
+#### Roles
+
+**Keeper** — permissionless. Call `collectFees` so fees leave the pool and land on recipients. No protocol payout.
+
+**Incentivized executor** — must implement `IClaimExecutor`. Claims compounding or buyback-and-burn shares and satisfies the callback (increase liquidity, or burn `minCurrency1BurnAmount` of the token after an optional buyback). Profit comes from claim proceeds after meeting those requirements.
+
+**Beneficiary** — FEEB NFT owner claims their vault share. Not permissionless.
 
 ## Key Interfaces
 
