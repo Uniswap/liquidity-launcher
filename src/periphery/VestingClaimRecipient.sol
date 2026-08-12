@@ -49,6 +49,9 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @param expectedPositionManager The expected position manager
     error InvalidPositionManager(IPositionManager positionManager, IPositionManager expectedPositionManager);
 
+    /// @notice Emitted on the first claim for a tokenId
+    event VestingStarted(uint256 indexed tokenId, uint256 startBlock);
+
     /// @notice The maximum currency0 amount releasable per block, per tokenId
     uint128 public immutable maxCurrency0PerBlock;
 
@@ -61,18 +64,15 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @notice The block number when the last claim was made for a given tokenId, or zero if unclaimed
     mapping(uint256 tokenId => uint256 lastClaimed) public lastClaimed;
 
-    /// @notice Emitted on the first claim for a tokenId
-    event VestingStarted(uint256 indexed tokenId, uint256 startBlock);
-
-    /// @notice The allowlisted beneficiary vaults, immutably set at construction
-    IBeneficiaryVault[] public allowlistedBeneficiaryVaults;
+    /// @notice A mapping of allowlisted beneficiary vaults
+    mapping(IBeneficiaryVault beneficiaryVault => bool) public isAllowlisted;
 
     constructor(
         IPositionManager _positionManager,
         uint128 _maxCurrency0PerBlock,
         uint128 _maxCurrency1PerBlock,
         IClaimableRecipient _recipient,
-        IBeneficiaryVault[] memory _allowlistedBeneficiaryVaults
+        IBeneficiaryVault[] memory _beneficiaryVaults
     ) BaseClaimRecipient(_positionManager) {
         if (
             address(_recipient) == address(0) || address(_recipient) == address(this)
@@ -87,15 +87,15 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         maxCurrency1PerBlock = _maxCurrency1PerBlock;
         recipient = _recipient;
         // Require at least one allowlisted beneficiary vault
-        if (_allowlistedBeneficiaryVaults.length == 0) {
+        if (_beneficiaryVaults.length == 0) {
             revert MustSetAllowlistedBeneficiaryVaults();
         }
-        for (uint256 i = 0; i < _allowlistedBeneficiaryVaults.length; i++) {
-            IBeneficiaryVault beneficiaryVault = _allowlistedBeneficiaryVaults[i];
+        for (uint256 i = 0; i < _beneficiaryVaults.length; i++) {
+            IBeneficiaryVault beneficiaryVault = _beneficiaryVaults[i];
             if (beneficiaryVault.positionManager() != _positionManager) {
                 revert InvalidPositionManager(beneficiaryVault.positionManager(), _positionManager);
             }
-            allowlistedBeneficiaryVaults.push(beneficiaryVault);
+            isAllowlisted[beneficiaryVault] = true;
         }
     }
 
@@ -121,7 +121,7 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         uint128 _minCurrency1Amount
     ) external nonReentrant {
         // Require that the beneficiary vault is allowlisted
-        if (!_isAllowlisted(_beneficiaryVault)) revert NotAllowlistedBeneficiaryVault(_beneficiaryVault);
+        if (!isAllowlisted[_beneficiaryVault]) revert NotAllowlistedBeneficiaryVault(_beneficiaryVault);
         // Require that this contract owns the position on the beneficiary vault
         if (IERC721(address(_beneficiaryVault)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner(_tokenId);
 
@@ -174,17 +174,5 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @notice Calls `onAmountsReceived` on the recipient to register the transferred amounts
     function _afterClaim(PoolKey memory, uint256 _tokenId, uint256 _toSend0, uint256 _toSend1) internal override {
         recipient.onAmountsReceived(_tokenId, _toSend0, _toSend1);
-    }
-
-    /// @notice Checks if a beneficiary vault is allowlisted
-    /// @param _beneficiaryVault The beneficiary vault to check
-    /// @return True if the beneficiary vault is allowlisted, false otherwise
-    function _isAllowlisted(IBeneficiaryVault _beneficiaryVault) internal view returns (bool) {
-        for (uint256 i = 0; i < allowlistedBeneficiaryVaults.length; i++) {
-            if (address(allowlistedBeneficiaryVaults[i]) == address(_beneficiaryVault)) {
-                return true;
-            }
-        }
-        return false;
     }
 }

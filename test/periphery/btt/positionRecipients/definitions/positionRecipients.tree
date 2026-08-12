@@ -108,7 +108,7 @@ PositionRecipientsBTTTest
     │   │   └── it reverts
     │   ├── when the puller owns the NFT
     │   │   └── it starts vesting, pulls and attributes
-    │   ├── when only a later vault in the allowlist issues the token ID
+    │   ├── when only another allowlisted vault issues the token ID
     │   │   └── it pulls and attributes
     │   └── when called after vesting has started
     │       └── it preserves the original start block

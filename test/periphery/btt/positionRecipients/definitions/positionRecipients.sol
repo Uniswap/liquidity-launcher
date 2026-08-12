@@ -325,7 +325,7 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// │   │   └── it reverts
 /// │   ├── when the puller owns the NFT
 /// │   │   └── it starts vesting, pulls and attributes
-/// │   ├── when only a later vault in the allowlist issues the token ID
+/// │   ├── when only another allowlisted vault issues the token ID
 /// │   │   └── it pulls and attributes
 /// │   └── when called after vesting has started
 /// │       └── it preserves the original start block
@@ -606,7 +606,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(puller.lastClaimed(TOKEN_ID), 0);
     }
 
-    function test_Vesting_claimFrom_WhenOnlySecondAllowlistedVaultIssuesTokenId_PullsAndAttributes() public {
+    function test_Vesting_claimFrom_WhenOnlyAnotherAllowlistedVaultIssuesTokenId_PullsAndAttributes() public {
         BeneficiaryVault second = _deployBeneficiaryVault();
         BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
@@ -1082,7 +1082,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vesting.maxCurrency1PerBlock(), max1);
         assertEq(address(vesting.recipient()), address(pinned));
         assertEq(address(vesting.positionManager()), address(manager));
-        assertEq(address(vesting.allowlistedBeneficiaryVaults(0)), address(vestingVault));
+        assertTrue(vesting.isAllowlisted(vestingVault));
     }
 
     function test_Vesting_constructor_WhenAllowlistIsEmpty_Reverts() public {
