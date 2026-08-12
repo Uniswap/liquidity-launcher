@@ -65,14 +65,15 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     {
         uint256 blockNumber = _getBlockNumberish();
         if (lastClaimed[_tokenId] == blockNumber) return (address(recipient), 0, address(recipient), 0);
-        lastClaimed[_tokenId] = blockNumber;
 
-        return (
-            address(recipient),
-            FixedPointMathLib.min(_available0, maxCurrency0PerBlock),
-            address(recipient),
-            FixedPointMathLib.min(_available1, maxCurrency1PerBlock)
-        );
+        uint256 currency0Amount = FixedPointMathLib.min(_available0, maxCurrency0PerBlock);
+        uint256 currency1Amount = FixedPointMathLib.min(_available1, maxCurrency1PerBlock);
+
+        if (currency0Amount > 0 || currency1Amount > 0) {
+            lastClaimed[_tokenId] = blockNumber;
+        }
+
+        return (address(recipient), currency0Amount, address(recipient), currency1Amount);
     }
 
     /// @inheritdoc BaseClaimRecipient
