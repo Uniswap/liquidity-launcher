@@ -39,10 +39,10 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @notice The receiver of every release, fixed at deploy
     IClaimableRecipient public immutable recipient;
 
-    /// @notice The block number when the last claim was made for a given tokenId, 0 until the vesting clock starts
+    /// @notice The block number when the last claim was made for a given tokenId, or zero if unclaimed
     mapping(uint256 tokenId => uint256 lastClaimed) public lastClaimed;
 
-    /// @notice Emitted on the first claim for a tokenId, when its vesting clock starts
+    /// @notice Emitted on the first claim for a tokenId
     event VestingStarted(uint256 indexed tokenId, uint256 startBlock);
 
     constructor(
