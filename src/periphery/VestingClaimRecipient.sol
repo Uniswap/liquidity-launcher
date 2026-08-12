@@ -13,6 +13,7 @@ import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
 /// @title VestingClaimRecipient
 /// @notice Contract which claims amounts from sources and releases them at a capped per-block rate
 /// @dev Supports claiming from multiple sources but attributes all amounts to the canonical tokenId on PositionManager
+/// @dev The vesting speed is chain specific and dependent on the block time.
 /// @dev Positions are onboarded by transferring a beneficiary NFT in, or by attributing amounts directly through
 ///      `onAmountsReceived`. Neither is gated, so the per-tokenId release cap bounds one position's rate, not the
 ///      contract's aggregate rate across positions.
