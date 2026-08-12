@@ -69,15 +69,16 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
             currency1Amount = positionAmounts.currency1Amount;
         }
 
-        if (currency0Amount < _minCurrency0Amount) {
-            revert InsufficientAmountReceived(currency0, currency0Amount, _minCurrency0Amount);
-        }
-        if (currency1Amount < _minCurrency1Amount) {
-            revert InsufficientAmountReceived(currency1, currency1Amount, _minCurrency1Amount);
-        }
-
         (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
             _beforeClaimTransfer(_tokenId, currency0, currency1, currency0Amount, currency1Amount);
+
+        if (toSend0 < _minCurrency0Amount) {
+            revert InsufficientAmountReceived(currency0, toSend0, _minCurrency0Amount);
+        }
+        if (toSend1 < _minCurrency1Amount) {
+            revert InsufficientAmountReceived(currency1, toSend1, _minCurrency1Amount);
+        }
+
         if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
         if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
         if (toSend0 > currency0Amount) revert InsufficientAmountReceived(currency0, currency0Amount, toSend0);

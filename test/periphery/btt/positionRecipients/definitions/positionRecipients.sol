@@ -23,6 +23,7 @@ import {BuybackAndBurnClaimRecipient} from "../../../../../src/periphery/Buyback
 import {CompoundingClaimRecipient} from "../../../../../src/periphery/CompoundingClaimRecipient.sol";
 import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.sol";
 import {UERC20BeneficiaryVault} from "../../../../../src/periphery/UERC20BeneficiaryVault.sol";
+import {VestingClaimRecipient} from "../../../../../src/periphery/VestingClaimRecipient.sol";
 import {IBeneficiaryVault} from "../../../../../src/interfaces/IBeneficiaryVault.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {TimelockedPositionRecipient} from "../../../../../src/periphery/TimelockedPositionRecipient.sol";
@@ -145,6 +146,24 @@ contract BaseClaimRecipientHarness is BaseClaimRecipient {
 ///      onClaimed callback (with the before/after hooks) — the surface the callback tests exercise.
 contract BaseClaimRecipientWithCallbackHarness is BaseClaimRecipientWithCallback {
     constructor(IPositionManager positionManager) BaseClaimRecipientWithCallback(positionManager) {}
+}
+
+/// @dev Pinned recipient that passes the deploy-time manager check but rejects every notification, so the
+///      rollback path stays reachable now that a mismatched manager is refused at construction.
+contract RevertingNotificationRecipient {
+    error NotificationRejected();
+
+    IPositionManager public positionManager;
+
+    constructor(IPositionManager _positionManager) {
+        positionManager = _positionManager;
+    }
+
+    function onAmountsReceived(uint256, uint256, uint256) external pure {
+        revert NotificationRejected();
+    }
+
+    receive() external payable {}
 }
 
 /// @dev ERC20 whose `graffiti()` returns fewer than 32 bytes so `_graffitiOf` treats it as unset.
@@ -277,6 +296,62 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     │   └── it reverts
 ///     └── when unregistered with no readable graffiti
 ///         └── it flushes to the fallbacks
+///
+/// VestingClaimRecipient
+/// ├── constructor
+/// │   ├── when the recipient is zero
+/// │   │   └── it reverts
+/// │   ├── when the recipient is the contract itself
+/// │   │   └── it reverts
+/// │   ├── when the recipient uses a different position manager
+/// │   │   └── it reverts
+/// │   ├── when the allowlist is empty
+/// │   │   └── it reverts
+/// │   ├── when an allowlisted vault uses a different position manager
+/// │   │   └── it reverts
+/// │   └── when the parameters are valid
+/// │       └── it sets the configuration and allowlist
+/// ├── onERC721Received
+/// │   └── when a beneficiary NFT is safe transferred in
+/// │       └── it accepts custody
+/// ├── claimFrom
+/// │   ├── when the vault is not allowlisted
+/// │   │   └── it reverts
+/// │   ├── when the puller does not own the beneficiary NFT
+/// │   │   └── it reverts
+/// │   ├── when the currency0 minimum is not met
+/// │   │   └── it reverts
+/// │   ├── when the currency1 minimum is not met
+/// │   │   └── it reverts
+/// │   ├── when the puller owns the NFT
+/// │   │   └── it starts vesting, pulls and attributes
+/// │   ├── when only another allowlisted vault issues the token ID
+/// │   │   └── it pulls and attributes
+/// │   └── when called after vesting has started
+/// │       └── it preserves the original start block
+/// └── claim
+///     ├── when amounts are permissionlessly attributed before claimFrom
+///     │   └── it remains locked until claimFrom starts vesting
+///     ├── when called in the vesting start block
+///     │   └── it releases nothing
+///     ├── when no amounts are available
+///     │   └── it preserves the last claimed block
+///     ├── when only currency0 is available
+///     │   └── it releases currency0
+///     ├── when only currency1 is available
+///     │   └── it releases currency1
+///     ├── when the available amount is below the per block maximum
+///     │   └── it releases the full available amount
+///     ├── when the available amount exceeds the per block maximum
+///     │   └── it releases the accumulated cap
+///     ├── when a claim was already processed this block
+///     │   └── it releases nothing more
+///     ├── when the caller is not the recipient
+///     │   └── it still pays the pinned recipient
+///     ├── when the recipient notification reverts
+///     │   └── it rolls back the claim
+///     └── when the position does not exist
+///         └── it reverts
 contract PositionRecipientsBTTTest is Test {
     uint256 internal constant TOKEN_ID = 1;
     uint256 internal constant FEES_0 = 2 ether;
@@ -296,6 +371,7 @@ contract PositionRecipientsBTTTest is Test {
     Currency internal currency0;
     Currency internal currency1;
     PoolKey internal poolKey;
+    BeneficiaryVault internal vestingVault;
 
     function setUp() public {
         manager = new MockPositionManager();
@@ -306,6 +382,7 @@ contract PositionRecipientsBTTTest is Test {
         (currency0, currency1) = a < b ? (a, b) : (b, a);
         poolKey = PoolKey(currency0, currency1, 3000, 60, IHooks(address(0)));
         _configure(poolKey, FEES_0, FEES_1, 1 ether);
+        vestingVault = new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
     }
 
     function test_TimelockedPositionRecipient_WhenTimelockHasNotPassed_Reverts(uint64 timelock) public {
@@ -462,6 +539,107 @@ contract PositionRecipientsBTTTest is Test {
 
         vm.expectRevert(ReentrancyGuardTransient.Reentrancy.selector);
         executor.execute(recipient, TOKEN_ID);
+    }
+
+    function test_Vesting_claimFrom_WhenSourceIsVaultAndPullerDoesNotOwnNft_Reverts() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, feeRecipient);
+        _notifyAmounts(vestingVault, poolKey, FEES_0, FEES_1);
+
+        vm.expectRevert(abi.encodeWithSelector(VestingClaimRecipient.NotPositionOwner.selector, TOKEN_ID));
+        puller.claimFrom(vestingVault, TOKEN_ID, 0, 0);
+    }
+
+    function test_Vesting_claimFrom_WhenSourceIsVaultAndPullerOwnsNft_PullsAndAttributes() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, address(puller));
+        _notifyAmounts(vestingVault, poolKey, FEES_0, FEES_1);
+
+        vm.expectEmit(true, false, false, true, address(puller));
+        emit VestingClaimRecipient.VestingStarted(TOKEN_ID, block.number);
+        puller.claimFrom(vestingVault, TOKEN_ID, 0, 0);
+
+        (uint256 amounts0, uint256 amounts1) = puller.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+        assertEq(puller.lastClaimed(TOKEN_ID), block.number);
+        (uint256 vault0, uint256 vault1) = vestingVault.amounts(TOKEN_ID);
+        assertEq(vault0, 0);
+        assertEq(vault1, 0);
+    }
+
+    function test_Vesting_claimFrom_WhenCurrency0MinimumIsNotMet_Reverts() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, address(puller));
+        _notifyAmounts(vestingVault, poolKey, FEES_0, FEES_1);
+
+        vm.expectRevert(VestingClaimRecipient.InsufficientAmounts.selector);
+        puller.claimFrom(vestingVault, TOKEN_ID, uint128(FEES_0 + 1), 0);
+        assertEq(puller.lastClaimed(TOKEN_ID), 0);
+    }
+
+    function test_Vesting_claimFrom_WhenCurrency1MinimumIsNotMet_Reverts() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, address(puller));
+        _notifyAmounts(vestingVault, poolKey, FEES_0, FEES_1);
+
+        vm.expectRevert(VestingClaimRecipient.InsufficientAmounts.selector);
+        puller.claimFrom(vestingVault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1 + 1));
+        assertEq(puller.lastClaimed(TOKEN_ID), 0);
+    }
+
+    function test_Vesting_claimFrom_WhenVaultIsNotAllowlisted_Reverts() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        BeneficiaryVault unallowlisted = _deployBeneficiaryVault();
+        unallowlisted.registerBeneficiary(TOKEN_ID, address(puller));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VestingClaimRecipient.NotAllowlistedBeneficiaryVault.selector, IBeneficiaryVault(unallowlisted)
+            )
+        );
+        puller.claimFrom(unallowlisted, TOKEN_ID, 0, 0);
+        assertEq(puller.lastClaimed(TOKEN_ID), 0);
+    }
+
+    function test_Vesting_claimFrom_WhenOnlyAnotherAllowlistedVaultIssuesTokenId_PullsAndAttributes() public {
+        BeneficiaryVault second = _deployBeneficiaryVault();
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
+        allowlist[0] = vestingVault;
+        allowlist[1] = second;
+        VestingClaimRecipient puller = new VestingClaimRecipient(
+            IPositionManager(address(manager)),
+            uint128(FEES_0),
+            uint128(FEES_1),
+            IClaimableRecipient(address(pinned)),
+            allowlist
+        );
+        // The first vault intentionally never issues TOKEN_ID; token IDs remain globally unique across vaults.
+        second.registerBeneficiary(TOKEN_ID, address(puller));
+        _notifyAmounts(second, poolKey, FEES_0, FEES_1);
+
+        puller.claimFrom(second, TOKEN_ID, 0, 0);
+
+        (uint256 amounts0, uint256 amounts1) = puller.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+    }
+
+    function test_Vesting_claimFrom_WhenCalledAgain_DoesNotRestartVesting() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _startVesting(puller, FEES_0, FEES_1);
+        uint256 startBlock = puller.lastClaimed(TOKEN_ID);
+
+        vm.roll(block.number + 10);
+        _notifyAmounts(vestingVault, poolKey, 1, 1);
+        puller.claimFrom(vestingVault, TOKEN_ID, 0, 0);
+
+        assertEq(puller.lastClaimed(TOKEN_ID), startBlock);
     }
 
     function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
@@ -873,6 +1051,322 @@ contract PositionRecipientsBTTTest is Test {
 
         assertEq(NATIVE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
+    }
+
+    function test_Vesting_constructor_WhenRecipientIsZero_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(VestingClaimRecipient.InvalidRecipient.selector, IClaimableRecipient(address(0)))
+        );
+        new VestingClaimRecipient(
+            IPositionManager(address(manager)), 1 ether, 1 ether, IClaimableRecipient(address(0)), _vestingAllowlist()
+        );
+    }
+
+    function test_Vesting_constructor_WhenRecipientIsSelf_Reverts() public {
+        address self = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(VestingClaimRecipient.InvalidRecipient.selector, IClaimableRecipient(self))
+        );
+        new VestingClaimRecipient(
+            IPositionManager(address(manager)), 1 ether, 1 ether, IClaimableRecipient(self), _vestingAllowlist()
+        );
+    }
+
+    function test_Vesting_constructor_WhenParametersAreValid_SetsConfiguration(uint128 max0, uint128 max1) public {
+        max0 = uint128(bound(max0, 1, type(uint128).max));
+        max1 = uint128(bound(max1, 1, type(uint128).max));
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
+
+        assertEq(vesting.maxCurrency0PerBlock(), max0);
+        assertEq(vesting.maxCurrency1PerBlock(), max1);
+        assertEq(address(vesting.recipient()), address(pinned));
+        assertEq(address(vesting.positionManager()), address(manager));
+        assertTrue(vesting.isAllowlisted(vestingVault));
+    }
+
+    function test_Vesting_constructor_WhenAllowlistIsEmpty_Reverts() public {
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](0);
+
+        vm.expectRevert(VestingClaimRecipient.MustSetAllowlistedBeneficiaryVaults.selector);
+        new VestingClaimRecipient(
+            IPositionManager(address(manager)), uint128(FEES_0), uint128(FEES_1), pinned, allowlist
+        );
+    }
+
+    function test_Vesting_constructor_WhenAllowlistedVaultUsesADifferentPositionManager_Reverts() public {
+        MockPositionManager foreignManager = new MockPositionManager();
+        BeneficiaryVault foreign =
+            new BeneficiaryVault(IPositionManager(address(foreignManager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
+        allowlist[0] = vestingVault;
+        allowlist[1] = foreign;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VestingClaimRecipient.InvalidPositionManager.selector,
+                IPositionManager(address(foreignManager)),
+                IPositionManager(address(manager))
+            )
+        );
+        new VestingClaimRecipient(
+            IPositionManager(address(manager)), uint128(FEES_0), uint128(FEES_1), pinned, allowlist
+        );
+    }
+
+    function test_Vesting_onERC721Received_WhenNftIsSafeTransferredIn_AcceptsCustody() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        UERC20BeneficiaryVault vault = _deployUerc20Vault();
+        _nativeUerc20Pool(creator);
+        manager.setPositionOwner(address(this));
+        vault.registerBeneficiary(TOKEN_ID, address(this));
+
+        vault.safeTransferFrom(address(this), address(vesting), TOKEN_ID);
+
+        assertEq(vault.ownerOf(TOKEN_ID), address(vesting));
+    }
+
+    function test_Vesting_claim_WhenClaimAlreadyProcessedThisBlock_ReleasesNothingMore() public {
+        uint128 max0 = uint128(FEES_0 / 10);
+        uint128 max1 = uint128(FEES_1 / 10);
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
+        _startVesting(vesting, FEES_0, FEES_1);
+
+        vesting.claim(TOKEN_ID, 0, 0);
+        assertEq(currency0.balanceOf(address(pinned)), 0);
+        assertEq(currency1.balanceOf(address(pinned)), 0);
+
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
+        assertEq(currency0.balanceOf(address(pinned)), max0);
+
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(vesting.lastClaimed(TOKEN_ID), block.number);
+        assertEq(currency0.balanceOf(address(pinned)), max0);
+        assertEq(currency1.balanceOf(address(pinned)), max1);
+    }
+
+    function test_Vesting_claim_WhenAvailableIsBelowMax_ReleasesFullAmount() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _startVesting(vesting, FEES_0, FEES_1);
+
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), FEES_0);
+        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, 0);
+        assertEq(amounts1, 0);
+        // the release is registered on the recipient through `_afterClaim`
+        (uint256 pinned0, uint256 pinned1) = pinned.amounts(TOKEN_ID);
+        assertEq(pinned0, FEES_0);
+        assertEq(pinned1, FEES_1);
+    }
+
+    function test_Vesting_claim_WhenAvailableExceedsMax_ReleasesAccumulatedCap(uint256 rounds, uint256 gapBlocks)
+        public
+    {
+        rounds = bound(rounds, 1, 5);
+        gapBlocks = bound(gapBlocks, 1, 1000);
+        uint128 max0 = uint128(FEES_0 / 10);
+        uint128 max1 = uint128(FEES_1 / 10);
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
+        _startVesting(vesting, FEES_0, FEES_1);
+
+        for (uint256 i = 0; i < rounds; i++) {
+            vm.roll(block.number + gapBlocks);
+            vesting.claim(TOKEN_ID, 0, 0);
+        }
+
+        uint256 released0 = uint256(max0) * gapBlocks * rounds;
+        uint256 released1 = uint256(max1) * gapBlocks * rounds;
+        if (released0 > FEES_0) released0 = FEES_0;
+        if (released1 > FEES_1) released1 = FEES_1;
+        assertEq(currency0.balanceOf(address(pinned)), released0);
+        assertEq(currency1.balanceOf(address(pinned)), released1);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0 - released0);
+        assertEq(amounts1, FEES_1 - released1);
+    }
+
+    function test_Vesting_claim_WhenAmountsArePermissionlesslyAttributedBeforeClaimFrom_RemainsLockedUntilStarted()
+        public
+    {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        uint256 directAmount0 = FEES_0 / 2;
+        uint256 directAmount1 = FEES_1 / 2;
+        IERC20(Currency.unwrap(currency0)).transfer(stranger, directAmount0);
+        IERC20(Currency.unwrap(currency1)).transfer(stranger, directAmount1);
+
+        vm.startPrank(stranger);
+        IERC20(Currency.unwrap(currency0)).transfer(address(vesting), directAmount0);
+        IERC20(Currency.unwrap(currency1)).transfer(address(vesting), directAmount1);
+        vesting.onAmountsReceived(TOKEN_ID, directAmount0, directAmount1);
+        vm.stopPrank();
+
+        (uint256 attributed0, uint256 attributed1) = vesting.amounts(TOKEN_ID);
+        assertEq(attributed0, directAmount0);
+        assertEq(attributed1, directAmount1);
+
+        vm.expectRevert(abi.encodeWithSelector(VestingClaimRecipient.VestingNotStarted.selector, TOKEN_ID));
+        vesting.claim(TOKEN_ID, 0, 0);
+        assertEq(vesting.lastClaimed(TOKEN_ID), 0);
+
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, address(vesting));
+        _notifyAmounts(vestingVault, poolKey, 1, 1);
+        vesting.claimFrom(vestingVault, TOKEN_ID, 0, 0);
+
+        (attributed0, attributed1) = vesting.amounts(TOKEN_ID);
+        assertEq(attributed0, directAmount0 + 1);
+        assertEq(attributed1, directAmount1 + 1);
+
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), directAmount0 + 1);
+        assertEq(currency1.balanceOf(address(pinned)), directAmount1 + 1);
+    }
+
+    function test_Vesting_claim_WhenNoAmountsAreAvailable_DoesNotUpdateLastClaimed() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _startVesting(vesting, 0, 0);
+        uint256 startBlock = vesting.lastClaimed(TOKEN_ID);
+
+        vm.roll(block.number + 10);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(vesting.lastClaimed(TOKEN_ID), startBlock);
+    }
+
+    function test_Vesting_claim_WhenOnlyCurrency0IsAvailable_ReleasesCurrency0() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _startVesting(vesting, FEES_0, 0);
+
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), FEES_0);
+        assertEq(currency1.balanceOf(address(pinned)), 0);
+        assertEq(vesting.lastClaimed(TOKEN_ID), block.number);
+    }
+
+    function test_Vesting_claim_WhenOnlyCurrency1IsAvailable_ReleasesCurrency1() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _startVesting(vesting, 0, FEES_1);
+
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), 0);
+        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
+        assertEq(vesting.lastClaimed(TOKEN_ID), block.number);
+    }
+
+    function test_Vesting_constructor_WhenCurrency0MaximumIsZero_Reverts(uint128 max1) public {
+        max1 = uint128(bound(max1, 1, type(uint128).max));
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+
+        vm.expectRevert(VestingClaimRecipient.MaxCurrencyAmountsCannotBeZero.selector);
+        new VestingClaimRecipient(IPositionManager(address(manager)), 0, max1, pinned, _vestingAllowlist());
+    }
+
+    function test_Vesting_constructor_WhenCurrency1MaximumIsZero_Reverts(uint128 max0) public {
+        max0 = uint128(bound(max0, 1, type(uint128).max));
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+
+        vm.expectRevert(VestingClaimRecipient.MaxCurrencyAmountsCannotBeZero.selector);
+        new VestingClaimRecipient(IPositionManager(address(manager)), max0, 0, pinned, _vestingAllowlist());
+    }
+
+    function test_Vesting_claim_WhenCallerIsNotRecipient_StillPaysPinnedRecipient() public {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        _startVesting(vesting, FEES_0, FEES_1);
+
+        vm.roll(block.number + 1);
+        vm.prank(stranger);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), FEES_0);
+        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
+        assertEq(currency0.balanceOf(stranger), 0);
+        assertEq(currency1.balanceOf(stranger), 0);
+    }
+
+    function test_Vesting_constructor_WhenRecipientUsesADifferentPositionManager_Reverts() public {
+        // every release notifies the pinned recipient with this contract's token ID, so a recipient on
+        // another manager would attribute releases to an unrelated position
+        BaseClaimRecipientHarness foreign =
+            new BaseClaimRecipientHarness(IPositionManager(address(new MockPositionManager())));
+
+        vm.expectRevert(abi.encodeWithSelector(VestingClaimRecipient.InvalidRecipient.selector, foreign));
+        new VestingClaimRecipient(
+            IPositionManager(address(manager)), uint128(FEES_0), uint128(FEES_1), foreign, _vestingAllowlist()
+        );
+    }
+
+    function test_Vesting_claim_WhenRecipientNotificationReverts_RollsBackClaim() public {
+        RevertingNotificationRecipient rejecting =
+            new RevertingNotificationRecipient(IPositionManager(address(manager)));
+        VestingClaimRecipient vesting = new VestingClaimRecipient(
+            IPositionManager(address(manager)),
+            uint128(FEES_0),
+            uint128(FEES_1),
+            IClaimableRecipient(address(rejecting)),
+            _vestingAllowlist()
+        );
+        _startVesting(vesting, FEES_0, FEES_1);
+        uint256 startBlock = vesting.lastClaimed(TOKEN_ID);
+        vm.roll(block.number + 1);
+
+        vm.expectRevert(RevertingNotificationRecipient.NotificationRejected.selector);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(rejecting)), 0);
+        assertEq(currency1.balanceOf(address(rejecting)), 0);
+        assertEq(vesting.lastClaimed(TOKEN_ID), startBlock);
+        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
+        assertEq(amounts0, FEES_0);
+        assertEq(amounts1, FEES_1);
+    }
+
+    function test_Vesting_claim_WhenPositionDoesNotExist_Reverts() public {
+        (VestingClaimRecipient vesting,) = _deployVesting(1 ether, 1 ether);
+        uint256 invalidTokenId = TOKEN_ID + 1;
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, invalidTokenId));
+        vesting.claim(invalidTokenId, 0, 0);
+    }
+
+    function _vestingAllowlist() internal view returns (IBeneficiaryVault[] memory allowlist) {
+        allowlist = new IBeneficiaryVault[](1);
+        allowlist[0] = vestingVault;
+    }
+
+    function _startVesting(VestingClaimRecipient vesting, uint256 amount0, uint256 amount1) internal {
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, address(vesting));
+        _notifyAmounts(vestingVault, poolKey, amount0, amount1);
+        vesting.claimFrom(vestingVault, TOKEN_ID, 0, 0);
+    }
+
+    function _deployVesting(uint128 maxCurrency0PerBlock, uint128 maxCurrency1PerBlock)
+        internal
+        returns (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned)
+    {
+        pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        vesting = new VestingClaimRecipient(
+            IPositionManager(address(manager)), maxCurrency0PerBlock, maxCurrency1PerBlock, pinned, _vestingAllowlist()
+        );
     }
 
     function _deployBeneficiaryVault() internal returns (BeneficiaryVault) {

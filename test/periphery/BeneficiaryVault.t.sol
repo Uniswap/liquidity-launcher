@@ -368,7 +368,8 @@ contract BeneficiaryVaultTest is Test {
         _credit(recipient, tokenId, 8 ether, 16 ether);
         address collector = makeAddr("collector");
         vm.prank(collector);
-        recipient.claim(tokenId, 8 ether, 16 ether);
+        // the minimums validate the capped payout, not the attributed balance
+        recipient.claim(tokenId, 4 ether, 8 ether);
         assertEq(collector.balance, 4 ether);
         assertEq(token.balanceOf(collector), 8 ether);
         (uint256 nativeAmount, uint256 tokenAmount) = recipient.amounts(tokenId);
@@ -383,6 +384,22 @@ contract BeneficiaryVaultTest is Test {
         (nativeAmount, tokenAmount) = recipient.amounts(tokenId);
         assertEq(nativeAmount, 2 ether);
         assertEq(tokenAmount, 4 ether);
+    }
+
+    function test_claim_partialPolicyRevertsWhenMinimumExceedsCappedAmount() public {
+        uint256 tokenId = _mintPosition(address(this));
+        PartialTransferRecipient recipient = new PartialTransferRecipient(POSITION_MANAGER);
+        _credit(recipient, tokenId, 8 ether, 16 ether);
+        address collector = makeAddr("collector");
+
+        // 8 ether is attributed but the policy releases half, so a minimum of 8 must not pass
+        vm.prank(collector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimableRecipient.InsufficientAmountReceived.selector, CurrencyLibrary.ADDRESS_ZERO, 4 ether, 8 ether
+            )
+        );
+        recipient.claim(tokenId, 8 ether, 16 ether);
     }
 
     function test_claim_currency1RejectionBlocksAllPayouts() public {
