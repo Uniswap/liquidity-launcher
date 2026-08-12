@@ -25,6 +25,9 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @notice Thrown when a source reports less than the caller's required amounts
     error InsufficientAmounts();
 
+    /// @notice Thrown when the maximum currency0 or currency1 amount per block is zero
+    error MaxCurrencyAmountsCannotBeZero();
+
     /// @notice Thrown when a source resolves positions against a different position manager
     /// @param positionManager The incompatible position manager
     /// @param expectedPositionManager The expected position manager
@@ -56,6 +59,9 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
                 || _recipient.positionManager() != _positionManager
         ) {
             revert InvalidRecipient(_recipient);
+        }
+        if (_maxCurrency0PerBlock == 0 || _maxCurrency1PerBlock == 0) {
+            revert MaxCurrencyAmountsCannotBeZero();
         }
         maxCurrency0PerBlock = _maxCurrency0PerBlock;
         maxCurrency1PerBlock = _maxCurrency1PerBlock;
@@ -114,7 +120,7 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         uint256 blocksPassed = blockNumber - last;
         if (blocksPassed == 0) return (address(recipient), 0, address(recipient), 0);
 
-        if ((_available0 > 0 && maxCurrency0PerBlock > 0) || (_available1 > 0 && maxCurrency1PerBlock > 0)) {
+        if (_available0 > 0 || _available1 > 0) {
             lastClaimed[_tokenId] = blockNumber;
         }
 

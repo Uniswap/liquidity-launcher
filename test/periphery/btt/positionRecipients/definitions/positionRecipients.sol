@@ -1057,6 +1057,8 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_Vesting_constructor_WhenParametersAreValid_SetsConfiguration(uint128 max0, uint128 max1) public {
+        max0 = uint128(bound(max0, 1, type(uint128).max));
+        max1 = uint128(bound(max1, 1, type(uint128).max));
         (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
 
         assertEq(vesting.maxCurrency0PerBlock(), max0);
@@ -1141,18 +1143,20 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(amounts1, FEES_1 - released1);
     }
 
-    function test_Vesting_claim_WhenPerBlockMaximumIsZero_NeverReleasesThatCurrency() public {
-        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(0, uint128(FEES_1));
-        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
-        vesting.claim(TOKEN_ID, 0, 0);
-        vm.roll(block.number + 1000);
+    function test_Vesting_constructor_WhenCurrency0MaximumIsZero_Reverts(uint128 max1) public {
+        max1 = uint128(bound(max1, 1, type(uint128).max));
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
 
-        vesting.claim(TOKEN_ID, 0, 0);
+        vm.expectRevert(VestingClaimRecipient.MaxCurrencyAmountsCannotBeZero.selector);
+        new VestingClaimRecipient(IPositionManager(address(manager)), 0, max1, pinned);
+    }
 
-        assertEq(currency0.balanceOf(address(pinned)), 0);
-        assertEq(currency1.balanceOf(address(pinned)), FEES_1);
-        (uint256 amounts0,) = vesting.amounts(TOKEN_ID);
-        assertEq(amounts0, FEES_0);
+    function test_Vesting_constructor_WhenCurrency1MaximumIsZero_Reverts(uint128 max0) public {
+        max0 = uint128(bound(max0, 1, type(uint128).max));
+        BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+
+        vm.expectRevert(VestingClaimRecipient.MaxCurrencyAmountsCannotBeZero.selector);
+        new VestingClaimRecipient(IPositionManager(address(manager)), max0, 0, pinned);
     }
 
     function test_Vesting_claim_WhenCallerIsNotRecipient_StillPaysPinnedRecipient() public {
