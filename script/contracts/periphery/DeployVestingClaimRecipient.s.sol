@@ -11,6 +11,12 @@ import {console} from "forge-std/console.sol";
 /// @title DeployVestingClaimRecipientScript
 /// @notice Deploys a VestingClaimRecipient contract for the given chain
 contract DeployVestingClaimRecipientScript is Script, Parameters {
+    /// @notice Default ETH drip per block when vesting into `BuybackAndBurnClaimRecipient`.
+    /// @dev Sized so one block's release ~ one 500k-token burn (0.05% of supply) at a ~$50k launch FDV
+    ///      with ETH at $2k: 0.0005 * $50k / $2k = 0.0125 ETH. `maxCurrency1PerBlock` is typically 0 on
+    ///      the ETH-fee buyback path.
+    uint128 public constant DEFAULT_MAX_CURRENCY0_PER_BLOCK = 12500000000000000;
+
     function run() public returns (address vestingClaimRecipient) {
         DeployParameters memory params = getParameters(block.chainid);
 
@@ -18,9 +24,10 @@ contract DeployVestingClaimRecipientScript is Script, Parameters {
         if (recipient == address(0)) revert("env: VESTING_RECIPIENT not set");
 
         uint128 maxCurrency0PerBlock = uint128(vm.envUint("VESTING_MAX_CURRENCY0_PER_BLOCK"));
-        if (maxCurrency0PerBlock == 0) revert("env: VESTING_MAX_CURRENCY0_PER_BLOCK not set");
         uint128 maxCurrency1PerBlock = uint128(vm.envUint("VESTING_MAX_CURRENCY1_PER_BLOCK"));
-        if (maxCurrency1PerBlock == 0) revert("env: VESTING_MAX_CURRENCY1_PER_BLOCK not set");
+        if (maxCurrency0PerBlock == 0 && maxCurrency1PerBlock == 0) {
+            revert("env: VESTING_MAX_CURRENCY0_PER_BLOCK and VESTING_MAX_CURRENCY1_PER_BLOCK cannot both be zero");
+        }
 
         // Optionally use a salt for deployment
         bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
