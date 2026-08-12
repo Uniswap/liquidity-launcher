@@ -148,6 +148,24 @@ contract BaseClaimRecipientWithCallbackHarness is BaseClaimRecipientWithCallback
     constructor(IPositionManager positionManager) BaseClaimRecipientWithCallback(positionManager) {}
 }
 
+/// @dev Pinned recipient that passes the deploy-time manager check but rejects every notification, so the
+///      rollback path stays reachable now that a mismatched manager is refused at construction.
+contract RevertingNotificationRecipient {
+    error NotificationRejected();
+
+    IPositionManager public positionManager;
+
+    constructor(IPositionManager _positionManager) {
+        positionManager = _positionManager;
+    }
+
+    function onAmountsReceived(uint256, uint256, uint256) external pure {
+        revert NotificationRejected();
+    }
+
+    receive() external payable {}
+}
+
 /// @dev ERC20 whose `graffiti()` returns fewer than 32 bytes so `_graffitiOf` treats it as unset.
 contract MockShortGraffitiToken is MockERC20 {
     constructor(address recipient) MockERC20("Short Graffiti", "SHORT", 1_000_000 ether, recipient) {}
@@ -580,16 +598,22 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(source1, FEES_1);
     }
 
-    function test_BaseRecipient_claimFrom_WhenPullerCannotResolvePosition_RevertsAfterSourcePaid() public {
-        // puller resolves positions against a different PositionManager than the funded source
-        BaseClaimRecipientHarness puller =
-            new BaseClaimRecipientHarness(IPositionManager(address(new MockPositionManager())));
+    function test_BaseRecipient_claimFrom_WhenSourceUsesADifferentPositionManager_Reverts() public {
+        // puller resolves positions against a different PositionManager than the funded source, so the
+        // same token ID would attribute the pulled amounts to an unrelated position
+        MockPositionManager pullerManager = new MockPositionManager();
+        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(pullerManager)));
         BaseClaimRecipientHarness source = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         _notifyAmounts(source, poolKey, FEES_0, 0);
 
-        // source.claim would pay the puller, then puller.onAmountsReceived reverts InvalidPosition and
-        // rolls the nested claim back
-        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, TOKEN_ID));
+        // the manager check precedes the pull, so the source is never paid in the first place
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimableRecipient.InvalidPositionManager.selector,
+                IPositionManager(address(manager)),
+                IPositionManager(address(pullerManager))
+            )
+        );
         puller.claimFrom(source, TOKEN_ID, 0, 0);
 
         assertEq(currency0.balanceOf(address(puller)), 0);
@@ -1131,19 +1155,32 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(currency1.balanceOf(stranger), 0);
     }
 
-    function test_Vesting_claim_WhenRecipientNotificationReverts_RollsBackClaim() public {
-        // a recipient that resolves positions against a different PositionManager cannot be notified
+    function test_Vesting_constructor_WhenRecipientUsesADifferentPositionManager_Reverts() public {
+        // every release notifies the pinned recipient with this contract's token ID, so a recipient on
+        // another manager would attribute releases to an unrelated position
         BaseClaimRecipientHarness foreign =
             new BaseClaimRecipientHarness(IPositionManager(address(new MockPositionManager())));
-        VestingClaimRecipient vesting =
-            new VestingClaimRecipient(IPositionManager(address(manager)), uint128(FEES_0), uint128(FEES_1), foreign);
+
+        vm.expectRevert(abi.encodeWithSelector(VestingClaimRecipient.InvalidRecipient.selector, foreign));
+        new VestingClaimRecipient(IPositionManager(address(manager)), uint128(FEES_0), uint128(FEES_1), foreign);
+    }
+
+    function test_Vesting_claim_WhenRecipientNotificationReverts_RollsBackClaim() public {
+        RevertingNotificationRecipient rejecting =
+            new RevertingNotificationRecipient(IPositionManager(address(manager)));
+        VestingClaimRecipient vesting = new VestingClaimRecipient(
+            IPositionManager(address(manager)),
+            uint128(FEES_0),
+            uint128(FEES_1),
+            IClaimableRecipient(address(rejecting))
+        );
         _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, TOKEN_ID));
+        vm.expectRevert(RevertingNotificationRecipient.NotificationRejected.selector);
         vesting.claim(TOKEN_ID, 0, 0);
 
-        assertEq(currency0.balanceOf(address(foreign)), 0);
-        assertEq(currency1.balanceOf(address(foreign)), 0);
+        assertEq(currency0.balanceOf(address(rejecting)), 0);
+        assertEq(currency1.balanceOf(address(rejecting)), 0);
         assertEq(vesting.lastClaimed(TOKEN_ID), 0);
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
         assertEq(amounts0, FEES_0);

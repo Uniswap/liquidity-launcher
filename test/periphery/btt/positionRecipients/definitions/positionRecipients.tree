@@ -38,8 +38,8 @@ PositionRecipientsBTTTest
 │       │   └── it reverts for a plain puller
 │       ├── when the source pays a pinned recipient instead of the puller
 │       │   └── it reverts on attribution
-│       └── when the puller cannot resolve the position
-│           └── it reverts after the source has paid
+│       └── when the source uses a different position manager
+│           └── it reverts before the source is paid
 ├── BuybackAndBurnPositionRecipient
 │   ├── when currency0 is not native
 │   │   └── it reverts
@@ -108,6 +108,8 @@ PositionRecipientsBTTTest
     │   ├── when the recipient is zero
     │   │   └── it reverts
     │   ├── when the recipient is the contract itself
+    │   │   └── it reverts
+    │   ├── when the recipient uses a different position manager
     │   │   └── it reverts
     │   └── when the parameters are valid
     │       └── it sets the configuration

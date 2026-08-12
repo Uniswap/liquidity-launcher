@@ -22,6 +22,9 @@ import {
 /// @dev `claimFrom` source that reports one pair of amounts from `amounts` and pays another on `claim`, so the
 ///      gap between what a source promises and what it delivers is expressible. Reenters when a target is set.
 contract MockClaimSource {
+    /// @dev Pullers reject a source that resolves positions against a different manager, so this is settable.
+    IPositionManager public positionManager;
+
     Currency internal currency0;
     Currency internal currency1;
     uint128 internal reported0;
@@ -29,6 +32,14 @@ contract MockClaimSource {
     uint256 internal payout0;
     uint256 internal payout1;
     IClaimableRecipient internal reentryTarget;
+
+    constructor(IPositionManager _positionManager) {
+        positionManager = _positionManager;
+    }
+
+    function setPositionManager(IPositionManager _positionManager) external {
+        positionManager = _positionManager;
+    }
 
     function configure(
         Currency _currency0,
@@ -165,11 +176,31 @@ abstract contract BaseClaimRecipientClaimFromSuite is Test {
         assertEq(currency1.balanceOf(address(puller)), 0);
     }
 
+    function test_claimFrom_WhenSourceUsesADifferentPositionManager_Reverts() public {
+        IClaimableRecipient puller = _deployPuller();
+        MockClaimSource source = _deploySource(uint128(FEES_0), uint128(FEES_1), FEES_0, FEES_1);
+        MockPositionManager foreign = new MockPositionManager();
+        source.setPositionManager(IPositionManager(address(foreign)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimableRecipient.InvalidPositionManager.selector,
+                IPositionManager(address(foreign)),
+                IPositionManager(address(manager))
+            )
+        );
+        puller.claimFrom(IClaimableRecipient(address(source)), TOKEN_ID, 0, 0);
+
+        // the guard precedes the pull, so the source keeps what it reported
+        assertEq(currency0.balanceOf(address(source)), FEES_0);
+        assertEq(currency1.balanceOf(address(source)), FEES_1);
+    }
+
     function _deploySource(uint128 reported0, uint128 reported1, uint256 payout0, uint256 payout1)
         internal
         returns (MockClaimSource source)
     {
-        source = new MockClaimSource();
+        source = new MockClaimSource(IPositionManager(address(manager)));
         source.configure(currency0, currency1, reported0, reported1, payout0, payout1);
         if (payout0 != 0) MockERC20(Currency.unwrap(currency0)).transfer(address(source), payout0);
         if (payout1 != 0) MockERC20(Currency.unwrap(currency1)).transfer(address(source), payout1);
