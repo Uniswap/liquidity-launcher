@@ -5,8 +5,11 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IClaimableRecipient} from "../../src/interfaces/IClaimableRecipient.sol";
+import {FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {BuybackAndBurnClaimRecipient} from "../../src/periphery/BuybackAndBurnClaimRecipient.sol";
+import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {PositionRecipientTestBase} from "./PositionRecipientTestBase.sol";
+import {MockBuybackAndBurnClaimExecutor} from "./MockBuybackAndBurnClaimExecutor.sol";
 import {MockClaimExecutor} from "./MockClaimExecutor.sol";
 
 contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
@@ -88,6 +91,51 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         assertEq(address(positionRecipient).balance, existingETH);
         assertEq(address(executor).balance - executorETHBefore, FORK_CURRENCY0_FEES_AMOUNT);
         assertEq(IERC20(USDC).balanceOf(address(0xdead)), burnAddressTokenBefore + _minTokenBurnAmount);
+    }
+
+    function test_claim_whenFeeSplitterCollectsFees_paysExecutorAndBurnsCurrency1() public {
+        uint256 burnAmount = 1e6;
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), burnAmount);
+        MockBuybackAndBurnClaimExecutor burnExecutor = new MockBuybackAndBurnClaimExecutor(USDC, burnAmount);
+        _dealUSDCFromPoolManager(address(burnExecutor), burnAmount);
+
+        FeeSplit[] memory splits = new FeeSplit[](1);
+        splits[0] =
+            FeeSplit({recipient: address(positionRecipient), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
+        FeeSplitter splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = FORK_TOKEN_ID;
+
+        uint256 recipientETHBefore = address(positionRecipient).balance;
+        uint256 recipientUSDCBefore = IERC20(USDC).balanceOf(address(positionRecipient));
+        uint128 liquidityBefore = IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID);
+        _yoinkPosition(FORK_TOKEN_ID, address(splitter));
+        splitter.collectFees(tokenIds);
+
+        (uint256 nativeFees, uint256 tokenFees) = positionRecipient.amounts(FORK_TOKEN_ID);
+        assertEq(nativeFees, FORK_CURRENCY0_FEES_AMOUNT);
+        assertGt(tokenFees, 0);
+
+        uint256 executorETHBefore = address(burnExecutor).balance;
+        uint256 executorUSDCBefore = IERC20(USDC).balanceOf(address(burnExecutor));
+        uint256 burnAddressUSDCBefore = IERC20(USDC).balanceOf(address(0xdead));
+        burnExecutor.execute(positionRecipient, FORK_TOKEN_ID, nativeFees, tokenFees);
+
+        assertEq(burnExecutor.lastTokenId(), FORK_TOKEN_ID);
+        assertEq(burnExecutor.lastCurrency0Received(), nativeFees);
+        assertEq(burnExecutor.lastCurrency1Received(), tokenFees);
+        assertEq(address(burnExecutor).balance, executorETHBefore + nativeFees);
+        assertEq(IERC20(USDC).balanceOf(address(burnExecutor)) + burnAmount, executorUSDCBefore + tokenFees);
+        assertEq(IERC20(USDC).balanceOf(address(0xdead)), burnAddressUSDCBefore + burnAmount);
+
+        (uint256 remainingNativeFees, uint256 remainingTokenFees) = positionRecipient.amounts(FORK_TOKEN_ID);
+        assertEq(remainingNativeFees, 0);
+        assertEq(remainingTokenFees, 0);
+        assertEq(positionRecipient.totalAmounts(Currency.wrap(NATIVE)), 0);
+        assertEq(positionRecipient.totalAmounts(Currency.wrap(USDC)), 0);
+        assertEq(address(positionRecipient).balance, recipientETHBefore);
+        assertEq(IERC20(USDC).balanceOf(address(positionRecipient)), recipientUSDCBefore);
+        assertEq(IPositionManager(POSITION_MANAGER).getPositionLiquidity(FORK_TOKEN_ID), liquidityBefore);
     }
 
     function test_claim_eoaCallerReverts_executorCallbackIsMandatory() public {
