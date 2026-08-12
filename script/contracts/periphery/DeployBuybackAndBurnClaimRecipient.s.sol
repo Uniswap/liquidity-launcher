@@ -23,8 +23,7 @@ contract DeployBuybackAndBurnClaimRecipientScript is Script, Parameters {
         bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
 
         bytes memory bytecode = abi.encodePacked(
-            type(BuybackAndBurnClaimRecipient).creationCode,
-            abi.encode(params.positionManager, minCurrency1BurnAmount)
+            type(BuybackAndBurnClaimRecipient).creationCode, abi.encode(params.positionManager, minCurrency1BurnAmount)
         );
         bytes32 initCodeHash = keccak256(bytecode);
         address expectedAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
