@@ -13,9 +13,6 @@ import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTransient {
     using SafeCast for uint256;
 
-    /// @notice Thrown when a source reports less than the caller's required amounts
-    error InsufficientAmounts();
-
     /// @inheritdoc IClaimableRecipient
     IPositionManager public immutable override positionManager;
 
@@ -72,15 +69,16 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
             currency1Amount = positionAmounts.currency1Amount;
         }
 
-        if (currency0Amount < _minCurrency0Amount) {
-            revert InsufficientAmountReceived(currency0, currency0Amount, _minCurrency0Amount);
-        }
-        if (currency1Amount < _minCurrency1Amount) {
-            revert InsufficientAmountReceived(currency1, currency1Amount, _minCurrency1Amount);
-        }
-
         (address recipient0, uint256 toSend0, address recipient1, uint256 toSend1) =
             _beforeClaimTransfer(_tokenId, currency0, currency1, currency0Amount, currency1Amount);
+
+        if (toSend0 < _minCurrency0Amount) {
+            revert InsufficientAmountReceived(currency0, toSend0, _minCurrency0Amount);
+        }
+        if (toSend1 < _minCurrency1Amount) {
+            revert InsufficientAmountReceived(currency1, toSend1, _minCurrency1Amount);
+        }
+
         if (recipient0 == address(0)) revert InvalidTransferRecipient(currency0);
         if (recipient1 == address(0)) revert InvalidTransferRecipient(currency1);
         if (toSend0 > currency0Amount) revert InsufficientAmountReceived(currency0, currency0Amount, toSend0);
@@ -92,24 +90,6 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         _afterClaim(poolKey, _tokenId, toSend0, toSend1);
 
         emit Claimed(_tokenId, toSend0, toSend1, poolKey);
-    }
-
-    /// @inheritdoc IClaimableRecipient
-    function claimFrom(
-        IClaimableRecipient _source,
-        uint256 _tokenId,
-        uint128 _minCurrency0Amount,
-        uint128 _minCurrency1Amount
-    ) external nonReentrant {
-        (uint128 currency0Amount, uint128 currency1Amount) = _source.amounts(_tokenId);
-        // If the amounts are insufficient, revert
-        if (currency0Amount < _minCurrency0Amount || currency1Amount < _minCurrency1Amount) {
-            revert InsufficientAmounts();
-        }
-        // Claim the entire amount possible
-        _source.claim(_tokenId, currency0Amount, currency1Amount);
-        // Account the amount to the canonical pool associated with the tokenId from the PositionManager
-        onAmountsReceived(_tokenId, currency0Amount, currency1Amount);
     }
 
     /// @notice Returns the pool key for an existing position

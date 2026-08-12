@@ -7,9 +7,12 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 import {IClaimableRecipient} from "../../src/interfaces/IClaimableRecipient.sol";
+import {FeeSplit} from "../../src/interfaces/IFeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
+import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {UERC20BeneficiaryVault} from "../../src/periphery/UERC20BeneficiaryVault.sol";
 import {CompoundingClaimRecipient} from "../../src/periphery/CompoundingClaimRecipient.sol";
 import {VestingClaimRecipient} from "../../src/periphery/VestingClaimRecipient.sol";
@@ -320,6 +323,60 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         (uint256 vaultAmounts0, uint256 vaultAmounts1) = vault.amounts(FORK_TOKEN_ID);
         assertEq(vaultAmounts0, 0);
         assertEq(vaultAmounts1, 0);
+    }
+
+    /// @notice The full production path in one test: real LP fees collected by `FeeSplitter`, pushed to a
+    ///         `BeneficiaryVault`, drained by the `VestingClaimRecipient` custodying its NFT, then released
+    ///         to the pinned final recipient. Each leg asserts the hand-off the separate suites cannot.
+    function test_Fork_E2E_FeeSplitterToVaultToVestingToRecipient() public {
+        BeneficiaryVault vault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
+        FeeSplit[] memory splits = new FeeSplit[](1);
+        splits[0] = FeeSplit({recipient: address(vault), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
+        FeeSplitter feeSplitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
+
+        // registration is authorized by position custody, so it happens before the position moves away
+        _yoinkPosition(FORK_TOKEN_ID, address(this));
+        vault.registerBeneficiary(FORK_TOKEN_ID, address(vesting));
+        IERC721(POSITION_MANAGER).transferFrom(address(this), address(feeSplitter), FORK_TOKEN_ID);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = FORK_TOKEN_ID;
+        feeSplitter.collectFees(tokenIds);
+
+        // leg 1: real collected fees are attributed in the vault against the canonical token ID
+        (uint256 vaultNative, uint256 vaultUsdc) = vault.amounts(FORK_TOKEN_ID);
+        assertEq(vaultNative, FORK_CURRENCY0_FEES_AMOUNT, "collected native fees reached the vault");
+        assertGt(vaultUsdc, 0, "collected USDC fees reached the vault");
+
+        // leg 2: the vault pays only its beneficiary NFT holder, but anyone may trigger the pull
+        vm.prank(searcher);
+        vesting.claimFrom(vault, FORK_TOKEN_ID, uint128(vaultNative), uint128(vaultUsdc));
+
+        (uint256 vestingNative, uint256 vestingUsdc) = vesting.amounts(FORK_TOKEN_ID);
+        assertEq(vestingNative, vaultNative, "the whole vault balance moved to vesting");
+        assertEq(vestingUsdc, vaultUsdc);
+        (vaultNative, vaultUsdc) = vault.amounts(FORK_TOKEN_ID);
+        assertEq(vaultNative, 0, "the vault retains nothing");
+        assertEq(vaultUsdc, 0);
+
+        // leg 3: the release to the final recipient is capped per block and registered there
+        uint256 expectedNative = FixedPointMathLib.min(vestingNative, NATIVE_MAX_PER_BLOCK);
+        uint256 expectedUsdc = FixedPointMathLib.min(vestingUsdc, USDC_MAX_PER_BLOCK);
+        uint256 nativeBefore = address(pinned).balance;
+        uint256 usdcBefore = Currency.wrap(USDC).balanceOf(address(pinned));
+
+        vm.prank(searcher);
+        vesting.claim(FORK_TOKEN_ID, 0, 0);
+
+        assertEq(address(pinned).balance - nativeBefore, expectedNative, "final recipient received the native cap");
+        assertEq(
+            Currency.wrap(USDC).balanceOf(address(pinned)) - usdcBefore,
+            expectedUsdc,
+            "final recipient received the USDC cap"
+        );
+        (uint256 pinnedNative, uint256 pinnedUsdc) = pinned.amounts(FORK_TOKEN_ID);
+        assertEq(pinnedNative, expectedNative, "the release was registered on the final recipient");
+        assertEq(pinnedUsdc, expectedUsdc);
     }
 
     function _attribute(uint256 nativeAmount, uint256 usdcAmount) internal {

@@ -15,31 +15,8 @@ PositionRecipientsBTTTest
 │   │   └── it reverts
 │   ├── when currency0 transfer reenters amount notification
 │   │   └── it cannot attribute currency1 again
-│   ├── when both minimums are met
-│   │   └── it transfers both amounts and invokes the executor
-│   └── claimFrom
-│       ├── when the currency0 minimum is not met
-│       │   └── it reverts
-│       ├── when the currency1 minimum is not met
-│       │   └── it reverts
-│       ├── when both minimums are met
-│       │   └── it pulls the reported amounts and attributes them
-│       ├── when the source pays less than it reports
-│       │   └── it reverts
-│       ├── when the source reenters claimFrom
-│       │   └── it reverts
-│       ├── when the source reports zero
-│       │   └── it is a no-op
-│       ├── when the source is a vault and the puller does not own the NFT
-│       │   └── it reverts
-│       ├── when the source is a vault and the puller owns the NFT
-│       │   └── it pulls and attributes
-│       ├── when the source requires an executor callback
-│       │   └── it reverts for a plain puller
-│       ├── when the source pays a pinned recipient instead of the puller
-│       │   └── it reverts on attribution
-│       └── when the puller cannot resolve the position
-│           └── it reverts after the source has paid
+│   └── when both minimums are met
+│       └── it transfers both amounts and invokes the executor
 ├── BuybackAndBurnPositionRecipient
 │   ├── when currency0 is not native
 │   │   └── it reverts
@@ -109,11 +86,36 @@ PositionRecipientsBTTTest
     │   │   └── it reverts
     │   ├── when the recipient is the contract itself
     │   │   └── it reverts
+    │   ├── when the recipient uses a different position manager
+    │   │   └── it reverts
     │   └── when the parameters are valid
     │       └── it sets the configuration
     ├── onERC721Received
     │   └── when a beneficiary NFT is safe transferred in
     │       └── it accepts custody
+    ├── claimFrom
+    │   ├── when the currency0 minimum is not met
+    │   │   └── it reverts
+    │   ├── when the currency1 minimum is not met
+    │   │   └── it reverts
+    │   ├── when both minimums are met
+    │   │   └── it pulls the reported amounts and attributes them
+    │   ├── when the source pays less than it reports
+    │   │   └── it reverts
+    │   ├── when the source reenters claimFrom
+    │   │   └── it reverts
+    │   ├── when the source reports zero
+    │   │   └── it is a no-op
+    │   ├── when the source is a vault and the puller does not own the NFT
+    │   │   └── it reverts
+    │   ├── when the source is a vault and the puller owns the NFT
+    │   │   └── it pulls and attributes
+    │   ├── when the source requires an executor callback
+    │   │   └── it reverts for a plain puller
+    │   ├── when the source pays a pinned recipient instead of the puller
+    │   │   └── it reverts on attribution
+    │   └── when the source uses a different position manager
+    │       └── it reverts before the source is paid
     └── claim
         ├── when a claim was already processed this block
         │   └── it releases nothing more
