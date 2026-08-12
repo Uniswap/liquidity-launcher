@@ -57,8 +57,14 @@ contract VestingClaimRecipientTest is Test {
 
         vault = new UERC20BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
         pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](1);
+        allowlist[0] = vault;
         vesting = new VestingClaimRecipient(
-            IPositionManager(address(manager)), MAX_PER_BLOCK, MAX_PER_BLOCK, IClaimableRecipient(address(pinned))
+            IPositionManager(address(manager)),
+            MAX_PER_BLOCK,
+            MAX_PER_BLOCK,
+            IClaimableRecipient(address(pinned)),
+            allowlist
         );
     }
 
@@ -95,9 +101,7 @@ contract VestingClaimRecipientTest is Test {
     function test_Integration_WhenClaimedEveryBlock_DripsToTheRecipientUnderTheCap() public {
         _onboardAndPull();
 
-        // the first claim starts the vesting clock without releasing anything
-        vm.prank(searcher);
-        vesting.claim(TOKEN_ID, 0, 0);
+        // claimFrom starts the vesting clock without releasing anything
         assertEq(Currency.wrap(address(0)).balanceOf(address(pinned)), 0);
         assertEq(launchToken.balanceOf(address(pinned)), 0);
 
@@ -132,8 +136,6 @@ contract VestingClaimRecipientTest is Test {
         vm.assume(caller.code.length == 0);
         _onboardAndPull();
 
-        vm.prank(caller);
-        vesting.claim(TOKEN_ID, 0, 0);
         vm.roll(block.number + 1);
         uint256 callerBalanceBefore = caller.balance;
         vm.prank(caller);
@@ -147,13 +149,17 @@ contract VestingClaimRecipientTest is Test {
 
     function test_Integration_WhenRecipientIsCompounding_ReleasedAmountsBecomeCompoundable() public {
         CompoundingClaimRecipient compounding = new CompoundingClaimRecipient(IPositionManager(address(manager)), 1);
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](1);
+        allowlist[0] = vault;
         vesting = new VestingClaimRecipient(
-            IPositionManager(address(manager)), MAX_PER_BLOCK, MAX_PER_BLOCK, IClaimableRecipient(address(compounding))
+            IPositionManager(address(manager)),
+            MAX_PER_BLOCK,
+            MAX_PER_BLOCK,
+            IClaimableRecipient(address(compounding)),
+            allowlist
         );
         _onboardAndPull();
 
-        vm.prank(searcher);
-        vesting.claim(TOKEN_ID, 0, 0);
         vm.roll(block.number + 3);
         vm.prank(searcher);
         vesting.claim(TOKEN_ID, 0, 0);
@@ -170,6 +176,16 @@ contract VestingClaimRecipientTest is Test {
     function test_Integration_WhenTwoVaultsFeedOneTokenId_AmountsAggregateBeforeVesting() public {
         BeneficiaryVault second =
             new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
+        allowlist[0] = vault;
+        allowlist[1] = second;
+        vesting = new VestingClaimRecipient(
+            IPositionManager(address(manager)),
+            MAX_PER_BLOCK,
+            MAX_PER_BLOCK,
+            IClaimableRecipient(address(pinned)),
+            allowlist
+        );
         _registerTo(address(vesting));
         manager.setPositionOwner(creator);
         vm.prank(creator);
@@ -205,7 +221,7 @@ contract VestingClaimRecipientTest is Test {
         assertEq(amounts0, FEES_0);
     }
 
-    function test_Integration_WhenSourceHasNothingToPay_ClaimFromIsANoop() public {
+    function test_Integration_WhenSourceHasNothingToPay_ClaimFromStartsVestingWithoutAttributing() public {
         _registerTo(address(vesting));
 
         vm.prank(searcher);
@@ -214,7 +230,7 @@ contract VestingClaimRecipientTest is Test {
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
         assertEq(amounts0, 0);
         assertEq(amounts1, 0);
-        assertEq(vesting.lastClaimed(TOKEN_ID), 0, "claimFrom does not process a release");
+        assertEq(vesting.lastClaimed(TOKEN_ID), block.number, "claimFrom starts vesting even without a payout");
     }
 
     /// @notice Registers the beneficiary NFT for TOKEN_ID to `beneficiary`, authorised by position custody
@@ -257,16 +273,21 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
 
     VestingClaimRecipient internal vesting;
     BaseClaimRecipientHarness internal pinned;
+    BeneficiaryVault internal vault;
 
     function setUp() public override {
         super.setUp();
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
         pinned = new BaseClaimRecipientHarness(IPositionManager(POSITION_MANAGER));
+        vault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
+        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](1);
+        allowlist[0] = vault;
         vesting = new VestingClaimRecipient(
             IPositionManager(POSITION_MANAGER),
             NATIVE_MAX_PER_BLOCK,
             USDC_MAX_PER_BLOCK,
-            IClaimableRecipient(address(pinned))
+            IClaimableRecipient(address(pinned)),
+            allowlist
         );
     }
 
@@ -285,15 +306,22 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
 
     function test_Fork_Claim_ReleasesAccumulatedCapAgainstRealPosition(uint256 gapBlocks) public {
         gapBlocks = bound(gapBlocks, 1, 1000);
-        _attribute(FORK_CURRENCY0_FEES_AMOUNT, USDC_FEES);
+        _yoinkPosition(FORK_TOKEN_ID, address(this));
+        vault.registerBeneficiary(FORK_TOKEN_ID, address(vesting));
+        vm.deal(address(vault), FORK_CURRENCY0_FEES_AMOUNT);
+        _dealUSDCFromPoolManager(address(vault), USDC_FEES);
+        vault.onAmountsReceived(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, USDC_FEES);
+        vesting.claimFrom(vault, FORK_TOKEN_ID, uint128(FORK_CURRENCY0_FEES_AMOUNT), uint128(USDC_FEES));
+
         // the harness address may already hold mainnet balance at this fork, so assert deltas
         uint256 nativeBefore = address(pinned).balance;
         uint256 usdcBefore = Currency.wrap(USDC).balanceOf(address(pinned));
 
-        vesting.claim(FORK_TOKEN_ID, 0, 0);
         assertEq(vesting.lastClaimed(FORK_TOKEN_ID), block.number);
-        assertEq(address(pinned).balance, nativeBefore, "the clock-start claim releases nothing");
-        assertEq(Currency.wrap(USDC).balanceOf(address(pinned)), usdcBefore, "the clock-start claim releases nothing");
+        assertEq(address(pinned).balance, nativeBefore, "claimFrom starts the clock without releasing");
+        assertEq(
+            Currency.wrap(USDC).balanceOf(address(pinned)), usdcBefore, "claimFrom starts the clock without releasing"
+        );
 
         vm.roll(block.number + gapBlocks);
         vm.prank(searcher);
@@ -310,7 +338,6 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
     }
 
     function test_Fork_ClaimFrom_PullsFromRealBeneficiaryVault() public {
-        BeneficiaryVault vault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
         _yoinkPosition(FORK_TOKEN_ID, address(this));
         vault.registerBeneficiary(FORK_TOKEN_ID, address(vesting));
 
@@ -338,7 +365,6 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
     ///         `BeneficiaryVault`, drained by the `VestingClaimRecipient` custodying its NFT, then released
     ///         to the pinned final recipient. Each leg asserts the hand-off the separate suites cannot.
     function test_Fork_E2E_FeeSplitterToVaultToVestingToRecipient() public {
-        BeneficiaryVault vault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
         FeeSplit[] memory splits = new FeeSplit[](1);
         splits[0] = FeeSplit({recipient: address(vault), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
         FeeSplitter feeSplitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
@@ -374,10 +400,10 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         uint256 nativeBefore = address(pinned).balance;
         uint256 usdcBefore = Currency.wrap(USDC).balanceOf(address(pinned));
 
-        vm.prank(searcher);
-        vesting.claim(FORK_TOKEN_ID, 0, 0);
-        assertEq(address(pinned).balance, nativeBefore, "the clock-start claim releases nothing");
-        assertEq(Currency.wrap(USDC).balanceOf(address(pinned)), usdcBefore, "the clock-start claim releases nothing");
+        assertEq(address(pinned).balance, nativeBefore, "claimFrom starts the clock without releasing");
+        assertEq(
+            Currency.wrap(USDC).balanceOf(address(pinned)), usdcBefore, "claimFrom starts the clock without releasing"
+        );
 
         vm.roll(block.number + 1);
         vm.prank(searcher);
@@ -391,11 +417,5 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         (uint256 pinnedNative, uint256 pinnedUsdc) = pinned.amounts(FORK_TOKEN_ID);
         assertEq(pinnedNative, expectedNative, "the release was registered on the final recipient");
         assertEq(pinnedUsdc, expectedUsdc);
-    }
-
-    function _attribute(uint256 nativeAmount, uint256 usdcAmount) internal {
-        vm.deal(address(vesting), address(vesting).balance + nativeAmount);
-        _dealUSDCFromPoolManager(address(vesting), usdcAmount);
-        vesting.onAmountsReceived(FORK_TOKEN_ID, nativeAmount, usdcAmount);
     }
 }
