@@ -95,7 +95,14 @@ contract VestingClaimRecipientTest is Test {
     function test_Integration_WhenClaimedEveryBlock_DripsToTheRecipientUnderTheCap() public {
         _onboardAndPull();
 
+        // the first claim starts the vesting clock without releasing anything
+        vm.prank(searcher);
+        vesting.claim(TOKEN_ID, 0, 0);
+        assertEq(Currency.wrap(address(0)).balanceOf(address(pinned)), 0);
+        assertEq(launchToken.balanceOf(address(pinned)), 0);
+
         for (uint256 i = 1; i <= 6; i++) {
+            vm.roll(block.number + 1);
             vm.prank(searcher);
             vesting.claim(TOKEN_ID, 0, 0);
 
@@ -109,7 +116,6 @@ contract VestingClaimRecipientTest is Test {
                 FixedPointMathLib.min(uint256(MAX_PER_BLOCK) * i, FEES_1),
                 "currency1 drip"
             );
-            vm.roll(block.number + 1);
         }
 
         // fully drained, and every unit was registered on the recipient
@@ -125,8 +131,11 @@ contract VestingClaimRecipientTest is Test {
         vm.assume(caller != address(0) && caller != address(vesting) && caller != address(pinned));
         vm.assume(caller.code.length == 0);
         _onboardAndPull();
-        uint256 callerBalanceBefore = caller.balance;
 
+        vm.prank(caller);
+        vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + 1);
+        uint256 callerBalanceBefore = caller.balance;
         vm.prank(caller);
         vesting.claim(TOKEN_ID, 0, 0);
 
@@ -145,12 +154,11 @@ contract VestingClaimRecipientTest is Test {
 
         vm.prank(searcher);
         vesting.claim(TOKEN_ID, 0, 0);
-        // the gap does not accrue: the second claim still releases at most one block's maximum
         vm.roll(block.number + 3);
         vm.prank(searcher);
         vesting.claim(TOKEN_ID, 0, 0);
 
-        uint256 released = uint256(MAX_PER_BLOCK) * 2;
+        uint256 released = uint256(MAX_PER_BLOCK) * 3;
         assertEq(Currency.wrap(address(0)).balanceOf(address(compounding)), released);
         assertEq(launchToken.balanceOf(address(compounding)), released);
         // the compounding recipient now holds them as claimable, ready for an executor to deposit
@@ -275,7 +283,7 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         vesting.claim(type(uint256).max, 0, 0);
     }
 
-    function test_Fork_Claim_ReleasesPerBlockMaxAgainstRealPosition(uint256 gapBlocks) public {
+    function test_Fork_Claim_ReleasesAccumulatedCapAgainstRealPosition(uint256 gapBlocks) public {
         gapBlocks = bound(gapBlocks, 1, 1000);
         _attribute(FORK_CURRENCY0_FEES_AMOUNT, USDC_FEES);
         // the harness address may already hold mainnet balance at this fork, so assert deltas
@@ -284,15 +292,16 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
 
         vesting.claim(FORK_TOKEN_ID, 0, 0);
         assertEq(vesting.lastClaimed(FORK_TOKEN_ID), block.number);
-        assertEq(address(pinned).balance - nativeBefore, NATIVE_MAX_PER_BLOCK, "first claim releases one block's max");
+        assertEq(address(pinned).balance, nativeBefore, "the clock-start claim releases nothing");
+        assertEq(Currency.wrap(USDC).balanceOf(address(pinned)), usdcBefore, "the clock-start claim releases nothing");
 
-        // the gap does not accrue: the next claim releases at most one more block's maximum
         vm.roll(block.number + gapBlocks);
         vm.prank(searcher);
         vesting.claim(FORK_TOKEN_ID, 0, 0);
 
-        uint256 expectedNative = uint256(NATIVE_MAX_PER_BLOCK) * 2;
-        uint256 expectedUsdc = uint256(USDC_MAX_PER_BLOCK) * 2;
+        uint256 expectedNative =
+            FixedPointMathLib.min(FORK_CURRENCY0_FEES_AMOUNT, uint256(NATIVE_MAX_PER_BLOCK) * gapBlocks);
+        uint256 expectedUsdc = FixedPointMathLib.min(USDC_FEES, uint256(USDC_MAX_PER_BLOCK) * gapBlocks);
         assertEq(address(pinned).balance - nativeBefore, expectedNative, "native release is capped");
         assertEq(Currency.wrap(USDC).balanceOf(address(pinned)) - usdcBefore, expectedUsdc, "USDC release is capped");
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(FORK_TOKEN_ID);
@@ -367,7 +376,12 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
 
         vm.prank(searcher);
         vesting.claim(FORK_TOKEN_ID, 0, 0);
+        assertEq(address(pinned).balance, nativeBefore, "the clock-start claim releases nothing");
+        assertEq(Currency.wrap(USDC).balanceOf(address(pinned)), usdcBefore, "the clock-start claim releases nothing");
 
+        vm.roll(block.number + 1);
+        vm.prank(searcher);
+        vesting.claim(FORK_TOKEN_ID, 0, 0);
         assertEq(address(pinned).balance - nativeBefore, expectedNative, "final recipient received the native cap");
         assertEq(
             Currency.wrap(USDC).balanceOf(address(pinned)) - usdcBefore,

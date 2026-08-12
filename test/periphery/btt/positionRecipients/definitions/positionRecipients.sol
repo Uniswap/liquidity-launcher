@@ -1083,6 +1083,8 @@ contract PositionRecipientsBTTTest is Test {
         (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
         _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
         vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
         assertEq(currency0.balanceOf(address(pinned)), max0);
 
         vesting.claim(TOKEN_ID, 0, 0);
@@ -1098,6 +1100,8 @@ contract PositionRecipientsBTTTest is Test {
         _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
 
         vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
 
         assertEq(currency0.balanceOf(address(pinned)), FEES_0);
         assertEq(currency1.balanceOf(address(pinned)), FEES_1);
@@ -1110,24 +1114,26 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(pinned1, FEES_1);
     }
 
-    function test_Vesting_claim_WhenAvailableExceedsMax_ReleasesPerBlockMaxEachBlock(uint256 rounds, uint256 gapBlocks)
+    function test_Vesting_claim_WhenAvailableExceedsMax_ReleasesAccumulatedCap(uint256 rounds, uint256 gapBlocks)
         public
     {
         rounds = bound(rounds, 1, 5);
-        // however long the position goes unclaimed, a claim releases at most one block's maximum
         gapBlocks = bound(gapBlocks, 1, 1000);
         uint128 max0 = uint128(FEES_0 / 10);
         uint128 max1 = uint128(FEES_1 / 10);
         (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) = _deployVesting(max0, max1);
         _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+        vesting.claim(TOKEN_ID, 0, 0);
 
         for (uint256 i = 0; i < rounds; i++) {
-            vesting.claim(TOKEN_ID, 0, 0);
             vm.roll(block.number + gapBlocks);
+            vesting.claim(TOKEN_ID, 0, 0);
         }
 
-        uint256 released0 = uint256(max0) * rounds;
-        uint256 released1 = uint256(max1) * rounds;
+        uint256 released0 = uint256(max0) * gapBlocks * rounds;
+        uint256 released1 = uint256(max1) * gapBlocks * rounds;
+        if (released0 > FEES_0) released0 = FEES_0;
+        if (released1 > FEES_1) released1 = FEES_1;
         assertEq(currency0.balanceOf(address(pinned)), released0);
         assertEq(currency1.balanceOf(address(pinned)), released1);
         (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
@@ -1154,6 +1160,9 @@ contract PositionRecipientsBTTTest is Test {
             _deployVesting(uint128(FEES_0), uint128(FEES_1));
         _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
 
+        vm.prank(stranger);
+        vesting.claim(TOKEN_ID, 0, 0);
+        vm.roll(block.number + 1);
         vm.prank(stranger);
         vesting.claim(TOKEN_ID, 0, 0);
 
