@@ -325,13 +325,13 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// │   │   └── it reverts
 /// │   ├── when the puller owns the NFT
 /// │   │   └── it starts vesting, pulls and attributes
-/// │   ├── when a later vault in the allowlist is selected
+/// │   ├── when only a later vault in the allowlist issues the token ID
 /// │   │   └── it pulls and attributes
 /// │   └── when called after vesting has started
 /// │       └── it preserves the original start block
 /// └── claim
-///     ├── when vesting has not started
-///     │   └── it reverts
+///     ├── when amounts are permissionlessly attributed before claimFrom
+///     │   └── it remains locked until claimFrom starts vesting
 ///     ├── when called in the vesting start block
 ///     │   └── it releases nothing
 ///     ├── when no amounts are available
@@ -606,7 +606,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(puller.lastClaimed(TOKEN_ID), 0);
     }
 
-    function test_Vesting_claimFrom_WhenSecondVaultIsAllowlisted_PullsAndAttributes() public {
+    function test_Vesting_claimFrom_WhenOnlySecondAllowlistedVaultIssuesTokenId_PullsAndAttributes() public {
         BeneficiaryVault second = _deployBeneficiaryVault();
         BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
@@ -619,6 +619,7 @@ contract PositionRecipientsBTTTest is Test {
             IClaimableRecipient(address(pinned)),
             allowlist
         );
+        // The first vault intentionally never issues TOKEN_ID; token IDs remain globally unique across vaults.
         second.registerBeneficiary(TOKEN_ID, address(puller));
         _notifyAmounts(second, poolKey, FEES_0, FEES_1);
 
@@ -1193,13 +1194,44 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(amounts1, FEES_1 - released1);
     }
 
-    function test_Vesting_claim_WhenVestingHasNotStarted_Reverts() public {
-        (VestingClaimRecipient vesting,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
-        _notifyAmounts(vesting, poolKey, FEES_0, FEES_1);
+    function test_Vesting_claim_WhenAmountsArePermissionlesslyAttributedBeforeClaimFrom_RemainsLockedUntilStarted()
+        public
+    {
+        (VestingClaimRecipient vesting, BaseClaimRecipientHarness pinned) =
+            _deployVesting(uint128(FEES_0), uint128(FEES_1));
+        uint256 directAmount0 = FEES_0 / 2;
+        uint256 directAmount1 = FEES_1 / 2;
+        IERC20(Currency.unwrap(currency0)).transfer(stranger, directAmount0);
+        IERC20(Currency.unwrap(currency1)).transfer(stranger, directAmount1);
+
+        vm.startPrank(stranger);
+        IERC20(Currency.unwrap(currency0)).transfer(address(vesting), directAmount0);
+        IERC20(Currency.unwrap(currency1)).transfer(address(vesting), directAmount1);
+        vesting.onAmountsReceived(TOKEN_ID, directAmount0, directAmount1);
+        vm.stopPrank();
+
+        (uint256 attributed0, uint256 attributed1) = vesting.amounts(TOKEN_ID);
+        assertEq(attributed0, directAmount0);
+        assertEq(attributed1, directAmount1);
 
         vm.expectRevert(abi.encodeWithSelector(VestingClaimRecipient.VestingNotStarted.selector, TOKEN_ID));
         vesting.claim(TOKEN_ID, 0, 0);
         assertEq(vesting.lastClaimed(TOKEN_ID), 0);
+
+        manager.setPositionOwner(address(this));
+        vestingVault.registerBeneficiary(TOKEN_ID, address(vesting));
+        _notifyAmounts(vestingVault, poolKey, 1, 1);
+        vesting.claimFrom(vestingVault, TOKEN_ID, 0, 0);
+
+        (attributed0, attributed1) = vesting.amounts(TOKEN_ID);
+        assertEq(attributed0, directAmount0 + 1);
+        assertEq(attributed1, directAmount1 + 1);
+
+        vm.roll(block.number + 1);
+        vesting.claim(TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(pinned)), directAmount0 + 1);
+        assertEq(currency1.balanceOf(address(pinned)), directAmount1 + 1);
     }
 
     function test_Vesting_claim_WhenNoAmountsAreAvailable_DoesNotUpdateLastClaimed() public {

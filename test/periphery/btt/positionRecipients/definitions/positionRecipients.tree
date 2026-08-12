@@ -108,13 +108,13 @@ PositionRecipientsBTTTest
     │   │   └── it reverts
     │   ├── when the puller owns the NFT
     │   │   └── it starts vesting, pulls and attributes
-    │   ├── when a later vault in the allowlist is selected
+    │   ├── when only a later vault in the allowlist issues the token ID
     │   │   └── it pulls and attributes
     │   └── when called after vesting has started
     │       └── it preserves the original start block
     └── claim
-        ├── when vesting has not started
-        │   └── it reverts
+        ├── when amounts are permissionlessly attributed before claimFrom
+        │   └── it remains locked until claimFrom starts vesting
         ├── when called in the vesting start block
         │   └── it releases nothing
         ├── when no amounts are available

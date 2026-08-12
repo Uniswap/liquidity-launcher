@@ -173,41 +173,6 @@ contract VestingClaimRecipientTest is Test {
         assertEq(amounts1, released);
     }
 
-    function test_Integration_WhenTwoVaultsFeedOneTokenId_AmountsAggregateBeforeVesting() public {
-        BeneficiaryVault second =
-            new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
-        IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
-        allowlist[0] = vault;
-        allowlist[1] = second;
-        vesting = new VestingClaimRecipient(
-            IPositionManager(address(manager)),
-            MAX_PER_BLOCK,
-            MAX_PER_BLOCK,
-            IClaimableRecipient(address(pinned)),
-            allowlist
-        );
-        _registerTo(address(vesting));
-        manager.setPositionOwner(creator);
-        vm.prank(creator);
-        second.registerBeneficiary(TOKEN_ID, address(vesting));
-
-        _fundVault(FEES_0, FEES_1);
-        vm.deal(address(second), FEES_0);
-        launchToken.transfer(address(second), FEES_1);
-        second.onAmountsReceived(TOKEN_ID, FEES_0, FEES_1);
-
-        vm.startPrank(searcher);
-        vesting.claimFrom(vault, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
-        vesting.claimFrom(second, TOKEN_ID, uint128(FEES_0), uint128(FEES_1));
-        vm.stopPrank();
-
-        (uint256 amounts0, uint256 amounts1) = vesting.amounts(TOKEN_ID);
-        assertEq(amounts0, FEES_0 * 2, "both sources attribute to the canonical tokenId");
-        assertEq(amounts1, FEES_1 * 2);
-        assertEq(vesting.totalAmounts(poolKey.currency0), FEES_0 * 2);
-        assertEq(vesting.totalAmounts(poolKey.currency1), FEES_1 * 2);
-    }
-
     function test_Integration_WhenRegisteredStraightToVesting_NoTransferIsNeeded() public {
         _registerTo(address(vesting));
         _fundVault(FEES_0, FEES_1);
