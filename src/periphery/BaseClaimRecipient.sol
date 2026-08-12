@@ -102,6 +102,10 @@ abstract contract BaseClaimRecipient is IClaimableRecipient, ReentrancyGuardTran
         uint128 _minCurrency0Amount,
         uint128 _minCurrency1Amount
     ) external nonReentrant {
+        if (_source.positionManager() != positionManager) {
+            revert InvalidPositionManager(_source.positionManager(), positionManager);
+        }
+
         (uint128 currency0Amount, uint128 currency1Amount) = _source.amounts(_tokenId);
         // If the amounts are insufficient, revert
         if (currency0Amount < _minCurrency0Amount || currency1Amount < _minCurrency1Amount) {

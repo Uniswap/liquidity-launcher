@@ -13,6 +13,11 @@ interface IClaimableRecipient {
     /// @param tokenId The invalid position token ID
     error InvalidPosition(uint256 tokenId);
 
+    /// @notice Thrown when the position manager from a source is incompatible
+    /// @param positionManager The incompatible position manager
+    /// @param expectedPositionManager The expected position manager
+    error InvalidPositionManager(IPositionManager positionManager, IPositionManager expectedPositionManager);
+
     /// @notice Thrown when the received amounts are less than expected
     /// @param currency The currency whose amount fell short
     /// @param received The amount actually available
