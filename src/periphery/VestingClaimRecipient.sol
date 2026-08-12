@@ -9,26 +9,48 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {IClaimableRecipient} from "../interfaces/IClaimableRecipient.sol";
 import {BaseClaimRecipient} from "./BaseClaimRecipient.sol";
 import {BlockNumberish} from "@uniswap/blocknumberish/src/BlockNumberish.sol";
+import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title VestingClaimRecipient
-/// @notice Contract which claims amounts from sources and releases them at a capped per-block rate
-/// @dev Supports claiming from multiple sources but attributes all amounts to the canonical tokenId on PositionManager
-/// @dev The vesting speed is chain specific and dependent on the block time.
-/// @dev Positions are onboarded by transferring a beneficiary NFT in, or by attributing amounts directly through
-///      `onAmountsReceived`. Neither is gated, so the per-tokenId release cap bounds one position's rate, not the
-///      contract's aggregate rate across positions.
+/// @notice Contract which claims amounts from allowed beneficiary vaults and releases the amounts over time
+/// @dev This contract MUST hold the beneficiary NFTs before claiming can begin. Amounts can be attributed
+///      before ownership is transferred to this contract but `claim` will be blocked.
+/// @dev Assumes that beneficiary vaults are trusted to report amounts correctly, and that only one
+///      beneficiary NFT has ever been issued for a given V4 position ID.
 contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Receiver {
     /// @notice Thrown when the pinned recipient is zero or this contract
     /// @param recipient The invalid recipient
     error InvalidRecipient(IClaimableRecipient recipient);
 
-    /// @notice Thrown when a source reports less than the caller's required amounts
+    /// @notice Thrown when a vault reports less than the caller's required amounts
     error InsufficientAmounts();
 
-    /// @notice Thrown when a source resolves positions against a different position manager
+    /// @notice Thrown when the maximum currency0 or currency1 amount per block is zero
+    error MaxCurrencyAmountsCannotBeZero();
+
+    /// @notice Thrown when this contract does not own the position on any of the allowed beneficiary vaults
+    /// @param tokenId The position token ID
+    error NotPositionOwner(uint256 tokenId);
+
+    /// @notice Thrown when no allowlisted beneficiary vaults are set
+    error MustSetAllowlistedBeneficiaryVaults();
+
+    /// @notice Thrown when a beneficiary vault is not allowlisted
+    /// @param beneficiaryVault The non-allowlisted beneficiary vault
+    error NotAllowlistedBeneficiaryVault(IBeneficiaryVault beneficiaryVault);
+
+    /// @notice Thrown when vesting has not started for a tokenId
+    /// @param tokenId The position token ID
+    error VestingNotStarted(uint256 tokenId);
+
+    /// @notice Thrown when a beneficiary vault resolves positions against a different position manager
     /// @param positionManager The incompatible position manager
     /// @param expectedPositionManager The expected position manager
     error InvalidPositionManager(IPositionManager positionManager, IPositionManager expectedPositionManager);
+
+    /// @notice Emitted on the first claim for a tokenId
+    event VestingStarted(uint256 indexed tokenId, uint256 startBlock);
 
     /// @notice The maximum currency0 amount releasable per block, per tokenId
     uint128 public immutable maxCurrency0PerBlock;
@@ -39,14 +61,18 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
     /// @notice The receiver of every release, fixed at deploy
     IClaimableRecipient public immutable recipient;
 
-    /// @notice The block number of the last processed claim for a given tokenId, used to release at most once per block
+    /// @notice The block number when the last claim was made for a given tokenId, or zero if unclaimed
     mapping(uint256 tokenId => uint256 lastClaimed) public lastClaimed;
+
+    /// @notice A mapping of allowlisted beneficiary vaults
+    mapping(IBeneficiaryVault beneficiaryVault => bool) public isAllowlisted;
 
     constructor(
         IPositionManager _positionManager,
         uint128 _maxCurrency0PerBlock,
         uint128 _maxCurrency1PerBlock,
-        IClaimableRecipient _recipient
+        IClaimableRecipient _recipient,
+        IBeneficiaryVault[] memory _beneficiaryVaults
     ) BaseClaimRecipient(_positionManager) {
         if (
             address(_recipient) == address(0) || address(_recipient) == address(this)
@@ -54,9 +80,23 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         ) {
             revert InvalidRecipient(_recipient);
         }
+        if (_maxCurrency0PerBlock == 0 || _maxCurrency1PerBlock == 0) {
+            revert MaxCurrencyAmountsCannotBeZero();
+        }
         maxCurrency0PerBlock = _maxCurrency0PerBlock;
         maxCurrency1PerBlock = _maxCurrency1PerBlock;
         recipient = _recipient;
+        // Require at least one allowlisted beneficiary vault
+        if (_beneficiaryVaults.length == 0) {
+            revert MustSetAllowlistedBeneficiaryVaults();
+        }
+        for (uint256 i = 0; i < _beneficiaryVaults.length; i++) {
+            IBeneficiaryVault beneficiaryVault = _beneficiaryVaults[i];
+            if (beneficiaryVault.positionManager() != _positionManager) {
+                revert InvalidPositionManager(beneficiaryVault.positionManager(), _positionManager);
+            }
+            isAllowlisted[beneficiaryVault] = true;
+        }
     }
 
     /// @inheritdoc IERC721Receiver
@@ -65,54 +105,69 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         return IERC721Receiver.onERC721Received.selector;
     }
 
-    /// @notice Claims a source's attributed amounts for `_tokenId` and re-attributes them here, against the
+    /// @notice Claims a beneficiary vault's attributed amounts for `_tokenId` and re-attributes them here, against the
     ///         canonical pool the position manager resolves for that same token ID
-    /// @dev Sources MUST keep their own token ID accounting 1:1 with the v4 LP NFT id, otherwise amounts
-    ///      received here are lost. Sources MUST also pay out the full amount they report from `amounts`, so
+    /// @dev BeneficiaryVaults MUST keep their own token ID accounting 1:1 with the v4 LP NFT id, otherwise amounts
+    ///      received here are lost. They MUST also pay out the full amount they report from `amounts`, so
     ///      `currency1` MUST be a standard token that does not take a fee on transfer.
-    /// @param _source The source to claim from
+    /// @param _beneficiaryVault The beneficiary vault to claim from
     /// @param _tokenId The token ID of the position
     /// @param _minCurrency0Amount The minimum acceptable currency0 amount
     /// @param _minCurrency1Amount The minimum acceptable currency1 amount
     function claimFrom(
-        IClaimableRecipient _source,
+        IBeneficiaryVault _beneficiaryVault,
         uint256 _tokenId,
         uint128 _minCurrency0Amount,
         uint128 _minCurrency1Amount
     ) external nonReentrant {
-        if (_source.positionManager() != positionManager) {
-            revert InvalidPositionManager(_source.positionManager(), positionManager);
-        }
+        // Require that the beneficiary vault is allowlisted
+        if (!isAllowlisted[_beneficiaryVault]) revert NotAllowlistedBeneficiaryVault(_beneficiaryVault);
+        // Require that this contract owns the position on the beneficiary vault
+        if (IERC721(address(_beneficiaryVault)).ownerOf(_tokenId) != address(this)) revert NotPositionOwner(_tokenId);
 
-        (uint128 currency0Amount, uint128 currency1Amount) = _source.amounts(_tokenId);
+        (uint128 currency0Amount, uint128 currency1Amount) = _beneficiaryVault.amounts(_tokenId);
         if (currency0Amount < _minCurrency0Amount || currency1Amount < _minCurrency1Amount) {
             revert InsufficientAmounts();
         }
-        // claim everything the source reports, then attribute it against the canonical token ID
-        _source.claim(_tokenId, currency0Amount, currency1Amount);
+
+        // Set the lastClaimed block number for the tokenId if unset
+        if (lastClaimed[_tokenId] == 0) {
+            uint256 blockNumber = _getBlockNumberish();
+            lastClaimed[_tokenId] = blockNumber;
+            emit VestingStarted(_tokenId, blockNumber);
+        }
+
+        // claim everything the beneficiary vault reports, then attribute it against the canonical token ID
+        _beneficiaryVault.claim(_tokenId, currency0Amount, currency1Amount);
         onAmountsReceived(_tokenId, currency0Amount, currency1Amount);
     }
 
     /// @inheritdoc BaseClaimRecipient
-    /// @notice Override to cap the amounts released for a given tokenId at the per-block maximums
-    /// @dev The cap does not accrue: at most one release of up to the maximums per block, regardless of
-    ///      how long the position went unclaimed
+    /// @notice Override to cap the amounts released for a given tokenId by the time since its last claim
+    /// @dev Requires that vesting has started for the tokenId, which is set in `claimFrom`
     function _beforeClaimTransfer(uint256 _tokenId, Currency, Currency, uint256 _available0, uint256 _available1)
         internal
         override
         returns (address, uint256, address, uint256)
     {
+        uint256 last = lastClaimed[_tokenId];
+        if (last == 0) revert VestingNotStarted(_tokenId);
+
+        // Only update the lastClaimed if there is something to claim
         uint256 blockNumber = _getBlockNumberish();
-        if (lastClaimed[_tokenId] == blockNumber) return (address(recipient), 0, address(recipient), 0);
-
-        uint256 currency0Amount = FixedPointMathLib.min(_available0, maxCurrency0PerBlock);
-        uint256 currency1Amount = FixedPointMathLib.min(_available1, maxCurrency1PerBlock);
-
-        if (currency0Amount > 0 || currency1Amount > 0) {
+        if (_available0 > 0 || _available1 > 0) {
             lastClaimed[_tokenId] = blockNumber;
         }
 
-        return (address(recipient), currency0Amount, address(recipient), currency1Amount);
+        // Transfer the minimum of the max claimable and the registered amounts in the contract.
+        // Repeated calls in the same block will return zero.
+        uint256 blocksPassed = blockNumber - last;
+        return (
+            address(recipient),
+            FixedPointMathLib.min(_available0, maxCurrency0PerBlock * blocksPassed),
+            address(recipient),
+            FixedPointMathLib.min(_available1, maxCurrency1PerBlock * blocksPassed)
+        );
     }
 
     /// @inheritdoc BaseClaimRecipient
