@@ -40,7 +40,10 @@ contract VestingClaimRecipient is BaseClaimRecipient, BlockNumberish, IERC721Rec
         uint128 _maxCurrency1PerBlock,
         IClaimableRecipient _recipient
     ) BaseClaimRecipient(_positionManager) {
-        if (address(_recipient) == address(0) || address(_recipient) == address(this)) {
+        if (
+            address(_recipient) == address(0) || address(_recipient) == address(this)
+                || _recipient.positionManager() != _positionManager
+        ) {
             revert InvalidRecipient(_recipient);
         }
         maxCurrency0PerBlock = _maxCurrency0PerBlock;
