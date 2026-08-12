@@ -219,31 +219,8 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// BaseClaimRecipient
 /// ├── when either minimum is not met
 /// │   └── it reverts for the corresponding currency
-/// ├── when currency0 transfer reenters fee notification
-/// │   └── it cannot attribute currency1 again
-/// └── claimFrom
-///     ├── when the currency0 minimum is not met
-///     │   └── it reverts
-///     ├── when the currency1 minimum is not met
-///     │   └── it reverts
-///     ├── when both minimums are met
-///     │   └── it pulls the reported amounts and attributes them
-///     ├── when the source pays less than it reports
-///     │   └── it reverts
-///     ├── when the source reenters claimFrom
-///     │   └── it reverts
-///     ├── when the source reports zero
-///     │   └── it is a no-op
-///     ├── when the source is a vault and the puller does not own the NFT
-///     │   └── it reverts
-///     ├── when the source is a vault and the puller owns the NFT
-///     │   └── it pulls and attributes
-///     ├── when the source requires an executor callback
-///     │   └── it reverts for a plain puller
-///     ├── when the source pays a pinned recipient instead of the puller
-///     │   └── it reverts on attribution
-///     └── when the puller cannot resolve the position
-///         └── it reverts after the source has paid
+/// └── when currency0 transfer reenters fee notification
+///     └── it cannot attribute currency1 again
 ///
 /// BaseClaimRecipientWithCallback
 /// ├── when the executor callback reverts
@@ -326,11 +303,36 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 /// │   │   └── it reverts
 /// │   ├── when the recipient is the contract itself
 /// │   │   └── it reverts
+/// │   ├── when the recipient uses a different position manager
+/// │   │   └── it reverts
 /// │   └── when the parameters are valid
 /// │       └── it sets the configuration
 /// ├── onERC721Received
 /// │   └── when a beneficiary NFT is safe transferred in
 /// │       └── it accepts custody
+/// ├── claimFrom
+/// │   ├── when the currency0 minimum is not met
+/// │   │   └── it reverts
+/// │   ├── when the currency1 minimum is not met
+/// │   │   └── it reverts
+/// │   ├── when both minimums are met
+/// │   │   └── it pulls the reported amounts and attributes them
+/// │   ├── when the source pays less than it reports
+/// │   │   └── it reverts
+/// │   ├── when the source reenters claimFrom
+/// │   │   └── it reverts
+/// │   ├── when the source reports zero
+/// │   │   └── it is a no-op
+/// │   ├── when the source is a vault and the puller does not own the NFT
+/// │   │   └── it reverts
+/// │   ├── when the source is a vault and the puller owns the NFT
+/// │   │   └── it pulls and attributes
+/// │   ├── when the source requires an executor callback
+/// │   │   └── it reverts for a plain puller
+/// │   ├── when the source pays a pinned recipient instead of the puller
+/// │   │   └── it reverts on attribution
+/// │   └── when the source uses a different position manager
+/// │       └── it reverts before the source is paid
 /// └── claim
 ///     ├── when a claim was already processed this block
 ///     │   └── it releases nothing more
@@ -533,8 +535,8 @@ contract PositionRecipientsBTTTest is Test {
         executor.execute(recipient, TOKEN_ID);
     }
 
-    function test_BaseRecipient_claimFrom_WhenSourceIsVaultAndPullerDoesNotOwnNft_Reverts() public {
-        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+    function test_Vesting_claimFrom_WhenSourceIsVaultAndPullerDoesNotOwnNft_Reverts() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
         BeneficiaryVault vault = _deployBeneficiaryVault();
         vault.registerBeneficiary(TOKEN_ID, feeRecipient);
         _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
@@ -543,8 +545,8 @@ contract PositionRecipientsBTTTest is Test {
         puller.claimFrom(vault, TOKEN_ID, 0, 0);
     }
 
-    function test_BaseRecipient_claimFrom_WhenSourceIsVaultAndPullerOwnsNft_PullsAndAttributes() public {
-        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+    function test_Vesting_claimFrom_WhenSourceIsVaultAndPullerOwnsNft_PullsAndAttributes() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
         BeneficiaryVault vault = _deployBeneficiaryVault();
         vault.registerBeneficiary(TOKEN_ID, address(puller));
         _notifyAmounts(vault, poolKey, FEES_0, FEES_1);
@@ -559,14 +561,14 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vault1, 0);
     }
 
-    function test_BaseRecipient_claimFrom_WhenSourceRequiresExecutorCallback_RevertsForPlainPuller() public {
-        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+    function test_Vesting_claimFrom_WhenSourceRequiresExecutorCallback_RevertsForPlainPuller() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
         BaseClaimRecipientWithCallbackHarness source =
             new BaseClaimRecipientWithCallbackHarness(IPositionManager(address(manager)));
         _notifyAmounts(source, poolKey, FEES_0, FEES_1);
 
-        // nested `source.claim` pays the puller then calls `IClaimExecutor(puller).onClaimed`, which plain
-        // BaseClaimRecipient harnesses do not implement
+        // nested `source.claim` pays the puller then calls `IClaimExecutor(puller).onClaimed`, which the
+        // vesting recipient does not implement
         vm.expectRevert();
         puller.claimFrom(source, TOKEN_ID, 0, 0);
 
@@ -578,8 +580,8 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(puller1, 0);
     }
 
-    function test_BaseRecipient_claimFrom_WhenSourcePaysPinnedRecipient_RevertsOnAttribution() public {
-        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
+    function test_Vesting_claimFrom_WhenSourcePaysPinnedRecipient_RevertsOnAttribution() public {
+        (VestingClaimRecipient puller,) = _deployVesting(uint128(FEES_0), uint128(FEES_1));
         (VestingClaimRecipient source, BaseClaimRecipientHarness pinned) =
             _deployVesting(uint128(FEES_0), uint128(FEES_1));
         _notifyAmounts(source, poolKey, FEES_0, FEES_1);
@@ -598,18 +600,24 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(source1, FEES_1);
     }
 
-    function test_BaseRecipient_claimFrom_WhenSourceUsesADifferentPositionManager_Reverts() public {
+    function test_Vesting_claimFrom_WhenSourceUsesADifferentPositionManager_Reverts() public {
         // puller resolves positions against a different PositionManager than the funded source, so the
         // same token ID would attribute the pulled amounts to an unrelated position
         MockPositionManager pullerManager = new MockPositionManager();
-        BaseClaimRecipientHarness puller = new BaseClaimRecipientHarness(IPositionManager(address(pullerManager)));
+        BaseClaimRecipientHarness pullerPinned = new BaseClaimRecipientHarness(IPositionManager(address(pullerManager)));
+        VestingClaimRecipient puller = new VestingClaimRecipient(
+            IPositionManager(address(pullerManager)),
+            uint128(FEES_0),
+            uint128(FEES_1),
+            IClaimableRecipient(address(pullerPinned))
+        );
         BaseClaimRecipientHarness source = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         _notifyAmounts(source, poolKey, FEES_0, 0);
 
         // the manager check precedes the pull, so the source is never paid in the first place
         vm.expectRevert(
             abi.encodeWithSelector(
-                IClaimableRecipient.InvalidPositionManager.selector,
+                VestingClaimRecipient.InvalidPositionManager.selector,
                 IPositionManager(address(manager)),
                 IPositionManager(address(pullerManager))
             )

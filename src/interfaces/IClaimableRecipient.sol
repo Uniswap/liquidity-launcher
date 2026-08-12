@@ -13,11 +13,6 @@ interface IClaimableRecipient {
     /// @param tokenId The invalid position token ID
     error InvalidPosition(uint256 tokenId);
 
-    /// @notice Thrown when the position manager from a source is incompatible
-    /// @param positionManager The incompatible position manager
-    /// @param expectedPositionManager The expected position manager
-    error InvalidPositionManager(IPositionManager positionManager, IPositionManager expectedPositionManager);
-
     /// @notice Thrown when the received amounts are less than expected
     /// @param currency The currency whose amount fell short
     /// @param received The amount actually available
@@ -51,21 +46,6 @@ interface IClaimableRecipient {
     /// @param minCurrency0Amount The minimum acceptable currency0 amount
     /// @param minCurrency1Amount The minimum acceptable currency1 amount
     function claim(uint256 tokenId, uint256 minCurrency0Amount, uint256 minCurrency1Amount) external;
-
-    /// @notice Claims fees from a source for a given tokenId and accounts them to the canonical pool associated with the tokenId from the PositionManager
-    /// @dev Only attributes to the canonical tokenId on PositionManager.
-    ///      Source contracts MUST ensure that their internal tokenId accounting is 1:1 with the V4 LP NFT id, otherwise amounts received here will be lost.
-    ///      Sources MUST pay out the full amount they report from `amounts`, so `currency1` MUST be a standard token that does not take a fee on transfer.
-    /// @param _source The source to claim from
-    /// @param _tokenId The token ID of the position
-    /// @param _minCurrency0Amount The minimum acceptable currency0 amount
-    /// @param _minCurrency1Amount The minimum acceptable currency1 amount
-    function claimFrom(
-        IClaimableRecipient _source,
-        uint256 _tokenId,
-        uint128 _minCurrency0Amount,
-        uint128 _minCurrency1Amount
-    ) external;
 
     /// @notice Returns the amounts attributed to a position and available to claim
     /// @param tokenId The position token ID
