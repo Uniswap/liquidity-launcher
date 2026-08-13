@@ -12,12 +12,6 @@ import {console} from "forge-std/console.sol";
 /// @title DeployVestingClaimRecipientScript
 /// @notice Deploys a VestingClaimRecipient contract for the given chain
 contract DeployVestingClaimRecipientScript is Script, Parameters {
-    /// @notice Default per-block release caps when vesting into `BuybackAndBurnClaimRecipient`.
-    /// @dev Targets ~$0.25 of value released per block with ETH at $2k: 0.000125 ETH (`currency0`) and
-    ///      50k launch tokens (`currency1`). Unused entitlement accrues across blocks.
-    uint128 public constant DEFAULT_MAX_CURRENCY0_PER_BLOCK = 125000000000000;
-    uint128 public constant DEFAULT_MAX_CURRENCY1_PER_BLOCK = 50_000e18;
-
     function run() public returns (address vestingClaimRecipient) {
         DeployParameters memory params = getParameters(block.chainid);
 
