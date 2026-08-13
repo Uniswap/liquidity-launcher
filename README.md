@@ -171,6 +171,22 @@ Deployed to a different address on each chain. Permissionlessly compounds LP fee
 | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | `0xf9526Dd3361fe0ba6b7a99533ed471D3E808E99a` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
+#### BuybackAndBurnRecipient
+
+Deployed to a different address based on parameters. Releases funds in exchange for burning a fixed token amount.
+
+| Version | Chain | Parameters | Address | Commit Hash |
+| --- | --- | --- | --- | --- |
+| v3.2.0 | Robinhood Chain | minCurrency1Amount: `500_000e18` | `0xa1ba4CC12654D2b188e3ba77dc86c75cA47f1A4e` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+
+#### VestingClaimRecipient
+
+Deployed to a different based on parameters. Claims and distributes tokens over time.
+
+| Version | Chain | Parameters | Address | Commit Hash |
+| --- | --- | --- | --- | --- |
+| v3.2.0 | Robinhood Chain | maxCurrency0PerBlock: `125000000000000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xeF451B293ED8C61d20f7d13ef336a496F0cc2c26` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+
 #### InitializerHook
 
 Restricts pool initialization to a deployed LBPStrategy instance.
