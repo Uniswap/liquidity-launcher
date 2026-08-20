@@ -4,7 +4,7 @@ PositionRecipientsBTTTest
 │   │   └── it reverts
 │   └── when the timelock has passed
 │       └── it approves the operator
-├── BasePositionRecipient
+├── BaseClaimRecipient
 │   ├── when currency0 minimum is not met
 │   │   └── it reverts for currency0
 │   ├── when currency1 minimum is not met
@@ -80,3 +80,58 @@ PositionRecipientsBTTTest
         │   └── it reverts
         └── when unregistered with no readable graffiti
             └── it flushes to the fallbacks
+└── VestingClaimRecipient
+    ├── constructor
+    │   ├── when the recipient is zero
+    │   │   └── it reverts
+    │   ├── when the recipient is the contract itself
+    │   │   └── it reverts
+    │   ├── when the recipient uses a different position manager
+    │   │   └── it reverts
+    │   ├── when the allowlist is empty
+    │   │   └── it reverts
+    │   ├── when an allowlisted vault uses a different position manager
+    │   │   └── it reverts
+    │   └── when the parameters are valid
+    │       └── it sets the configuration and allowlist
+    ├── onERC721Received
+    │   └── when a beneficiary NFT is safe transferred in
+    │       └── it accepts custody
+    ├── claimFrom
+    │   ├── when the vault is not allowlisted
+    │   │   └── it reverts
+    │   ├── when the puller does not own the beneficiary NFT
+    │   │   └── it reverts
+    │   ├── when the currency0 minimum is not met
+    │   │   └── it reverts
+    │   ├── when the currency1 minimum is not met
+    │   │   └── it reverts
+    │   ├── when the puller owns the NFT
+    │   │   └── it starts vesting, pulls and attributes
+    │   ├── when only another allowlisted vault issues the token ID
+    │   │   └── it pulls and attributes
+    │   └── when called after vesting has started
+    │       └── it preserves the original start block
+    └── claim
+        ├── when amounts are permissionlessly attributed before claimFrom
+        │   └── it remains locked until claimFrom starts vesting
+        ├── when called in the vesting start block
+        │   └── it releases nothing
+        ├── when no amounts are available
+        │   └── it preserves the last claimed block
+        ├── when only currency0 is available
+        │   └── it releases currency0
+        ├── when only currency1 is available
+        │   └── it releases currency1
+        ├── when the available amount is below the per block maximum
+        │   └── it releases the full available amount
+        ├── when the available amount exceeds the per block maximum
+        │   └── it releases the accumulated cap
+        ├── when a claim was already processed this block
+        │   └── it releases nothing more
+        ├── when the caller is not the recipient
+        │   └── it still pays the pinned recipient
+        ├── when the recipient notification reverts
+        │   └── it rolls back the claim
+        └── when the position does not exist
+            └── it reverts
