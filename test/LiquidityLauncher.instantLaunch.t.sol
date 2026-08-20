@@ -32,6 +32,7 @@ import {InstantLaunchStrategy, InstantLaunchConfig} from "../src/strategies/Inst
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../src/interfaces/IFeeSplitter.sol";
+import {MockV4FeeAdapter} from "./mocks/MockV4FeeAdapter.sol";
 
 contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -71,6 +72,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, useCallback: true});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
+        POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
         strategy = new InstantLaunchStrategy(
             address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK

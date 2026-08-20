@@ -22,6 +22,7 @@ import {IBeneficiaryVault} from "../interfaces/IBeneficiaryVault.sol";
 import {IFeeSplitter} from "../interfaces/IFeeSplitter.sol";
 import {PositionPlanner} from "../libraries/PositionPlanner.sol";
 import {Plan, Position, CurrencyAmounts, PositionDefinition} from "../types/PositionPlannerTypes.sol";
+import {StrategyBase} from "./base/StrategyBase.sol";
 
 /// @notice The launch configuration carried in `configData`.
 /// @param feeBeneficiary The recipient which will receive creator fees if enabled
@@ -32,7 +33,7 @@ struct InstantLaunchConfig {
 /// @title InstantLaunchStrategy
 /// @notice Launches a fixed-supply token directly into a hookless native-ETH v4 pool with a single-sided LP position
 /// @custom:security-contact security@uniswap.org
-contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
+contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyBase {
     using SafeERC20 for IERC20;
     using PositionPlanner for *;
 
@@ -56,8 +57,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     address public immutable launcher;
     /// @notice The v4 position manager that mints the launch position.
     IPositionManager public immutable positionManager;
-    /// @notice The v4 pool manager.
-    IPoolManager public immutable poolManager;
     /// @notice The singleton fee splitter that permanently locks every launch position and
     ///         permissionlessly distributes its fees.
     IFeeSplitter public immutable feeSplitter;
@@ -96,6 +95,8 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @param received The amount actually received
     /// @param expected The amount expected
     error TokenAmountMismatch(uint256 received, uint256 expected);
+    /// @notice Thrown when the protocol fee controller is unset or `triggerFeeUpdate` fails.
+    error FeeUpdateFailed();
 
     /// @notice Emitted when a token is launched.
     /// @param poolId The identifier of the initialized pool.
@@ -113,7 +114,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         IFeeSplitter _feeSplitter,
         IBeneficiaryVault _beneficiaryVault,
         int24 _initialTick
-    ) {
+    ) StrategyBase(_poolManager) {
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
                 || address(_feeSplitter) == address(0)
@@ -137,7 +138,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         }
 
         launcher = _launcher;
-        poolManager = _poolManager;
         positionManager = _positionManager;
         feeSplitter = _feeSplitter;
         // The beneficiary vault is optional. Setting it to the zero address opts out of creator fees for all launches.
@@ -181,6 +181,8 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
         // Will revert if the pool is already initialized.
         poolManager.initialize(key, initialSqrtPriceX96);
+        // Require the fee update to succeed. Will revert if the controller is not set on PoolManager or if it reverts.
+        if (!_handleFeeUpdate(key)) revert FeeUpdateFailed();
 
         Plan memory plan;
         {

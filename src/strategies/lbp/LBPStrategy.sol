@@ -28,18 +28,17 @@ import {ILBPInitializer, LBPInitializationParams} from "../../interfaces/ILBPIni
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {StrategyBase} from "../base/StrategyBase.sol";
 
 /// @title LBPStrategy
 /// @notice Strategy for distributing tokens to a v4 pool
 /// @custom:security-contact security@uniswap.org
-contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, ReentrancyGuardTransient {
+contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, ReentrancyGuardTransient, StrategyBase {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using MigratorParams for *;
     using SafeERC20 for IERC20;
 
-    /// @notice The v4 pool manager
-    IPoolManager public immutable poolManager;
     /// @notice The v4 position manager
     IPositionManager public immutable positionManager;
     /// @notice The initializer factory
@@ -51,9 +50,10 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
     /// @notice The initializer registered to a poolId. Zeroed when the initializer is migrated.
     mapping(PoolId poolId => address initializer) public registeredPoolIds;
 
-    constructor(IPositionManager _positionManager, IPoolManager _poolManager, IDistributorFactory _initializerFactory) {
+    constructor(IPositionManager _positionManager, IPoolManager _poolManager, IDistributorFactory _initializerFactory)
+        StrategyBase(_poolManager)
+    {
         positionManager = _positionManager;
-        poolManager = _poolManager;
         initializerFactory = _initializerFactory;
     }
 
@@ -177,6 +177,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
         }
 
         _initializePool(key, sqrtPriceX96);
+        // Don't revert if the fee update fails as that will block the migration.
+        _handleFeeUpdate(key);
 
         // v4's PoolManager._accountDelta uses int128 for deltas; cap the LP currency budget before planning.
         // reservedTokenAmountForLP is already enforced <= int128.max in MigratorParams.validate.

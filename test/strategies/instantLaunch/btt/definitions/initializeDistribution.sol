@@ -45,6 +45,12 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 /// │   └── it reverts with TokenAmountMismatch
 /// ├── when the pool is already initialized
 /// │   └── it reverts with PoolAlreadyInitialized
+/// ├── when the protocol fee controller is unset
+/// │   └── it reverts with FeeUpdateFailed
+/// ├── when the protocol fee controller is set
+/// │   ├── it calls triggerFeeUpdate with the launched pool key
+/// │   └── when triggerFeeUpdate reverts
+/// │       └── it reverts with FeeUpdateFailed
 /// └── when the launch is valid
 ///     ├── it preserves preexisting balances
 ///     ├── it opens the pool at the initial price
@@ -171,6 +177,41 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
         token.approve(address(strategy), TOTAL_SUPPLY);
         vm.expectRevert(Pool.PoolAlreadyInitialized.selector);
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
+    }
+
+    function test_WhenProtocolFeeControllerIsUnset_revertsWithFeeUpdateFailed() public {
+        poolManager.setProtocolFeeController(address(0));
+
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        token.approve(address(strategy), TOTAL_SUPPLY);
+        vm.expectRevert(InstantLaunchStrategy.FeeUpdateFailed.selector);
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
+
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(_key(address(token)).toId());
+        assertEq(sqrtPriceX96, 0);
+    }
+
+    function test_WhenProtocolFeeControllerIsSet_callsTriggerFeeUpdateWithLaunchedPoolKey() public {
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        PoolKey memory key = _key(address(token));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
+
+        assertEq(feeAdapter.callCount(), 1);
+        assertEq(feeAdapter.lastKeyHash(), keccak256(abi.encode(key)));
+    }
+
+    function test_WhenTriggerFeeUpdateReverts_revertsWithFeeUpdateFailed() public {
+        feeAdapter.setShouldRevert(true);
+
+        MockERC20 token = _deployToken(TOTAL_SUPPLY);
+        token.approve(address(strategy), TOTAL_SUPPLY);
+
+        vm.expectRevert(InstantLaunchStrategy.FeeUpdateFailed.selector);
+        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
+
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(_key(address(token)).toId());
+        assertEq(sqrtPriceX96, 0);
+        assertEq(feeAdapter.callCount(), 0);
     }
 
     function test_WhenLaunchIsValid_preservesPreexistingBalance() public {

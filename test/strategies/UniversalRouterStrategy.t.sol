@@ -33,6 +33,7 @@ import {INativeStrategy} from "../../src/interfaces/INativeStrategy.sol";
 import {IUniversalRouter} from "../../src/interfaces/external/IUniversalRouter.sol";
 import {MockUniversalRouter} from "../mocks/MockUniversalRouter.sol";
 import {ReentrantRouter} from "../mocks/ReentrantRouter.sol";
+import {MockV4FeeAdapter} from "../mocks/MockV4FeeAdapter.sol";
 
 contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -74,6 +75,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
             FeeSplit({recipient: address(beneficiaryVault), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
 
+        POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         instantLaunch = new InstantLaunchStrategy(
             address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
         );
