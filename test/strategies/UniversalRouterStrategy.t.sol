@@ -108,7 +108,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         launcher.multicall{value: buyAmount}(_launchAndBuyCalls(token, key, buyAmount, 0));
 
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertLt(sqrtPriceX96, instantLaunch.initialSqrtPriceX96(), "the buy did not move the price");
+        assertLt(sqrtPriceX96, instantLaunch.quote0InitialSqrtPriceX96(), "the buy did not move the price");
         assertGt(IERC20(token).balanceOf(creator), 0, "creator received no tokens");
         // Nothing is left anywhere in the path.
         assertEq(address(launcher).balance, 0, "launcher kept native");

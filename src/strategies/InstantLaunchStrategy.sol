@@ -30,8 +30,8 @@ struct InstantLaunchConfig {
     address feeBeneficiary;
 }
 
-/// @notice The pool configuration fixed at deployment. Every tick is expressed with the token as
-///         currency1.
+/// @notice The pool configuration fixed at deployment. Every tick is expressed with the quote
+///         currency as currency0.
 /// @param quoteCurrency The currency every launch pairs against
 /// @param initialTick The tick at which each pool opens
 /// @param minLaunchTick The lower tick of every launch position
@@ -46,8 +46,8 @@ struct LaunchPoolConfig {
 /// @title InstantLaunchStrategy
 /// @notice Launches a fixed-supply token into a hookless v4 pool against a configured quote currency
 ///         with a single-sided LP position
-/// @dev Every configured tick is expressed with the token as currency1. When a launched token sorts
-///      below the quote currency, the pool mirrors: the token becomes currency0 and every tick negates.
+/// @dev Every configured tick is expressed with the quote currency as currency0. When a launched
+///      token sorts below the quote currency, the token becomes currency0 and every tick negates.
 /// @custom:security-contact security@uniswap.org
 contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
@@ -84,16 +84,16 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice Highest initial tick. Deployments must choose a cap that keeps saturating
     ///         maxLiquidityPerTick at the launch position's upper tick prohibitively expensive.
     int24 public immutable maxInitialTick;
-    /// @notice Tick at which the pool opens when the token is currency1.
+    /// @notice Tick at which the pool opens when the quote currency is currency0.
     int24 public immutable initialTick;
-    /// @notice Initial pool sqrt price when the token is currency1.
-    uint160 public immutable initialSqrtPriceX96;
-    /// @notice Initial pool sqrt price when the token is currency0 (the mirrored orientation).
-    uint160 public immutable mirroredInitialSqrtPriceX96;
-    /// @notice Liquidity of the single-sided launch position when the token is currency1.
-    uint128 public immutable positionLiquidity;
-    /// @notice Liquidity of the single-sided launch position when the token is currency0.
-    uint128 public immutable mirroredPositionLiquidity;
+    /// @notice Initial pool sqrt price when the quote currency is currency0.
+    uint160 public immutable quote0InitialSqrtPriceX96;
+    /// @notice Initial pool sqrt price when the quote currency is currency1.
+    uint160 public immutable quote1InitialSqrtPriceX96;
+    /// @notice Liquidity of the single-sided launch position when the quote currency is currency0.
+    uint128 public immutable quote0PositionLiquidity;
+    /// @notice Liquidity of the single-sided launch position when the quote currency is currency1.
+    uint128 public immutable quote1PositionLiquidity;
 
     /// @notice Thrown when an address required by the strategy is zero.
     error ZeroAddress();
@@ -107,7 +107,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     error InvalidTokenDecimals();
     /// @notice Thrown when the configured ticks cannot define the launch range.
     error InvalidTickRange();
-    /// @notice Thrown when an orientation's launch position liquidity is zero or exceeds the pool's
+    /// @notice Thrown when either quote position's launch liquidity is zero or exceeds the pool's
     ///         per-tick maximum.
     /// @param liquidity The invalid liquidity
     error InvalidPositionLiquidity(uint256 liquidity);
@@ -160,12 +160,13 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (address(_beneficiaryVault) != address(0) && _beneficiaryVault.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_beneficiaryVault.positionManager()));
         }
-        // All ticks must be aligned, ordered, and strictly inside the usable range so both
-        // orientations define valid, non-empty launch ranges: [minLaunchTick, initialTick] on the
-        // token side of the price, or its mirror image.
+        // All ticks must be aligned, ordered, and strictly inside the usable range so both quote
+        // positions define valid, non-empty launch ranges: [minLaunchTick, initialTick] on the
+        // token side of the price, negated when the quote is currency1.
         if (
             _poolConfig.initialTick % TICK_SPACING != 0 || _poolConfig.minLaunchTick % TICK_SPACING != 0
-                || _poolConfig.maxInitialTick % TICK_SPACING != 0 || _poolConfig.initialTick > _poolConfig.maxInitialTick
+                || _poolConfig.maxInitialTick % TICK_SPACING != 0
+                || _poolConfig.initialTick > _poolConfig.maxInitialTick
                 || _poolConfig.initialTick <= _poolConfig.minLaunchTick
                 || _poolConfig.maxInitialTick >= TickMath.maxUsableTick(TICK_SPACING)
                 || _poolConfig.minLaunchTick <= TickMath.minUsableTick(TICK_SPACING)
@@ -183,38 +184,38 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         initialTick = _poolConfig.initialTick;
         minLaunchTick = _poolConfig.minLaunchTick;
         maxInitialTick = _poolConfig.maxInitialTick;
-        initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_poolConfig.initialTick);
-        mirroredInitialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(-_poolConfig.initialTick);
+        quote0InitialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_poolConfig.initialTick);
+        quote1InitialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(-_poolConfig.initialTick);
 
-        // Token as currency1: the position spans [minLaunchTick, initialTick], funded entirely in
+        // Quote as currency0: the position spans [minLaunchTick, initialTick], funded entirely in
         // the token as amount1.
-        positionLiquidity = SafeCastLib.toUint128(
+        quote0PositionLiquidity = SafeCastLib.toUint128(
             FullMath.mulDiv(
                 TOTAL_SUPPLY,
                 FixedPoint96.Q96,
-                initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(_poolConfig.minLaunchTick)
+                quote0InitialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(_poolConfig.minLaunchTick)
             )
         );
-        // Token as currency0: the position spans [-initialTick, -minLaunchTick], funded entirely in
+        // Quote as currency1: the position spans [-initialTick, -minLaunchTick], funded entirely in
         // the token as amount0. The operations match PositionPlanner's liquidity math exactly so a
-        // mirrored launch resolves to exactly this liquidity.
-        uint160 mirroredUpperSqrtPriceX96 = TickMath.getSqrtPriceAtTick(-_poolConfig.minLaunchTick);
-        mirroredPositionLiquidity = SafeCastLib.toUint128(
+        // launch resolves to exactly this liquidity.
+        uint160 quote1UpperSqrtPriceX96 = TickMath.getSqrtPriceAtTick(-_poolConfig.minLaunchTick);
+        quote1PositionLiquidity = SafeCastLib.toUint128(
             FullMath.mulDiv(
                 TOTAL_SUPPLY,
-                FullMath.mulDiv(mirroredInitialSqrtPriceX96, mirroredUpperSqrtPriceX96, FixedPoint96.Q96),
-                mirroredUpperSqrtPriceX96 - mirroredInitialSqrtPriceX96
+                FullMath.mulDiv(quote1InitialSqrtPriceX96, quote1UpperSqrtPriceX96, FixedPoint96.Q96),
+                quote1UpperSqrtPriceX96 - quote1InitialSqrtPriceX96
             )
         );
 
         // A liquidity above the per-tick maximum would be capped during resolution and fail the
         // exact-liquidity check on every launch.
         uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
-        if (positionLiquidity == 0 || positionLiquidity > maxLiquidityPerTick) {
-            revert InvalidPositionLiquidity(positionLiquidity);
+        if (quote0PositionLiquidity == 0 || quote0PositionLiquidity > maxLiquidityPerTick) {
+            revert InvalidPositionLiquidity(quote0PositionLiquidity);
         }
-        if (mirroredPositionLiquidity == 0 || mirroredPositionLiquidity > maxLiquidityPerTick) {
-            revert InvalidPositionLiquidity(mirroredPositionLiquidity);
+        if (quote1PositionLiquidity == 0 || quote1PositionLiquidity > maxLiquidityPerTick) {
+            revert InvalidPositionLiquidity(quote1PositionLiquidity);
         }
     }
 
@@ -237,37 +238,37 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
 
         uint256 balanceBefore = _pull(token, totalSupply);
 
-        // Pool currencies sort by address, so the launch orientation depends on how the token sorts
-        // against the quote currency.
-        bool tokenIsCurrency0 = token < Currency.unwrap(quoteCurrency);
+        // Pool currencies sort by address, so the quote currency's side depends on how the token
+        // sorts against it.
+        bool currency0IsQuote = Currency.unwrap(quoteCurrency) < token;
 
         PoolKey memory key = PoolKey({
-            currency0: tokenIsCurrency0 ? Currency.wrap(token) : quoteCurrency,
-            currency1: tokenIsCurrency0 ? quoteCurrency : Currency.wrap(token),
+            currency0: currency0IsQuote ? quoteCurrency : Currency.wrap(token),
+            currency1: currency0IsQuote ? Currency.wrap(token) : quoteCurrency,
             fee: LP_FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
 
         // Will revert if the pool is already initialized.
-        poolManager.initialize(key, tokenIsCurrency0 ? mirroredInitialSqrtPriceX96 : initialSqrtPriceX96);
+        poolManager.initialize(key, currency0IsQuote ? quote0InitialSqrtPriceX96 : quote1InitialSqrtPriceX96);
 
         Plan memory plan;
         {
             PositionDefinition[] memory definitions = new PositionDefinition[](1);
             // The single-sided range sits on the token side of the opening price: below it when the
-            // token is currency1 (from the launch floor up to the initial tick), above it when the
-            // token is currency0 (the mirrored range).
-            definitions[0] = tokenIsCurrency0
+            // quote is currency0 (from the launch floor up to the initial tick), above it when the
+            // quote is currency1 (the negated range).
+            definitions[0] = currency0IsQuote
                 ? PositionDefinition({
-                    offsetLower: 0,
-                    offsetUpper: initialTick - minLaunchTick,
+                    offsetLower: minLaunchTick - initialTick,
+                    offsetUpper: 0,
                     weight: PositionPlanner.MPS,
                     overridePositionRecipient: address(0)
                 })
                 : PositionDefinition({
-                    offsetLower: minLaunchTick - initialTick,
-                    offsetUpper: 0,
+                    offsetLower: 0,
+                    offsetUpper: initialTick - minLaunchTick,
                     weight: PositionPlanner.MPS,
                     overridePositionRecipient: address(0)
                 });
@@ -275,15 +276,15 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
             definitions.validate();
             // The position is minted to this strategy and transferred to the fee splitter below
             (Position[] memory positions,) = definitions.resolve(
-                tokenIsCurrency0 ? mirroredInitialSqrtPriceX96 : initialSqrtPriceX96,
+                currency0IsQuote ? quote0InitialSqrtPriceX96 : quote1InitialSqrtPriceX96,
                 TICK_SPACING,
-                tokenIsCurrency0
-                    ? CurrencyAmounts({amount0: TOTAL_SUPPLY, amount1: 0})
-                    : CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}),
+                currency0IsQuote
+                    ? CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY})
+                    : CurrencyAmounts({amount0: TOTAL_SUPPLY, amount1: 0}),
                 address(this)
             );
             // Require exact liquidity to be added
-            uint128 expectedLiquidity = tokenIsCurrency0 ? mirroredPositionLiquidity : positionLiquidity;
+            uint128 expectedLiquidity = currency0IsQuote ? quote0PositionLiquidity : quote1PositionLiquidity;
             if (positions.length != 1 || positions[0].liquidity != expectedLiquidity) revert InvalidPositions();
             // Encode the position into a plan
             plan = positions.toPlan(key, ActionConstants.MSG_SENDER);

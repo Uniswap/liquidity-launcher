@@ -110,8 +110,8 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // The strategy ran end-to-end through the launcher and stood up the live pool.
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
-        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.positionLiquidity());
+        assertEq(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.quote0PositionLiquidity());
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
         // Launcher handed everything off; strategy retains nothing.
         assertEq(IERC20(token).balanceOf(address(launcher)), 0);
@@ -148,7 +148,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // Launched and bought in the launch block: the pool is live and the creator holds the tokens.
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(_poolKeyFor(token).toId());
-        assertLt(sqrtPriceX96, strategy.initialSqrtPriceX96());
+        assertLt(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
         assertEq(IERC20(token).balanceOf(creator), buyAmount);
         assertEq(creator.balance, 0);
         assertEq(Preinstalls.MultiCall3.balance, 0);

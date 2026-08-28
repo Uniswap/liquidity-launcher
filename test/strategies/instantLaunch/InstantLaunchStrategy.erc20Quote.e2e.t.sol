@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 // End-to-end coverage for instant launches against an ERC20 quote currency, in both orientations:
-// the token as currency1 (quote sorts below) and the mirrored token-as-currency0 pool (quote sorts
+// the token as currency1 (quote sorts below) and the token-as-currency0 pool (quote sorts
 // above). Fee collection through the FeeSplitter still requires a native currency0 and is asserted
 // as such below.
 
@@ -46,9 +46,8 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
 
         _initialize(erc20QuoteStrategy, IERC20(address(token)), TOTAL_SUPPLY, _defaultConfig());
 
-        (address currency0, address currency1) = address(token) < address(quote)
-            ? (address(token), address(quote))
-            : (address(quote), address(token));
+        (address currency0, address currency1) =
+            address(token) < address(quote) ? (address(token), address(quote)) : (address(quote), address(token));
         key = PoolKey({
             currency0: Currency.wrap(currency0),
             currency1: Currency.wrap(currency1),
@@ -79,10 +78,10 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         assertGt(token.balanceOf(address(this)), 0);
     }
 
-    function test_mirrored_launchMintsSingleSidedPositionWithFullSupply() public {
+    function test_quote1_launchMintsSingleSidedPositionWithFullSupply() public {
         (, MockERC20 token, PoolKey memory key, uint256 tokenId) = _launchWithQuote(HIGH_QUOTE_ADDRESS);
 
-        // The mirrored pool opens at the negated tick with the full supply above the price.
+        // The quote-as-currency1 pool opens at the negated tick with the full supply above the price.
         (uint160 sqrtPriceX96, int24 tick,,) = POOL_MANAGER.getSlot0(key.toId());
         assertEq(tick, -INITIAL_TICK);
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-INITIAL_TICK));
@@ -98,7 +97,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         assertLt(token.balanceOf(address(0xdead)), 1 ether);
     }
 
-    function test_mirrored_swapExactOutput_succeedsAtInitialBoundary() public {
+    function test_quote1_swapExactOutput_succeedsAtInitialBoundary() public {
         (, MockERC20 token, PoolKey memory key,) = _launchWithQuote(HIGH_QUOTE_ADDRESS);
         uint256 requestedOutput = 1 ether;
         uint256 balanceBefore = token.balanceOf(address(this));
@@ -120,7 +119,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         assertEq(token.balanceOf(address(this)) - balanceBefore, requestedOutput);
     }
 
-    function test_mirrored_largeBuyMovesPriceUpAndPoolKeepsTrading() public {
+    function test_quote1_largeBuyMovesPriceUpAndPoolKeepsTrading() public {
         (, MockERC20 token, PoolKey memory key,) = _launchWithQuote(HIGH_QUOTE_ADDRESS);
 
         // A large buy has no terminal tick or phase change: the price walks up the single position
@@ -160,7 +159,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         assertGt(token.balanceOf(address(this)), 0);
     }
 
-    function test_mirrored_sellAfterBuyReturnsQuote() public {
+    function test_quote1_sellAfterBuyReturnsQuote() public {
         (MockERC20 quote, MockERC20 token, PoolKey memory key,) = _launchWithQuote(HIGH_QUOTE_ADDRESS);
 
         swapRouter.swap(
@@ -175,9 +174,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         BalanceDelta delta = swapRouter.swap(
             key,
             SwapParams({
-                zeroForOne: true,
-                amountSpecified: -int256(tokenBalance),
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                zeroForOne: true, amountSpecified: -int256(tokenBalance), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             bytes("")
@@ -190,7 +187,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         assertEq(token.balanceOf(address(this)), 0);
     }
 
-    function test_mirrored_launchSucceedsWithStrayQuoteOnPositionManager() public {
+    function test_quote1_launchSucceedsWithStrayQuoteOnPositionManager() public {
         // The plan's TAKE_PAIR sweeps both currencies, so a stray quote balance donated to the
         // PositionManager lands on the strategy and stays inert, like stray ETH in native pools.
         MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);

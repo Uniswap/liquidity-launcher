@@ -68,7 +68,7 @@ abstract contract InstantLaunchTestBase is Test {
     ///      the range Foundry reserves for precompiles.
     address internal constant LOW_QUOTE_ADDRESS = address(0x1000);
     /// @dev An ERC20 quote etched at the top of the address space sorts above every test-deployed
-    ///      token: launches mirror with the token as currency0.
+    ///      token: launches place the token as currency0 with the quote as currency1.
     address internal constant HIGH_QUOTE_ADDRESS = address(type(uint160).max);
 
     address internal launcher = address(this);
@@ -134,12 +134,7 @@ abstract contract InstantLaunchTestBase is Test {
     /// @notice Deploys a strategy with no beneficiary vault: its launches carry no creator fee share.
     function _deployStrategyWithoutBeneficiaryVault() internal returns (InstantLaunchStrategy) {
         return new InstantLaunchStrategy(
-            launcher,
-            POSITION_MANAGER,
-            POOL_MANAGER,
-            feeSplitter,
-            IBeneficiaryVault(address(0)),
-            _defaultPoolConfig()
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, IBeneficiaryVault(address(0)), _defaultPoolConfig()
         );
     }
 
@@ -157,9 +152,7 @@ abstract contract InstantLaunchTestBase is Test {
     ///         test-deployed tokens is deterministic.
     function _deployQuoteToken(address at) internal returns (MockERC20 quote) {
         deployCodeTo(
-            "test/mocks/MockERC20.sol:MockERC20",
-            abi.encode("Quote Token", "QUOTE", TOTAL_SUPPLY, address(this)),
-            at
+            "test/mocks/MockERC20.sol:MockERC20", abi.encode("Quote Token", "QUOTE", TOTAL_SUPPLY, address(this)), at
         );
         return MockERC20(at);
     }

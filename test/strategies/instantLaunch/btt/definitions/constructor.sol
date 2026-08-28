@@ -47,11 +47,11 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it reverts with InvalidPositionLiquidity
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
-///     ├── it derives a position liquidity per orientation that fits in a single position
+///     ├── it derives a position liquidity for each quote position that fits in a single position
 ///     ├── it prices saturating the launch floor tick from either side above the total supply
-///     ├── it prices saturating the mirrored launch floor tick from either side above the total supply
+///     ├── it prices saturating the quote-as-currency1 launch floor tick from either side above the total supply
 ///     ├── it prices saturating the maximum initial tick from either side above the blocker cost floors
-///     └── it prices saturating the mirrored maximum initial tick from either side above the blocker cost floors
+///     └── it prices saturating the quote-as-currency1 maximum initial tick from either side above the blocker cost floors
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         // The beneficiary vault is not among the required addresses; see the zero-vault case below.
@@ -76,7 +76,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(address(deployed.beneficiaryVault()), address(0));
         assertEq(address(deployed.feeSplitter()), address(feeSplitter));
         assertEq(deployed.initialTick(), INITIAL_TICK);
-        assertGt(deployed.positionLiquidity(), 0);
+        assertGt(deployed.quote0PositionLiquidity(), 0);
     }
 
     function test_WhenFeeSplitterUsesDifferentPositionManager() public {
@@ -91,7 +91,9 @@ contract ConstructorTest is InstantLaunchTestBase {
                 InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
             )
         );
-        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, _defaultPoolConfig());
+        new InstantLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, _defaultPoolConfig()
+        );
     }
 
     function test_WhenBeneficiaryVaultUsesDifferentPositionManager() public {
@@ -105,7 +107,9 @@ contract ConstructorTest is InstantLaunchTestBase {
                 InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
             )
         );
-        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, _defaultPoolConfig());
+        new InstantLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, _defaultPoolConfig()
+        );
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
@@ -120,8 +124,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenLaunchFloorIsNotAligned(int24 minLaunchTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         // Bounded to the valid floor range so alignment is the only violated condition.
-        minLaunchTick =
-            int24(bound(minLaunchTick, TickMath.minUsableTick(tickSpacing) + 1, INITIAL_TICK - tickSpacing));
+        minLaunchTick = int24(bound(minLaunchTick, TickMath.minUsableTick(tickSpacing) + 1, INITIAL_TICK - tickSpacing));
         vm.assume(minLaunchTick % tickSpacing != 0);
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
@@ -178,14 +181,14 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_WhenInitialTickCapReachesMaximumUsableTick() public {
-        // The cap must stay strictly below the usable range so the mirrored floor does too.
+        // The cap must stay strictly below the usable range so the quote-as-currency1 floor does too.
         int24 tickSpacing = strategy.TICK_SPACING();
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(NATIVE, INITIAL_TICK, MIN_LAUNCH_TICK, TickMath.maxUsableTick(tickSpacing));
     }
 
     function test_WhenLaunchFloorReachesMinimumUsableTick() public {
-        // The floor must stay strictly above the usable range so the mirrored cap does too.
+        // The floor must stay strictly above the usable range so the quote-as-currency1 cap does too.
         int24 tickSpacing = strategy.TICK_SPACING();
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(NATIVE, INITIAL_TICK, TickMath.minUsableTick(tickSpacing), MAX_INITIAL_TICK);
@@ -217,7 +220,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         int24 maxInitial = strategy.maxInitialTick();
         InstantLaunchStrategy deployed = _deployStrategy(maxInitial);
         assertEq(deployed.initialTick(), maxInitial);
-        assertGt(deployed.positionLiquidity(), 0);
+        assertGt(deployed.quote0PositionLiquidity(), 0);
     }
 
     function test_WhenConfigurationIsValid_storesConfiguration() public view {
@@ -230,10 +233,10 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(strategy.initialTick(), INITIAL_TICK);
         assertEq(strategy.minLaunchTick(), MIN_LAUNCH_TICK);
         assertEq(strategy.maxInitialTick(), MAX_INITIAL_TICK);
-        assertEq(strategy.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
-        assertEq(strategy.mirroredInitialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(-INITIAL_TICK));
-        assertGt(strategy.positionLiquidity(), 0);
-        assertGt(strategy.mirroredPositionLiquidity(), 0);
+        assertEq(strategy.quote0InitialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
+        assertEq(strategy.quote1InitialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(-INITIAL_TICK));
+        assertGt(strategy.quote0PositionLiquidity(), 0);
+        assertGt(strategy.quote1PositionLiquidity(), 0);
     }
 
     function test_WhenConfigurationIsValid_storesErc20QuoteCurrency() public {
@@ -267,7 +270,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertGt(costBelow, strategy.TOTAL_SUPPLY());
     }
 
-    function test_fuzz_WhenConfigurationIsValid_saturatingMirroredLaunchFloorExceedsTotalSupply(int24 initialTick)
+    function test_fuzz_WhenConfigurationIsValid_saturatingQuote1LaunchFloorExceedsTotalSupply(int24 initialTick)
         public
     {
         int24 tickSpacing = strategy.TICK_SPACING();
@@ -275,7 +278,7 @@ contract ConstructorTest is InstantLaunchTestBase {
             bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.maxInitialTick() / tickSpacing)
         ) * tickSpacing;
 
-        (uint256 costAbove, uint256 costBelow) = _mirroredFloorBlockerCosts(_deployStrategy(initialTick));
+        (uint256 costAbove, uint256 costBelow) = _quote1FloorBlockerCosts(_deployStrategy(initialTick));
         assertGt(costAbove, strategy.TOTAL_SUPPLY());
         assertGt(costBelow, strategy.TOTAL_SUPPLY());
     }
@@ -291,7 +294,8 @@ contract ConstructorTest is InstantLaunchTestBase {
     {
         int24 tickSpacing = deployed.TICK_SPACING();
         int24 floorTick = deployed.minLaunchTick();
-        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+        uint128 blockerLiquidity =
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote0PositionLiquidity();
 
         costAbove = SqrtPriceMath.getAmount1Delta(
             TickMath.getSqrtPriceAtTick(floorTick),
@@ -307,27 +311,27 @@ contract ConstructorTest is InstantLaunchTestBase {
         );
     }
 
-    /// @notice The mirrored-orientation equivalent of `_floorBlockerCosts`: the token is currency0,
-    ///         the floor mirrors to -minLaunchTick above the price, and blockers there fund in amount0.
-    function _mirroredFloorBlockerCosts(InstantLaunchStrategy deployed)
+    /// @notice The quote-as-currency1 equivalent of `_floorBlockerCosts`: the token is currency0,
+    ///         the floor negates to -minLaunchTick above the price, and blockers there fund in amount0.
+    function _quote1FloorBlockerCosts(InstantLaunchStrategy deployed)
         private
         view
         returns (uint256 costAbove, uint256 costBelow)
     {
         int24 tickSpacing = deployed.TICK_SPACING();
-        int24 mirroredFloorTick = -deployed.minLaunchTick();
+        int24 quote1FloorTick = -deployed.minLaunchTick();
         uint128 blockerLiquidity =
-            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.mirroredPositionLiquidity();
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote1PositionLiquidity();
 
         costAbove = SqrtPriceMath.getAmount0Delta(
-            TickMath.getSqrtPriceAtTick(mirroredFloorTick),
-            TickMath.getSqrtPriceAtTick(mirroredFloorTick + tickSpacing),
+            TickMath.getSqrtPriceAtTick(quote1FloorTick),
+            TickMath.getSqrtPriceAtTick(quote1FloorTick + tickSpacing),
             blockerLiquidity,
             true
         );
         costBelow = SqrtPriceMath.getAmount0Delta(
-            TickMath.getSqrtPriceAtTick(mirroredFloorTick - tickSpacing),
-            TickMath.getSqrtPriceAtTick(mirroredFloorTick),
+            TickMath.getSqrtPriceAtTick(quote1FloorTick - tickSpacing),
+            TickMath.getSqrtPriceAtTick(quote1FloorTick),
             blockerLiquidity,
             true
         );
@@ -344,7 +348,8 @@ contract ConstructorTest is InstantLaunchTestBase {
         // The launch position opens at its upper tick, so the range above that tick is funded in ETH and
         // the range below it in tokens. Both load the same liquidityGross, so both must be costly. The ETH
         // side gets cheaper as the tick rises, which makes the cap the binding deployment for it.
-        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+        uint128 blockerLiquidity =
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote0PositionLiquidity();
         uint256 costAbove = SqrtPriceMath.getAmount0Delta(
             TickMath.getSqrtPriceAtTick(capTick),
             TickMath.getSqrtPriceAtTick(capTick + tickSpacing),
@@ -361,27 +366,27 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertGt(costBelow, strategy.TOTAL_SUPPLY());
     }
 
-    function test_WhenConfigurationIsValid_saturatingMirroredMaxInitialTickIsProhibitivelyExpensive() public {
+    function test_WhenConfigurationIsValid_saturatingQuote1MaxInitialTickIsProhibitivelyExpensive() public {
         int24 tickSpacing = strategy.TICK_SPACING();
         int24 capTick = strategy.maxInitialTick();
 
         InstantLaunchStrategy deployed = _deployStrategy(capTick);
 
-        // In the mirrored orientation the pool opens at the position's lower tick -capTick: the range
+        // When the quote is currency1 the pool opens at the position's lower tick -capTick: the range
         // below it is funded in the quote currency, the range above it in tokens. The quote-side cost
         // floor is denominated in the quote currency's smallest unit.
-        int24 mirroredCapTick = -capTick;
+        int24 quote1CapTick = -capTick;
         uint128 blockerLiquidity =
-            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.mirroredPositionLiquidity();
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote1PositionLiquidity();
         uint256 costBelowInQuote = SqrtPriceMath.getAmount1Delta(
-            TickMath.getSqrtPriceAtTick(mirroredCapTick - tickSpacing),
-            TickMath.getSqrtPriceAtTick(mirroredCapTick),
+            TickMath.getSqrtPriceAtTick(quote1CapTick - tickSpacing),
+            TickMath.getSqrtPriceAtTick(quote1CapTick),
             blockerLiquidity,
             true
         );
         uint256 costAboveInToken = SqrtPriceMath.getAmount0Delta(
-            TickMath.getSqrtPriceAtTick(mirroredCapTick),
-            TickMath.getSqrtPriceAtTick(mirroredCapTick + tickSpacing),
+            TickMath.getSqrtPriceAtTick(quote1CapTick),
+            TickMath.getSqrtPriceAtTick(quote1CapTick + tickSpacing),
             blockerLiquidity,
             true
         );
@@ -396,9 +401,9 @@ contract ConstructorTest is InstantLaunchTestBase {
         ) * tickSpacing;
 
         InstantLaunchStrategy deployed = _deployStrategy(initialTick);
-        assertGt(deployed.positionLiquidity(), 0);
-        assertLe(deployed.positionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
-        assertGt(deployed.mirroredPositionLiquidity(), 0);
-        assertLe(deployed.mirroredPositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+        assertGt(deployed.quote0PositionLiquidity(), 0);
+        assertLe(deployed.quote0PositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+        assertGt(deployed.quote1PositionLiquidity(), 0);
+        assertLe(deployed.quote1PositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
     }
 }

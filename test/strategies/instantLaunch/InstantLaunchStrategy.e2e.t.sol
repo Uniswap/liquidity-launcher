@@ -90,13 +90,13 @@ contract InstantLaunchStrategyE2ETest is Test {
 
         // The pool opens at the configured price with the full supply on the token side of it.
         (uint160 sqrtPriceX96, int24 tick,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
+        assertEq(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
         assertEq(tick, INITIAL_TICK);
 
         (, PositionInfo info) = POSITION_MANAGER.getPoolAndPositionInfo(tokenId);
         assertEq(info.tickLower(), strategy.minLaunchTick());
         assertEq(info.tickUpper(), INITIAL_TICK);
-        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.positionLiquidity());
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.quote0PositionLiquidity());
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
 
         // Whole supply accounted for: everything is in the pool except burned rounding dust.
@@ -181,7 +181,7 @@ contract InstantLaunchStrategyE2ETest is Test {
         assertGt(delta.amount1(), 0);
 
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertLt(sqrtPriceX96, strategy.initialSqrtPriceX96());
+        assertLt(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
         assertGt(sqrtPriceX96, TickMath.getSqrtPriceAtTick(strategy.minLaunchTick()));
 
         // Buys and sells both work immediately after — nothing gates the pool.
