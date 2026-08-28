@@ -202,6 +202,15 @@ contract FeeSplitterTest is Test {
     uint160 internal constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
     uint24 internal constant FEE = 10_000;
     int24 internal constant TICK_SPACING = 200;
+    /// @dev The native quote currency used by the default splitter deployment.
+    Currency internal constant NATIVE = CurrencyLibrary.ADDRESS_ZERO;
+    /// @dev CREATE addresses are keccak-derived, so an ERC20 quote etched here sorts below every
+    ///      test-deployed token: the quote is currency0. The address sits just above the range
+    ///      Foundry reserves for precompiles.
+    address internal constant LOW_QUOTE_ADDRESS = address(0x1000);
+    /// @dev An ERC20 quote etched at the top of the address space sorts above every test-deployed
+    ///      token: the token is currency0 and the quote is currency1.
+    address internal constant HIGH_QUOTE_ADDRESS = address(type(uint160).max);
 
     PoolSwapTest internal swapRouter;
     WETH internal weth;
@@ -235,18 +244,38 @@ contract FeeSplitterTest is Test {
     }
 
     function _defaultSplitter() internal returns (FeeSplitter splitter) {
-        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, BURN_ADDRESS);
+        return _splitterWithQuote(NATIVE);
+    }
+
+    /// @notice Deploys the product-configuration splitter and vault bound to `quote`.
+    function _splitterWithQuote(Currency quote) internal returns (FeeSplitter splitter) {
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, quote, tokenJar, BURN_ADDRESS);
         FeeSplit[] memory entries = new FeeSplit[](3);
         entries[0] = _split(tokenJar, 8_000, 0, false);
         entries[1] = _split(BURN_ADDRESS, 0, 8_000, false);
         entries[2] = _split(address(beneficiaryVault), 2_000, 2_000, true);
-        splitter = new FeeSplitter(POSITION_MANAGER, entries);
+        splitter = new FeeSplitter(POSITION_MANAGER, quote, entries);
+    }
+
+    /// @notice Etches an ERC20 quote at a fixed address so its sort order against test-deployed
+    ///         tokens is deterministic.
+    function _deployQuoteToken(address at) internal returns (MockERC20 quote) {
+        deployCodeTo(
+            "test/mocks/MockERC20.sol:MockERC20", abi.encode("Quote", "QUOTE", 1_000_000 ether, address(this)), at
+        );
+        return MockERC20(at);
     }
 
     function _initPool(address token) internal returns (PoolKey memory key) {
+        return _initPoolPair(address(0), token);
+    }
+
+    /// @notice Initializes a pool for the two currencies, sorted by address.
+    function _initPoolPair(address a, address b) internal returns (PoolKey memory key) {
+        (address currency0, address currency1) = a < b ? (a, b) : (b, a);
         key = PoolKey({
-            currency0: CurrencyLibrary.ADDRESS_ZERO,
-            currency1: Currency.wrap(token),
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -282,7 +311,10 @@ contract FeeSplitterTest is Test {
     function _accrueFees(PoolKey memory key) internal {
         PoolSwapTest.TestSettings memory settings =
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        swapRouter.swap{value: 1 ether}(
+        uint256 value;
+        if (key.currency0.isAddressZero()) value = 1 ether;
+        else IERC20(Currency.unwrap(key.currency0)).approve(address(swapRouter), type(uint256).max);
+        swapRouter.swap{value: value}(
             key,
             SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
             settings,
@@ -295,6 +327,20 @@ contract FeeSplitterTest is Test {
             settings,
             bytes("")
         );
+    }
+
+    /// @notice Mints a fee-accrued position pairing a fresh token against the ERC20 `quote`,
+    ///         custodied by `splitter`; the pool's orientation follows the quote's etched address.
+    function _erc20QuotePositionWithFees(FeeSplitter splitter, MockERC20 quote, bool registered)
+        internal
+        returns (MockERC20 token, PoolKey memory key, uint256 tokenId)
+    {
+        token = new MockERC20("Launched", "LAUNCH", 1_000_000 ether, address(this));
+        key = _initPoolPair(address(quote), address(token));
+        tokenId = _mintPosition(key, address(this), 100 ether, 100 ether);
+        if (registered) beneficiaryVault.registerBeneficiary(tokenId, creator);
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(splitter), tokenId);
+        _accrueFees(key);
     }
 
     function _positionWithFees(FeeSplitter splitter, bool registered)
@@ -320,34 +366,40 @@ contract FeeSplitterTest is Test {
         FeeSplit[] memory entries = splitter.getSplits();
         assertEq(entries.length, 3);
         assertEq(entries[0].recipient, tokenJar);
-        assertEq(entries[0].nativeBps, 8_000);
+        assertEq(entries[0].quoteBps, 8_000);
         assertEq(entries[0].tokenBps, 0);
         assertFalse(entries[0].useCallback);
         assertEq(entries[2].recipient, address(beneficiaryVault));
-        assertEq(entries[2].nativeBps, 2_000);
+        assertEq(entries[2].quoteBps, 2_000);
         assertEq(entries[2].tokenBps, 2_000);
         assertTrue(entries[2].useCallback);
     }
 
+    function test_constructor_storesQuoteCurrency() public {
+        assertEq(Currency.unwrap(_defaultSplitter().quoteCurrency()), address(0));
+        MockERC20 quote = _deployQuoteToken(LOW_QUOTE_ADDRESS);
+        assertEq(Currency.unwrap(_splitterWithQuote(Currency.wrap(address(quote))).quoteCurrency()), address(quote));
+    }
+
     function test_constructor_revertsOnZeroRecipient() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, address(0)));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(address(0), 10_000, 10_000, false)));
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(address(0), 10_000, 10_000, false)));
     }
 
     function test_constructor_revertsOnSelfRecipient() public {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidRecipient.selector, predicted));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(predicted, 10_000, 10_000, false)));
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(predicted, 10_000, 10_000, false)));
     }
 
     function test_constructor_revertsOnCallbackRecipientWithoutCode() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.CallbackRecipientNotContract.selector, creator));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(creator, 10_000, 10_000, true)));
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(creator, 10_000, 10_000, true)));
     }
 
     function test_constructor_revertsOnNoSplits() public {
         vm.expectRevert(IFeeSplitter.NoSplits.selector);
-        new FeeSplitter(POSITION_MANAGER, new FeeSplit[](0));
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), new FeeSplit[](0));
     }
 
     function test_constructor_revertsOnBothZeroBps() public {
@@ -355,7 +407,7 @@ contract FeeSplitterTest is Test {
         entries[0] = _split(tokenJar, 10_000, 10_000, false);
         entries[1] = _split(creator, 0, 0, false);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.ZeroSplitBps.selector, creator));
-        new FeeSplitter(POSITION_MANAGER, entries);
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), entries);
     }
 
     function test_constructor_revertsOnDuplicateRecipient() public {
@@ -363,17 +415,17 @@ contract FeeSplitterTest is Test {
         entries[0] = _split(tokenJar, 5_000, 5_000, false);
         entries[1] = _split(tokenJar, 5_000, 5_000, false);
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.DuplicateRecipient.selector, tokenJar));
-        new FeeSplitter(POSITION_MANAGER, entries);
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), entries);
     }
 
     function test_constructor_revertsOnInvalidNativeTotal() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidSplitTotal.selector, 9_999));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(tokenJar, 9_999, 10_000, false)));
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(tokenJar, 9_999, 10_000, false)));
     }
 
     function test_constructor_revertsOnInvalidTokenTotal() public {
         vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.InvalidSplitTotal.selector, 9_999));
-        new FeeSplitter(POSITION_MANAGER, _splits(_split(tokenJar, 10_000, 9_999, false)));
+        new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(tokenJar, 10_000, 9_999, false)));
     }
 
     function test_onERC721Received_ignoresTransferData() public {
@@ -416,6 +468,82 @@ contract FeeSplitterTest is Test {
         assertLe(token.balanceOf(address(splitter)), 1);
     }
 
+    function test_collectFees_erc20Quote_quoteAsCurrency0_distributesBothSides() public {
+        // The quote sorts below the token, so the quote is currency0 and the token is currency1:
+        // the same orientation as native pools, with an ERC20 on the quote side.
+        MockERC20 quote = _deployQuoteToken(LOW_QUOTE_ADDRESS);
+        FeeSplitter splitter = _splitterWithQuote(Currency.wrap(address(quote)));
+        (MockERC20 token,, uint256 tokenId) = _erc20QuotePositionWithFees(splitter, quote, true);
+        uint256 jarBefore = quote.balanceOf(tokenJar);
+        uint256 burnBefore = token.balanceOf(BURN_ADDRESS);
+
+        splitter.collectFees(_single(tokenId));
+
+        assertGt(quote.balanceOf(tokenJar) - jarBefore, 0);
+        assertGt(token.balanceOf(BURN_ADDRESS) - burnBefore, 0);
+        // The vault's balance-backed attribution proves the callback amounts arrived per currency.
+        assertGt(beneficiaryVault.totalAmounts(Currency.wrap(address(quote))), 0);
+        assertGt(beneficiaryVault.totalAmounts(Currency.wrap(address(token))), 0);
+        assertLe(quote.balanceOf(address(splitter)), 1);
+        assertLe(token.balanceOf(address(splitter)), 1);
+    }
+
+    function test_collectFees_erc20Quote_quoteAsCurrency1_distributesBothSides() public {
+        // The quote sorts above the token, so the token is currency0 and the quote is currency1:
+        // the splits must follow the quote, not the pool position.
+        MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        FeeSplitter splitter = _splitterWithQuote(Currency.wrap(address(quote)));
+        (MockERC20 token,, uint256 tokenId) = _erc20QuotePositionWithFees(splitter, quote, true);
+        uint256 jarBefore = quote.balanceOf(tokenJar);
+        uint256 burnBefore = token.balanceOf(BURN_ADDRESS);
+
+        splitter.collectFees(_single(tokenId));
+
+        // The jar receives the quote (currency1) and the burn receives the token (currency0).
+        assertGt(quote.balanceOf(tokenJar) - jarBefore, 0);
+        assertEq(token.balanceOf(tokenJar), 0);
+        assertGt(token.balanceOf(BURN_ADDRESS) - burnBefore, 0);
+        assertEq(quote.balanceOf(BURN_ADDRESS), 0);
+        // The vault's balance-backed attribution proves the callback amounts arrived in pool-key
+        // order: currency0 is the token side and currency1 is the quote side.
+        assertGt(beneficiaryVault.totalAmounts(Currency.wrap(address(token))), 0);
+        assertGt(beneficiaryVault.totalAmounts(Currency.wrap(address(quote))), 0);
+        assertEq(beneficiaryVault.ownerOf(tokenId), creator);
+        assertLe(quote.balanceOf(address(splitter)), 1);
+        assertLe(token.balanceOf(address(splitter)), 1);
+    }
+
+    function test_collectFees_erc20Quote_quoteAsCurrency1_notifiesCallbackInPoolKeyOrder() public {
+        MockFeesCallback callback = new MockFeesCallback();
+        MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, Currency.wrap(address(quote)), _splits(_split(address(callback), 10_000, 10_000, true))
+        );
+        (MockERC20 token,, uint256 tokenId) = _erc20QuotePositionWithFees(splitter, quote, false);
+
+        splitter.collectFees(_single(tokenId));
+
+        // The token is currency0, so the first callback amount is the token side.
+        assertEq(callback.feesCalls(), 1);
+        assertEq(callback.lastCurrency0Amount(), token.balanceOf(address(callback)));
+        assertEq(callback.lastCurrency1Amount(), quote.balanceOf(address(callback)));
+        assertGt(callback.lastCurrency0Amount(), 0);
+        assertGt(callback.lastCurrency1Amount(), 0);
+    }
+
+    function test_collectFees_revertsWhenQuoteNotInPool() public {
+        // The native-quote splitter cannot orient the splits of a two-ERC20 pool.
+        FeeSplitter splitter = _defaultSplitter();
+        MockERC20 a = new MockERC20("A", "A", 1_000 ether, address(this));
+        MockERC20 b = new MockERC20("B", "B", 1_000 ether, address(this));
+        PoolKey memory key = _initPoolPair(address(a), address(b));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        _accrueFees(key);
+
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.QuoteCurrencyNotInPool.selector, tokenId));
+        splitter.collectFees(_single(tokenId));
+    }
+
     function test_collectFees_revertsOnEmptyTokenIds() public {
         FeeSplitter splitter = _defaultSplitter();
         vm.expectRevert(IFeeSplitter.NoTokenIds.selector);
@@ -424,8 +552,9 @@ contract FeeSplitterTest is Test {
 
     function test_collectFees_notifiesFlaggedRecipientOnceWithBothAmounts() public {
         MockFeesCallback callback = new MockFeesCallback();
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(address(callback), 10_000, 10_000, true))
+        );
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
         splitter.collectFees(_single(tokenId));
         assertEq(callback.feesCalls(), 1);
@@ -439,8 +568,9 @@ contract FeeSplitterTest is Test {
     function test_collectFees_revertingFeesCallbackRevertsTheWholeCollect() public {
         MockFeesCallback callback = new MockFeesCallback();
         callback.setRevertFees(true);
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(address(callback), 10_000, 10_000, true))
+        );
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
 
         vm.expectRevert(MockFeesCallback.FeesCallbackFailed.selector);
@@ -468,8 +598,9 @@ contract FeeSplitterTest is Test {
         // 400k is far above the ~126-164k where the retained 1/64 would cover the caller's remaining
         // work, i.e. exactly the shape that produced a stranding window while failures were swallowed.
         MockFixedCostCallback callback = new MockFixedCostCallback(400_000);
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(address(callback), 10_000, 10_000, true))
+        );
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
 
         uint256 honest;
@@ -505,8 +636,9 @@ contract FeeSplitterTest is Test {
 
     function test_collectFees_failingRecipientOnlyBlocksItsOwnPosition() public {
         MockFeesCallback callback = new MockFeesCallback();
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(callback), 10_000, 10_000, true)));
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(address(callback), 10_000, 10_000, true))
+        );
         (,, uint256 blockedTokenId) = _positionWithFees(splitter, false);
         (MockERC20 healthyToken,, uint256 healthyTokenId) = _positionWithFees(splitter, false);
         callback.setRevertForTokenId(blockedTokenId);
@@ -534,7 +666,7 @@ contract FeeSplitterTest is Test {
         FeeSplit[] memory entries = new FeeSplit[](2);
         entries[0] = _split(address(callback), 10_000, 0, true);
         entries[1] = _split(BURN_ADDRESS, 0, 10_000, false);
-        FeeSplitter splitter = new FeeSplitter(POSITION_MANAGER, entries);
+        FeeSplitter splitter = new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), entries);
         (,, uint256 tokenId) = _positionWithFees(splitter, false);
         splitter.collectFees(_single(tokenId));
         assertGt(address(callback).balance, 0);
@@ -613,8 +745,9 @@ contract FeeSplitterTest is Test {
 
     function test_increaseLiquidity_noRecipientCodeRunsDuringIncrease() public {
         MockPosmSweeperFeeRecipient attacker = new MockPosmSweeperFeeRecipient(POSITION_MANAGER);
-        FeeSplitter splitter =
-            new FeeSplitter(POSITION_MANAGER, _splits(_split(address(attacker), 10_000, 10_000, true)));
+        FeeSplitter splitter = new FeeSplitter(
+            POSITION_MANAGER, Currency.wrap(address(0)), _splits(_split(address(attacker), 10_000, 10_000, true))
+        );
         (MockERC20 token,, uint256 tokenId) = _positionWithFees(splitter, false);
         attacker.addSweepCurrency(CurrencyLibrary.ADDRESS_ZERO);
         attacker.addSweepCurrency(Currency.wrap(address(weth)));
@@ -637,7 +770,30 @@ contract FeeSplitterTest is Test {
         assertGt(token.balanceOf(address(this)), tokenBefore);
     }
 
-    function test_increaseLiquidity_revertsOnNonNativePool() public {
+    function test_increaseLiquidity_erc20QuotePool_settlesWithoutUnwrap() public {
+        // With no native side there is no UNWRAP: both PositionManager balances settle directly.
+        MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        FeeSplitter splitter = _splitterWithQuote(Currency.wrap(address(quote)));
+        MockERC20 token = new MockERC20("T", "T", 1_000_000 ether, address(this));
+        PoolKey memory key = _initPoolPair(address(quote), address(token));
+        uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
+        uint128 beforeLiquidity = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        quote.transfer(address(POSITION_MANAGER), 10 ether);
+        token.transfer(address(POSITION_MANAGER), 10 ether);
+        uint256 quoteBefore = quote.balanceOf(address(this));
+        uint256 tokenBefore = token.balanceOf(address(this));
+
+        splitter.increaseLiquidity(tokenId, 1 ether, 10 ether, 10 ether, bytes(""));
+
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), beforeLiquidity + 1 ether);
+        // The unused funding came back to the caller and nothing is left on the PositionManager.
+        assertGt(quote.balanceOf(address(this)), quoteBefore);
+        assertGt(token.balanceOf(address(this)), tokenBefore);
+        assertEq(quote.balanceOf(address(POSITION_MANAGER)), 0);
+        assertEq(token.balanceOf(address(POSITION_MANAGER)), 0);
+    }
+
+    function test_increaseLiquidity_revertsWhenQuoteNotInPool() public {
         FeeSplitter splitter = _defaultSplitter();
         MockERC20 a = new MockERC20("A", "A", 1_000 ether, address(this));
         MockERC20 b = new MockERC20("B", "B", 1_000 ether, address(this));
@@ -651,9 +807,8 @@ contract FeeSplitterTest is Test {
         });
         POOL_MANAGER.initialize(key, SQRT_PRICE_1_1);
         uint256 tokenId = _mintPosition(key, address(splitter), 100 ether, 100 ether);
-        vm.expectRevert(
-            abi.encodeWithSelector(IFeeSplitter.InvalidBaseCurrency.selector, tokenId, Currency.wrap(address(token0)))
-        );
+        // The native-quote splitter cannot orient the splits of a pool with no quote side.
+        vm.expectRevert(abi.encodeWithSelector(IFeeSplitter.QuoteCurrencyNotInPool.selector, tokenId));
         splitter.increaseLiquidity(tokenId, 1, 1, 1, bytes(""));
     }
 

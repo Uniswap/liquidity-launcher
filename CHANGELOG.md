@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Breaking changes
+- `FeeSplitter` and `BeneficiaryVault` generalize from native-ETH `currency0` to an immutable `quoteCurrency` constructor parameter, serving pools that pair the quote on either side; `FeeSplit.nativeBps` is renamed to `quoteBps`, the `FeesCollected` event's `nativeAmount` to `quoteAmount`, `InvalidBaseCurrency` is replaced by `QuoteCurrencyNotInPool`, the vault's `nativeFallback` is renamed to `quoteFallback` with fallback routing by quote side, and `increaseLiquidity` only unwraps WETH for pools with a native `currency0` [#248](https://github.com/Uniswap/token-launcher/pull/248)
 - `BuybackAndBurnClaimRecipient` now burns `currency0` or `currency1`, selected by the new `burnCurrency0` immutable; `minCurrency1BurnAmount` is renamed to `minBurnAmount`, and the native-ETH `currency0` requirement is replaced by a check that the burn currency is an ERC20 [#246](https://github.com/Uniswap/token-launcher/pull/246)
 
 ## [3.2.0]

@@ -362,7 +362,7 @@ contract PositionRecipientsBTTTest is Test {
     uint256 internal constant FEES_0 = 2 ether;
     uint256 internal constant FEES_1 = 3 ether;
     uint128 internal constant INITIAL_LIQUIDITY = 100 ether;
-    address internal constant NATIVE_FALLBACK = address(0xdead);
+    address internal constant QUOTE_FALLBACK = address(0xdead);
     address internal constant TOKEN_FALLBACK = address(0xbeef);
 
     address internal operator = makeAddr("operator");
@@ -387,7 +387,9 @@ contract PositionRecipientsBTTTest is Test {
         (currency0, currency1) = a < b ? (a, b) : (b, a);
         poolKey = PoolKey(currency0, currency1, 3000, 60, IHooks(address(0)));
         _configure(poolKey, FEES_0, FEES_1, 1 ether);
-        vestingVault = new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        vestingVault = new BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
     }
 
     function test_TimelockedPositionRecipient_WhenTimelockHasNotPassed_Reverts(uint64 timelock) public {
@@ -945,7 +947,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vault.ownerOf(TOKEN_ID), creator);
         assertEq(creator.balance, FEES_0);
         assertEq(token.balanceOf(creator), FEES_1);
-        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(QUOTE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
         assertEq(amount0, 0);
@@ -978,7 +980,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vault.ownerOf(TOKEN_ID), custodian);
         assertEq(custodian.balance, FEES_0);
         assertEq(token.balanceOf(custodian), FEES_1);
-        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(QUOTE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
         assertEq(amount0, 0);
@@ -994,7 +996,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, stranger));
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(QUOTE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
     }
 
@@ -1052,7 +1054,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.prank(stranger);
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(QUOTE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
         assertEq(amount0, 0);
@@ -1068,7 +1070,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.prank(stranger);
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(QUOTE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
     }
 
@@ -1083,7 +1085,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.prank(stranger);
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(QUOTE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
     }
 
@@ -1131,8 +1133,9 @@ contract PositionRecipientsBTTTest is Test {
 
     function test_Vesting_constructor_WhenAllowlistedVaultUsesADifferentPositionManager_Reverts() public {
         MockPositionManager foreignManager = new MockPositionManager();
-        BeneficiaryVault foreign =
-            new BeneficiaryVault(IPositionManager(address(foreignManager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        BeneficiaryVault foreign = new BeneficiaryVault(
+            IPositionManager(address(foreignManager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
         BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
         allowlist[0] = vestingVault;
@@ -1405,11 +1408,15 @@ contract PositionRecipientsBTTTest is Test {
 
     function _deployBeneficiaryVault() internal returns (BeneficiaryVault) {
         manager.setPositionOwner(address(this));
-        return new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        return new BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
     }
 
     function _deployUerc20Vault() internal returns (UERC20BeneficiaryVault) {
-        return new UERC20BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        return new UERC20BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
     }
 
     function _configureUerc20Pool(PoolKey memory key, uint256 fee0, uint256 fee1) internal {

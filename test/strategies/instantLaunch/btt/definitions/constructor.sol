@@ -8,6 +8,7 @@ import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.so
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
@@ -69,7 +70,8 @@ contract ConstructorTest is InstantLaunchTestBase {
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
         // The splitter resolves its PoolManager from the PositionManager at construction.
         vm.mockCall(address(otherPositionManager), abi.encodeWithSignature("poolManager()"), abi.encode(address(0)));
-        FeeSplitter mismatched = new FeeSplitter(otherPositionManager, feeSplitter.getSplits());
+        FeeSplitter mismatched =
+            new FeeSplitter(otherPositionManager, Currency.wrap(address(0)), feeSplitter.getSplits());
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -83,7 +85,8 @@ contract ConstructorTest is InstantLaunchTestBase {
         // Registration proves custody against the vault's PositionManager; a mismatch would revert
         // every launch at registration.
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
-        BeneficiaryVault mismatched = new BeneficiaryVault(otherPositionManager, tokenJar, address(0xdead));
+        BeneficiaryVault mismatched =
+            new BeneficiaryVault(otherPositionManager, Currency.wrap(address(0)), tokenJar, address(0xdead));
 
         vm.expectRevert(
             abi.encodeWithSelector(

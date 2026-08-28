@@ -68,11 +68,12 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         launcher = new LiquidityLauncher(permit2);
         factory = new UERC20Factory();
 
-        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, address(this), address(0xdead));
+        beneficiaryVault =
+            new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), address(this), address(0xdead));
         FeeSplit[] memory splits = new FeeSplit[](1);
         splits[0] =
-            FeeSplit({recipient: address(beneficiaryVault), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
-        feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
+            FeeSplit({recipient: address(beneficiaryVault), quoteBps: 10_000, tokenBps: 10_000, useCallback: true});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
 
         instantLaunch = new InstantLaunchStrategy(
             address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK

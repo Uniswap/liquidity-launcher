@@ -130,9 +130,7 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         );
         executor.execute(positionRecipient, NON_ETH_FORK_TOKEN_ID, 0, 0);
 
-        assertEq(
-            IERC20(NON_ETH_FORK_CURRENCY0).balanceOf(address(0xdead)), burnAddressTokenBefore + _minBurnAmount
-        );
+        assertEq(IERC20(NON_ETH_FORK_CURRENCY0).balanceOf(address(0xdead)), burnAddressTokenBefore + _minBurnAmount);
     }
 
     function test_claim_burnsCurrency1OfNonNativePool() public {
