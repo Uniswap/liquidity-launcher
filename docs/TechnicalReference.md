@@ -109,7 +109,7 @@ Periphery contracts are documented in [`src/periphery/README.md`](../src/periphe
 - **FeeSplitter** — zero-admin custodian of native-ETH v4 LP positions with immutable, deploy-time fee splits. `collectFees(uint256[] tokenIds)` permissionlessly collects each position and pushes independent basis-point shares of native ETH (`currency0`) and token (`currency1`); native shares are force-sent. Positions sent to it are irrecoverable by design.
 - **BeneficiaryVault** — a claim recipient whose transferable ERC721 represents a position's fee beneficiary. `registerBeneficiary(tokenId, beneficiary)` is authorized by position custody, so a depositor registers BEFORE transferring the position to a terminal custodian like the FeeSplitter. Unregistered positions pay out to immutable per-side fallbacks.
 - **UERC20BeneficiaryVault** — a `BeneficiaryVault` that also lets the creator of a launcher-created UERC20 claim unregistered positions pairing that token, proven through the token's `graffiti()`. Exists for custodians that predate the vault and never registered a beneficiary (e.g. `LBPStrategy` positions).
-- **BuybackAndBurnClaimRecipient** — pays a claim's attributed amounts to an `IClaimExecutor`, which may perform a buyback during the callback; afterwards the recipient pulls a fixed minimum of the position's `currency1` from the executor and sends it to the burn address.
+- **BuybackAndBurnClaimRecipient** — pays a claim's attributed amounts to an `IClaimExecutor`, which may perform a buyback during the callback; afterwards the recipient pulls a fixed minimum of the position's burn currency (`currency0` or `currency1`, selected by the immutable `burnCurrency0`) from the executor and sends it to the burn address.
 - **CompoundingClaimRecipient** — pays a claim's attributed amounts to an `IClaimExecutor` and requires the position's liquidity to have grown by at least `minLiquidityIncrease` when the callback returns. The executor performs the actual deposit and liquidity increase.
 - **TimelockedPositionRecipient** — holds v4 LP positions until a timelock block, after which anyone can approve the configured operator to transfer them.
 - **ProtocolFeeController** — governance-owned source of truth for the protocol fee on currency raised by a launch, with a global flat rate and optional per-currency progressive brackets. See the [periphery README](../src/periphery/README.md#protocolfeecontroller) for configuration details.
@@ -196,7 +196,7 @@ LP fees accrue on v4 positions held by a [`FeeSplitter`](../src/periphery/FeeSpl
 | **Incentivized executor** | Contract implementing [`IClaimExecutor`](../src/interfaces/IClaimExecutor.sol) | `claim` on `CompoundingClaimRecipient` or `BuybackAndBurnClaimRecipient` (mandatory `onClaimed` callback) |
 | **Beneficiary** | FEEB NFT owner | `claim` on `BeneficiaryVault` / `UERC20BeneficiaryVault` |
 
-Track FeeSplitter deploy addresses and read `getSplits()` for recipients. FeeSplitter and BuybackAndBurn are native-ETH pairs only. See the [periphery README](../src/periphery/README.md) for contract details.
+Track FeeSplitter deploy addresses and read `getSplits()` for recipients. FeeSplitter is native-ETH pairs only. BuybackAndBurn burns the position's `currency0` or `currency1`, selected per deployment, and the burn currency must be an ERC20. See the [periphery README](../src/periphery/README.md) for contract details.
 
 #### Contracts to index
 
