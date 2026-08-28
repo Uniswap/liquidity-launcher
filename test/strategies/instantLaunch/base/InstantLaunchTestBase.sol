@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -82,12 +83,12 @@ abstract contract InstantLaunchTestBase is Test {
     ///         token fees burned, both with a 20% creator share.
     function _deployFeeSplitter() internal returns (FeeSplitter) {
         FeeSplit[] memory splits = new FeeSplit[](3);
-        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, address(0xdead));
-        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
-        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, useCallback: false});
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), tokenJar, address(0xdead));
+        splits[0] = FeeSplit({recipient: tokenJar, quoteBps: 8_000, tokenBps: 0, useCallback: false});
+        splits[1] = FeeSplit({recipient: address(0xdead), quoteBps: 0, tokenBps: 8_000, useCallback: false});
         splits[2] =
-            FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, useCallback: true});
-        return new FeeSplitter(POSITION_MANAGER, splits);
+            FeeSplit({recipient: address(beneficiaryVault), quoteBps: 2_000, tokenBps: 2_000, useCallback: true});
+        return new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
     }
 
     /// @notice Deploys a strategy with the given tick and the shared collaborators (used by constructor tests).

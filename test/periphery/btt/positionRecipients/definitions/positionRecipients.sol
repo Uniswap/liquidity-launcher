@@ -231,10 +231,15 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     └── it transfers both amounts and invokes the executor
 ///
 /// BuybackAndBurnClaimRecipient
-/// ├── when currency0 is not native
+/// ├── when the burn currency is native
 /// │   └── it reverts
-/// └── when currency0 is native
-///     └── it burns currency1
+/// ├── when configured to burn currency1
+/// │   ├── when the pool is native-paired
+/// │   │   └── it burns currency1
+/// │   └── when the pool is not native-paired
+/// │       └── it burns currency1
+/// └── when configured to burn currency0
+///     └── it burns currency0
 ///
 /// CompoundingClaimRecipient
 /// ├── when the liquidity increase is below the minimum
@@ -357,7 +362,7 @@ contract PositionRecipientsBTTTest is Test {
     uint256 internal constant FEES_0 = 2 ether;
     uint256 internal constant FEES_1 = 3 ether;
     uint128 internal constant INITIAL_LIQUIDITY = 100 ether;
-    address internal constant NATIVE_FALLBACK = address(0xdead);
+    address internal constant QUOTE_FALLBACK = address(0xdead);
     address internal constant TOKEN_FALLBACK = address(0xbeef);
 
     address internal operator = makeAddr("operator");
@@ -382,7 +387,9 @@ contract PositionRecipientsBTTTest is Test {
         (currency0, currency1) = a < b ? (a, b) : (b, a);
         poolKey = PoolKey(currency0, currency1, 3000, 60, IHooks(address(0)));
         _configure(poolKey, FEES_0, FEES_1, 1 ether);
-        vestingVault = new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        vestingVault = new BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
     }
 
     function test_TimelockedPositionRecipient_WhenTimelockHasNotPassed_Reverts(uint64 timelock) public {
@@ -642,24 +649,23 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(puller.lastClaimed(TOKEN_ID), startBlock);
     }
 
-    function test_BuybackAndBurn_WhenCurrency0IsNotNative_Reverts() public {
-        BuybackAndBurnClaimRecipient recipient = new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), 1);
+    function test_BuybackAndBurn_WhenBurnCurrencyIsNative_Reverts() public {
+        PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
+        _configure(nativePool, FEES_0, FEES_1, 1 ether);
+        BuybackAndBurnClaimRecipient recipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), true, 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                BuybackAndBurnClaimRecipient.InvalidCurrency.selector, poolKey.currency0, Currency.wrap(address(0))
-            )
-        );
+        vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidBurnCurrency.selector);
         executor.execute(recipient, TOKEN_ID, 0, 0);
     }
 
-    function test_BuybackAndBurn_WhenCurrency0IsNative_BurnsCurrency1(uint128 burnAmount) public {
+    function test_BuybackAndBurn_WhenPoolIsNativePaired_BurnsCurrency1(uint128 burnAmount) public {
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
         BuybackAndBurnClaimRecipient recipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), burnAmount);
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), false, burnAmount);
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
@@ -669,6 +675,36 @@ contract PositionRecipientsBTTTest is Test {
         executor.execute(recipient, TOKEN_ID, 0, 0);
 
         assertEq(currency1.balanceOf(address(0xdead)) - burnedBefore, burnAmount);
+    }
+
+    function test_BuybackAndBurn_WhenPoolIsNotNativePaired_BurnsCurrency1(uint128 burnAmount) public {
+        burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
+        BuybackAndBurnClaimRecipient recipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), false, burnAmount);
+        MockBuybackAndBurnClaimExecutor executor =
+            new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
+        MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
+        uint256 burnedBefore = currency1.balanceOf(address(0xdead));
+        _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
+
+        executor.execute(recipient, TOKEN_ID, 0, 0);
+
+        assertEq(currency1.balanceOf(address(0xdead)) - burnedBefore, burnAmount);
+    }
+
+    function test_BuybackAndBurn_WhenConfiguredToBurnCurrency0_BurnsCurrency0(uint128 burnAmount) public {
+        burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
+        BuybackAndBurnClaimRecipient recipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), true, burnAmount);
+        MockBuybackAndBurnClaimExecutor executor =
+            new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency0), burnAmount);
+        MockERC20(Currency.unwrap(currency0)).transfer(address(executor), burnAmount);
+        uint256 burnedBefore = currency0.balanceOf(address(0xdead));
+        _notifyAmounts(recipient, poolKey, FEES_0, FEES_1);
+
+        executor.execute(recipient, TOKEN_ID, 0, 0);
+
+        assertEq(currency0.balanceOf(address(0xdead)) - burnedBefore, burnAmount);
     }
 
     function test_Compounding_WhenLiquidityIncreaseIsBelowMinimum_Reverts() public {
@@ -911,7 +947,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vault.ownerOf(TOKEN_ID), creator);
         assertEq(creator.balance, FEES_0);
         assertEq(token.balanceOf(creator), FEES_1);
-        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(QUOTE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
         assertEq(amount0, 0);
@@ -944,7 +980,7 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(vault.ownerOf(TOKEN_ID), custodian);
         assertEq(custodian.balance, FEES_0);
         assertEq(token.balanceOf(custodian), FEES_1);
-        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(QUOTE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
         assertEq(amount0, 0);
@@ -960,7 +996,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, TOKEN_ID, stranger));
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, 0);
+        assertEq(QUOTE_FALLBACK.balance, 0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), 0);
     }
 
@@ -1018,7 +1054,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.prank(stranger);
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(QUOTE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
         (uint256 amount0, uint256 amount1) = vault.amounts(TOKEN_ID);
         assertEq(amount0, 0);
@@ -1034,7 +1070,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.prank(stranger);
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(QUOTE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
     }
 
@@ -1049,7 +1085,7 @@ contract PositionRecipientsBTTTest is Test {
         vm.prank(stranger);
         vault.claim(TOKEN_ID, 0, 0);
 
-        assertEq(NATIVE_FALLBACK.balance, FEES_0);
+        assertEq(QUOTE_FALLBACK.balance, FEES_0);
         assertEq(token.balanceOf(TOKEN_FALLBACK), FEES_1);
     }
 
@@ -1097,8 +1133,9 @@ contract PositionRecipientsBTTTest is Test {
 
     function test_Vesting_constructor_WhenAllowlistedVaultUsesADifferentPositionManager_Reverts() public {
         MockPositionManager foreignManager = new MockPositionManager();
-        BeneficiaryVault foreign =
-            new BeneficiaryVault(IPositionManager(address(foreignManager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        BeneficiaryVault foreign = new BeneficiaryVault(
+            IPositionManager(address(foreignManager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
         BaseClaimRecipientHarness pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](2);
         allowlist[0] = vestingVault;
@@ -1371,11 +1408,15 @@ contract PositionRecipientsBTTTest is Test {
 
     function _deployBeneficiaryVault() internal returns (BeneficiaryVault) {
         manager.setPositionOwner(address(this));
-        return new BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        return new BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
     }
 
     function _deployUerc20Vault() internal returns (UERC20BeneficiaryVault) {
-        return new UERC20BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        return new UERC20BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
     }
 
     function _configureUerc20Pool(PoolKey memory key, uint256 fee0, uint256 fee1) internal {

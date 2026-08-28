@@ -55,12 +55,12 @@ contract InstantLaunchStrategyE2ETest is Test {
         // The intended product configuration: ETH fees to the tokenJar, token fees burned,
         // both with a 20% creator share.
         FeeSplit[] memory splits = new FeeSplit[](3);
-        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, BURN_ADDRESS);
-        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
-        splits[1] = FeeSplit({recipient: BURN_ADDRESS, nativeBps: 0, tokenBps: 8_000, useCallback: false});
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), tokenJar, BURN_ADDRESS);
+        splits[0] = FeeSplit({recipient: tokenJar, quoteBps: 8_000, tokenBps: 0, useCallback: false});
+        splits[1] = FeeSplit({recipient: BURN_ADDRESS, quoteBps: 0, tokenBps: 8_000, useCallback: false});
         splits[2] =
-            FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, useCallback: true});
-        feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
+            FeeSplit({recipient: address(beneficiaryVault), quoteBps: 2_000, tokenBps: 2_000, useCallback: true});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
 
         strategy = new InstantLaunchStrategy(
             address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK

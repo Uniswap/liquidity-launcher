@@ -144,8 +144,8 @@ contract FullRangeGuardianTest is Test {
         token = new MockERC20("Crowd Launch", "CROWD", TOTAL_SUPPLY, address(this));
         compounder = new CompoundingClaimRecipient(POSITION_MANAGER, MIN_LIQUIDITY_INCREASE);
         FeeSplit[] memory splits = new FeeSplit[](1);
-        splits[0] = FeeSplit({recipient: address(compounder), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
-        feeSplitter = new FeeSplitter(POSITION_MANAGER, splits);
+        splits[0] = FeeSplit({recipient: address(compounder), quoteBps: 10_000, tokenBps: 10_000, useCallback: true});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
 
         key = PoolKey({
             currency0: CurrencyLibrary.ADDRESS_ZERO,
