@@ -47,6 +47,12 @@ contract DeployAllScript is Script {
         tokenSplitterDeployer.run();
         initializerHookDeployer.run(lbpStrategyAddress);
 
+        bool deployPeriphery = vm.envOr("DEPLOY_PERIPHERY", false);
+        if(!deployPeriphery) {
+            console.log("Skipping deployment of periphery contracts. To deploy periphery, set DEPLOY_PERIPHERY to true in your environment variables.");
+            return;
+        }
+
         // Deploy periphery contracts
         address uerc20BeneficiaryVaultAddress = uerc20BeneficiaryVaultDeployer.run();
         vm.setEnv("BENEFICIARY_VAULT", vm.toString(uerc20BeneficiaryVaultAddress));
