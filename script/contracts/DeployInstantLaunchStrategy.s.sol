@@ -2,7 +2,8 @@
 pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
-import {InstantLaunchStrategy} from "../../src/strategies/InstantLaunchStrategy.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {InstantLaunchStrategy, LaunchPoolConfig} from "../../src/strategies/InstantLaunchStrategy.sol";
 import {console} from "forge-std/console.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {DeployParameters, Parameters} from "./Parameters.sol";
@@ -10,7 +11,12 @@ import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 
 contract DeployInstantLaunchStrategyScript is Script, Parameters {
+    // The native-ETH launch configuration. Chains with a different quote currency get per-chain
+    // parameters in a follow-up.
+    Currency public constant quoteCurrency = Currency.wrap(address(0));
     int24 public constant initialTick = 198_050;
+    int24 public constant minLaunchTick = -160_100;
+    int24 public constant maxInitialTick = 251_325;
 
     function run(address feeSplitter, address beneficiaryVault) public returns (address instantLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
@@ -25,7 +31,12 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
                 params.poolManager,
                 IFeeSplitter(feeSplitter),
                 IBeneficiaryVault(beneficiaryVault),
-                initialTick
+                LaunchPoolConfig({
+                    quoteCurrency: quoteCurrency,
+                    initialTick: initialTick,
+                    minLaunchTick: minLaunchTick,
+                    maxInitialTick: maxInitialTick
+                })
             )
         );
         bytes32 initCodeHash = keccak256(bytecode);

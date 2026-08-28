@@ -28,7 +28,11 @@ import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
-import {InstantLaunchStrategy, InstantLaunchConfig} from "../src/strategies/InstantLaunchStrategy.sol";
+import {
+    InstantLaunchStrategy,
+    InstantLaunchConfig,
+    LaunchPoolConfig
+} from "../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../src/interfaces/IFeeSplitter.sol";
@@ -73,7 +77,17 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
         strategy = new InstantLaunchStrategy(
-            address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
+            address(launcher),
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(address(0)),
+                initialTick: INITIAL_TICK,
+                minLaunchTick: -160_100,
+                maxInitialTick: 251_325
+            })
         );
     }
 

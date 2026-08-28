@@ -11,6 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -29,8 +30,24 @@ struct InstantLaunchConfig {
     address feeBeneficiary;
 }
 
+/// @notice The pool configuration fixed at deployment. Every tick is expressed with the token as
+///         currency1.
+/// @param quoteCurrency The currency every launch pairs against
+/// @param initialTick The tick at which each pool opens
+/// @param minLaunchTick The lower tick of every launch position
+/// @param maxInitialTick The highest deployable initial tick
+struct LaunchPoolConfig {
+    Currency quoteCurrency;
+    int24 initialTick;
+    int24 minLaunchTick;
+    int24 maxInitialTick;
+}
+
 /// @title InstantLaunchStrategy
-/// @notice Launches a fixed-supply token directly into a hookless native-ETH v4 pool with a single-sided LP position
+/// @notice Launches a fixed-supply token into a hookless v4 pool against a configured quote currency
+///         with a single-sided LP position
+/// @dev Every configured tick is expressed with the token as currency1. When a launched token sorts
+///      below the quote currency, the pool mirrors: the token becomes currency0 and every tick negates.
 /// @custom:security-contact security@uniswap.org
 contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
@@ -42,13 +59,6 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     uint24 public constant LP_FEE = 2_500;
     /// @notice Tick spacing, equal to the LP fee in bps
     int24 public constant TICK_SPACING = 25;
-    /// @notice Lower tick of every launch position ensuring that in order to overflow maxLiquidityPerTick
-    ///         at this tick from either adjacent range, an attacker would require more than the total
-    ///         supply of the token which is not possible.
-    int24 public constant MIN_LAUNCH_TICK = -160_100;
-    /// @notice Highest initial tick, keeping saturating maxLiquidityPerTick at the launch position's
-    ///         upper tick prohibitively expensive.
-    int24 public constant MAX_INITIAL_TICK = 251_325;
     /// @notice Canonical burn address
     address internal constant BURN_ADDRESS = address(0xdead);
 
@@ -64,12 +74,26 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     /// @notice The vault that registers each launch's fee beneficiary and collects their fee share.
     /// @dev Can be the zero address to opt out of creator fees.
     IBeneficiaryVault public immutable beneficiaryVault;
-    /// @notice Tick at which the pool opens
+    /// @notice The currency every launch pairs against. The chain's native currency when the wrapped
+    ///         address is zero.
+    Currency public immutable quoteCurrency;
+    /// @notice Lower tick of every launch position. Deployments must choose a floor where saturating
+    ///         maxLiquidityPerTick at this tick from either adjacent range costs more than the total
+    ///         supply of the token.
+    int24 public immutable minLaunchTick;
+    /// @notice Highest initial tick. Deployments must choose a cap that keeps saturating
+    ///         maxLiquidityPerTick at the launch position's upper tick prohibitively expensive.
+    int24 public immutable maxInitialTick;
+    /// @notice Tick at which the pool opens when the token is currency1.
     int24 public immutable initialTick;
-    /// @notice Initial pool sqrt price derived from the initial tick.
+    /// @notice Initial pool sqrt price when the token is currency1.
     uint160 public immutable initialSqrtPriceX96;
-    /// @notice Liquidity of the single-sided launch position holding the full supply.
+    /// @notice Initial pool sqrt price when the token is currency0 (the mirrored orientation).
+    uint160 public immutable mirroredInitialSqrtPriceX96;
+    /// @notice Liquidity of the single-sided launch position when the token is currency1.
     uint128 public immutable positionLiquidity;
+    /// @notice Liquidity of the single-sided launch position when the token is currency0.
+    uint128 public immutable mirroredPositionLiquidity;
 
     /// @notice Thrown when an address required by the strategy is zero.
     error ZeroAddress();
@@ -81,8 +105,14 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
     error InvalidSupply();
     /// @notice Thrown when the token does not use 18 decimals.
     error InvalidTokenDecimals();
-    /// @notice Thrown when the configured tick cannot define the launch range.
+    /// @notice Thrown when the configured ticks cannot define the launch range.
     error InvalidTickRange();
+    /// @notice Thrown when an orientation's launch position liquidity is zero or exceeds the pool's
+    ///         per-tick maximum.
+    /// @param liquidity The invalid liquidity
+    error InvalidPositionLiquidity(uint256 liquidity);
+    /// @notice Thrown when the launched token is the quote currency.
+    error TokenIsQuoteCurrency();
     /// @notice Thrown when the fee splitter or beneficiary vault is not bound to the same
     ///         PositionManager as this strategy.
     /// @param mismatchedPositionManager The mismatched PositionManager
@@ -112,7 +142,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         IPoolManager _poolManager,
         IFeeSplitter _feeSplitter,
         IBeneficiaryVault _beneficiaryVault,
-        int24 _initialTick
+        LaunchPoolConfig memory _poolConfig
     ) {
         if (
             _launcher == address(0) || address(_positionManager) == address(0) || address(_poolManager) == address(0)
@@ -130,9 +160,16 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (address(_beneficiaryVault) != address(0) && _beneficiaryVault.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_beneficiaryVault.positionManager()));
         }
-        // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
-        // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.
-        if (_initialTick % TICK_SPACING != 0 || _initialTick > MAX_INITIAL_TICK || _initialTick <= MIN_LAUNCH_TICK) {
+        // All ticks must be aligned, ordered, and strictly inside the usable range so both
+        // orientations define valid, non-empty launch ranges: [minLaunchTick, initialTick] on the
+        // token side of the price, or its mirror image.
+        if (
+            _poolConfig.initialTick % TICK_SPACING != 0 || _poolConfig.minLaunchTick % TICK_SPACING != 0
+                || _poolConfig.maxInitialTick % TICK_SPACING != 0 || _poolConfig.initialTick > _poolConfig.maxInitialTick
+                || _poolConfig.initialTick <= _poolConfig.minLaunchTick
+                || _poolConfig.maxInitialTick >= TickMath.maxUsableTick(TICK_SPACING)
+                || _poolConfig.minLaunchTick <= TickMath.minUsableTick(TICK_SPACING)
+        ) {
             revert InvalidTickRange();
         }
 
@@ -142,14 +179,43 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         feeSplitter = _feeSplitter;
         // The beneficiary vault is optional. Setting it to the zero address opts out of creator fees for all launches.
         beneficiaryVault = _beneficiaryVault;
-        initialTick = _initialTick;
-        initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_initialTick);
+        quoteCurrency = _poolConfig.quoteCurrency;
+        initialTick = _poolConfig.initialTick;
+        minLaunchTick = _poolConfig.minLaunchTick;
+        maxInitialTick = _poolConfig.maxInitialTick;
+        initialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(_poolConfig.initialTick);
+        mirroredInitialSqrtPriceX96 = TickMath.getSqrtPriceAtTick(-_poolConfig.initialTick);
 
+        // Token as currency1: the position spans [minLaunchTick, initialTick], funded entirely in
+        // the token as amount1.
         positionLiquidity = SafeCastLib.toUint128(
             FullMath.mulDiv(
-                TOTAL_SUPPLY, FixedPoint96.Q96, initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(MIN_LAUNCH_TICK)
+                TOTAL_SUPPLY,
+                FixedPoint96.Q96,
+                initialSqrtPriceX96 - TickMath.getSqrtPriceAtTick(_poolConfig.minLaunchTick)
             )
         );
+        // Token as currency0: the position spans [-initialTick, -minLaunchTick], funded entirely in
+        // the token as amount0. The operations match PositionPlanner's liquidity math exactly so a
+        // mirrored launch resolves to exactly this liquidity.
+        uint160 mirroredUpperSqrtPriceX96 = TickMath.getSqrtPriceAtTick(-_poolConfig.minLaunchTick);
+        mirroredPositionLiquidity = SafeCastLib.toUint128(
+            FullMath.mulDiv(
+                TOTAL_SUPPLY,
+                FullMath.mulDiv(mirroredInitialSqrtPriceX96, mirroredUpperSqrtPriceX96, FixedPoint96.Q96),
+                mirroredUpperSqrtPriceX96 - mirroredInitialSqrtPriceX96
+            )
+        );
+
+        // A liquidity above the per-tick maximum would be capped during resolution and fail the
+        // exact-liquidity check on every launch.
+        uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(TICK_SPACING);
+        if (positionLiquidity == 0 || positionLiquidity > maxLiquidityPerTick) {
+            revert InvalidPositionLiquidity(positionLiquidity);
+        }
+        if (mirroredPositionLiquidity == 0 || mirroredPositionLiquidity > maxLiquidityPerTick) {
+            revert InvalidPositionLiquidity(mirroredPositionLiquidity);
+        }
     }
 
     /// @inheritdoc IStrategy
@@ -165,42 +231,60 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         InstantLaunchConfig memory config = abi.decode(configData, (InstantLaunchConfig));
         _validateFeeBeneficiary(config.feeBeneficiary);
         // Only accept standard tokens
+        if (token == Currency.unwrap(quoteCurrency)) revert TokenIsQuoteCurrency();
         if (totalSupply != TOTAL_SUPPLY || IERC20(token).totalSupply() != TOTAL_SUPPLY) revert InvalidSupply();
         if (IERC20Metadata(token).decimals() != 18) revert InvalidTokenDecimals();
 
         uint256 balanceBefore = _pull(token, totalSupply);
 
+        // Pool currencies sort by address, so the launch orientation depends on how the token sorts
+        // against the quote currency.
+        bool tokenIsCurrency0 = token < Currency.unwrap(quoteCurrency);
+
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(token),
+            currency0: tokenIsCurrency0 ? Currency.wrap(token) : quoteCurrency,
+            currency1: tokenIsCurrency0 ? quoteCurrency : Currency.wrap(token),
             fee: LP_FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
-        PoolId poolId = key.toId();
 
         // Will revert if the pool is already initialized.
-        poolManager.initialize(key, initialSqrtPriceX96);
+        poolManager.initialize(key, tokenIsCurrency0 ? mirroredInitialSqrtPriceX96 : initialSqrtPriceX96);
 
         Plan memory plan;
         {
             PositionDefinition[] memory definitions = new PositionDefinition[](1);
-            definitions[0] = PositionDefinition({
-                // The token is currency1, so its single-sided range sits below the opening price:
-                // from the launch floor up to the initial tick.
-                offsetLower: MIN_LAUNCH_TICK - initialTick,
-                offsetUpper: 0,
-                weight: PositionPlanner.MPS,
-                overridePositionRecipient: address(0)
-            });
+            // The single-sided range sits on the token side of the opening price: below it when the
+            // token is currency1 (from the launch floor up to the initial tick), above it when the
+            // token is currency0 (the mirrored range).
+            definitions[0] = tokenIsCurrency0
+                ? PositionDefinition({
+                    offsetLower: 0,
+                    offsetUpper: initialTick - minLaunchTick,
+                    weight: PositionPlanner.MPS,
+                    overridePositionRecipient: address(0)
+                })
+                : PositionDefinition({
+                    offsetLower: minLaunchTick - initialTick,
+                    offsetUpper: 0,
+                    weight: PositionPlanner.MPS,
+                    overridePositionRecipient: address(0)
+                });
 
             definitions.validate();
             // The position is minted to this strategy and transferred to the fee splitter below
             (Position[] memory positions,) = definitions.resolve(
-                initialSqrtPriceX96, TICK_SPACING, CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}), address(this)
+                tokenIsCurrency0 ? mirroredInitialSqrtPriceX96 : initialSqrtPriceX96,
+                TICK_SPACING,
+                tokenIsCurrency0
+                    ? CurrencyAmounts({amount0: TOTAL_SUPPLY, amount1: 0})
+                    : CurrencyAmounts({amount0: 0, amount1: TOTAL_SUPPLY}),
+                address(this)
             );
             // Require exact liquidity to be added
-            if (positions.length != 1 || positions[0].liquidity != positionLiquidity) revert InvalidPositions();
+            uint128 expectedLiquidity = tokenIsCurrency0 ? mirroredPositionLiquidity : positionLiquidity;
+            if (positions.length != 1 || positions[0].liquidity != expectedLiquidity) revert InvalidPositions();
             // Encode the position into a plan
             plan = positions.toPlan(key, ActionConstants.MSG_SENDER);
         }
@@ -215,7 +299,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient {
         if (balanceNow > balanceBefore) IERC20(token).safeTransfer(BURN_ADDRESS, balanceNow - balanceBefore);
 
         emit DistributionInitialized(address(this), token, totalSupply);
-        emit TokenLaunched(poolId, token, address(feeSplitter), key);
+        emit TokenLaunched(key.toId(), token, address(feeSplitter), key);
 
         // Optionally register the beneficiary of the position if creator fees are enabled.
         if (address(beneficiaryVault) != address(0)) {
