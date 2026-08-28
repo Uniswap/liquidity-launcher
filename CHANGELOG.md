@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+- `BuybackAndBurnClaimRecipient` now burns `currency0` or `currency1`, selected by the new `burnCurrency0` immutable; `minCurrency1BurnAmount` is renamed to `minBurnAmount`, and the native-ETH `currency0` requirement is replaced by a check that the burn currency is an ERC20 [#246](https://github.com/Uniswap/token-launcher/pull/246)
+
 ## [3.2.0]
 
 ### Breaking changes
