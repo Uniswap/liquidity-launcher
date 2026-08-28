@@ -28,17 +28,18 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         executor = new MockClaimExecutor();
     }
 
-    function test_CanBeConstructed(uint256 _minTokenBurnAmount) public {
-        vm.assume(_minTokenBurnAmount > 0);
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
+    function test_CanBeConstructed(bool _burnCurrency0, uint256 _minBurnAmount) public {
+        vm.assume(_minBurnAmount > 0);
+        positionRecipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _burnCurrency0, _minBurnAmount);
 
-        assertEq(positionRecipient.minCurrency1BurnAmount(), _minTokenBurnAmount);
-        assertEq(Currency.unwrap(positionRecipient.currency()), NATIVE);
+        assertEq(positionRecipient.minBurnAmount(), _minBurnAmount);
+        assertEq(positionRecipient.burnCurrency0(), _burnCurrency0);
         assertEq(address(positionRecipient.positionManager()), POSITION_MANAGER);
     }
 
     function test_CanReceiveETH() public {
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, 1);
         uint256 balanceBefore = address(positionRecipient).balance;
         vm.deal(address(this), 1 ether);
         (bool success,) = address(positionRecipient).call{value: 1 ether}("");
@@ -46,20 +47,20 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         assertEq(address(positionRecipient).balance, balanceBefore + 1 ether);
     }
 
-    function test_RevertsIfMinTokenBurnAmountIsZero() public {
-        vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidMinCurrency1BurnAmount.selector);
-        new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 0);
+    function test_RevertsIfMinBurnAmountIsZero(bool _burnCurrency0) public {
+        vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidMinBurnAmount.selector);
+        new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _burnCurrency0, 0);
     }
 
     function test_claim_revertsIfPositionIsInvalid() public {
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, 1);
 
         vm.expectRevert(abi.encodeWithSelector(IClaimableRecipient.InvalidPosition.selector, type(uint256).max));
         positionRecipient.claim(type(uint256).max, 0, 0);
     }
 
     function test_onAmountsReceived_recordsAmountsWithoutPositionOwnership() public {
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, 1);
         _notifyNativeAmounts(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
 
         (uint256 currency0Amount, uint256 currency1Amount) = positionRecipient.amounts(FORK_TOKEN_ID);
@@ -67,12 +68,12 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         assertEq(currency1Amount, 0);
     }
 
-    function test_claim_derivesTokenAndPreservesExistingETH(uint256 _minTokenBurnAmount) public {
-        _minTokenBurnAmount = bound(_minTokenBurnAmount, 1, 1_000_000e6);
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), _minTokenBurnAmount);
+    function test_claim_derivesTokenAndPreservesExistingETH(uint256 _minBurnAmount) public {
+        _minBurnAmount = bound(_minBurnAmount, 1, 1_000_000e6);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, _minBurnAmount);
 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
-        _dealUSDCFromPoolManager(address(executor), _minTokenBurnAmount);
+        _dealUSDCFromPoolManager(address(executor), _minBurnAmount);
         uint256 existingETH = 1 ether;
         vm.deal(address(positionRecipient), existingETH);
         _notifyNativeAmounts(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
@@ -80,19 +81,19 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         uint256 burnAddressTokenBefore = IERC20(USDC).balanceOf(address(0xdead));
 
         vm.expectEmit(true, true, false, true);
-        emit BuybackAndBurnClaimRecipient.TokensBurned(FORK_TOKEN_ID, Currency.wrap(USDC), _minTokenBurnAmount);
+        emit BuybackAndBurnClaimRecipient.TokensBurned(FORK_TOKEN_ID, Currency.wrap(USDC), _minBurnAmount);
         vm.expectEmit(true, false, false, false, address(positionRecipient));
         emit IClaimableRecipient.Claimed(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0, _poolKey(FORK_TOKEN_ID));
         executor.execute(positionRecipient, FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT, 0);
 
         assertEq(address(positionRecipient).balance, existingETH);
         assertEq(address(executor).balance - executorETHBefore, FORK_CURRENCY0_FEES_AMOUNT);
-        assertEq(IERC20(USDC).balanceOf(address(0xdead)), burnAddressTokenBefore + _minTokenBurnAmount);
+        assertEq(IERC20(USDC).balanceOf(address(0xdead)), burnAddressTokenBefore + _minBurnAmount);
     }
 
     function test_claim_eoaCallerReverts_executorCallbackIsMandatory() public {
         uint256 burnAmount = 1_000e6;
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), burnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, burnAmount);
         address collector = makeAddr("eoaCollector");
         _dealUSDCFromPoolManager(collector, burnAmount);
         vm.prank(collector);
@@ -108,40 +109,48 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         assertEq(nativeAmount, FORK_CURRENCY0_FEES_AMOUNT);
     }
 
-    function test_claim_revertsIfCurrencyIsNotNative() public {
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
+    function test_claim_revertsIfBurnCurrencyIsNative() public {
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), true, 1);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                BuybackAndBurnClaimRecipient.InvalidCurrency.selector,
-                Currency.wrap(NON_ETH_FORK_CURRENCY0),
-                Currency.wrap(NATIVE)
-            )
-        );
-        executor.execute(positionRecipient, NON_ETH_FORK_TOKEN_ID, 0, 0);
+        vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidBurnCurrency.selector);
+        executor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
     }
 
-    function test_claim_revertsIfInsufficientCurrencyReceived(uint256 _minCurrencyAmount) public {
-        _minCurrencyAmount = _bound(_minCurrencyAmount, FORK_CURRENCY0_FEES_AMOUNT + 1, type(uint256).max);
+    function test_claim_burnsCurrency0WhenToggled(uint256 _minBurnAmount) public {
+        _minBurnAmount = bound(_minBurnAmount, 1, 1e18);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), true, _minBurnAmount);
 
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
-        executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
-        _dealUSDCFromPoolManager(address(executor), 1);
-        _notifyNativeAmounts(FORK_TOKEN_ID, FORK_CURRENCY0_FEES_AMOUNT);
+        executor.approveToken(NON_ETH_FORK_CURRENCY0, address(positionRecipient), type(uint256).max);
+        _dealTokenFromPoolManager(NON_ETH_FORK_CURRENCY0, address(executor), _minBurnAmount);
+        uint256 burnAddressTokenBefore = IERC20(NON_ETH_FORK_CURRENCY0).balanceOf(address(0xdead));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IClaimableRecipient.InsufficientAmountReceived.selector,
-                Currency.wrap(NATIVE),
-                FORK_CURRENCY0_FEES_AMOUNT,
-                _minCurrencyAmount
-            )
+        vm.expectEmit(true, true, false, true);
+        emit BuybackAndBurnClaimRecipient.TokensBurned(
+            NON_ETH_FORK_TOKEN_ID, Currency.wrap(NON_ETH_FORK_CURRENCY0), _minBurnAmount
         );
-        executor.execute(positionRecipient, FORK_TOKEN_ID, _minCurrencyAmount, 0);
+        executor.execute(positionRecipient, NON_ETH_FORK_TOKEN_ID, 0, 0);
+
+        assertEq(
+            IERC20(NON_ETH_FORK_CURRENCY0).balanceOf(address(0xdead)), burnAddressTokenBefore + _minBurnAmount
+        );
+    }
+
+    function test_claim_burnsCurrency1OfNonNativePool() public {
+        uint256 burnAmount = 1e18;
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, burnAmount);
+        address currency1 = Currency.unwrap(_poolKey(NON_ETH_FORK_TOKEN_ID).currency1);
+
+        executor.approveToken(currency1, address(positionRecipient), type(uint256).max);
+        _dealTokenFromPoolManager(currency1, address(executor), burnAmount);
+        uint256 burnAddressTokenBefore = IERC20(currency1).balanceOf(address(0xdead));
+
+        executor.execute(positionRecipient, NON_ETH_FORK_TOKEN_ID, 0, 0);
+
+        assertEq(IERC20(currency1).balanceOf(address(0xdead)), burnAddressTokenBefore + burnAmount);
     }
 
     function test_claim_isolatesAmountsAcrossPools() public {
-        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), 1);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), false, 1);
 
         // One singleton instance holds positions from two different ETH-paired pools,
         // one of them with an 18-decimal token (UNI)
