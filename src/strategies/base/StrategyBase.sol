@@ -11,6 +11,9 @@ abstract contract StrategyBase {
     /// @notice The v4 pool manager.
     IPoolManager public immutable poolManager;
 
+    /// @dev `IV4FeeAdapter.triggerFeeUpdate((address,address,uint24,int24,address))`
+    bytes4 private constant _TRIGGER_FEE_UPDATE_SELECTOR = IV4FeeAdapter.triggerFeeUpdate.selector;
+
     constructor(IPoolManager _poolManager) {
         poolManager = _poolManager;
     }
@@ -18,15 +21,11 @@ abstract contract StrategyBase {
     /// @notice Triggers a fee update for a single initialized pool
     /// @dev The IV4FeeAdapter silently skips uninitialized pools so this must be called after initialization
     /// @return success true if the fee update was successful. Implementing contracts can choose to revert on failure.
-    function _handleFeeUpdate(PoolKey memory key) internal returns (bool) {
+    /// @return data any return data from the fee controller
+    function _handleFeeUpdate(PoolKey memory key) internal returns (bool success, bytes memory data) {
         address feeController = poolManager.protocolFeeController();
         // Skip if the fee controller is not set
-        if (feeController == address(0)) return false;
-
-        try IV4FeeAdapter(feeController).triggerFeeUpdate(key) {
-            return true;
-        } catch {
-            return false;
-        }
+        if (feeController == address(0)) return (false, "");
+        (success, data) = feeController.call(abi.encodeWithSelector(_TRIGGER_FEE_UPDATE_SELECTOR, key));
     }
 }

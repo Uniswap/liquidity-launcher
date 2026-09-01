@@ -18,7 +18,7 @@ contract MockPoolManagerWithFeeController {
 contract StrategyBaseHarness is StrategyBase {
     constructor(IPoolManager _poolManager) StrategyBase(_poolManager) {}
 
-    function handleFeeUpdate(PoolKey memory key) external returns (bool) {
+    function handleFeeUpdate(PoolKey memory key) external returns (bool success, bytes memory data) {
         return _handleFeeUpdate(key);
     }
 }
@@ -28,12 +28,12 @@ contract StrategyBaseHarness is StrategyBase {
 ///
 /// _handleFeeUpdate
 /// ├── when the protocol fee controller is unset
-/// │   └── it returns false without calling the fee adapter
+/// │   └── it returns false and empty data without calling the fee adapter
 /// └── when the protocol fee controller is set
 ///     ├── when triggerFeeUpdate succeeds
-///     │   └── it returns true and forwards the pool key
+///     │   └── it returns true, empty data, and forwards the pool key
 ///     └── when triggerFeeUpdate reverts
-///         └── it returns false
+///         └── it returns false and the revert data
 contract StrategyBaseTest is Test {
     MockPoolManagerWithFeeController public mockPoolManager;
     MockV4FeeAdapter public adapter;
@@ -46,32 +46,35 @@ contract StrategyBaseTest is Test {
     }
 
     function test_WhenProtocolFeeControllerIsUnset_returnsFalseWithoutCallingFeeAdapter(PoolKey memory key) public {
-        // it returns false without calling the fee adapter
-        bool success = harness.handleFeeUpdate(key);
+        // it returns false and empty data without calling the fee adapter
+        (bool success, bytes memory data) = harness.handleFeeUpdate(key);
 
         assertFalse(success);
+        assertEq(data.length, 0);
         assertEq(adapter.callCount(), 0);
     }
 
     function test_WhenTriggerFeeUpdateSucceeds_returnsTrueAndForwardsPoolKey(PoolKey memory key) public {
-        // it returns true and forwards the pool key
+        // it returns true, empty data, and forwards the pool key
         mockPoolManager.setProtocolFeeController(address(adapter));
 
-        bool success = harness.handleFeeUpdate(key);
+        (bool success, bytes memory data) = harness.handleFeeUpdate(key);
 
         assertTrue(success);
+        assertEq(data.length, 0);
         assertEq(adapter.callCount(), 1);
         assertEq(adapter.lastKeyHash(), keccak256(abi.encode(key)));
     }
 
-    function test_WhenTriggerFeeUpdateReverts_returnsFalse(PoolKey memory key) public {
-        // it returns false
+    function test_WhenTriggerFeeUpdateReverts_returnsFalseAndRevertData(PoolKey memory key) public {
+        // it returns false and the revert data
         adapter.setShouldRevert(true);
         mockPoolManager.setProtocolFeeController(address(adapter));
 
-        bool success = harness.handleFeeUpdate(key);
+        (bool success, bytes memory data) = harness.handleFeeUpdate(key);
 
         assertFalse(success);
+        assertEq(data, abi.encodeWithSelector(MockV4FeeAdapter.TriggerFeeUpdateFailed.selector));
         assertEq(adapter.callCount(), 0);
     }
 }

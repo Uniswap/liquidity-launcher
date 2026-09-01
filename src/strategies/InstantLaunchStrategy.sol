@@ -96,7 +96,8 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
     /// @param expected The amount expected
     error TokenAmountMismatch(uint256 received, uint256 expected);
     /// @notice Thrown when the protocol fee controller is unset or `triggerFeeUpdate` fails.
-    error FeeUpdateFailed();
+    /// @param data The return data from the fee controller. Empty if the controller is unset.
+    error FeeUpdateFailed(bytes data);
 
     /// @notice Emitted when a token is launched.
     /// @param poolId The identifier of the initialized pool.
@@ -182,7 +183,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         // Will revert if the pool is already initialized.
         poolManager.initialize(key, initialSqrtPriceX96);
         // Require the fee update to succeed. Will revert if the controller is not set on PoolManager or if it reverts.
-        if (!_handleFeeUpdate(key)) revert FeeUpdateFailed();
+        _requireFeeUpdate(key);
 
         Plan memory plan;
         {
@@ -225,6 +226,12 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         }
         // Transfer the position to the fee splitter
         IERC721(address(positionManager)).transferFrom(address(this), address(feeSplitter), tokenId);
+    }
+
+    /// @notice Requires a successful fee update for `key`, forwarding any controller revert data.
+    function _requireFeeUpdate(PoolKey memory key) private {
+        (bool success, bytes memory data) = _handleFeeUpdate(key);
+        if (!success) revert FeeUpdateFailed(data);
     }
 
     /// @notice Validates a launch's fee beneficiary.
