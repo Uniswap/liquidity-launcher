@@ -96,14 +96,13 @@ Canonical contract addresses by chain and version. Cross-references link to rela
 
 Deployed to the same address on all networks that use the canonical Permit2 deployment (`0x000000000022D473030F116dDEE9F6B43aC78BA3`).
 
-| Version | Chain | Address | Commit Hash |
-| --- | --- | --- | --- |
-| v3.0.0 | | `0x00004c4ccc709Ef590F7C81102C0689F0263D4e9` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
-| v3.2.0 | Robinhood Chain | `0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| Version | Address | Commit Hash |
+| --- | --- | --- |
+| v3.2.0 | `0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### LBPStrategy
 
-Deployed to a different address on each chain. Must be deployed to a valid v4 hook address.
+Deployed to a different address on each chain. Must be deployed to a valid v4 hook address. Compatible with any Liquidity Launcher of the same major version.
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
@@ -115,6 +114,7 @@ Deployed to a different address on each chain. Must be deployed to a valid v4 ho
 | v3.1.0 | Avalanche | `0x57BD0A9Cd933c89Ba55e086D53031367b6406000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | XLayer | `0x58DF162fF41e5cB42B8515f75F90C1841938A000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Ink | `0xd749FAe4D01E8fd85B9e26555cB300018aFEA000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
+| v3.2.0 | Arc | `0xe9f36bcc222a6d2e459529D787f8c060d543A000` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 | v3.1.0 | Sepolia | `0x96641d91e223c766F45b19d09494F5925C3cE000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 | v3.1.0 | Base Sepolia | `0xB06428b62c259eE982cE3D9BED47391dC9A5E000` | `873cbb23c5019a795193c5ad561edff2f78ba5a3` |
 
@@ -126,6 +126,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | `0x23f8209572b4a1C2AD88A42749E830791Fb027f1` | [`0xeFF166AAf189323c58dc27eD1206EB2C37FaACDf`](#fee-splitter) | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 | v3.2.0 | Robinhood Chain | `0xAD44D55E7f8337C3cE113fBb591486E85be104b2` | [`0x222D6d4f1ce59b0d48D5505114eC8Addc90A4359`](#fee-splitter) | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Arc | `0x26e7803154f31540185f13c7540B0148F8F0De4b` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
+| v3.2.0 | Arc | `0xe510927f92c1E66a9E655E1D73F4367125E04EFF` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### UniversalRouterStrategy
 
@@ -134,6 +136,7 @@ Deployed to a different address on each chain. Runs a caller-supplied Universal 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | `0x1242c9439d589cAE85E121B1f79f2aF51e91DCEE` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Arc | `0x0A122717bc36E3C7A7958128a5C789E0b070b3Ae` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### TokenSplitter
 
@@ -154,6 +157,8 @@ Deployed per chain with immutable fee splits. Multiple deployments may exist on 
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | `0xeFF166AAf189323c58dc27eD1206EB2C37FaACDf` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 | v3.2.0 | Robinhood Chain | `0x222D6d4f1ce59b0d48D5505114eC8Addc90A4359` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Arc | `0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
+| v3.2.0 | Arc | `0xCDDC6103dD64dd05Cf634166326a21Be06B3165A` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### UERC20BeneficiaryVault
 
@@ -162,6 +167,7 @@ Deployed to a different address on each chain. Distributes and attributes creato
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | `0xd35E9CA72F64C7F93BE30fad67524323396B36D7` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Arc | `0x3892aB3Dcf62785Ee3077ea008486c3a6bCf51Af` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### CompoundingClaimRecipient
 
@@ -170,6 +176,7 @@ Deployed to a different address on each chain. Permissionlessly compounds LP fee
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | `0xf9526Dd3361fe0ba6b7a99533ed471D3E808E99a` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| v3.2.0 | Arc | `0xBE5A26C5E7ABC4f049971e18214301931e23D1Db` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### BuybackAndBurnRecipient
 
@@ -194,6 +201,7 @@ Restricts pool initialization to a deployed LBPStrategy instance.
 | Version | Chain | Address | LBPStrategy | Salt | Commit Hash |
 | --- | --- | --- | --- | --- | --- |
 | v3.1.1 | Robinhood Chain | `0xD462a559337859369EF271814851A18F496ba000` | [`0x05d552391067389EE44fec3924157ed33F976000`](#lbpstrategy) | `0x0000000000000000000000000000000000000000000000000000000000002dcb` | `5ef0262b8e191360a212aac864a525dcf7a06605` |
+| v3.2.0 | Arc | `0x95E67F3F2c3F8c90f23EB78F9Bc0E4a60a9e2000` | [`0xe9f36bcc222a6d2e459529D787f8c060d543A000`](#lbpstrategy) | `0x0000000000000000000000000000000000000000000000000000000000000f36` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 ## Audits
 
