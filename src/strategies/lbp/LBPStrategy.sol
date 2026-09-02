@@ -127,7 +127,8 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
                     migrationParams.poolParameters.fee,
                     migrationParams.poolParameters.tickSpacing,
                     migrationParams.poolParameters.hook
-                ).toId();
+                )
+                .toId();
             migrationParams.poolParameters.hook.validateHook(migrationParams.poolParameters.fee, poolId, poolManager);
             if (registeredPoolIds[poolId] != address(0)) {
                 // The pool id is already reserved by another initializer. Re-launch with different pool

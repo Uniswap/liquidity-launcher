@@ -31,7 +31,8 @@ contract DeployExample is Script {
             migrationBlock: input.readUint(string.concat(chainIdSlug, ".migratorParameters.migrationBlock")).toUint64(),
             reservedTokenAmountForLP: input.readUint(
                     string.concat(chainIdSlug, ".migratorParameters.reservedTokenAmountForLP")
-                ).toUint128(),
+                )
+                .toUint128(),
             recipient: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.recipient")),
             positionRecipient: input.readAddress(string.concat(chainIdSlug, ".migratorParameters.positionRecipient")),
             poolParameters: PoolParameters({
