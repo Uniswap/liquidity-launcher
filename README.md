@@ -128,6 +128,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 | v3.2.0 | Robinhood Chain | `0xAD44D55E7f8337C3cE113fBb591486E85be104b2` | [`0x222D6d4f1ce59b0d48D5505114eC8Addc90A4359`](#fee-splitter) | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 | v3.2.0 | Arc | `0x26e7803154f31540185f13c7540B0148F8F0De4b` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 | v3.2.0 | Arc | `0xe510927f92c1E66a9E655E1D73F4367125E04EFF` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
+| v3.2.0 | Arc | `0xfe7Be4EbBE6CcDfA57EE8c36fe9a767B033eB056` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `43928fa40f8484c88799458bdfd4cfb18ebf718b` |
+| v3.2.0 | Arc | `0xff301aCB22816D210d75D71F31Ac13C771093EF3` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `43928fa40f8484c88799458bdfd4cfb18ebf718b` |
 
 #### UniversalRouterStrategy
 
