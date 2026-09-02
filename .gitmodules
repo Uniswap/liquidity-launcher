@@ -22,3 +22,6 @@
 [submodule "lib/blocknumberish"]
 	path = lib/blocknumberish
 	url = https://github.com/uniswap/blocknumberish
+[submodule "lib/uerc20-factory"]
+	path = lib/uerc20-factory
+	url = https://github.com/Uniswap/uerc20-factory
