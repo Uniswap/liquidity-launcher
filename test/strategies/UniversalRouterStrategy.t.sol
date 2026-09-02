@@ -407,7 +407,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
             description: "quicklaunch token",
             website: "https://pools.xyz",
             image: "https://pools.xyz/img.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         return abi.encodeWithSelector(
             LiquidityLauncher.createToken.selector,

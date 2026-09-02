@@ -47,7 +47,7 @@ contract TokenSplitterE2ETest is Test, DeployPermit2 {
             description: "Test token for splitter",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         bytes memory tokenData = abi.encode(metadata);
 
@@ -99,7 +99,7 @@ contract TokenSplitterE2ETest is Test, DeployPermit2 {
             description: "Test token for splitter",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         bytes memory tokenData = abi.encode(metadata);
 

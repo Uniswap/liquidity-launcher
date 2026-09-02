@@ -41,7 +41,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             description: "Test token for launcher",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
 
         MockStrategyAndDistributor strategyAndDistributor = new MockStrategyAndDistributor();
@@ -76,12 +76,12 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
         assertEq(token.creator(), address(liquidityLauncher));
 
         // Verify metadata
-        (string memory description, string memory website, string memory image, uint256 xProofTweetId) =
+        (string memory description, string memory website, string memory image, bytes memory extraData) =
             token.metadata();
         assertEq(description, "Test token for launcher");
         assertEq(website, "https://test.com");
         assertEq(image, "https://test.com/image.png");
-        assertEq(xProofTweetId, 0);
+        assertEq(extraData, "");
 
         // Verify the distribution was successful
         // The full balance ended up in the distributor; nothing held in the launcher.
@@ -134,7 +134,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2, Permit2SignatureHelpers {
             description: "Test token for launcher",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
 
         uint128 initialSupply = 1e18;

@@ -202,7 +202,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             description: "quicklaunch token",
             website: "https://pools.xyz",
             image: "https://pools.xyz/img.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         calls = new IMulticall3.Call3Value[](4);
         calls[0] = IMulticall3.Call3Value({
@@ -288,7 +288,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             description: "quicklaunch token",
             website: "https://pools.xyz",
             image: "https://pools.xyz/img.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         address token =
             factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(address(this)));

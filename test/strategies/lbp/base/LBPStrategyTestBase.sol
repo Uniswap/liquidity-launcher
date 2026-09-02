@@ -377,8 +377,7 @@ abstract contract LBPStrategyTestBase is Test {
         MigratorParameters memory mp = strategy.initializers(initializer);
         return _poolKey(
                 mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, mp.poolParameters.hook
-            )
-            .toId();
+            ).toId();
     }
 
     /// @notice The initializer currently registered for an initializer's reserved poolId
