@@ -2,7 +2,9 @@
 pragma solidity ^0.8.26;
 
 import {LBPStrategyTestBase} from "./base/LBPStrategyTestBase.sol";
+import {LBPStrategy} from "../../../src/strategies/lbp/LBPStrategy.sol";
 import {ILBPStrategy} from "../../../src/interfaces/ILBPStrategy.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {ILBPInitializer, LBPInitializationParams} from "../../../src/interfaces/ILBPInitializer.sol";
 import {MockLBPInitializer} from "test/mocks/MockLBPInitializer.sol";
 import {MockReentrantInitializer} from "test/mocks/MockReentrantInitializer.sol";
@@ -29,6 +31,28 @@ import {
 } from "src/libraries/MigratorParams.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {Vm} from "forge-std/Vm.sol";
+
+/// @notice Calls migrate() from inside an active PoolManager unlock to reproduce the forced-recovery vector.
+contract UnlockContextMigrator is IUnlockCallback {
+    IPoolManager internal immutable poolManager;
+    LBPStrategy internal immutable strategy;
+    ILBPInitializer internal immutable initializer;
+
+    constructor(IPoolManager _poolManager, LBPStrategy _strategy, ILBPInitializer _initializer) {
+        poolManager = _poolManager;
+        strategy = _strategy;
+        initializer = _initializer;
+    }
+
+    function attack() external {
+        poolManager.unlock("");
+    }
+
+    function unlockCallback(bytes calldata) external returns (bytes memory) {
+        strategy.migrate(initializer);
+        return "";
+    }
+}
 
 contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
@@ -86,6 +110,28 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
 
         // Check indexed initializer (topic1); key and sqrtPriceX96 are derived from fuzz inputs.
+        vm.expectEmit(true, false, false, false, address(strategy));
+        emit ILBPStrategy.Migrated(
+            ILBPInitializer(address(initializer)),
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
+            0,
+            bytes("")
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+    }
+
+    function test_migrate_revertsWhenCalledFromActiveUnlock(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+
+        UnlockContextMigrator attacker =
+            new UnlockContextMigrator(POOL_MANAGER, strategy, ILBPInitializer(address(initializer)));
+
+        // The nested migrate() reverts at the guard, so the unlock callback bubbles the error up.
+        vm.expectRevert(ILBPStrategy.PoolManagerAlreadyUnlocked.selector);
+        vm.prank(makeAddr("attacker"));
+        attacker.attack();
+
+        // The reservation was not consumed, so the unchanged configuration still migrates normally.
         vm.expectEmit(true, false, false, false, address(strategy));
         emit ILBPStrategy.Migrated(
             ILBPInitializer(address(initializer)),

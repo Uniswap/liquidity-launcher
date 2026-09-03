@@ -17,6 +17,7 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SelfInitializerMixin} from "./SelfInitializerMixin.sol";
 import {TokenPricing} from "../../libraries/TokenPricing.sol";
 import {PositionPlanner, CurrencyAmounts} from "../../libraries/PositionPlanner.sol";
@@ -34,6 +35,7 @@ import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 /// @custom:security-contact security@uniswap.org
 contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, ReentrancyGuardTransient {
     using StateLibrary for IPoolManager;
+    using TransientStateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using MigratorParams for *;
     using SafeERC20 for IERC20;
@@ -210,6 +212,10 @@ contract LBPStrategy is BlockNumberish, SelfInitializerMixin, ILBPStrategy, Reen
 
     /// @notice Attempts to migrate the initializer and recovers the token reserves if it fails
     function migrate(ILBPInitializer initializer) external nonReentrant {
+        // Migration opens its own PoolManager unlock, so a call from within an active unlock cannot mint
+        // liquidity and would otherwise be forced into terminal recovery.
+        if (poolManager.isUnlocked()) revert PoolManagerAlreadyUnlocked();
+
         MigratorParameters memory migrationParams = _initializers[initializer];
 
         uint64 migrationBlock = migrationParams.migrationBlock;
