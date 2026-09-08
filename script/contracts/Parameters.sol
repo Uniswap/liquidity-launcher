@@ -94,61 +94,61 @@ contract Parameters {
         parameters[MAINNET_CHAIN_ID] = DeployParameters({
             positionManager: MAINNET_POSITION_MANAGER,
             poolManager: MAINNET_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000001cf9,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
         parameters[BASE_CHAIN_ID] = DeployParameters({
             positionManager: BASE_POSITION_MANAGER,
             poolManager: BASE_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000d9a3,
-            initializerHookSalt: bytes32(0)
+            salt: 0x0000000000000000000000000000000000000000000000000000000000005a2f,
+            initializerHookSalt: 0x00000000000000000000000000000000000000000000000000000000000088ce
         });
         parameters[UNICHAIN_CHAIN_ID] = DeployParameters({
             positionManager: UNICHAIN_POSITION_MANAGER,
             poolManager: UNICHAIN_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000423b,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
         parameters[ARBITRUM_CHAIN_ID] = DeployParameters({
             positionManager: ARBITRUM_POSITION_MANAGER,
             poolManager: ARBITRUM_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000004efe,
-            initializerHookSalt: bytes32(0)
+            salt: 0x00000000000000000000000000000000000000000000000000000000000062bf,
+            initializerHookSalt: 0x000000000000000000000000000000000000000000000000000000000000515e
         });
         parameters[AVALANCHE_CHAIN_ID] = DeployParameters({
             positionManager: AVALANCHE_POSITION_MANAGER,
             poolManager: AVALANCHE_POOL_MANAGER,
-            salt: 0x00000000000000000000000000000000000000000000000000000000000001aa,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
         parameters[XLAYER_CHAIN_ID] = DeployParameters({
             positionManager: XLAYER_POSITION_MANAGER,
             poolManager: XLAYER_POOL_MANAGER,
-            salt: 0x00000000000000000000000000000000000000000000000000000000000007d6,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
         parameters[ROBINHOOD_CHAIN_ID] = DeployParameters({
             positionManager: ROBINHOOD_POSITION_MANAGER,
             poolManager: ROBINHOOD_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000907,
-            initializerHookSalt: 0x0000000000000000000000000000000000000000000000000000000000002dcb
+            salt: 0x000000000000000000000000000000000000000000000000000000000000a19b,
+            initializerHookSalt: 0x000000000000000000000000000000000000000000000000000000000000247f
         });
         parameters[INK_CHAIN_ID] = DeployParameters({
             positionManager: INK_POSITION_MANAGER,
             poolManager: INK_POOL_MANAGER,
-            salt: 0x000000000000000000000000000000000000000000000000000000000000228c,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
             poolManager: SEPOLIA_POOL_MANAGER,
-            salt: 0x00000000000000000000000000000000000000000000000000000000000074b9,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
         parameters[BASE_SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: BASE_SEPOLIA_POSITION_MANAGER,
             poolManager: BASE_SEPOLIA_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000001ab5,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
             initializerHookSalt: bytes32(0)
         });
 
