@@ -13,7 +13,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {PositionDefinition} from "../../../../src/types/PositionPlannerTypes.sol";
+import {PositionDefinition, CurrencyAmounts} from "../../../../src/types/PositionPlannerTypes.sol";
+import {PositionPlanner} from "../../../../src/libraries/PositionPlanner.sol";
 import {PositionPlannerFuzzHelpers} from "test/shared/PositionPlannerFuzzHelpers.sol";
 import {
     MigratorParams,
@@ -108,6 +109,17 @@ abstract contract LBPStrategyTestBase is Test {
         returns (MockLBPInitializer initializer, MockERC20 token)
     {
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        return _setupForMigrationWithSchedule(p, brackets, p.currencyRaised);
+    }
+
+    /// @notice Happy-path migration setup with a single bracket that allocates 100% of the raise to LP.
+    /// The whole raise is the LP budget; whatever the plan does not consume is still swept to the recipient.
+    function _setupForFullLpMigration(MigrationFuzzParams memory p)
+        internal
+        returns (MockLBPInitializer initializer, MockERC20 token)
+    {
+        LiquidityAllocationBracket[] memory brackets = _fullLpBrackets();
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
         return _setupForMigrationWithSchedule(p, brackets, p.currencyRaised);
     }
@@ -256,6 +268,44 @@ abstract contract LBPStrategyTestBase is Test {
             brackets[1] = LiquidityAllocationBracket({lowerThreshold: t1, rate: r1});
             brackets[2] = LiquidityAllocationBracket({lowerThreshold: t2, rate: r2});
         }
+    }
+
+    /// @notice A single-bracket schedule at MAX_BRACKET_RATE: every unit of raised currency goes to LP.
+    function _fullLpBrackets() internal pure returns (LiquidityAllocationBracket[] memory brackets) {
+        brackets = new LiquidityAllocationBracket[](1);
+        brackets[0] = LiquidityAllocationBracket({lowerThreshold: 0, rate: MigratorParams.MAX_BRACKET_RATE});
+    }
+
+    /// @notice The native currency the strategy sweeps to the recipient for a registered, funded initializer.
+    /// @dev Mirrors tryMigrate: the bracket schedule sets the LP currency budget (capped at int128.max), and
+    /// PositionPlanner.resolve decides how much of that budget the positions consume. The token side or a
+    /// tick-range cap can bind first, so the sweep is `currencyRaised - consumed`, not `currencyRaised - budget`.
+    /// It is zero only when the schedule allocates 100% AND the plan consumes the whole budget.
+    function _expectedCurrencySweep(MockLBPInitializer initializer) internal view returns (uint256) {
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+        LBPInitializationParams memory lbpParams = initializer.lbpInitializationParams();
+
+        uint256 lpBudget = _expectedLpCurrencyAmount(
+            lbpParams.currencyRaised, abi.decode(mp.lpAllocationSchedule, (LiquidityAllocationBracket[]))
+        );
+        if (lpBudget > uint128(type(int128).max)) lpBudget = uint128(type(int128).max);
+
+        bool currencyIsCurrency0 = mp.currency < mp.token;
+        uint160 sqrtPriceX96 = TokenPricing.convertToSqrtPriceX96(
+            TokenPricing.convertToPriceX192(lbpParams.initialPriceX96, currencyIsCurrency0)
+        );
+        (, CurrencyAmounts memory remaining) = PositionPlanner.resolve(
+            abi.decode(mp.positionDefinitions, (PositionDefinition[])),
+            sqrtPriceX96,
+            mp.poolParameters.tickSpacing,
+            CurrencyAmounts({
+                amount0: currencyIsCurrency0 ? lpBudget : mp.reservedTokenAmountForLP,
+                amount1: currencyIsCurrency0 ? mp.reservedTokenAmountForLP : lpBudget
+            }),
+            mp.positionRecipient
+        );
+        uint256 consumed = lpBudget - (currencyIsCurrency0 ? remaining.amount0 : remaining.amount1);
+        return lbpParams.currencyRaised - consumed;
     }
 
     /// @notice Builds the initializerParams bytes the mock factory consumes

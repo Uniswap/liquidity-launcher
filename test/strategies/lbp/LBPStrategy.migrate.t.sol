@@ -60,11 +60,80 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
     function test_emitsCurrencySwept(MigrationFuzzParams memory p) public {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        // Nothing is swept when the plan consumes the entire raise; that path is asserted in
+        // test_fullLpAllocation_sweepsOnlyUnconsumedCurrency and test_fullLpAllocation_currencyBound_sweepsNothing.
+        uint256 expectedSweep = _expectedCurrencySweep(initializer);
+        vm.assume(expectedSweep > 0);
+        uint256 recipientBalBefore = recipient.balance;
 
-        // Check indexed param (recipient); amount varies by fuzz inputs so left unchecked.
-        vm.expectEmit(true, false, false, false, address(strategy));
-        emit ILBPStrategy.CurrencySwept(recipient, 0);
+        vm.expectEmit(true, false, false, true, address(strategy));
+        emit ILBPStrategy.CurrencySwept(recipient, expectedSweep);
         strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(recipient.balance - recipientBalBefore, expectedSweep);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    /// @notice A 100% LP schedule budgets the whole raise to LP, but the plan may still leave some of it
+    /// unconsumed (token side or per-tick liquidity cap binds). Exactly that remainder is swept: CurrencySwept
+    /// fires once with the amount when it is nonzero and not at all when it is zero. Migration always completes.
+    function test_fullLpAllocation_sweepsOnlyUnconsumedCurrency(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForFullLpMigration(p);
+        uint256 expectedSweep = _expectedCurrencySweep(initializer);
+        uint256 recipientBalBefore = recipient.balance;
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
+
+        vm.recordLogs();
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        assertEq(_countStrategyLogs(entries, ILBPStrategy.CurrencySwept.selector), expectedSweep > 0 ? 1 : 0);
+        assertEq(_countStrategyLogs(entries, ILBPStrategy.Migrated.selector), 1);
+        assertEq(_countStrategyLogs(entries, ILBPStrategy.FundsRecovered.selector), 0);
+        assertEq(recipient.balance - recipientBalBefore, expectedSweep);
+        assertEq(address(POOL_MANAGER).balance - poolManagerBalBefore, p.currencyRaised - expectedSweep);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    /// @notice Deterministic zero-leftover case: 100% LP schedule, one full-range position, and a token reserve
+    /// large enough that the currency side binds. The plan settles the entire raise into the pool, so the strategy
+    /// sends nothing to the recipient and emits no CurrencySwept.
+    function test_fullLpAllocation_currencyBound_sweepsNothing(MigrationFuzzParams memory p) public {
+        PositionDefinition[] memory defs = new PositionDefinition[](1);
+        defs[0] = PositionDefinition({
+            offsetLower: TickMath.MIN_TICK,
+            offsetUpper: TickMath.MAX_TICK,
+            weight: 1e7,
+            overridePositionRecipient: positionRecipient
+        });
+        p.positionDefinitions = defs;
+        p.poolParameters.tickSpacing = 1;
+        p.initialPriceX96 = uint160(1 << 96);
+        p.reservedTokenAmountForLP = uint128(type(int128).max) - 1;
+        p.auctionSupply = 1;
+        p.currencyRaised = 1000 ether;
+        (MockLBPInitializer initializer,) = _setupForFullLpMigration(p);
+        // Precondition: the plan consumes the whole raise. If this fails the fixture no longer models the edge case.
+        assertEq(_expectedCurrencySweep(initializer), 0);
+        uint256 recipientBalBefore = recipient.balance;
+        uint256 poolManagerBalBefore = address(POOL_MANAGER).balance;
+
+        vm.recordLogs();
+        strategy.migrate(ILBPInitializer(address(initializer)));
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        assertEq(_countStrategyLogs(entries, ILBPStrategy.CurrencySwept.selector), 0);
+        assertEq(_countStrategyLogs(entries, ILBPStrategy.Migrated.selector), 1);
+        assertEq(recipient.balance, recipientBalBefore);
+        assertEq(address(POOL_MANAGER).balance - poolManagerBalBefore, 1000 ether);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    /// @notice Counts the recorded events with `topic0` emitted by the strategy.
+    function _countStrategyLogs(Vm.Log[] memory entries, bytes32 topic0) internal view returns (uint256 count) {
+        for (uint256 i; i < entries.length; i++) {
+            if (entries[i].emitter == address(strategy) && entries[i].topics[0] == topic0) count++;
+        }
     }
 
     function test_emitsTokensSwept(MigrationFuzzParams memory p) public {
@@ -229,6 +298,10 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         public
     {
         (MockLBPInitializer initializer,) = _setupForMigration(p);
+        // The force-send only runs when something is left to sweep. The zero-leftover path is covered in
+        // test_fuzz_fullLpAllocation_ethRejectingRecipient_nativeCurrency.
+        uint256 expectedSweep = _expectedCurrencySweep(initializer);
+        vm.assume(expectedSweep > 0);
         MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
 
         // Funds recipient reverts on receiving ETH. A plain transfer of the leftover would brick tryMigrate
@@ -247,7 +320,30 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
         strategy.migrate(ILBPInitializer(address(initializer)));
 
         // The non-LP portion of the raise is force-sent to the recipient despite its reverting receive().
-        assertGt(mp.recipient.balance, recipientBalBefore);
+        assertEq(mp.recipient.balance - recipientBalBefore, expectedSweep);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    /// @notice Under a 100% LP schedule the ETH-rejecting recipient receives exactly the unconsumed currency via
+    /// force-send, which is nothing when the plan consumes the whole raise. Migration completes either way.
+    function test_fuzz_fullLpAllocation_ethRejectingRecipient_nativeCurrency(MigrationFuzzParams memory p) public {
+        (MockLBPInitializer initializer,) = _setupForFullLpMigration(p);
+        uint256 expectedSweep = _expectedCurrencySweep(initializer);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        vm.etch(mp.recipient, type(MockRejectEth).runtimeCode);
+        uint256 recipientBalBefore = mp.recipient.balance;
+
+        vm.expectEmit(true, false, false, false, address(strategy));
+        emit ILBPStrategy.Migrated(
+            ILBPInitializer(address(initializer)),
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
+            0,
+            bytes("")
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(mp.recipient.balance - recipientBalBefore, expectedSweep);
         assertEq(address(strategy).balance, 0);
     }
 
@@ -607,31 +703,72 @@ contract LBPStrategy_Migrate_Test is LBPStrategyTestBase {
 
     /// @notice A malicious recipient that reenters migrate(self) from its receive() during
     function test_fuzz_reentrantMigrateRecipient_revertsWithReentrancy(MigrationFuzzParams memory p) public {
-        MockReentrantMigrateRecipient recipient = new MockReentrantMigrateRecipient(ILBPStrategy(address(strategy)));
-
         LiquidityAllocationBracket[] memory brackets = _boundBrackets(p.bpParams);
         p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        (MockReentrantMigrateRecipient reentrant, MockLBPInitializer initializer) =
+            _setupReentrantRecipientMigration(p, brackets);
+        // The recipient's receive() only runs when there is leftover currency to send. The zero-leftover path is
+        // covered in test_fuzz_fullLpAllocation_reentrantMigrateRecipient.
+        vm.assume(_expectedCurrencySweep(initializer) > 0);
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertTrue(reentrant.reentered());
+        assertEq(bytes4(reentrant.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
+    }
+
+    /// @notice Under a 100% LP schedule the malicious recipient is called only if the plan leaves currency
+    /// unconsumed. When it is called, the reentrant migrate() hits the reentrancy guard. When nothing is left,
+    /// it is never called. Migration completes either way.
+    function test_fuzz_fullLpAllocation_reentrantMigrateRecipient(MigrationFuzzParams memory p) public {
+        LiquidityAllocationBracket[] memory brackets = _fullLpBrackets();
+        p.currencyRaised = _boundCurrencyRaised(p.currencyRaised, brackets);
+        (MockReentrantMigrateRecipient reentrant, MockLBPInitializer initializer) =
+            _setupReentrantRecipientMigration(p, brackets);
+        uint256 expectedSweep = _expectedCurrencySweep(initializer);
+
+        vm.expectEmit(true, false, false, false, address(strategy));
+        emit ILBPStrategy.Migrated(
+            ILBPInitializer(address(initializer)),
+            PoolKey(Currency.wrap(address(0)), Currency.wrap(address(0)), 0, 0, IHooks(address(0))),
+            0,
+            bytes("")
+        );
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        assertEq(reentrant.reentered(), expectedSweep > 0);
+        if (expectedSweep > 0) {
+            assertEq(bytes4(reentrant.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
+        }
+        assertEq(address(reentrant).balance, expectedSweep);
+        assertEq(address(strategy).balance, 0);
+    }
+
+    /// @notice Deploys a reentrant funds recipient and an initializer wired to it under `brackets`, funded with
+    /// the (already bounded) `p.currencyRaised`, and rolls to the migration block.
+    function _setupReentrantRecipientMigration(
+        MigrationFuzzParams memory p,
+        LiquidityAllocationBracket[] memory brackets
+    ) internal returns (MockReentrantMigrateRecipient reentrant, MockLBPInitializer initializer) {
+        reentrant = new MockReentrantMigrateRecipient(ILBPStrategy(address(strategy)));
+
         (MigratorParameters memory mp, uint128 totalSupply, uint64 endBlock, uint128 auctionSupply) =
             _boundMigratorParams(p);
         p.initialPriceX96 = _boundInitialPriceX96(p.initialPriceX96);
         p.tokensSold = uint128(bound(p.tokensSold, 1, auctionSupply));
 
         // Override recipient with the malicious contract.
-        mp.recipient = address(recipient);
+        mp.recipient = address(reentrant);
 
         LBPInitializationParams memory lbpParams = LBPInitializationParams({
             initialPriceX96: p.initialPriceX96, tokensSold: p.tokensSold, currencyRaised: p.currencyRaised
         });
-        (MockLBPInitializer initializer,) = _initializeWith(mp, totalSupply, endBlock, brackets, address(0), lbpParams);
+        (initializer,) = _initializeWith(mp, totalSupply, endBlock, brackets, address(0), lbpParams);
 
         vm.deal(address(initializer), p.currencyRaised);
-        recipient.setInitializer(ILBPInitializer(address(initializer)));
+        reentrant.setInitializer(ILBPInitializer(address(initializer)));
 
         vm.roll(mp.migrationBlock);
-        strategy.migrate(ILBPInitializer(address(initializer)));
-
-        assertTrue(recipient.reentered());
-        assertEq(bytes4(recipient.capturedRevertData()), ReentrancyGuardTransient.Reentrancy.selector);
     }
 
     /// @notice Mines and deploys a donating InitializerHook authorized for the strategy, funded so it can
