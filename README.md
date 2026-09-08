@@ -96,10 +96,9 @@ Canonical contract addresses by chain and version. Cross-references link to rela
 
 Deployed to the same address on all networks that use the canonical Permit2 deployment (`0x000000000022D473030F116dDEE9F6B43aC78BA3`).
 
-| Version | Chain | Address | Commit Hash |
-| --- | --- | --- | --- |
-| v3.0.0 | | `0x00004c4ccc709Ef590F7C81102C0689F0263D4e9` | `3a3103543f50a13a0ae52a253bb98a925d72146f` |
-| v3.2.0 | Robinhood Chain | `0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
+| Version | Address | Commit Hash |
+| --- | --- | --- |
+| v3.2.0 | `0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0` | `dd8769cd45c0e9450e928513ee129b0af74f7f32` |
 
 #### LBPStrategy
 
