@@ -60,6 +60,11 @@ contract Parameters {
         IPositionManager(0x1b35d13a2E2528f192637F14B05f0Dc0e7dEB566);
     IPoolManager public constant INK_POOL_MANAGER = IPoolManager(0x360E68faCcca8cA495c1B759Fd9EEe466db9FB32);
 
+    // Arc addresses: https://developers.uniswap.org/docs/protocols/v4/deployments#arc-5042
+    IPositionManager public constant ARC_POSITION_MANAGER =
+        IPositionManager(0x6049c9a0e26405C0985f9E3685C87d0aE917f82B);
+    IPoolManager public constant ARC_POOL_MANAGER = IPoolManager(0x8366a39CC670B4001A1121B8F6A443A643e40951);
+
     // Sepolia addresses: https://docs.uniswap.org/contracts/v4/deployments#sepolia-11155111
     IPositionManager public constant SEPOLIA_POSITION_MANAGER =
         IPositionManager(0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4);
@@ -78,6 +83,7 @@ contract Parameters {
     uint256 public constant XLAYER_CHAIN_ID = 196;
     uint256 public constant ROBINHOOD_CHAIN_ID = 4663;
     uint256 public constant INK_CHAIN_ID = 57073;
+    uint256 public constant ARC_CHAIN_ID = 5042;
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant BASE_SEPOLIA_CHAIN_ID = 84532;
 
@@ -94,8 +100,8 @@ contract Parameters {
         parameters[MAINNET_CHAIN_ID] = DeployParameters({
             positionManager: MAINNET_POSITION_MANAGER,
             poolManager: MAINNET_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x000000000000000000000000000000000000000000000000000000000001c6e4,
+            initializerHookSalt: 0x00000000000000000000000000000000000000000000000000000000000010a4
         });
         parameters[BASE_CHAIN_ID] = DeployParameters({
             positionManager: BASE_POSITION_MANAGER,
@@ -106,8 +112,8 @@ contract Parameters {
         parameters[UNICHAIN_CHAIN_ID] = DeployParameters({
             positionManager: UNICHAIN_POSITION_MANAGER,
             poolManager: UNICHAIN_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x0000000000000000000000000000000000000000000000000000000000002ec6,
+            initializerHookSalt: 0x0000000000000000000000000000000000000000000000000000000000001046
         });
         parameters[ARBITRUM_CHAIN_ID] = DeployParameters({
             positionManager: ARBITRUM_POSITION_MANAGER,
@@ -118,14 +124,14 @@ contract Parameters {
         parameters[AVALANCHE_CHAIN_ID] = DeployParameters({
             positionManager: AVALANCHE_POSITION_MANAGER,
             poolManager: AVALANCHE_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x00000000000000000000000000000000000000000000000000000000000067c5,
+            initializerHookSalt: 0x0000000000000000000000000000000000000000000000000000000000000d67
         });
         parameters[XLAYER_CHAIN_ID] = DeployParameters({
             positionManager: XLAYER_POSITION_MANAGER,
             poolManager: XLAYER_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x0000000000000000000000000000000000000000000000000000000000003859,
+            initializerHookSalt: 0x000000000000000000000000000000000000000000000000000000000000df03
         });
         parameters[ROBINHOOD_CHAIN_ID] = DeployParameters({
             positionManager: ROBINHOOD_POSITION_MANAGER,
@@ -136,26 +142,34 @@ contract Parameters {
         parameters[INK_CHAIN_ID] = DeployParameters({
             positionManager: INK_POSITION_MANAGER,
             poolManager: INK_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x0000000000000000000000000000000000000000000000000000000000000e6a,
+            initializerHookSalt: 0x000000000000000000000000000000000000000000000000000000000000ae2a
+        });
+        parameters[ARC_CHAIN_ID] = DeployParameters({
+            positionManager: ARC_POSITION_MANAGER,
+            poolManager: ARC_POOL_MANAGER,
+            salt: 0x0000000000000000000000000000000000000000000000000000000000001975,
+            initializerHookSalt: 0x000000000000000000000000000000000000000000000000000000000000403b
         });
         parameters[SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: SEPOLIA_POSITION_MANAGER,
             poolManager: SEPOLIA_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x0000000000000000000000000000000000000000000000000000000000001007,
+            initializerHookSalt: 0x0000000000000000000000000000000000000000000000000000000000000edf
         });
         parameters[BASE_SEPOLIA_CHAIN_ID] = DeployParameters({
             positionManager: BASE_SEPOLIA_POSITION_MANAGER,
             poolManager: BASE_SEPOLIA_POOL_MANAGER,
-            salt: 0x0000000000000000000000000000000000000000000000000000000000000000,
-            initializerHookSalt: bytes32(0)
+            salt: 0x0000000000000000000000000000000000000000000000000000000000006c14,
+            initializerHookSalt: 0x0000000000000000000000000000000000000000000000000000000000011e77
         });
 
         // Set token jar addresses
 
         // https://github.com/Uniswap/protocol-fees#robinhood-chain-chain-id-4663
         tokenJar[ROBINHOOD_CHAIN_ID] = 0x2aC03e14Cfe755426DaAEe0a4994184Ce81482F8;
+        // Not deployed yet, update and redeploy once protocol fees are live on Arc
+        tokenJar[ARC_CHAIN_ID] = DEFAULT_BURN_ADDRESS;
     }
 
     function getParameters(uint256 chainId) public view returns (DeployParameters memory) {
