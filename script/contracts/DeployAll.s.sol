@@ -48,8 +48,10 @@ contract DeployAllScript is Script {
         initializerHookDeployer.run(lbpStrategyAddress);
 
         bool deployPeriphery = vm.envOr("DEPLOY_PERIPHERY", false);
-        if(!deployPeriphery) {
-            console.log("Skipping deployment of periphery contracts. To deploy periphery, set DEPLOY_PERIPHERY to true in your environment variables.");
+        if (!deployPeriphery) {
+            console.log(
+                "Skipping deployment of periphery contracts. To deploy periphery, set DEPLOY_PERIPHERY to true in your environment variables."
+            );
             return;
         }
 

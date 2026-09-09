@@ -106,17 +106,17 @@ Deployed to a different address on each chain. Must be deployed to a valid v4 ho
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.3.0 | Mainnet | `0x2EEF0e2a9a652d755AccAD95a24541A98B5CA000` | `` |
-| v3.3.0 | Base | `0xf10124B01E9fa88b0a2eF3fA95a53B3310446000` | `` |
-| v3.3.0 | Unichain | `0x48F55E7E8ac229aA4e2f3F2d44aa9284D86da000` | `` |
-| v3.3.0 | Arbitrum | `0xc80f3f4497CD9ae41bf8cB5C8809620182B6E000` | `` |
-| v3.3.0 | Robinhood Chain | `0xbf1aB81f7d534b2CC0Da76fcf4d541322bB0e000` | `` |
-| v3.3.0 | Avalanche | `0x7575c9488AB7913e7749B9F5e02789355699E000` | `` |
-| v3.3.0 | XLayer | `0xde758D7B3202b7f4f842E8313Fc04Bf19c6Be000` | `` |
-| v3.3.0 | Ink | `0x0cB98d78be96D5119E49664a9F24fDA22f83E000` | `` |
-| v3.3.0 | Arc | `0x542BCDA1015485ef0B1cD11B835DC58DF5102000` | `` |
-| v3.3.0 | Sepolia | `0x95434E898Af471945Cab33D5064d2aC1A6Ba2000` | `` |
-| v3.3.0 | Base Sepolia | `0x73ad52384798AdADfBe19fCfD28ff09D2CC82000` | `` |
+| v3.3.0 | Mainnet | `0x2EEF0e2a9a652d755AccAD95a24541A98B5CA000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Base | `0xf10124B01E9fa88b0a2eF3fA95a53B3310446000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Unichain | `0x48F55E7E8ac229aA4e2f3F2d44aa9284D86da000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arbitrum | `0xc80f3f4497CD9ae41bf8cB5C8809620182B6E000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Robinhood Chain | `0xbf1aB81f7d534b2CC0Da76fcf4d541322bB0e000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Avalanche | `0x7575c9488AB7913e7749B9F5e02789355699E000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | XLayer | `0xde758D7B3202b7f4f842E8313Fc04Bf19c6Be000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Ink | `0x0cB98d78be96D5119E49664a9F24fDA22f83E000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x542BCDA1015485ef0B1cD11B835DC58DF5102000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Sepolia | `0x95434E898Af471945Cab33D5064d2aC1A6Ba2000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Base Sepolia | `0x73ad52384798AdADfBe19fCfD28ff09D2CC82000` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
 
 #### InstantLaunchStrategy
 
@@ -124,10 +124,10 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 
 | Version | Chain | Address | Fee Splitter | Commit Hash |
 | --- | --- | --- | --- | --- |
-| v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.3.0 | Arc | `0x0C7adf7AF6375374d3bfbb838492892Aa3AdaE65` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.3.0 | Arc | `0x3d4C91ca6de46801c7524bfFAd6Ef9353c6827C3` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
+| v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x0C7adf7AF6375374d3bfbb838492892Aa3AdaE65` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x3d4C91ca6de46801c7524bfFAd6Ef9353c6827C3` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
 
 #### UniversalRouterStrategy
 
@@ -135,8 +135,8 @@ Deployed to a different address on each chain. Runs a caller-supplied Universal 
 
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
-| v3.3.0 | Robinhood Chain | `0x0A122717bc36E3C7A7958128a5C789E0b070b3Ae` | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.2.0 | Arc | `0x0A122717bc36E3C7A7958128a5C789E0b070b3Ae` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
+| v3.3.0 | Robinhood Chain | `0x0A122717bc36E3C7A7958128a5C789E0b070b3Ae` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x0A122717bc36E3C7A7958128a5C789E0b070b3Ae` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
 
 #### TokenSplitter
 
