@@ -122,12 +122,12 @@ Deployed to a different address on each chain. Must be deployed to a valid v4 ho
 
 Deployed to a different address on each chain. Multiple versions may exist; each pins to a specific [Fee Splitter](#fee-splitter).
 
-| Version | Chain | Address | Fee Splitter | Commit Hash |
-| --- | --- | --- | --- | --- |
-| v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Arc | `0x0C7adf7AF6375374d3bfbb838492892Aa3AdaE65` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Arc | `0x3d4C91ca6de46801c7524bfFAd6Ef9353c6827C3` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| Version | Chain | Address | Fee Splitter | Initial Tick | Commit Hash |
+| --- | --- | --- | --- | --- | --- |
+| v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) |`198,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) |`198,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x0C7adf7AF6375374d3bfbb838492892Aa3AdaE65` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `122,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x3d4C91ca6de46801c7524bfFAd6Ef9353c6827C3` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `122,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
 
 #### UniversalRouterStrategy
 
