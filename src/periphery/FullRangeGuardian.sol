@@ -9,6 +9,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IClaimExecutor} from "../interfaces/IClaimExecutor.sol";
 
 /// @notice The compounding recipient this guard forwards to.
@@ -101,6 +102,8 @@ contract FullRangeGuardian is IClaimExecutor, ReentrancyGuardTransient {
     error ZeroTokenId(uint256 guardedTokenId);
     /// @notice Thrown when a companion named in a registered entry is not held by this contract
     error CompanionNotOwned(uint256 guardedTokenId, uint256 companionTokenId, address holder);
+    /// @notice Thrown when a companion does not share the guarded position's pool and required boundary tick
+    error InvalidCompanion(uint256 guardedTokenId, uint256 companionTokenId);
 
     /// @notice Thrown when PositionManager holds an unsettled delta on entry
     error PositionManagerDeltaNotZero(Currency currency, int256 delta);
@@ -153,6 +156,9 @@ contract FullRangeGuardian is IClaimExecutor, ReentrancyGuardTransient {
 
         _requireHeldHere(g.guardedTokenId, lowerId);
         _requireHeldHere(g.guardedTokenId, upperId);
+
+        _requireValidCompanion(g.guardedTokenId, lowerId, true);
+        _requireValidCompanion(g.guardedTokenId, upperId, false);
 
         address holder = IERC721(address(positionManager)).ownerOf(g.guardedTokenId);
         address compounder = compounderFor[holder];
@@ -224,6 +230,18 @@ contract FullRangeGuardian is IClaimExecutor, ReentrancyGuardTransient {
         address companionHolder = IERC721(address(positionManager)).ownerOf(companionTokenId);
         if (companionHolder != address(this)) {
             revert CompanionNotOwned(guardedTokenId, companionTokenId, companionHolder);
+        }
+    }
+
+    /// @notice Reverts unless a companion shares the guarded pool and requested boundary tick
+    function _requireValidCompanion(uint256 guardedTokenId, uint256 companionTokenId, bool isLower) private view {
+        (PoolKey memory guardedKey, PositionInfo guardedInfo) = positionManager.getPoolAndPositionInfo(guardedTokenId);
+        (PoolKey memory companionKey, PositionInfo companionInfo) =
+            positionManager.getPoolAndPositionInfo(companionTokenId);
+        int24 guardedTick = isLower ? guardedInfo.tickLower() : guardedInfo.tickUpper();
+        int24 companionTick = isLower ? companionInfo.tickLower() : companionInfo.tickUpper();
+        if (companionKey.toId() != guardedKey.toId() || companionTick != guardedTick) {
+            revert InvalidCompanion(guardedTokenId, companionTokenId);
         }
     }
 
