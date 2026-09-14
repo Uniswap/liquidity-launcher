@@ -184,6 +184,7 @@ Deployed to a different address based on parameters. Releases funds in exchange 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | minCurrency1Amount: `500_000e18` | `0xa1ba4CC12654D2b188e3ba77dc86c75cA47f1A4e` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+| v3.2.0 | Arc | minCurrency1Amount: `500_000e18` | `0xF4e3Eb6C63aA47aE18F07D9d30D9fc3F0fF24D37` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### VestingClaimRecipient
 
@@ -192,6 +193,7 @@ Deployed to a different based on parameters. Claims and distributes tokens over 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | maxCurrency0PerBlock: `125000000000000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xeF451B293ED8C61d20f7d13ef336a496F0cc2c26` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+| v3.2.0 | Arc | maxCurrency0PerBlock: `250000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xc4a4129F49291aF60784eEBdDD1B1Ad9aDFA3E4E` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### InitializerHook
 
