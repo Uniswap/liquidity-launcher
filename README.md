@@ -126,8 +126,8 @@ Deployed to a different address on each chain. Multiple versions may exist; each
 | --- | --- | --- | --- | --- | --- |
 | v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) |`198,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
 | v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) |`198,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Arc | `0x78429369103a9b8a545d11705bf04b4A4403fcc2` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `122,050` | `b85107731fd278f9c0b28c478bc9e916bbb86540` |
-| v3.3.0 | Arc | `0xA5FFB8B08429a95A75a893717049b6c8A8d5e961` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `122,050` | `b85107731fd278f9c0b28c478bc9e916bbb86540` |
+| v3.3.0 | Arc | `0x58E5099f22008bc280152c13b636c88d0fE3E132` | [`0xdaA7C2e833Ba71a206f56276b58926A33fB37C33`](#fee-splitter) | `122,050` | `214b8a69bc76f78766ff7d71ceb68209a92f35f7` |
+| v3.3.0 | Arc | `0x36F8c87047b212589eD66524Bb69cE62B1f00B2d` | [`0xE8113a9a9CddD6d13fe8A3E32eAA687e108C4616`](#fee-splitter) | `122,050` | `214b8a69bc76f78766ff7d71ceb68209a92f35f7` |
 
 #### UniversalRouterStrategy
 
@@ -156,8 +156,8 @@ Deployed per chain with immutable fee splits. Multiple deployments may exist on 
 | --- | --- | --- | --- | --- |
 | v3.3.0 | Robinhood Chain | `0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
 | v3.3.0 | Robinhood Chain | `0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.2.0 | Arc | `0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [CompoundingClaimRecipient](#compoundingclaimrecipient): 60% native ETH, 100% token | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
-| v3.2.0 | Arc | `0xCDDC6103dD64dd05Cf634166326a21Be06B3165A` | [CompoundingClaimRecipient](#compoundingclaimrecipient): 100% native ETH, 100% token | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
+| v3.3.0 | Arc | `0xdaA7C2e833Ba71a206f56276b58926A33fB37C33` | [UERC20BeneficiaryVault](#uerc20beneficiaryvault): 40% native ETH; [BuybackAndBurnRecipient](#buybackandburnrecipient): 60% native ETH, 100% token | `214b8a69bc76f78766ff7d71ceb68209a92f35f7` |
+| v3.3.0 | Arc | `0xE8113a9a9CddD6d13fe8A3E32eAA687e108C4616` | [BuybackAndBurnRecipient](#buybackandburnrecipient): 100% native ETH, 100% token | `214b8a69bc76f78766ff7d71ceb68209a92f35f7` |
 
 #### UERC20BeneficiaryVault
 
@@ -166,7 +166,7 @@ Deployed to a different address on each chain. Distributes and attributes creato
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
 | v3.3.0 | Robinhood Chain | `0x26d2F7AcB07707034406a0dC458351Bb63C02553` | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.2.0 | Arc | `0x3892aB3Dcf62785Ee3077ea008486c3a6bCf51Af` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
+| v3.3.0 | Arc | `0x3892aB3Dcf62785Ee3077ea008486c3a6bCf51Af` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### CompoundingClaimRecipient
 
@@ -175,7 +175,6 @@ Deployed to a different address on each chain. Permissionlessly compounds LP fee
 | Version | Chain | Address | Commit Hash |
 | --- | --- | --- | --- |
 | v3.3.0 | Robinhood Chain | `0xf585b5D728A8fdE743027307BF5F3556E3B9C58D` | `7ea523c9d75a51cb2f497be5e49bacdaeb80a342` |
-| v3.2.0 | Arc | `0xBE5A26C5E7ABC4f049971e18214301931e23D1Db` | `1eda9f0c0243e2fdc0cbe0d665200ffa8c2ba53a` |
 
 #### BuybackAndBurnRecipient
 
@@ -183,8 +182,8 @@ Deployed to a different address based on parameters. Releases funds in exchange 
 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
+| v3.3.0 | Arc | minCurrency1Amount: `500_000e18` | `0x5cEe9852d136833aE26c9E36a96fC02Cdfc9C40C` | `214b8a69bc76f78766ff7d71ceb68209a92f35f7` |
 | v3.2.0 | Robinhood Chain | minCurrency1Amount: `500_000e18` | `0xa1ba4CC12654D2b188e3ba77dc86c75cA47f1A4e` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
-| v3.2.0 | Arc | minCurrency1Amount: `500_000e18` | `0xF4e3Eb6C63aA47aE18F07D9d30D9fc3F0fF24D37` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### VestingClaimRecipient
 
@@ -193,7 +192,7 @@ Deployed to a different based on parameters. Claims and distributes tokens over 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | maxCurrency0PerBlock: `125000000000000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xeF451B293ED8C61d20f7d13ef336a496F0cc2c26` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
-| v3.2.0 | Arc | maxCurrency0PerBlock: `250000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xc4a4129F49291aF60784eEBdDD1B1Ad9aDFA3E4E` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+| v3.3.0 | Arc | maxCurrency0PerBlock: `250000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xf914C6b46b47aF733390C6cBC77Ad48D146Eb891` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### InitializerHook
 
