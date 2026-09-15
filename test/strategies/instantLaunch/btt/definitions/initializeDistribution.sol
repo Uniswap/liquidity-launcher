@@ -8,10 +8,7 @@ import {
 } from "../../base/InstantLaunchTestBase.sol";
 import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
 import {IStrategy} from "../../../../../src/interfaces/IStrategy.sol";
-import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
-import {IV4FeeAdapter} from "../../../../../src/interfaces/external/IV4FeeAdapter.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
-import {MockV4FeeAdapter} from "../../../../mocks/MockV4FeeAdapter.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -48,11 +45,11 @@ import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibr
 /// ├── when the pool is already initialized
 /// │   └── it reverts with PoolAlreadyInitialized
 /// ├── when the protocol fee controller is unset
-/// │   └── it reverts with FeeUpdateFailed and empty data
+/// │   └── it still launches
 /// ├── when the protocol fee controller is set
 /// │   ├── it calls triggerFeeUpdate with the launched pool key
 /// │   └── when triggerFeeUpdate reverts
-/// │       └── it reverts with FeeUpdateFailed containing the revert data
+/// │       └── it still launches
 /// └── when the launch is valid
 ///     ├── it preserves preexisting balances
 ///     ├── it opens the pool at the initial price
@@ -181,16 +178,15 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
         strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
     }
 
-    function test_WhenProtocolFeeControllerIsUnset_revertsWithFeeUpdateFailed() public {
+    function test_WhenProtocolFeeControllerIsUnset_stillLaunches() public {
         poolManager.setProtocolFeeController(address(0));
 
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        token.approve(address(strategy), TOTAL_SUPPLY);
-        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.FeeUpdateFailed.selector, bytes("")));
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(_key(address(token)).toId());
-        assertEq(sqrtPriceX96, 0);
+        assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
+        assertEq(feeAdapter.callCount(), 0);
     }
 
     function test_WhenProtocolFeeControllerIsSet_callsTriggerFeeUpdateWithLaunchedPoolKey() public {
@@ -202,32 +198,14 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
         assertEq(feeAdapter.lastKeyHash(), keccak256(abi.encode(key)));
     }
 
-    function test_WhenTriggerFeeUpdateReverts_revertsWithFeeUpdateFailed() public {
+    function test_WhenTriggerFeeUpdateReverts_stillLaunches() public {
         feeAdapter.setShouldRevert(true);
 
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        token.approve(address(strategy), TOTAL_SUPPLY);
-
-        bytes memory revertData = abi.encodeWithSelector(MockV4FeeAdapter.TriggerFeeUpdateFailed.selector);
-        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.FeeUpdateFailed.selector, revertData));
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
+        _initialize(token, TOTAL_SUPPLY, _defaultConfig());
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(_key(address(token)).toId());
-        assertEq(sqrtPriceX96, 0);
-        assertEq(feeAdapter.callCount(), 0);
-    }
-
-    function test_WhenTriggerFeeUpdateReverts_forwardsRevertDataInFeeUpdateFailed(bytes memory revertData) public {
-        vm.mockCallRevert(address(feeAdapter), IV4FeeAdapter.triggerFeeUpdate.selector, revertData);
-
-        MockERC20 token = _deployToken(TOTAL_SUPPLY);
-        token.approve(address(strategy), TOTAL_SUPPLY);
-
-        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.FeeUpdateFailed.selector, revertData));
-        strategy.initializeDistribution(address(token), TOTAL_SUPPLY, _defaultConfig(), bytes32(0));
-
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(_key(address(token)).toId());
-        assertEq(sqrtPriceX96, 0);
+        assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
         assertEq(feeAdapter.callCount(), 0);
     }
 

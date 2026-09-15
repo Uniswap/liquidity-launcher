@@ -122,12 +122,12 @@ Deployed to a different address on each chain. Must be deployed to a valid v4 ho
 
 Deployed to a different address on each chain. Multiple versions may exist; each pins to a specific [Fee Splitter](#fee-splitter).
 
-| Version | Chain | Address | Fee Splitter | Commit Hash |
-| --- | --- | --- | --- | --- |
-| v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Arc | `0x0C7adf7AF6375374d3bfbb838492892Aa3AdaE65` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
-| v3.3.0 | Arc | `0x3d4C91ca6de46801c7524bfFAd6Ef9353c6827C3` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| Version | Chain | Address | Fee Splitter | Initial Tick | Commit Hash |
+| --- | --- | --- | --- | --- | --- |
+| v3.3.0 | Robinhood Chain | `0x7c48DDe3B447381F4d986334679b3Afc7F2D35C2` | [`0x9411fa7F956f64aa7981AA27cB3bC6eC0415449C`](#fee-splitter) |`198,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Robinhood Chain | `0xC9566675b1Ea42861546f3c5B74Ace2c79c49572` | [`0x882Ae5e2095435A62Fd1BBDEfcb637f5CeAFc0ee`](#fee-splitter) |`198,050` | `1c5904912aefceaceb89c24528cd5e25d0b61597` |
+| v3.3.0 | Arc | `0x78429369103a9b8a545d11705bf04b4A4403fcc2` | [`0xC2F1D91599d7CB04E6BB156AB3D10972cC2da607`](#fee-splitter) | `122,050` | `b85107731fd278f9c0b28c478bc9e916bbb86540` |
+| v3.3.0 | Arc | `0xA5FFB8B08429a95A75a893717049b6c8A8d5e961` | [`0xCDDC6103dD64dd05Cf634166326a21Be06B3165A`](#fee-splitter) | `122,050` | `b85107731fd278f9c0b28c478bc9e916bbb86540` |
 
 #### UniversalRouterStrategy
 
@@ -184,6 +184,7 @@ Deployed to a different address based on parameters. Releases funds in exchange 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | minCurrency1Amount: `500_000e18` | `0xa1ba4CC12654D2b188e3ba77dc86c75cA47f1A4e` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+| v3.2.0 | Arc | minCurrency1Amount: `500_000e18` | `0xF4e3Eb6C63aA47aE18F07D9d30D9fc3F0fF24D37` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### VestingClaimRecipient
 
@@ -192,6 +193,7 @@ Deployed to a different based on parameters. Claims and distributes tokens over 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | maxCurrency0PerBlock: `125000000000000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xeF451B293ED8C61d20f7d13ef336a496F0cc2c26` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
+| v3.2.0 | Arc | maxCurrency0PerBlock: `250000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xc4a4129F49291aF60784eEBdDD1B1Ad9aDFA3E4E` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### InitializerHook
 
