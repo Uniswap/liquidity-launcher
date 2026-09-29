@@ -15,6 +15,7 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {MockV4FeeAdapter} from "test/mocks/MockV4FeeAdapter.sol";
 
 /// @title ValidateMigrationTest
 /// @notice BTT tests for LBPStrategy.migrate validation
@@ -37,7 +38,15 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 ///         ├── it sweeps leftover tokens to recipient
 ///         ├── it emits CurrencySwept
 ///         ├── it emits TokensSwept
-///         └── it emits Migrated
+///         ├── it emits Migrated
+///         ├── when the protocol fee controller is unset
+///         │   └── it still migrates
+///         └── when the protocol fee controller is set
+///             ├── it calls triggerFeeUpdate with the migrated pool key
+///             ├── when the hookless pool already exists
+///             │   └── it calls triggerFeeUpdate with the strategy-hooked key
+///             └── when triggerFeeUpdate reverts
+///                 └── it still migrates
 contract ValidateMigrationTest is LBPStrategyTestBase {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
@@ -258,6 +267,92 @@ contract ValidateMigrationTest is LBPStrategyTestBase {
         assertEq(rawSqrtPriceAfter, rawSqrtPrice);
         assertGt(strategySqrtPrice, 0);
         assertEq(address(strategyKey.hooks), address(strategy));
+    }
+
+    function test_WhenProtocolFeeControllerIsUnset_stillMigrates(MigrationFuzzParams memory p)
+        public
+        whenBlockIsGTEMigrationBlock
+    {
+        // it still migrates
+        assertEq(POOL_MANAGER.protocolFeeController(), address(0));
+
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        PoolKey memory key = _poolKey(
+            mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, mp.poolParameters.hook
+        );
+        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
+        assertGt(sqrtPriceX96, 0);
+    }
+
+    function test_WhenFeeControllerIsSet_callsTriggerFeeUpdateWithMigratedPoolKey(MigrationFuzzParams memory p)
+        public
+        whenBlockIsGTEMigrationBlock
+    {
+        // it calls triggerFeeUpdate with the migrated pool key
+        MockV4FeeAdapter adapter = new MockV4FeeAdapter();
+        POOL_MANAGER.setProtocolFeeController(address(adapter));
+
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        PoolKey memory key = _poolKey(
+            mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, mp.poolParameters.hook
+        );
+        assertEq(adapter.callCount(), 1);
+        assertEq(adapter.lastKeyHash(), keccak256(abi.encode(key)));
+    }
+
+    function test_WhenHooklessPoolAlreadyExists_callsTriggerFeeUpdateWithStrategyHookedKey(MigrationFuzzParams memory p)
+        public
+        whenBlockIsGTEMigrationBlock
+    {
+        // it calls triggerFeeUpdate with the strategy-hooked key
+        MockV4FeeAdapter adapter = new MockV4FeeAdapter();
+        POOL_MANAGER.setProtocolFeeController(address(adapter));
+
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        PoolKey memory hooklessKey =
+            _poolKey(mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(0));
+        POOL_MANAGER.initialize(hooklessKey, TickMath.MIN_SQRT_PRICE + 1);
+        vm.mockCall(address(POSITION_MANAGER), abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector), "");
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        PoolKey memory strategyKey =
+            _poolKey(mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, address(strategy));
+        assertEq(adapter.callCount(), 1);
+        assertEq(adapter.lastKeyHash(), keccak256(abi.encode(strategyKey)));
+    }
+
+    function test_WhenTriggerFeeUpdateReverts_stillMigrates(MigrationFuzzParams memory p)
+        public
+        whenBlockIsGTEMigrationBlock
+    {
+        // it still migrates
+        MockV4FeeAdapter adapter = new MockV4FeeAdapter();
+        adapter.setShouldRevert(true);
+        POOL_MANAGER.setProtocolFeeController(address(adapter));
+
+        (MockLBPInitializer initializer,) = _setupForMigration(p);
+        MigratorParameters memory mp = strategy.initializers(ILBPInitializer(address(initializer)));
+
+        strategy.migrate(ILBPInitializer(address(initializer)));
+
+        PoolKey memory key = _poolKey(
+            mp.currency, mp.token, mp.poolParameters.fee, mp.poolParameters.tickSpacing, mp.poolParameters.hook
+        );
+        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
+        assertGt(sqrtPriceX96, 0);
+        assertEq(adapter.callCount(), 0);
+        assertEq(_registeredFor(ILBPInitializer(address(initializer))), address(0));
     }
 
     function _nativePoolKey(address token, uint24 fee, int24 tickSpacing, address hook)

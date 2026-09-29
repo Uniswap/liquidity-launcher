@@ -1,4 +1,5 @@
 permit2=lib/permit2
+forge-std=lib/forge-std/src
 @uniswap/v4-core/=lib/v4-core/
 @uniswap/v4-periphery/=lib/v4-periphery/
 merkle-distributor/=lib/merkle-distributor/

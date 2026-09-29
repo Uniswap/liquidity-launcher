@@ -10,6 +10,7 @@ import {DeployInitializerHookScript} from "./periphery/DeployInitializerHook.s.s
 import {DeployUERC20BeneficiaryVaultScript} from "./periphery/DeployUERC20BeneficiaryVault.s.sol";
 import {DeployFeeSplitterScript} from "./periphery/DeployFeeSplitter.s.sol";
 import {DeployCompoundingClaimRecipientScript} from "./periphery/DeployCompoundingClaimRecipient.s.sol";
+import {DeployBuybackAndBurnClaimRecipientScript} from "./periphery/DeployBuybackAndBurnClaimRecipient.s.sol";
 import {DeployInstantLaunchStrategyScript} from "./DeployInstantLaunchStrategy.s.sol";
 import {console} from "forge-std/console.sol";
 import {DeployUniversalRouterStrategyScript} from "./DeployUniversalRouterStrategy.s.sol";
@@ -23,6 +24,7 @@ contract DeployAllScript is Script {
     DeployUERC20BeneficiaryVaultScript public uerc20BeneficiaryVaultDeployer;
     DeployFeeSplitterScript public feeSplitterDeployer;
     DeployCompoundingClaimRecipientScript public compoundingClaimRecipientDeployer;
+    DeployBuybackAndBurnClaimRecipientScript public buybackAndBurnClaimRecipientDeployer;
     DeployInstantLaunchStrategyScript public instantLaunchStrategyDeployer;
     DeployUniversalRouterStrategyScript public universalRouterStrategyDeployer;
 
@@ -34,6 +36,7 @@ contract DeployAllScript is Script {
         uerc20BeneficiaryVaultDeployer = new DeployUERC20BeneficiaryVaultScript();
         feeSplitterDeployer = new DeployFeeSplitterScript();
         compoundingClaimRecipientDeployer = new DeployCompoundingClaimRecipientScript();
+        buybackAndBurnClaimRecipientDeployer = new DeployBuybackAndBurnClaimRecipientScript();
         instantLaunchStrategyDeployer = new DeployInstantLaunchStrategyScript();
         universalRouterStrategyDeployer = new DeployUniversalRouterStrategyScript();
     }
@@ -47,11 +50,28 @@ contract DeployAllScript is Script {
         tokenSplitterDeployer.run();
         initializerHookDeployer.run(lbpStrategyAddress);
 
+        bool deployPeriphery = vm.envOr("DEPLOY_PERIPHERY", false);
+        if (!deployPeriphery) {
+            console.log(
+                "Skipping deployment of periphery contracts. To deploy periphery, set DEPLOY_PERIPHERY to true in your environment variables."
+            );
+            return;
+        }
+
         // Deploy periphery contracts
         address uerc20BeneficiaryVaultAddress = uerc20BeneficiaryVaultDeployer.run();
         vm.setEnv("BENEFICIARY_VAULT", vm.toString(uerc20BeneficiaryVaultAddress));
-        address compoundingClaimRecipientAddress = compoundingClaimRecipientDeployer.run();
-        vm.setEnv("COMPOUNDING_CLAIM_RECIPIENT", vm.toString(compoundingClaimRecipientAddress));
+
+        bool compounding = vm.envOr("COMPOUNDING", true);
+        if (compounding) {
+            address compoundingClaimRecipientAddress = compoundingClaimRecipientDeployer.run();
+            vm.setEnv("COMPOUNDING_CLAIM_RECIPIENT", vm.toString(compoundingClaimRecipientAddress));
+        } else {
+            // Fallback is buyback and burn
+            address buybackAndBurnClaimRecipientAddress = buybackAndBurnClaimRecipientDeployer.run();
+            vm.setEnv("BUYBACK_AND_BURN_CLAIM_RECIPIENT", vm.toString(buybackAndBurnClaimRecipientAddress));
+        }
+
         // Deploy both variants of the fee splitter
         address feeSplitterWithCreatorFeeAddress = feeSplitterDeployer.deployWithCreatorFee();
         address feeSplitterWithoutCreatorFeeAddress = feeSplitterDeployer.deployWithoutCreatorFee();

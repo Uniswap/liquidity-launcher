@@ -19,6 +19,7 @@ import {IFeeSplitter, FeeSplit} from "../../../../src/interfaces/IFeeSplitter.so
 import {BeneficiaryVault} from "../../../../src/periphery/BeneficiaryVault.sol";
 import {IBeneficiaryVault} from "../../../../src/interfaces/IBeneficiaryVault.sol";
 import {MockERC20} from "../../../mocks/MockERC20.sol";
+import {MockV4FeeAdapter} from "../../../mocks/MockV4FeeAdapter.sol";
 
 /// @notice A launched token with 6 decimals, used to exercise the decimals guard.
 contract MockDirectSixDecimalToken is ERC20 {
@@ -79,6 +80,7 @@ abstract contract InstantLaunchTestBase is Test {
     FeeSplitter internal feeSplitter;
     BeneficiaryVault internal beneficiaryVault;
     InstantLaunchStrategy internal strategy;
+    MockV4FeeAdapter internal feeAdapter;
 
     function setUp() public virtual {
         deployCodeTo("lib/v4-core/src/PoolManager.sol:PoolManager", abi.encode(address(this)), address(POOL_MANAGER));
@@ -89,6 +91,8 @@ abstract contract InstantLaunchTestBase is Test {
         );
 
         feeSplitter = _deployFeeSplitter();
+        feeAdapter = new MockV4FeeAdapter();
+        poolManager.setProtocolFeeController(address(feeAdapter));
         strategy = _deployStrategy(INITIAL_TICK);
         vm.deal(address(this), 100_000 ether);
     }
