@@ -44,7 +44,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             description: "Test token for launcher",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
 
         bytes memory tokenData = abi.encode(metadata);
@@ -73,12 +73,12 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
         assertEq(token.graffiti(), keccak256(abi.encode(address(this))));
 
         // Verify metadata
-        (string memory description, string memory website, string memory image, uint256 xProofTweetId) =
+        (string memory description, string memory website, string memory image, bytes memory extraData) =
             token.metadata();
         assertEq(description, "Test token for launcher");
         assertEq(website, "https://test.com");
         assertEq(image, "https://test.com/image.png");
-        assertEq(xProofTweetId, 0);
+        assertEq(extraData, "");
     }
 
     function test_createToken_revertsWithRecipientCannotBeZeroAddress() public {
@@ -95,7 +95,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
                     description: "Test token for launcher",
                     website: "https://test.com",
                     image: "https://test.com/image.png",
-                    xProofTweetId: 0
+                    extraData: ""
                 })
             )
         );
@@ -197,7 +197,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             description: "Test token for launcher",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
 
         vm.prank(alice);
@@ -248,7 +248,7 @@ contract LiquidityLauncherTest is Test, DeployPermit2 {
             description: "Test token for launcher",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
 
         bytes memory tokenData = abi.encode(metadata);

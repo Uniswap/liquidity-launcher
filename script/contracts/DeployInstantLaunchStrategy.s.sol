@@ -10,12 +10,14 @@ import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 
 contract DeployInstantLaunchStrategyScript is Script, Parameters {
-    int24 public constant initialTick = 198_050;
-
     function run(address feeSplitter, address beneficiaryVault) public returns (address instantLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
         address liquidityLauncher = vm.envAddress("LIQUIDITY_LAUNCHER");
         if (liquidityLauncher == address(0)) revert("env: LIQUIDITY_LAUNCHER not set");
+
+        /// @dev 198_050 is used for default tick on ETH based chains
+        int24 initialTick = int24(int256(vm.envOr("INITIAL_TICK", uint256(198_050))));
+        console.log("Initial tick:", initialTick);
 
         bytes memory bytecode = abi.encodePacked(
             type(InstantLaunchStrategy).creationCode,

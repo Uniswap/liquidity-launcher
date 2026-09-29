@@ -22,8 +22,8 @@
   },
   "lib/uerc20-factory": {
     "tag": {
-      "name": "v1.0.0",
-      "rev": "09ae130f7a10f7c1b96e0dc7d9724d567080c4ef"
+      "name": "v2.0.0",
+      "rev": "6f18f1cdf80dc173d33d3cd6bbe91ee52c314f68"
     }
   },
   "lib/v4-core": {

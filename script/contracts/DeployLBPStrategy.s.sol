@@ -29,13 +29,15 @@ contract DeployLBPStrategyScript is Script, Parameters {
             expectedAddress = Create2.computeAddress(params.salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
             salt = params.salt;
         } else {
-            // Otherwise, mine a salt that will produce a valid v4 hook address
+            // Mining is local compute; pause metering so DeployAll's 30M call stipend cannot OOG it.
+            vm.pauseGasMetering();
             (address foundAddress, bytes32 foundSalt) = HookMiner.find(
                 DEFAULT_CREATE2_DEPLOYER,
                 DEFAULT_HOOK_FLAGS,
                 type(LBPStrategy).creationCode,
                 abi.encode(params.positionManager, params.poolManager, initializerFactory)
             );
+            vm.resumeGasMetering();
             console.logBytes32(foundSalt);
             expectedAddress = foundAddress;
             salt = foundSalt;

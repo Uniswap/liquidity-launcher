@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0]
+
+### Added
+- `StrategyBase` and `IV4FeeAdapter` so `InstantLaunchStrategy` and `LBPStrategy` call `triggerFeeUpdate` after pool initialization [387a83a](https://github.com/Uniswap/token-launcher/commit/387a83a55a16eea97affef7dbd13c8fe80f0d7ca)
+
+### Fixed
+- `LBPStrategy.migrate` reverts with `PoolManagerAlreadyUnlocked` if called while the PoolManager is unlocked, so a nested unlock cannot force terminal recovery [9054a2a](https://github.com/Uniswap/token-launcher/commit/9054a2a35315568423a84c12b626249a633798d7)
+- Instant launches no longer revert when a protocol fee controller is unset or `triggerFeeUpdate` fails [4efb65d](https://github.com/Uniswap/token-launcher/commit/4efb65de1df54e01953f20e80473066b3dcfcc54)
+
 ## [3.2.0]
 
 ### Breaking changes

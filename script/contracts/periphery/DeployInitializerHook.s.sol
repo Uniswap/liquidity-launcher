@@ -22,12 +22,14 @@ contract DeployInitializerHookScript is Script, Parameters {
             foundSalt = params.initializerHookSalt;
             foundAddress = Create2.computeAddress(foundSalt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
         } else {
+            vm.pauseGasMetering();
             (foundAddress, foundSalt) = HookMiner.find(
                 DEFAULT_CREATE2_DEPLOYER,
                 DEFAULT_HOOK_FLAGS,
                 type(InitializerHook).creationCode,
                 abi.encode(params.poolManager, authorized)
             );
+            vm.resumeGasMetering();
             console.logBytes32(foundSalt);
         }
 
