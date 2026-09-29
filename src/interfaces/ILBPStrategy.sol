@@ -133,6 +133,9 @@ interface ILBPStrategy is IStrategy {
     /// @notice Error thrown when no positions are created during migration
     error NoPositionsCreated();
 
+    /// @notice Error thrown when migrate() is called while the PoolManager is already unlocked
+    error PoolManagerAlreadyUnlocked();
+
     /// @notice Migrates the raised funds and tokens to a v4 pool
     /// @dev Requires the initializer to be registered and have sufficient token reserves for migration
     /// @param initializer The initializer contract to seed the migration

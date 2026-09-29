@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FeeSplitter` and `BeneficiaryVault` generalize from native-ETH `currency0` to an immutable `quoteCurrency` constructor parameter, serving pools that pair the quote on either side; `FeeSplit.nativeBps` is renamed to `quoteBps`, the `FeesCollected` event's `nativeAmount` to `quoteAmount`, `InvalidBaseCurrency` is replaced by `QuoteCurrencyNotInPool`, the vault's `nativeFallback` is renamed to `quoteFallback` with fallback routing by quote side, and `increaseLiquidity` only unwraps WETH for pools with a native `currency0` [#248](https://github.com/Uniswap/token-launcher/pull/248)
 - `BuybackAndBurnClaimRecipient` now burns `currency0` or `currency1`, selected by the new `burnCurrency0` immutable; `minCurrency1BurnAmount` is renamed to `minBurnAmount`, and the native-ETH `currency0` requirement is replaced by a check that the burn currency is an ERC20 [#246](https://github.com/Uniswap/token-launcher/pull/246)
 
+## [3.3.0]
+
+### Added
+- `StrategyBase` and `IV4FeeAdapter` so `InstantLaunchStrategy` and `LBPStrategy` call `triggerFeeUpdate` after pool initialization [387a83a](https://github.com/Uniswap/token-launcher/commit/387a83a55a16eea97affef7dbd13c8fe80f0d7ca)
+
+### Fixed
+- `LBPStrategy.migrate` reverts with `PoolManagerAlreadyUnlocked` if called while the PoolManager is unlocked, so a nested unlock cannot force terminal recovery [9054a2a](https://github.com/Uniswap/token-launcher/commit/9054a2a35315568423a84c12b626249a633798d7)
+- Instant launches no longer revert when a protocol fee controller is unset or `triggerFeeUpdate` fails [4efb65d](https://github.com/Uniswap/token-launcher/commit/4efb65de1df54e01953f20e80473066b3dcfcc54)
+
 ## [3.2.0]
 
 ### Breaking changes

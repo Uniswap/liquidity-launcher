@@ -33,6 +33,7 @@ import {INativeStrategy} from "../../src/interfaces/INativeStrategy.sol";
 import {IUniversalRouter} from "../../src/interfaces/external/IUniversalRouter.sol";
 import {MockUniversalRouter} from "../mocks/MockUniversalRouter.sol";
 import {ReentrantRouter} from "../mocks/ReentrantRouter.sol";
+import {MockV4FeeAdapter} from "../mocks/MockV4FeeAdapter.sol";
 
 contract UniversalRouterStrategyTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -75,6 +76,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
             FeeSplit({recipient: address(beneficiaryVault), quoteBps: 10_000, tokenBps: 10_000, useCallback: true});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
 
+        POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         instantLaunch = new InstantLaunchStrategy(
             address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
         );
@@ -406,7 +408,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
             description: "quicklaunch token",
             website: "https://pools.xyz",
             image: "https://pools.xyz/img.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         return abi.encodeWithSelector(
             LiquidityLauncher.createToken.selector,

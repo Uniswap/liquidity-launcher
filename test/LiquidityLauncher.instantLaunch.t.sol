@@ -32,6 +32,7 @@ import {InstantLaunchStrategy, InstantLaunchConfig} from "../src/strategies/Inst
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../src/interfaces/IFeeSplitter.sol";
+import {MockV4FeeAdapter} from "./mocks/MockV4FeeAdapter.sol";
 
 contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
     using StateLibrary for IPoolManager;
@@ -71,6 +72,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             FeeSplit({recipient: address(beneficiaryVault), quoteBps: 2_000, tokenBps: 2_000, useCallback: true});
         feeSplitter = new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
 
+        POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
         strategy = new InstantLaunchStrategy(
             address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
@@ -200,7 +202,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             description: "quicklaunch token",
             website: "https://pools.xyz",
             image: "https://pools.xyz/img.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         calls = new IMulticall3.Call3Value[](4);
         calls[0] = IMulticall3.Call3Value({
@@ -286,7 +288,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
             description: "quicklaunch token",
             website: "https://pools.xyz",
             image: "https://pools.xyz/img.png",
-            xProofTweetId: 0
+            extraData: ""
         });
         address token =
             factory.getUERC20Address("QuickLaunch", "QL", 18, address(launcher), launcher.getGraffiti(address(this)));

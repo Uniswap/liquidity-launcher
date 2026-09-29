@@ -104,10 +104,12 @@ library PositionPlanner {
                 // Add offsets, clamp to the valid min/max range, then snap to tick spacing.
                 tickLower = int24(
                         FixedPointMathLib.clamp(int256(_currentTick) + int256(offsetLower), minUsable, maxUsable)
-                    ).tickFloor(_tickSpacing);
+                    )
+                    .tickFloor(_tickSpacing);
                 tickUpper = int24(
                         FixedPointMathLib.clamp(int256(_currentTick) + int256(offsetUpper), minUsable, maxUsable)
-                    ).tickCeil(_tickSpacing);
+                    )
+                    .tickCeil(_tickSpacing);
             }
             ticks[i] = TickBounds({lowerTick: tickLower, upperTick: tickUpper});
         }

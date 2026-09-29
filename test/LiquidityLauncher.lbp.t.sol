@@ -155,7 +155,7 @@ contract LiquidityLauncherLBPIntegrationTest is LBPStrategyTestBase, DeployPermi
             description: "E2E test token",
             website: "https://test.com",
             image: "https://test.com/image.png",
-            xProofTweetId: 0
+            extraData: ""
         });
 
         calls = new bytes[](2);
