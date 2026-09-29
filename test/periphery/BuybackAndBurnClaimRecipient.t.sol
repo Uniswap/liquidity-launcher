@@ -31,8 +31,7 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
     function test_CanBeConstructed(address _quote, uint256 _minBurnAmount) public {
         vm.assume(_minBurnAmount > 0);
         Currency quote = Currency.wrap(_quote);
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), quote, _minBurnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), quote, _minBurnAmount);
 
         assertEq(positionRecipient.minBurnAmount(), _minBurnAmount);
         assertEq(Currency.unwrap(positionRecipient.quoteCurrency()), _quote);
@@ -75,8 +74,9 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
     function test_claim_derivesTokenAndPreservesExistingETH(uint256 _minBurnAmount) public {
         _minBurnAmount = bound(_minBurnAmount, 1, 1_000_000e6);
         // Native quote: burn the token side (USDC = currency1) of the ETH/USDC fork position.
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), Currency.wrap(address(0)), _minBurnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(
+            IPositionManager(POSITION_MANAGER), Currency.wrap(address(0)), _minBurnAmount
+        );
 
         executor.approveToken(USDC, address(positionRecipient), type(uint256).max);
         _dealUSDCFromPoolManager(address(executor), _minBurnAmount);
@@ -118,10 +118,19 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
 
     function test_claim_revertsIfBurnCurrencyIsNative() public {
         // Quote is USDC (currency1) on the ETH/USDC pool → burn side is native ETH.
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), Currency.wrap(USDC), 1);
+        positionRecipient = new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), Currency.wrap(USDC), 1);
 
         vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidBurnCurrency.selector);
+        executor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
+    }
+
+    function test_claim_revertsWhenQuoteNotInPool() public {
+        // Quote absent from the ETH/USDC fork pool → must revert (not silently burn currency0).
+        address otherQuote = makeAddr("otherQuote");
+        positionRecipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), Currency.wrap(otherQuote), 1);
+
+        vm.expectRevert(BuybackAndBurnClaimRecipient.QuoteCurrencyNotInPool.selector);
         executor.execute(positionRecipient, FORK_TOKEN_ID, 0, 0);
     }
 
@@ -129,8 +138,9 @@ contract BuybackAndBurnClaimRecipientTest is PositionRecipientTestBase {
         // Quote as currency1 → burn currency0 (token side for this orientation).
         _minBurnAmount = bound(_minBurnAmount, 1, 1e18);
         address currency1 = Currency.unwrap(_poolKey(NON_ETH_FORK_TOKEN_ID).currency1);
-        positionRecipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(POSITION_MANAGER), Currency.wrap(currency1), _minBurnAmount);
+        positionRecipient = new BuybackAndBurnClaimRecipient(
+            IPositionManager(POSITION_MANAGER), Currency.wrap(currency1), _minBurnAmount
+        );
 
         executor.approveToken(NON_ETH_FORK_CURRENCY0, address(positionRecipient), type(uint256).max);
         _dealTokenFromPoolManager(NON_ETH_FORK_CURRENCY0, address(executor), _minBurnAmount);

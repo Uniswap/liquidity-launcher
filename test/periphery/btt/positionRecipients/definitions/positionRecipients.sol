@@ -660,13 +660,23 @@ contract PositionRecipientsBTTTest is Test {
         executor.execute(recipient, TOKEN_ID, 0, 0);
     }
 
+    function test_BuybackAndBurn_WhenQuoteNotInPool_Reverts() public {
+        // Quote absent from the configured pool → must revert (not silently burn currency0).
+        BuybackAndBurnClaimRecipient recipient = new BuybackAndBurnClaimRecipient(
+            IPositionManager(address(manager)), Currency.wrap(makeAddr("otherQuote")), 1
+        );
+        MockClaimExecutor executor = new MockClaimExecutor();
+
+        vm.expectRevert(BuybackAndBurnClaimRecipient.QuoteCurrencyNotInPool.selector);
+        executor.execute(recipient, TOKEN_ID, 0, 0);
+    }
+
     function test_BuybackAndBurn_WhenQuoteIsNative_BurnsCurrency1(uint128 burnAmount) public {
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
-        BuybackAndBurnClaimRecipient recipient = new BuybackAndBurnClaimRecipient(
-            IPositionManager(address(manager)), Currency.wrap(address(0)), burnAmount
-        );
+        BuybackAndBurnClaimRecipient recipient =
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), Currency.wrap(address(0)), burnAmount);
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);

@@ -25,6 +25,8 @@ contract BuybackAndBurnClaimRecipient is BaseClaimRecipientWithCallback {
     error InvalidBurnCurrency();
     /// @notice Thrown when the minimum burn amount is 0
     error InvalidMinBurnAmount();
+    /// @notice Thrown when neither pool currency is `quoteCurrency`
+    error QuoteCurrencyNotInPool();
 
     /// @notice Emitted when caller-provided tokens are sent to the burn address
     event TokensBurned(uint256 indexed tokenId, Currency indexed token, uint256 amount);
@@ -59,7 +61,10 @@ contract BuybackAndBurnClaimRecipient is BaseClaimRecipientWithCallback {
     }
 
     /// @notice Returns the pool currency this recipient burns: the side that is not `quoteCurrency`
+    /// @dev Reverts if `quoteCurrency` is absent from the pool (mirrors FeeSplitter orientation).
     function _burnCurrency(PoolKey memory _poolKey) internal view returns (Currency) {
-        return _poolKey.currency0 == quoteCurrency ? _poolKey.currency1 : _poolKey.currency0;
+        if (_poolKey.currency0 == quoteCurrency) return _poolKey.currency1;
+        if (_poolKey.currency1 == quoteCurrency) return _poolKey.currency0;
+        revert QuoteCurrencyNotInPool();
     }
 }

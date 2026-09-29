@@ -6,6 +6,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../../src/interfaces/IBeneficiaryVault.sol";
+import {BuybackAndBurnClaimRecipient} from "../../../src/periphery/BuybackAndBurnClaimRecipient.sol";
 import {console} from "forge-std/console.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {DeployParameters, Parameters} from "../Parameters.sol";
@@ -65,6 +66,10 @@ contract DeployFeeSplitterScript is Script, Parameters {
             recipient = compoundingClaimRecipient;
         } else {
             require(buybackAndBurnClaimRecipient != address(0), "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT not set");
+            require(
+                BuybackAndBurnClaimRecipient(payable(buybackAndBurnClaimRecipient)).quoteCurrency() == quoteCurrency,
+                "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT quoteCurrency must match QUOTE_CURRENCY"
+            );
             recipient = buybackAndBurnClaimRecipient;
         }
 
@@ -90,6 +95,13 @@ contract DeployFeeSplitterScript is Script, Parameters {
             recipient = compoundingClaimRecipient;
         } else {
             require(buybackAndBurnClaimRecipient != address(0), "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT not set");
+            // Same quote invariant as deployWithCreatorFee / BeneficiaryVault: mismatched immutable
+            // Buyback quote locks the wrong burn side into the FeeSplitter split.
+            Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", address(0)));
+            require(
+                BuybackAndBurnClaimRecipient(payable(buybackAndBurnClaimRecipient)).quoteCurrency() == quoteCurrency,
+                "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT quoteCurrency must match QUOTE_CURRENCY"
+            );
             recipient = buybackAndBurnClaimRecipient;
         }
 
