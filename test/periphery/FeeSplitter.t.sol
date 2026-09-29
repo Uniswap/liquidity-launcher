@@ -230,12 +230,12 @@ contract FeeSplitterTest is Test {
         vm.deal(address(this), 10_000 ether);
     }
 
-    function _split(address recipient, uint16 nativeBps, uint16 tokenBps, bool useCallback)
+    function _split(address recipient, uint16 quoteBps, uint16 tokenBps, bool useCallback)
         internal
         pure
         returns (FeeSplit memory)
     {
-        return FeeSplit(recipient, nativeBps, tokenBps, useCallback);
+        return FeeSplit(recipient, quoteBps, tokenBps, useCallback);
     }
 
     function _splits(FeeSplit memory split_) internal pure returns (FeeSplit[] memory out) {
