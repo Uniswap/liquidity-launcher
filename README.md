@@ -192,7 +192,6 @@ Deployed to a different based on parameters. Claims and distributes tokens over 
 | Version | Chain | Parameters | Address | Commit Hash |
 | --- | --- | --- | --- | --- |
 | v3.2.0 | Robinhood Chain | maxCurrency0PerBlock: `125000000000000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xeF451B293ED8C61d20f7d13ef336a496F0cc2c26` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
-| v3.3.0 | Arc | maxCurrency0PerBlock: `250000`, maxCurrency1PerBlock: `50000000000000000000000`, recipient: [BuybackAndBurnRecipient](#buybackandburnrecipient) | `0xf914C6b46b47aF733390C6cBC77Ad48D146Eb891` | `0b5ee0527af94a8c635b6af5b334a7d17c5ed719` |
 
 #### InitializerHook
 
