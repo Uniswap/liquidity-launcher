@@ -5,6 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../../src/interfaces/IFeeSplitter.sol";
+import {IBeneficiaryVault} from "../../../src/interfaces/IBeneficiaryVault.sol";
 import {console} from "forge-std/console.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {DeployParameters, Parameters} from "../Parameters.sol";
@@ -45,6 +46,13 @@ contract DeployFeeSplitterScript is Script, Parameters {
 
         // Simple fee split setup.
         address beneficiaryVault = vm.envAddress("BENEFICIARY_VAULT");
+        // Vault fallback routing is by its own quoteCurrency; a mismatch sends the creator's
+        // unregistered quote share to tokenFallback (0xdead) instead of quoteFallback (TokenJar).
+        Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", address(0)));
+        require(
+            IBeneficiaryVault(beneficiaryVault).quoteCurrency() == quoteCurrency,
+            "env: BENEFICIARY_VAULT quoteCurrency must match QUOTE_CURRENCY"
+        );
 
         address recipient;
         address compoundingClaimRecipient = vm.envOr("COMPOUNDING_CLAIM_RECIPIENT", address(0));

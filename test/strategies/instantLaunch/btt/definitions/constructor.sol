@@ -12,6 +12,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {MockERC20} from "../../../../mocks/MockERC20.sol";
 
 /// @title ConstructorTest
 /// @notice BTT tests for InstantLaunchStrategy.constructor
@@ -21,8 +22,12 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it reverts with ZeroAddress
 /// ├── when the fee splitter uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
+/// ├── when the fee splitter quote is not native
+/// │   └── it reverts with QuoteCurrencyNotNative
 /// ├── when the beneficiary vault uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
+/// ├── when the beneficiary vault quote is not native
+/// │   └── it reverts with QuoteCurrencyNotNative
 /// ├── when the beneficiary vault is zero
 /// │   └── it deploys with creator fees disabled
 /// ├── when the initial tick is not aligned
@@ -81,6 +86,18 @@ contract ConstructorTest is InstantLaunchTestBase {
         new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
     }
 
+    function test_WhenFeeSplitterQuoteIsNotNative() public {
+        // Instant launch always pairs native ETH; a non-native splitter quote freezes every launch's fees.
+        MockERC20 quote = new MockERC20("Quote", "QUOTE", 0, address(this));
+        FeeSplitter mismatched =
+            new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote))
+        );
+        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
+    }
+
     function test_WhenBeneficiaryVaultUsesDifferentPositionManager() public {
         // Registration proves custody against the vault's PositionManager; a mismatch would revert
         // every launch at registration.
@@ -92,6 +109,18 @@ contract ConstructorTest is InstantLaunchTestBase {
             abi.encodeWithSelector(
                 InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
             )
+        );
+        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, INITIAL_TICK);
+    }
+
+    function test_WhenBeneficiaryVaultQuoteIsNotNative() public {
+        // A vault quote mismatch would route unregistered creator quote shares to tokenFallback.
+        MockERC20 quote = new MockERC20("Quote", "QUOTE", 0, address(this));
+        BeneficiaryVault mismatched =
+            new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), tokenJar, address(0xdead));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote))
         );
         new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, INITIAL_TICK);
     }

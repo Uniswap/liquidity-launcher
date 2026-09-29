@@ -86,6 +86,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
     ///         PositionManager as this strategy.
     /// @param mismatchedPositionManager The mismatched PositionManager
     error PositionManagerMismatch(address mismatchedPositionManager);
+    /// @notice Thrown when the fee splitter or beneficiary vault quote is not native ETH.
+    ///         Instant launch always pairs native ETH, so a non-native quote would leave every
+    ///         launch position's fees permanently uncollectable.
+    /// @param quoteCurrency The non-native quote currency
+    error QuoteCurrencyNotNative(address quoteCurrency);
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
     /// @notice Thrown when the configured fee beneficiary is the zero address or the launcher.
@@ -124,10 +129,20 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         if (_feeSplitter.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
         }
+        // Instant launch always mints native-ETH/token positions; a non-native splitter quote
+        // would revert every collectFees with QuoteCurrencyNotInPool and freeze fees forever.
+        if (!_feeSplitter.quoteCurrency().isAddressZero()) {
+            revert QuoteCurrencyNotNative(Currency.unwrap(_feeSplitter.quoteCurrency()));
+        }
         // Registration proves custody against the vault's own PositionManager; a mismatch would
         // revert every launch at registration.
         if (address(_beneficiaryVault) != address(0) && _beneficiaryVault.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_beneficiaryVault.positionManager()));
+        }
+        // A vault quote mismatch routes the creator's unregistered quote share to tokenFallback
+        // (typically 0xdead) instead of the protocol jar.
+        if (address(_beneficiaryVault) != address(0) && !_beneficiaryVault.quoteCurrency().isAddressZero()) {
+            revert QuoteCurrencyNotNative(Currency.unwrap(_beneficiaryVault.quoteCurrency()));
         }
         // The tick must be aligned and leave a non-empty range above the launch floor: the launch position
         // spans [MIN_LAUNCH_TICK, initialTick] on the token side of the price.

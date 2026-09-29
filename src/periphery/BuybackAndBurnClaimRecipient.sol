@@ -9,9 +9,10 @@ import {BaseClaimRecipientWithCallback} from "./BaseClaimRecipientWithCallback.s
 
 /// @title BuybackAndBurnClaimRecipient
 /// @notice Singleton buyback-and-burn recipient for LP positions
-/// @dev The immutable `burnCurrency0` selects the burn currency for every position: currency0 when true,
-///      currency1 when false. The burn currency must be an ERC20, so claims on positions whose burn
-///      currency is native ETH revert
+/// @dev The immutable `quoteCurrency` identifies the pool's quote side; each claim burns the
+///      non-quote currency. The burn currency must be an ERC20, so claims on positions whose
+///      non-quote side is native ETH revert. One deployment can therefore serve both pool
+///      orientations under a FeeSplitter with the same quote.
 /// @dev This contract is not intended to hold positions; it only receives amount notifications
 /// @dev The same burn threshold is applied to every position
 /// @dev Callers of `claim` must approve this contract for at least `minBurnAmount` of the
@@ -28,17 +29,17 @@ contract BuybackAndBurnClaimRecipient is BaseClaimRecipientWithCallback {
     /// @notice Emitted when caller-provided tokens are sent to the burn address
     event TokensBurned(uint256 indexed tokenId, Currency indexed token, uint256 amount);
 
-    /// @notice True to burn the position's currency0, false to burn currency1
-    bool public immutable burnCurrency0;
+    /// @notice The quote currency whose counterpart (the token side) is burned on each claim
+    Currency public immutable quoteCurrency;
 
     /// @notice The minimum amount of the burn currency pulled from the caller on each claim
     uint256 public immutable minBurnAmount;
 
-    constructor(IPositionManager _positionManager, bool _burnCurrency0, uint256 _minBurnAmount)
+    constructor(IPositionManager _positionManager, Currency _quoteCurrency, uint256 _minBurnAmount)
         BaseClaimRecipientWithCallback(_positionManager)
     {
         if (_minBurnAmount == 0) revert InvalidMinBurnAmount();
-        burnCurrency0 = _burnCurrency0;
+        quoteCurrency = _quoteCurrency;
         minBurnAmount = _minBurnAmount;
     }
 
@@ -50,15 +51,15 @@ contract BuybackAndBurnClaimRecipient is BaseClaimRecipientWithCallback {
     }
 
     /// @inheritdoc BaseClaimRecipientWithCallback
-    /// @dev Burns `minBurnAmount` of the position's burn currency
+    /// @dev Burns `minBurnAmount` of the position's non-quote currency
     function _afterExecutorCallback(PoolKey memory _poolKey, uint256 _tokenId, uint256) internal override {
         Currency burnCurrency = _burnCurrency(_poolKey);
         SafeTransferLib.safeTransferFrom(Currency.unwrap(burnCurrency), msg.sender, BURN_ADDRESS, minBurnAmount);
         emit TokensBurned(_tokenId, burnCurrency, minBurnAmount);
     }
 
-    /// @notice Returns the pool currency this recipient burns, selected by `burnCurrency0`
+    /// @notice Returns the pool currency this recipient burns: the side that is not `quoteCurrency`
     function _burnCurrency(PoolKey memory _poolKey) internal view returns (Currency) {
-        return burnCurrency0 ? _poolKey.currency0 : _poolKey.currency1;
+        return _poolKey.currency0 == quoteCurrency ? _poolKey.currency1 : _poolKey.currency0;
     }
 }

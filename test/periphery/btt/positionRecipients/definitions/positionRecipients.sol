@@ -231,15 +231,14 @@ contract ReentrantLPFeesExecutor is IClaimExecutor {
 ///     └── it transfers both amounts and invokes the executor
 ///
 /// BuybackAndBurnClaimRecipient
-/// ├── when the burn currency is native
+/// ├── when the burn (non-quote) currency is native
 /// │   └── it reverts
-/// ├── when configured to burn currency1
-/// │   ├── when the pool is native-paired
-/// │   │   └── it burns currency1
-/// │   └── when the pool is not native-paired
-/// │       └── it burns currency1
-/// └── when configured to burn currency0
-///     └── it burns currency0
+/// ├── when quote is native
+/// │   └── it burns currency1 of a native-paired pool
+/// ├── when quote is currency0
+/// │   └── it burns currency1 (token side)
+/// └── when quote is currency1
+///     └── it burns currency0 (token side)
 ///
 /// CompoundingClaimRecipient
 /// ├── when the liquidity increase is below the minimum
@@ -650,22 +649,24 @@ contract PositionRecipientsBTTTest is Test {
     }
 
     function test_BuybackAndBurn_WhenBurnCurrencyIsNative_Reverts() public {
+        // Quote is currency1 on an ETH/token pool → non-quote (burn) side is native ETH.
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
         BuybackAndBurnClaimRecipient recipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), true, 1);
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), currency1, 1);
         MockClaimExecutor executor = new MockClaimExecutor();
 
         vm.expectRevert(BuybackAndBurnClaimRecipient.InvalidBurnCurrency.selector);
         executor.execute(recipient, TOKEN_ID, 0, 0);
     }
 
-    function test_BuybackAndBurn_WhenPoolIsNativePaired_BurnsCurrency1(uint128 burnAmount) public {
+    function test_BuybackAndBurn_WhenQuoteIsNative_BurnsCurrency1(uint128 burnAmount) public {
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         PoolKey memory nativePool = PoolKey(Currency.wrap(address(0)), currency1, 3000, 60, IHooks(address(0)));
         _configure(nativePool, FEES_0, FEES_1, 1 ether);
-        BuybackAndBurnClaimRecipient recipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), false, burnAmount);
+        BuybackAndBurnClaimRecipient recipient = new BuybackAndBurnClaimRecipient(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), burnAmount
+        );
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
@@ -677,10 +678,11 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(currency1.balanceOf(address(0xdead)) - burnedBefore, burnAmount);
     }
 
-    function test_BuybackAndBurn_WhenPoolIsNotNativePaired_BurnsCurrency1(uint128 burnAmount) public {
+    function test_BuybackAndBurn_WhenQuoteIsCurrency0_BurnsCurrency1(uint128 burnAmount) public {
+        // Quote as currency0 (low-address orientation): burn the token side = currency1.
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         BuybackAndBurnClaimRecipient recipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), false, burnAmount);
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), currency0, burnAmount);
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency1), burnAmount);
         MockERC20(Currency.unwrap(currency1)).transfer(address(executor), burnAmount);
@@ -692,10 +694,11 @@ contract PositionRecipientsBTTTest is Test {
         assertEq(currency1.balanceOf(address(0xdead)) - burnedBefore, burnAmount);
     }
 
-    function test_BuybackAndBurn_WhenConfiguredToBurnCurrency0_BurnsCurrency0(uint128 burnAmount) public {
+    function test_BuybackAndBurn_WhenQuoteIsCurrency1_BurnsCurrency0(uint128 burnAmount) public {
+        // Quote as currency1 (high-address orientation): burn the token side = currency0.
         burnAmount = uint128(bound(burnAmount, 1, 100_000 ether));
         BuybackAndBurnClaimRecipient recipient =
-            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), true, burnAmount);
+            new BuybackAndBurnClaimRecipient(IPositionManager(address(manager)), currency1, burnAmount);
         MockBuybackAndBurnClaimExecutor executor =
             new MockBuybackAndBurnClaimExecutor(Currency.unwrap(currency0), burnAmount);
         MockERC20(Currency.unwrap(currency0)).transfer(address(executor), burnAmount);

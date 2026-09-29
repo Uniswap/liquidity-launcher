@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Breaking changes
-- `FeeSplitter` and `BeneficiaryVault` generalize from native-ETH `currency0` to an immutable `quoteCurrency` constructor parameter, serving pools that pair the quote on either side; `FeeSplit.nativeBps` is renamed to `quoteBps`, the `FeesCollected` event's `nativeAmount` to `quoteAmount`, `InvalidBaseCurrency` is replaced by `QuoteCurrencyNotInPool`, the vault's `nativeFallback` is renamed to `quoteFallback` with fallback routing by quote side, and `increaseLiquidity` only unwraps WETH for pools with a native `currency0` [#248](https://github.com/Uniswap/token-launcher/pull/248)
-- `BuybackAndBurnClaimRecipient` now burns `currency0` or `currency1`, selected by the new `burnCurrency0` immutable; `minCurrency1BurnAmount` is renamed to `minBurnAmount`, and the native-ETH `currency0` requirement is replaced by a check that the burn currency is an ERC20 [#246](https://github.com/Uniswap/token-launcher/pull/246)
+- `FeeSplitter` and `BeneficiaryVault` generalize from native-ETH `currency0` to an immutable `quoteCurrency` constructor parameter, serving pools that pair the quote on either side; `FeeSplit.nativeBps` is renamed to `quoteBps`, the `FeesCollected` event's `nativeAmount` to `quoteAmount`, `InvalidBaseCurrency` is replaced by `QuoteCurrencyNotInPool`, the vault's `nativeFallback` is renamed to `quoteFallback` with fallback routing by quote side, and `increaseLiquidity` only unwraps WETH for pools with a native `currency0`. Deploy scripts read `QUOTE_CURRENCY` (default native). An ERC20 quote must be an unrestricted, standard ERC20: blacklist, pause, fee-on-transfer, or rebasing quotes can permanently brick `collectFees` for every position [#248](https://github.com/Uniswap/token-launcher/pull/248)
+- `BuybackAndBurnClaimRecipient` burns the non-quote side of each position via an immutable `quoteCurrency` (replacing the positional `burnCurrency0` toggle from [#246](https://github.com/Uniswap/token-launcher/pull/246)); the burn currency must still be an ERC20. Deploy script shares `QUOTE_CURRENCY` with FeeSplitter, reads `MIN_BURN_AMOUNT` (renamed from `MIN_CURRENCY1_BURN_AMOUNT`; the old name is rejected), and rejects leftover `BURN_CURRENCY0` so CREATE2 cannot silently drift [#248](https://github.com/Uniswap/token-launcher/pull/248)
+- `InstantLaunchStrategy` requires the FeeSplitter (and beneficiary vault, if set) `quoteCurrency` to be native ETH, matching its always-native launch pools [#248](https://github.com/Uniswap/token-launcher/pull/248)
+
+### Fixed
+- `DeployFeeSplitter.deployWithCreatorFee` requires `BENEFICIARY_VAULT.quoteCurrency()` to match `QUOTE_CURRENCY`, so a mismatched vault cannot route unregistered creator quote shares to `tokenFallback` (0xdead) [#248](https://github.com/Uniswap/token-launcher/pull/248)
 
 ## [3.3.0]
 
