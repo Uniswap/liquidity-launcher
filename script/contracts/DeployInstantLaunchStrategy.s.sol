@@ -14,7 +14,6 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
     // The native-ETH launch configuration. Chains with a different quote currency get per-chain
     // parameters in a follow-up.
     Currency public constant quoteCurrency = Currency.wrap(address(0));
-    int24 public constant initialTick = 198_050;
     int24 public constant minLaunchTick = -160_100;
     int24 public constant maxInitialTick = 251_325;
 
@@ -22,6 +21,10 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
         DeployParameters memory params = getParameters(block.chainid);
         address liquidityLauncher = vm.envAddress("LIQUIDITY_LAUNCHER");
         if (liquidityLauncher == address(0)) revert("env: LIQUIDITY_LAUNCHER not set");
+
+        /// @dev 198_050 is used for default tick on ETH based chains
+        int24 initialTick = int24(int256(vm.envOr("INITIAL_TICK", uint256(198_050))));
+        console.log("Initial tick:", initialTick);
 
         bytes memory bytecode = abi.encodePacked(
             type(InstantLaunchStrategy).creationCode,
