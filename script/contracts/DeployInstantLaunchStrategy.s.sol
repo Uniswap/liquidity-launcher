@@ -28,7 +28,19 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
         int24 minLaunchTick = int24(vm.envOr("MIN_LAUNCH_TICK", DEFAULT_MIN_LAUNCH_TICK));
         int24 maxInitialTick = int24(vm.envOr("MAX_INITIAL_TICK", DEFAULT_MAX_INITIAL_TICK));
         int24 initialTick = int24(vm.envOr("INITIAL_TICK", DEFAULT_INITIAL_TICK));
-        uint256 minQuoteBlockerCost = vm.envOr("MIN_QUOTE_BLOCKER_COST", uint256(20_000_000 ether));
+        // For native (ETH) quote the default 20_000_000 ether is safe.
+        // For ERC20 quotes, minQuoteBlockerCost is interpreted in quote-token base units
+        // (e.g. 6-dec USDC: set MIN_QUOTE_BLOCKER_COST=20000000000000 for 20_000_000e6).
+        // ERC20 deploys MUST set MIN_QUOTE_BLOCKER_COST explicitly; there is no safe default.
+        uint256 minQuoteBlockerCost;
+        if (Currency.unwrap(quoteCurrency) == address(0)) {
+            minQuoteBlockerCost = vm.envOr("MIN_QUOTE_BLOCKER_COST", uint256(20_000_000 ether));
+        } else {
+            minQuoteBlockerCost = vm.envUint("MIN_QUOTE_BLOCKER_COST");
+            if (minQuoteBlockerCost == 0) {
+                revert("env: MIN_QUOTE_BLOCKER_COST must be set (non-zero) for ERC20 quote deployments");
+            }
+        }
         console.log("Quote currency:", Currency.unwrap(quoteCurrency));
         console.log("Initial tick:");
         console.logInt(int256(initialTick));
