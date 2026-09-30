@@ -45,6 +45,10 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the launch range prices the position liquidity above the per-tick maximum
 /// │   └── it reverts with InvalidPositionLiquidity
+/// ├── when a non-native quote has no code
+/// │   └── it reverts with InvalidQuoteCurrency
+/// ├── when the launch floor is cheap to saturate
+/// │   └── it reverts with UnsafeBlockerCost
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
 ///     ├── it derives a position liquidity for each quote position that fits in a single position
@@ -240,9 +244,25 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_WhenConfigurationIsValid_storesErc20QuoteCurrency() public {
+        _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         Currency quote = Currency.wrap(HIGH_QUOTE_ADDRESS);
         InstantLaunchStrategy deployed = _deployStrategy(quote, INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         assertEq(Currency.unwrap(deployed.quoteCurrency()), HIGH_QUOTE_ADDRESS);
+    }
+
+    function test_WhenNonNativeQuoteHasNoCode_reverts() public {
+        // An EOA quote cannot settle launches; the constructor rejects empty code.
+        vm.expectRevert(InstantLaunchStrategy.InvalidQuoteCurrency.selector);
+        _deployStrategy(Currency.wrap(HIGH_QUOTE_ADDRESS), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+    }
+
+    function test_WhenLaunchFloorIsCheapToSaturate_reverts() public {
+        // A deep, wide-range floor leaves remaining maxLiquidityPerTick capacity cheap in tokens.
+        int24 unsafeFloor = -800_000;
+        // Align to TICK_SPACING.
+        unsafeFloor -= unsafeFloor % 25;
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        _deployStrategy(NATIVE, INITIAL_TICK, unsafeFloor, MAX_INITIAL_TICK);
     }
 
     function test_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply() public {

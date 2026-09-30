@@ -12,6 +12,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
@@ -56,6 +57,9 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
 
     /// @notice Total token supply required for every launch.
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
+    /// @notice Minimum native-quote cost to saturate the launch position upper tick at the configured
+    ///         initial tick. Applies only when the quote currency is native (address zero).
+    uint256 public constant UPPER_TICK_BLOCKER_COST_FLOOR = 20_000_000 ether;
     /// @notice Static LP fee of 25 bps
     uint24 public constant LP_FEE = 2_500;
     /// @notice Tick spacing, equal to the LP fee in bps
@@ -106,6 +110,12 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
     error InvalidTokenDecimals();
     /// @notice Thrown when the configured ticks cannot define the launch range.
     error InvalidTickRange();
+    /// @notice Thrown when saturating maxLiquidityPerTick at the launch floor or initial tick costs
+    ///         at most TOTAL_SUPPLY of the launched token (or below UPPER_TICK_BLOCKER_COST_FLOOR of
+    ///         native quote on the quote side).
+    error UnsafeBlockerCost();
+    /// @notice Thrown when a non-native quote currency address has no contract code.
+    error InvalidQuoteCurrency();
     /// @notice Thrown when either quote position's launch liquidity is zero or exceeds the pool's
     ///         per-tick maximum.
     /// @param liquidity The invalid liquidity
@@ -148,6 +158,12 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
                 || address(_feeSplitter) == address(0)
         ) {
             revert ZeroAddress();
+        }
+        // A non-native quote with no code cannot settle launches or later swaps; reject before
+        // storing the immutable.
+        address quoteAddress = Currency.unwrap(_poolConfig.quoteCurrency);
+        if (quoteAddress != address(0) && quoteAddress.code.length == 0) {
+            revert InvalidQuoteCurrency();
         }
         // The splitter collects through its own PositionManager; a mismatch would leave every
         // launch position's fees permanently uncollectable.
@@ -214,6 +230,100 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         }
         if (quote1PositionLiquidity == 0 || quote1PositionLiquidity > maxLiquidityPerTick) {
             revert InvalidPositionLiquidity(quote1PositionLiquidity);
+        }
+
+        // Saturating either adjacent one-spacing range at the floor or at the initial tick must cost
+        // more than TOTAL_SUPPLY of the launched token. When the quote is native, the quote-side
+        // upper-tick blocker must also clear UPPER_TICK_BLOCKER_COST_FLOOR.
+        _assertBlockerCostsSafe(
+            _poolConfig.minLaunchTick,
+            _poolConfig.initialTick,
+            quote0PositionLiquidity,
+            quote1PositionLiquidity,
+            maxLiquidityPerTick,
+            quoteAddress == address(0)
+        );
+    }
+
+    /// @dev Reverts with UnsafeBlockerCost when an attacker can fill the remaining maxLiquidityPerTick
+    ///      capacity at the floor or initial tick with at most TOTAL_SUPPLY launched tokens (or below
+    ///      UPPER_TICK_BLOCKER_COST_FLOOR of native quote on the quote side).
+    function _assertBlockerCostsSafe(
+        int24 floorTick,
+        int24 openTick,
+        uint128 quote0Liquidity,
+        uint128 quote1Liquidity,
+        uint128 maxLiquidityPerTick,
+        bool nativeQuote
+    ) private pure {
+        uint128 quote0Blocker = maxLiquidityPerTick - quote0Liquidity;
+        uint128 quote1Blocker = maxLiquidityPerTick - quote1Liquidity;
+
+        // Quote as currency0: floor blockers fund amount1 (token); upper blockers fund amount0 (quote)
+        // above the open tick and amount1 (token) below it.
+        uint256 floorCostAbove = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(floorTick),
+            TickMath.getSqrtPriceAtTick(floorTick + TICK_SPACING),
+            quote0Blocker,
+            true
+        );
+        uint256 floorCostBelow = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(floorTick - TICK_SPACING),
+            TickMath.getSqrtPriceAtTick(floorTick),
+            quote0Blocker,
+            true
+        );
+        uint256 upperCostAbove = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(openTick),
+            TickMath.getSqrtPriceAtTick(openTick + TICK_SPACING),
+            quote0Blocker,
+            true
+        );
+        uint256 upperCostBelow = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(openTick - TICK_SPACING),
+            TickMath.getSqrtPriceAtTick(openTick),
+            quote0Blocker,
+            true
+        );
+        if (
+            floorCostAbove <= TOTAL_SUPPLY || floorCostBelow <= TOTAL_SUPPLY || upperCostBelow <= TOTAL_SUPPLY
+                || (nativeQuote && upperCostAbove <= UPPER_TICK_BLOCKER_COST_FLOOR)
+        ) {
+            revert UnsafeBlockerCost();
+        }
+
+        // Quote as currency1: floor is -minLaunchTick (amount0 = token); open is -initialTick.
+        int24 quote1Floor = -floorTick;
+        int24 quote1Open = -openTick;
+        uint256 q1FloorAbove = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(quote1Floor),
+            TickMath.getSqrtPriceAtTick(quote1Floor + TICK_SPACING),
+            quote1Blocker,
+            true
+        );
+        uint256 q1FloorBelow = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(quote1Floor - TICK_SPACING),
+            TickMath.getSqrtPriceAtTick(quote1Floor),
+            quote1Blocker,
+            true
+        );
+        uint256 q1UpperBelow = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(quote1Open - TICK_SPACING),
+            TickMath.getSqrtPriceAtTick(quote1Open),
+            quote1Blocker,
+            true
+        );
+        uint256 q1UpperAbove = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(quote1Open),
+            TickMath.getSqrtPriceAtTick(quote1Open + TICK_SPACING),
+            quote1Blocker,
+            true
+        );
+        if (
+            q1FloorAbove <= TOTAL_SUPPLY || q1FloorBelow <= TOTAL_SUPPLY || q1UpperAbove <= TOTAL_SUPPLY
+                || (nativeQuote && q1UpperBelow <= UPPER_TICK_BLOCKER_COST_FLOOR)
+        ) {
+            revert UnsafeBlockerCost();
         }
     }
 

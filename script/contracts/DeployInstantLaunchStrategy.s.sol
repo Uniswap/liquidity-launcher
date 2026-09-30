@@ -11,20 +11,30 @@ import {IFeeSplitter} from "../../src/interfaces/IFeeSplitter.sol";
 import {IBeneficiaryVault} from "../../src/interfaces/IBeneficiaryVault.sol";
 
 contract DeployInstantLaunchStrategyScript is Script, Parameters {
-    // The native-ETH launch configuration. Chains with a different quote currency get per-chain
-    // parameters in a follow-up.
-    Currency public constant quoteCurrency = Currency.wrap(address(0));
-    int24 public constant minLaunchTick = -160_100;
-    int24 public constant maxInitialTick = 251_325;
+    // Defaults match the reviewed mainnet native-ETH launch configuration. Override with
+    // QUOTE_CURRENCY / MIN_LAUNCH_TICK / MAX_INITIAL_TICK / INITIAL_TICK for other chains
+    // (for example ARC USDC at 0x3600…0000).
+    address internal constant DEFAULT_QUOTE_CURRENCY = address(0);
+    int256 internal constant DEFAULT_MIN_LAUNCH_TICK = -160_100;
+    int256 internal constant DEFAULT_MAX_INITIAL_TICK = 251_325;
+    int256 internal constant DEFAULT_INITIAL_TICK = 198_050;
 
     function run(address feeSplitter, address beneficiaryVault) public returns (address instantLaunchStrategy) {
         DeployParameters memory params = getParameters(block.chainid);
         address liquidityLauncher = vm.envAddress("LIQUIDITY_LAUNCHER");
         if (liquidityLauncher == address(0)) revert("env: LIQUIDITY_LAUNCHER not set");
 
-        /// @dev 198_050 is used for default tick on ETH based chains
-        int24 initialTick = int24(int256(vm.envOr("INITIAL_TICK", uint256(198_050))));
-        console.log("Initial tick:", initialTick);
+        Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", DEFAULT_QUOTE_CURRENCY));
+        int24 minLaunchTick = int24(vm.envOr("MIN_LAUNCH_TICK", DEFAULT_MIN_LAUNCH_TICK));
+        int24 maxInitialTick = int24(vm.envOr("MAX_INITIAL_TICK", DEFAULT_MAX_INITIAL_TICK));
+        int24 initialTick = int24(vm.envOr("INITIAL_TICK", DEFAULT_INITIAL_TICK));
+        console.log("Quote currency:", Currency.unwrap(quoteCurrency));
+        console.log("Initial tick:");
+        console.logInt(int256(initialTick));
+        console.log("Min launch tick:");
+        console.logInt(int256(minLaunchTick));
+        console.log("Max initial tick:");
+        console.logInt(int256(maxInitialTick));
 
         bytes memory bytecode = abi.encodePacked(
             type(InstantLaunchStrategy).creationCode,
