@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {InstantLaunchTestBase} from "../../base/InstantLaunchTestBase.sol";
-import {InstantLaunchStrategy} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
+import {InstantLaunchStrategy, LaunchPoolConfig} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
@@ -48,6 +48,12 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// ├── when a non-native quote has no code
 /// │   └── it reverts with InvalidQuoteCurrency
 /// ├── when the launch floor is cheap to saturate
+/// │   └── it reverts with UnsafeBlockerCost
+/// ├── when native quote and minQuoteBlockerCost is below UPPER_TICK_BLOCKER_COST_FLOOR
+/// │   └── it reverts with UnsafeBlockerCost
+/// ├── when ERC20 quote and minQuoteBlockerCost is zero
+/// │   └── it reverts with UnsafeBlockerCost
+/// ├── when ERC20 quote with unsafe upper-tick ticks and a positive minQuoteBlockerCost the cost cannot meet
 /// │   └── it reverts with UnsafeBlockerCost
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
@@ -425,5 +431,73 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertLe(deployed.quote0PositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
         assertGt(deployed.quote1PositionLiquidity(), 0);
         assertLe(deployed.quote1PositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+    }
+
+    function test_WhenNativeQuoteAndMinQuoteBlockerCostBelowFloor_reverts() public {
+        // A native deployment that undercuts the ETH cost floor must be rejected at construction so
+        // a deployer cannot inadvertently weaken the upper-tick quote-side blocker guarantee.
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: NATIVE,
+                initialTick: INITIAL_TICK,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: MAX_INITIAL_TICK,
+                minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR - 1
+            })
+        );
+    }
+
+    function test_WhenErc20QuoteAndMinQuoteBlockerCostIsZero_reverts() public {
+        // An ERC20 deployment with a zero floor provides no protection; the constructor must reject it.
+        _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(HIGH_QUOTE_ADDRESS),
+                initialTick: INITIAL_TICK,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: MAX_INITIAL_TICK,
+                minQuoteBlockerCost: 0
+            })
+        );
+    }
+
+    function test_WhenErc20QuoteAndUpperTickCheaperThanFloor_reverts() public {
+        // An ERC20 configuration with an extreme initial tick produces an almost-zero quote-side
+        // upper blocker cost. Even a modest floor (far below UPPER_TICK_BLOCKER_COST_FLOOR) must
+        // catch this, proving the check is unconditional for ERC20.
+        //
+        // At initialTick = maxInitialTick = 887200, getSqrtPriceAtTick(887200..887225) is so close
+        // to the tick ceiling that amount0 per unit of liquidity is near zero. The 18-decimal ERC20
+        // mock has the same precision as native ETH, so the cost falls well below 1 ether.
+        int24 unsafeInitialTick = 887200; // aligned to TICK_SPACING=25; far below maxUsableTick(25)=887250
+        int24 unsafeMaxInitialTick = unsafeInitialTick;
+        _deployQuoteToken(LOW_QUOTE_ADDRESS);
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(LOW_QUOTE_ADDRESS),
+                initialTick: unsafeInitialTick,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: unsafeMaxInitialTick,
+                minQuoteBlockerCost: 1 ether
+            })
+        );
     }
 }

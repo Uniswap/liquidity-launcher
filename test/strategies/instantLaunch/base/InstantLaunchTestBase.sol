@@ -130,7 +130,8 @@ abstract contract InstantLaunchTestBase is Test {
                 quoteCurrency: quoteCurrency,
                 initialTick: initialTick,
                 minLaunchTick: minLaunchTick,
-                maxInitialTick: maxInitialTick
+                maxInitialTick: maxInitialTick,
+                minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR
             })
         );
     }
@@ -148,7 +149,8 @@ abstract contract InstantLaunchTestBase is Test {
             quoteCurrency: NATIVE,
             initialTick: INITIAL_TICK,
             minLaunchTick: MIN_LAUNCH_TICK,
-            maxInitialTick: MAX_INITIAL_TICK
+            maxInitialTick: MAX_INITIAL_TICK,
+            minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR
         });
     }
 

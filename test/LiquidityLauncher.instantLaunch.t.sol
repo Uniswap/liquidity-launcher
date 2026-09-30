@@ -88,7 +88,8 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
                 quoteCurrency: Currency.wrap(address(0)),
                 initialTick: INITIAL_TICK,
                 minLaunchTick: -160_100,
-                maxInitialTick: 251_325
+                maxInitialTick: 251_325,
+                minQuoteBlockerCost: 20_000_000 ether
             })
         );
     }

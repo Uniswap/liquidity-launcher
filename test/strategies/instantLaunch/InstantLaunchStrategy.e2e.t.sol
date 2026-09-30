@@ -80,7 +80,8 @@ contract InstantLaunchStrategyE2ETest is Test {
                 quoteCurrency: Currency.wrap(address(0)),
                 initialTick: INITIAL_TICK,
                 minLaunchTick: MIN_LAUNCH_TICK,
-                maxInitialTick: MAX_INITIAL_TICK
+                maxInitialTick: MAX_INITIAL_TICK,
+                minQuoteBlockerCost: 20_000_000 ether
             })
         );
         swapRouter = new PoolSwapTest(POOL_MANAGER);

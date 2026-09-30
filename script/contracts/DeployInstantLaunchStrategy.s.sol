@@ -28,6 +28,7 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
         int24 minLaunchTick = int24(vm.envOr("MIN_LAUNCH_TICK", DEFAULT_MIN_LAUNCH_TICK));
         int24 maxInitialTick = int24(vm.envOr("MAX_INITIAL_TICK", DEFAULT_MAX_INITIAL_TICK));
         int24 initialTick = int24(vm.envOr("INITIAL_TICK", DEFAULT_INITIAL_TICK));
+        uint256 minQuoteBlockerCost = vm.envOr("MIN_QUOTE_BLOCKER_COST", uint256(20_000_000 ether));
         console.log("Quote currency:", Currency.unwrap(quoteCurrency));
         console.log("Initial tick:");
         console.logInt(int256(initialTick));
@@ -35,6 +36,7 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
         console.logInt(int256(minLaunchTick));
         console.log("Max initial tick:");
         console.logInt(int256(maxInitialTick));
+        console.log("Min quote blocker cost:", minQuoteBlockerCost);
 
         bytes memory bytecode = abi.encodePacked(
             type(InstantLaunchStrategy).creationCode,
@@ -48,7 +50,8 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
                     quoteCurrency: quoteCurrency,
                     initialTick: initialTick,
                     minLaunchTick: minLaunchTick,
-                    maxInitialTick: maxInitialTick
+                    maxInitialTick: maxInitialTick,
+                    minQuoteBlockerCost: minQuoteBlockerCost
                 })
             )
         );

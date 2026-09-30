@@ -38,11 +38,15 @@ struct InstantLaunchConfig {
 /// @param initialTick The tick at which each pool opens
 /// @param minLaunchTick The lower tick of every launch position
 /// @param maxInitialTick The highest deployable initial tick
+/// @param minQuoteBlockerCost Minimum quote-currency base units required to saturate the launch
+///        upper-tick quote-side adjacent range; enforced for both orientations regardless of
+///        whether the quote is native or ERC20
 struct LaunchPoolConfig {
     Currency quoteCurrency;
     int24 initialTick;
     int24 minLaunchTick;
     int24 maxInitialTick;
+    uint256 minQuoteBlockerCost;
 }
 
 /// @title InstantLaunchStrategy
@@ -165,6 +169,13 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         if (quoteAddress != address(0) && quoteAddress.code.length == 0) {
             revert InvalidQuoteCurrency();
         }
+        // Native deployments must preserve the reviewed ETH floor; ERC20 deployments must supply
+        // a positive floor denominated in their quote token's base units.
+        if (quoteAddress == address(0)) {
+            if (_poolConfig.minQuoteBlockerCost < UPPER_TICK_BLOCKER_COST_FLOOR) revert UnsafeBlockerCost();
+        } else {
+            if (_poolConfig.minQuoteBlockerCost == 0) revert UnsafeBlockerCost();
+        }
         // The splitter collects through its own PositionManager; a mismatch would leave every
         // launch position's fees permanently uncollectable.
         if (_feeSplitter.positionManager() != _positionManager) {
@@ -233,28 +244,28 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         }
 
         // Saturating either adjacent one-spacing range at the floor or at the initial tick must cost
-        // more than TOTAL_SUPPLY of the launched token. When the quote is native, the quote-side
-        // upper-tick blocker must also clear UPPER_TICK_BLOCKER_COST_FLOOR.
+        // more than TOTAL_SUPPLY of the launched token. The quote-side upper-tick blocker must also
+        // exceed the deployment-supplied minimum quote cost for both orientations.
         _assertBlockerCostsSafe(
             _poolConfig.minLaunchTick,
             _poolConfig.initialTick,
             quote0PositionLiquidity,
             quote1PositionLiquidity,
             maxLiquidityPerTick,
-            quoteAddress == address(0)
+            _poolConfig.minQuoteBlockerCost
         );
     }
 
     /// @dev Reverts with UnsafeBlockerCost when an attacker can fill the remaining maxLiquidityPerTick
-    ///      capacity at the floor or initial tick with at most TOTAL_SUPPLY launched tokens (or below
-    ///      UPPER_TICK_BLOCKER_COST_FLOOR of native quote on the quote side).
+    ///      capacity at the floor or initial tick with at most TOTAL_SUPPLY launched tokens, or when
+    ///      the quote-side upper-tick blocker cost falls at or below minQuoteBlockerCost.
     function _assertBlockerCostsSafe(
         int24 floorTick,
         int24 openTick,
         uint128 quote0Liquidity,
         uint128 quote1Liquidity,
         uint128 maxLiquidityPerTick,
-        bool nativeQuote
+        uint256 minQuoteBlockerCost
     ) private pure {
         uint128 quote0Blocker = maxLiquidityPerTick - quote0Liquidity;
         uint128 quote1Blocker = maxLiquidityPerTick - quote1Liquidity;
@@ -287,7 +298,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         );
         if (
             floorCostAbove <= TOTAL_SUPPLY || floorCostBelow <= TOTAL_SUPPLY || upperCostBelow <= TOTAL_SUPPLY
-                || (nativeQuote && upperCostAbove <= UPPER_TICK_BLOCKER_COST_FLOOR)
+                || upperCostAbove <= minQuoteBlockerCost
         ) {
             revert UnsafeBlockerCost();
         }
@@ -321,7 +332,7 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         );
         if (
             q1FloorAbove <= TOTAL_SUPPLY || q1FloorBelow <= TOTAL_SUPPLY || q1UpperAbove <= TOTAL_SUPPLY
-                || (nativeQuote && q1UpperBelow <= UPPER_TICK_BLOCKER_COST_FLOOR)
+                || q1UpperBelow <= minQuoteBlockerCost
         ) {
             revert UnsafeBlockerCost();
         }
