@@ -92,9 +92,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         FeeSplitter mismatched =
             new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
 
-        vm.expectRevert(
-            abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote))
-        );
+        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote)));
         new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
     }
 
@@ -119,9 +117,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         BeneficiaryVault mismatched =
             new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), tokenJar, address(0xdead));
 
-        vm.expectRevert(
-            abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote))
-        );
+        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote)));
         new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, INITIAL_TICK);
     }
 

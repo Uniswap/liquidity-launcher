@@ -19,10 +19,7 @@ contract DeployBuybackAndBurnClaimRecipientScript is Script, Parameters {
         DeployParameters memory params = getParameters(block.chainid);
 
         // Old names must not linger: they are part of CREATE2 init code and would silently drift.
-        require(
-            !vm.envExists("MIN_CURRENCY1_BURN_AMOUNT"),
-            "env: MIN_CURRENCY1_BURN_AMOUNT renamed to MIN_BURN_AMOUNT"
-        );
+        require(!vm.envExists("MIN_CURRENCY1_BURN_AMOUNT"), "env: MIN_CURRENCY1_BURN_AMOUNT renamed to MIN_BURN_AMOUNT");
         require(
             !vm.envExists("BURN_CURRENCY0"),
             "env: BURN_CURRENCY0 removed; set QUOTE_CURRENCY (non-quote side is burned)"
