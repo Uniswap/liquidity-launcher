@@ -25,6 +25,16 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
         if (liquidityLauncher == address(0)) revert("env: LIQUIDITY_LAUNCHER not set");
 
         Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", DEFAULT_QUOTE_CURRENCY));
+        // Collaborators route by their own quote. A mismatch freezes launch fees (splitter) or
+        // sends unregistered creator quote shares to the wrong fallback (vault).
+        require(
+            IFeeSplitter(feeSplitter).quoteCurrency() == quoteCurrency,
+            "env: FEE_SPLITTER quoteCurrency must match QUOTE_CURRENCY"
+        );
+        require(
+            beneficiaryVault == address(0) || IBeneficiaryVault(beneficiaryVault).quoteCurrency() == quoteCurrency,
+            "env: BENEFICIARY_VAULT quoteCurrency must match QUOTE_CURRENCY"
+        );
         int24 minLaunchTick = int24(vm.envOr("MIN_LAUNCH_TICK", DEFAULT_MIN_LAUNCH_TICK));
         int24 maxInitialTick = int24(vm.envOr("MAX_INITIAL_TICK", DEFAULT_MAX_INITIAL_TICK));
         int24 initialTick = int24(vm.envOr("INITIAL_TICK", DEFAULT_INITIAL_TICK));

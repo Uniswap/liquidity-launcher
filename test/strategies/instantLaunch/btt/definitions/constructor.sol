@@ -14,6 +14,7 @@ import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {MockERC20} from "../../../../mocks/MockERC20.sol";
 
 /// @title ConstructorTest
 /// @notice BTT tests for InstantLaunchStrategy.constructor
@@ -23,8 +24,12 @@ import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 /// │   └── it reverts with ZeroAddress
 /// ├── when the fee splitter uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
+/// ├── when the fee splitter quote does not match
+/// │   └── it reverts with QuoteCurrencyMismatch
 /// ├── when the beneficiary vault uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
+/// ├── when the beneficiary vault quote does not match
+/// │   └── it reverts with QuoteCurrencyMismatch
 /// ├── when the beneficiary vault is zero
 /// │   └── it deploys with creator fees disabled
 /// ├── when the initial tick is not aligned
@@ -94,7 +99,8 @@ contract ConstructorTest is InstantLaunchTestBase {
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
         // The splitter resolves its PoolManager from the PositionManager at construction.
         vm.mockCall(address(otherPositionManager), abi.encodeWithSignature("poolManager()"), abi.encode(address(0)));
-        FeeSplitter mismatched = new FeeSplitter(otherPositionManager, feeSplitter.getSplits());
+        FeeSplitter mismatched =
+            new FeeSplitter(otherPositionManager, Currency.wrap(address(0)), feeSplitter.getSplits());
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -106,11 +112,33 @@ contract ConstructorTest is InstantLaunchTestBase {
         );
     }
 
+    function test_WhenFeeSplitterQuoteDoesNotMatch(bool strategyIsNative) public {
+        // A splitter quote that is not the strategy quote freezes every launch's fees.
+        MockERC20 quote = new MockERC20("Quote", "QUOTE", 0, address(this));
+
+        if (strategyIsNative) {
+            FeeSplitter erc20Splitter =
+                new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
+            vm.expectRevert(
+                abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(quote))
+            );
+            new InstantLaunchStrategy(
+                launcher, POSITION_MANAGER, POOL_MANAGER, erc20Splitter, beneficiaryVault, _defaultPoolConfig()
+            );
+        } else {
+            LaunchPoolConfig memory config = _defaultPoolConfig();
+            config.quoteCurrency = Currency.wrap(address(quote));
+            vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(0)));
+            new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, config);
+        }
+    }
+
     function test_WhenBeneficiaryVaultUsesDifferentPositionManager() public {
         // Registration proves custody against the vault's PositionManager; a mismatch would revert
         // every launch at registration.
         IPositionManager otherPositionManager = IPositionManager(makeAddr("otherPositionManager"));
-        BeneficiaryVault mismatched = new BeneficiaryVault(otherPositionManager, tokenJar, address(0xdead));
+        BeneficiaryVault mismatched =
+            new BeneficiaryVault(otherPositionManager, Currency.wrap(address(0)), tokenJar, address(0xdead));
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -120,6 +148,29 @@ contract ConstructorTest is InstantLaunchTestBase {
         new InstantLaunchStrategy(
             launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, _defaultPoolConfig()
         );
+    }
+
+    function test_WhenBeneficiaryVaultQuoteDoesNotMatch(bool strategyIsNative) public {
+        // A vault quote mismatch routes unregistered creator quote shares to the wrong fallback.
+        MockERC20 quote = new MockERC20("Quote", "QUOTE", 0, address(this));
+
+        if (strategyIsNative) {
+            BeneficiaryVault erc20Vault =
+                new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), tokenJar, address(0xdead));
+            vm.expectRevert(
+                abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(quote))
+            );
+            new InstantLaunchStrategy(
+                launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, erc20Vault, _defaultPoolConfig()
+            );
+        } else {
+            FeeSplitter erc20Splitter =
+                new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
+            LaunchPoolConfig memory config = _defaultPoolConfig();
+            config.quoteCurrency = Currency.wrap(address(quote));
+            vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(0)));
+            new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, erc20Splitter, beneficiaryVault, config);
+        }
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
@@ -252,8 +303,10 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_WhenConfigurationIsValid_storesErc20QuoteCurrency() public {
         _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         Currency quote = Currency.wrap(HIGH_QUOTE_ADDRESS);
-        InstantLaunchStrategy deployed = _deployStrategy(quote, INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+        InstantLaunchStrategy deployed = _deployQuotedStrategy(quote, INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         assertEq(Currency.unwrap(deployed.quoteCurrency()), HIGH_QUOTE_ADDRESS);
+        assertEq(Currency.unwrap(IFeeSplitter(address(deployed.feeSplitter())).quoteCurrency()), HIGH_QUOTE_ADDRESS);
+        assertEq(Currency.unwrap(deployed.beneficiaryVault().quoteCurrency()), HIGH_QUOTE_ADDRESS);
     }
 
     function test_WhenNonNativeQuoteHasNoCode_reverts() public {
@@ -456,6 +509,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_WhenErc20QuoteAndMinQuoteBlockerCostIsZero_reverts() public {
         // An ERC20 deployment with a zero floor provides no protection; the constructor must reject it.
         _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        _deployFeeSplitter(Currency.wrap(HIGH_QUOTE_ADDRESS));
         vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
         new InstantLaunchStrategy(
             launcher,
@@ -484,6 +538,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         int24 unsafeInitialTick = 887200; // aligned to TICK_SPACING=25; far below maxUsableTick(25)=887250
         int24 unsafeMaxInitialTick = unsafeInitialTick;
         _deployQuoteToken(LOW_QUOTE_ADDRESS);
+        _deployFeeSplitter(Currency.wrap(LOW_QUOTE_ADDRESS));
         vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
         new InstantLaunchStrategy(
             launcher,

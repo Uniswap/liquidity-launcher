@@ -34,7 +34,7 @@ contract VestingClaimRecipientTest is Test {
     uint256 internal constant FEES_1 = 3 ether;
     uint128 internal constant INITIAL_LIQUIDITY = 100 ether;
     uint128 internal constant MAX_PER_BLOCK = 0.5 ether;
-    address internal constant NATIVE_FALLBACK = address(0xdead);
+    address internal constant QUOTE_FALLBACK = address(0xdead);
     address internal constant TOKEN_FALLBACK = address(0xbeef);
 
     address internal creator = makeAddr("creator");
@@ -55,7 +55,9 @@ contract VestingClaimRecipientTest is Test {
         poolKey = PoolKey(Currency.wrap(address(0)), Currency.wrap(address(launchToken)), 3000, 60, IHooks(address(0)));
         manager.configure(poolKey, TOKEN_ID, FEES_0, FEES_1, INITIAL_LIQUIDITY, 1 ether);
 
-        vault = new UERC20BeneficiaryVault(IPositionManager(address(manager)), NATIVE_FALLBACK, TOKEN_FALLBACK);
+        vault = new UERC20BeneficiaryVault(
+            IPositionManager(address(manager)), Currency.wrap(address(0)), QUOTE_FALLBACK, TOKEN_FALLBACK
+        );
         pinned = new BaseClaimRecipientHarness(IPositionManager(address(manager)));
         IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](1);
         allowlist[0] = vault;
@@ -232,7 +234,7 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
     uint128 internal constant USDC_MAX_PER_BLOCK = 1e6;
     uint256 internal constant USDC_FEES = 10e6;
 
-    address internal nativeFallback = makeAddr("nativeFallback");
+    address internal quoteFallback = makeAddr("quoteFallback");
     address internal tokenFallback = makeAddr("tokenFallback");
     address internal searcher = makeAddr("searcher");
 
@@ -244,7 +246,9 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
         super.setUp();
         vm.createSelectFork(vm.envString("QUICKNODE_RPC_URL"), FORK_BLOCK);
         pinned = new BaseClaimRecipientHarness(IPositionManager(POSITION_MANAGER));
-        vault = new BeneficiaryVault(IPositionManager(POSITION_MANAGER), nativeFallback, tokenFallback);
+        vault = new BeneficiaryVault(
+            IPositionManager(POSITION_MANAGER), Currency.wrap(address(0)), quoteFallback, tokenFallback
+        );
         IBeneficiaryVault[] memory allowlist = new IBeneficiaryVault[](1);
         allowlist[0] = vault;
         vesting = new VestingClaimRecipient(
@@ -331,8 +335,8 @@ contract VestingClaimRecipientForkTest is PositionRecipientTestBase {
     ///         to the pinned final recipient. Each leg asserts the hand-off the separate suites cannot.
     function test_Fork_E2E_FeeSplitterToVaultToVestingToRecipient() public {
         FeeSplit[] memory splits = new FeeSplit[](1);
-        splits[0] = FeeSplit({recipient: address(vault), nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
-        FeeSplitter feeSplitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
+        splits[0] = FeeSplit({recipient: address(vault), quoteBps: 10_000, tokenBps: 10_000, useCallback: true});
+        FeeSplitter feeSplitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), Currency.wrap(address(0)), splits);
 
         // registration is authorized by position custody, so it happens before the position moves away
         _yoinkPosition(FORK_TOKEN_ID, address(this));

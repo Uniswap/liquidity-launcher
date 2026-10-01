@@ -136,7 +136,7 @@ contract BeneficiaryVaultTest is Test {
 
     BeneficiaryVault internal vault;
     MockERC20 internal token;
-    address internal nativeFallback = makeAddr("nativeFallback");
+    address internal quoteFallback = makeAddr("quoteFallback");
     address internal tokenFallback = makeAddr("tokenFallback");
     address internal beneficiary = makeAddr("beneficiary");
 
@@ -147,19 +147,28 @@ contract BeneficiaryVaultTest is Test {
             abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
             address(POSITION_MANAGER)
         );
-        vault = new BeneficiaryVault(POSITION_MANAGER, nativeFallback, tokenFallback);
+        vault = new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), quoteFallback, tokenFallback);
         token = new MockERC20("Token", "TOKEN", 1_000_000 ether, address(this));
         vm.deal(address(this), 1_000 ether);
     }
 
     function _mintPosition(address owner) internal returns (uint256 tokenId) {
-        PoolKey memory key = PoolKey({
-            currency0: CurrencyLibrary.ADDRESS_ZERO,
-            currency1: Currency.wrap(address(token)),
+        return _mintPositionForPool(_key(address(0), address(token)), owner);
+    }
+
+    /// @notice The pool key for the two currencies, sorted by address.
+    function _key(address a, address b) internal pure returns (PoolKey memory) {
+        (address currency0, address currency1) = a < b ? (a, b) : (b, a);
+        return PoolKey({
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
+    }
+
+    function _mintPositionForPool(PoolKey memory key, address owner) internal returns (uint256 tokenId) {
         POOL_MANAGER.initialize(key, SQRT_PRICE_1_1);
         int24 lower = TickMath.minUsableTick(TICK_SPACING);
         int24 upper = TickMath.maxUsableTick(TICK_SPACING);
@@ -175,8 +184,20 @@ contract BeneficiaryVaultTest is Test {
         params[2] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
         params[3] = abi.encode(key.currency0, key.currency1, address(this));
         tokenId = POSITION_MANAGER.nextTokenId();
-        token.transfer(address(POSITION_MANAGER), 100 ether);
-        POSITION_MANAGER.modifyLiquidities{value: 100 ether}(abi.encode(actions, params), block.timestamp);
+        uint256 value;
+        if (key.currency0.isAddressZero()) value = 100 ether;
+        else IERC20(Currency.unwrap(key.currency0)).transfer(address(POSITION_MANAGER), 100 ether);
+        IERC20(Currency.unwrap(key.currency1)).transfer(address(POSITION_MANAGER), 100 ether);
+        POSITION_MANAGER.modifyLiquidities{value: value}(abi.encode(actions, params), block.timestamp);
+    }
+
+    /// @notice Etches an ERC20 quote at a fixed address so its sort order against `token` is
+    ///         deterministic.
+    function _deployQuoteToken(address at) internal returns (MockERC20 quote) {
+        deployCodeTo(
+            "test/mocks/MockERC20.sol:MockERC20", abi.encode("Quote", "QUOTE", 1_000_000 ether, address(this)), at
+        );
+        return MockERC20(at);
     }
 
     function _register(uint256 tokenId, address custodian, address owner) internal {
@@ -193,7 +214,8 @@ contract BeneficiaryVaultTest is Test {
     }
 
     function test_constructor_storesFallbacksAndMetadata() public view {
-        assertEq(vault.nativeFallback(), nativeFallback);
+        assertEq(Currency.unwrap(vault.quoteCurrency()), address(0));
+        assertEq(vault.quoteFallback(), quoteFallback);
         assertEq(vault.tokenFallback(), tokenFallback);
         assertEq(vault.name(), "Fee Beneficiary");
         assertEq(vault.symbol(), "FEEB");
@@ -202,15 +224,15 @@ contract BeneficiaryVaultTest is Test {
 
     function test_constructor_revertsOnInvalidNativeFallback() public {
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidFallback.selector, address(0)));
-        new BeneficiaryVault(POSITION_MANAGER, address(0), tokenFallback);
+        new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), address(0), tokenFallback);
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidFallback.selector, predicted));
-        new BeneficiaryVault(POSITION_MANAGER, predicted, tokenFallback);
+        new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), predicted, tokenFallback);
     }
 
     function test_constructor_revertsOnInvalidTokenFallback() public {
         vm.expectRevert(abi.encodeWithSelector(IBeneficiaryVault.InvalidFallback.selector, address(0)));
-        new BeneficiaryVault(POSITION_MANAGER, nativeFallback, address(0));
+        new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), quoteFallback, address(0));
     }
 
     function test_registerBeneficiary_requiresCustodyAndMints() public {
@@ -312,13 +334,67 @@ contract BeneficiaryVaultTest is Test {
         _credit(vault, tokenId, 1 ether, 2 ether);
         vm.prank(makeAddr("anyone"));
         vault.claim(tokenId, 0, 0);
-        assertEq(nativeFallback.balance, 1 ether);
+        assertEq(quoteFallback.balance, 1 ether);
         assertEq(token.balanceOf(tokenFallback), 2 ether);
         assertEq(vault.totalAmounts(CurrencyLibrary.ADDRESS_ZERO), 0);
         assertEq(vault.totalAmounts(Currency.wrap(address(token))), 0);
         (uint256 nativeAmount, uint256 tokenAmount) = vault.amounts(tokenId);
         assertEq(nativeAmount, 0);
         assertEq(tokenAmount, 0);
+    }
+
+    function test_claim_unregisteredPosition_erc20QuoteAsCurrency0_routesQuoteToQuoteFallback() public {
+        // The ERC20 quote sorts below the token, so the quote is currency0.
+        MockERC20 quote = _deployQuoteToken(address(0x1000));
+        BeneficiaryVault erc20QuoteVault =
+            new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), quoteFallback, tokenFallback);
+        uint256 tokenId = _mintPositionForPool(_key(address(quote), address(token)), address(this));
+        quote.transfer(address(erc20QuoteVault), 1 ether);
+        token.transfer(address(erc20QuoteVault), 2 ether);
+        erc20QuoteVault.onAmountsReceived(tokenId, 1 ether, 2 ether);
+
+        vm.prank(makeAddr("anyone"));
+        erc20QuoteVault.claim(tokenId, 0, 0);
+
+        assertEq(quote.balanceOf(quoteFallback), 1 ether);
+        assertEq(token.balanceOf(tokenFallback), 2 ether);
+    }
+
+    function test_claim_unregisteredPosition_erc20QuoteAsCurrency1_routesQuoteToQuoteFallback() public {
+        // The ERC20 quote sorts above the token, so the token is currency0 and the quote is
+        // currency1: each side must route by the quote, not the pool position.
+        MockERC20 quote = _deployQuoteToken(address(type(uint160).max));
+        BeneficiaryVault erc20QuoteVault =
+            new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), quoteFallback, tokenFallback);
+        uint256 tokenId = _mintPositionForPool(_key(address(quote), address(token)), address(this));
+        token.transfer(address(erc20QuoteVault), 2 ether);
+        quote.transfer(address(erc20QuoteVault), 1 ether);
+        erc20QuoteVault.onAmountsReceived(tokenId, 2 ether, 1 ether);
+
+        vm.prank(makeAddr("anyone"));
+        erc20QuoteVault.claim(tokenId, 0, 0);
+
+        assertEq(token.balanceOf(tokenFallback), 2 ether);
+        assertEq(quote.balanceOf(quoteFallback), 1 ether);
+        assertEq(quote.balanceOf(tokenFallback), 0);
+        assertEq(token.balanceOf(quoteFallback), 0);
+    }
+
+    function test_claim_unregisteredPosition_poolWithoutQuote_routesBothSidesToTokenFallback() public {
+        // Neither side of a two-ERC20 pool is the native quote, so both sides are token sides.
+        MockERC20 other = new MockERC20("Other", "OTHER", 1_000_000 ether, address(this));
+        uint256 tokenId = _mintPositionForPool(_key(address(other), address(token)), address(this));
+        token.transfer(address(vault), 2 ether);
+        other.transfer(address(vault), 1 ether);
+        (uint256 amount0, uint256 amount1) = address(other) < address(token) ? (1 ether, 2 ether) : (2 ether, 1 ether);
+        vault.onAmountsReceived(tokenId, amount0, amount1);
+
+        vm.prank(makeAddr("anyone"));
+        vault.claim(tokenId, 0, 0);
+
+        assertEq(token.balanceOf(tokenFallback), 2 ether);
+        assertEq(other.balanceOf(tokenFallback), 1 ether);
+        assertEq(quoteFallback.balance, 0);
     }
 
     function test_claim_nftTransferMovesClaimRight() public {

@@ -156,7 +156,7 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
     function test_WhenTokenIsQuoteCurrency() public {
         MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         InstantLaunchStrategy erc20QuoteStrategy =
-            _deployStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
 
         // A quote-quote pool key could never sort; the launch rejects the token before any pull.
         vm.expectRevert(InstantLaunchStrategy.TokenIsQuoteCurrency.selector);
@@ -305,7 +305,7 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
     function test_WhenTokenSortsAboveErc20Quote_launchesWithTokenAsCurrency1() public {
         MockERC20 quote = _deployQuoteToken(LOW_QUOTE_ADDRESS);
         InstantLaunchStrategy erc20QuoteStrategy =
-            _deployStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
 
@@ -327,7 +327,7 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
     function test_WhenTokenSortsBelowQuote_opensQuote1PoolAtNegatedInitialTick() public {
         MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         InstantLaunchStrategy quote1Strategy =
-            _deployStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
 
         _initialize(quote1Strategy, token, TOTAL_SUPPLY, _defaultConfig());
@@ -345,7 +345,7 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
     function test_WhenTokenSortsBelowQuote_mintsQuote1SingleSidedPositionWithFullSupply() public {
         MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         InstantLaunchStrategy quote1Strategy =
-            _deployStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
 
@@ -374,7 +374,7 @@ contract InitializeDistributionTest is InstantLaunchTestBase {
 
         MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         InstantLaunchStrategy quote1Strategy =
-            _deployStrategy(Currency.wrap(address(quote)), initialTick, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), initialTick, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
         uint256 tokenId = POSITION_MANAGER.nextTokenId();
 

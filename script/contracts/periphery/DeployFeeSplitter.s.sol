@@ -2,8 +2,11 @@
 pragma solidity ^0.8.0;
 
 import {Script} from "forge-std/Script.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../../src/interfaces/IFeeSplitter.sol";
+import {IBeneficiaryVault} from "../../../src/interfaces/IBeneficiaryVault.sol";
+import {BuybackAndBurnClaimRecipient} from "../../../src/periphery/BuybackAndBurnClaimRecipient.sol";
 import {console} from "forge-std/console.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {DeployParameters, Parameters} from "../Parameters.sol";
@@ -20,9 +23,12 @@ contract DeployFeeSplitterScript is Script, Parameters {
     {
         // Optionally use a salt for deployment
         bytes32 salt = vm.envOr("GLOBAL_SALT", bytes32(0));
+        // The quote currency every serviced position must pair; defaults to the native currency.
+        Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", address(0)));
 
-        bytes memory bytecode =
-            abi.encodePacked(type(FeeSplitter).creationCode, abi.encode(params.positionManager, feeSplits));
+        bytes memory bytecode = abi.encodePacked(
+            type(FeeSplitter).creationCode, abi.encode(params.positionManager, quoteCurrency, feeSplits)
+        );
         bytes32 initCodeHash = keccak256(bytecode);
         address expectedAddress = Create2.computeAddress(salt, initCodeHash, DEFAULT_CREATE2_DEPLOYER);
         if (expectedAddress.code.length > 0) {
@@ -41,6 +47,13 @@ contract DeployFeeSplitterScript is Script, Parameters {
 
         // Simple fee split setup.
         address beneficiaryVault = vm.envAddress("BENEFICIARY_VAULT");
+        // Vault fallback routing is by its own quoteCurrency; a mismatch sends the creator's
+        // unregistered quote share to tokenFallback (0xdead) instead of quoteFallback (TokenJar).
+        Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", address(0)));
+        require(
+            IBeneficiaryVault(beneficiaryVault).quoteCurrency() == quoteCurrency,
+            "env: BENEFICIARY_VAULT quoteCurrency must match QUOTE_CURRENCY"
+        );
 
         address recipient;
         address compoundingClaimRecipient = vm.envOr("COMPOUNDING_CLAIM_RECIPIENT", address(0));
@@ -53,12 +66,16 @@ contract DeployFeeSplitterScript is Script, Parameters {
             recipient = compoundingClaimRecipient;
         } else {
             require(buybackAndBurnClaimRecipient != address(0), "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT not set");
+            require(
+                BuybackAndBurnClaimRecipient(payable(buybackAndBurnClaimRecipient)).quoteCurrency() == quoteCurrency,
+                "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT quoteCurrency must match QUOTE_CURRENCY"
+            );
             recipient = buybackAndBurnClaimRecipient;
         }
 
         FeeSplit[] memory feeSplits = new FeeSplit[](2);
-        feeSplits[0] = FeeSplit({recipient: beneficiaryVault, nativeBps: 4_000, tokenBps: 0, useCallback: true}); // 40% of ETH fees go to beneficiary vault
-        feeSplits[1] = FeeSplit({recipient: recipient, nativeBps: 6_000, tokenBps: 10_000, useCallback: true}); // Remainder of ETH and all token fees go to compounder
+        feeSplits[0] = FeeSplit({recipient: beneficiaryVault, quoteBps: 4_000, tokenBps: 0, useCallback: true}); // 40% of quote fees go to beneficiary vault
+        feeSplits[1] = FeeSplit({recipient: recipient, quoteBps: 6_000, tokenBps: 10_000, useCallback: true}); // Remainder of quote and all token fees go to compounder
 
         return _deploy(params, feeSplits);
     }
@@ -78,11 +95,18 @@ contract DeployFeeSplitterScript is Script, Parameters {
             recipient = compoundingClaimRecipient;
         } else {
             require(buybackAndBurnClaimRecipient != address(0), "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT not set");
+            // Same quote invariant as deployWithCreatorFee / BeneficiaryVault: mismatched immutable
+            // Buyback quote locks the wrong burn side into the FeeSplitter split.
+            Currency quoteCurrency = Currency.wrap(vm.envOr("QUOTE_CURRENCY", address(0)));
+            require(
+                BuybackAndBurnClaimRecipient(payable(buybackAndBurnClaimRecipient)).quoteCurrency() == quoteCurrency,
+                "env: BUYBACK_AND_BURN_CLAIM_RECIPIENT quoteCurrency must match QUOTE_CURRENCY"
+            );
             recipient = buybackAndBurnClaimRecipient;
         }
 
         FeeSplit[] memory feeSplits = new FeeSplit[](1);
-        feeSplits[0] = FeeSplit({recipient: recipient, nativeBps: 10_000, tokenBps: 10_000, useCallback: true}); // 100% of ETH and token fees go to compounder
+        feeSplits[0] = FeeSplit({recipient: recipient, quoteBps: 10_000, tokenBps: 10_000, useCallback: true}); // 100% of quote and token fees go to compounder
 
         return _deploy(params, feeSplits);
     }

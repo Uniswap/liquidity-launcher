@@ -130,6 +130,11 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
     ///         PositionManager as this strategy.
     /// @param mismatchedPositionManager The mismatched PositionManager
     error PositionManagerMismatch(address mismatchedPositionManager);
+    /// @notice Thrown when the fee splitter or beneficiary vault quote does not match this strategy's quote.
+    ///         A splitter mismatch reverts every `collectFees` with `QuoteCurrencyNotInPool` and freezes fees.
+    ///         A vault mismatch routes unregistered creator quote shares to the wrong fallback.
+    /// @param quoteCurrency The collaborator's quote currency
+    error QuoteCurrencyMismatch(address quoteCurrency);
     /// @notice Thrown when the plan does not resolve to exactly the precomputed launch position.
     error InvalidPositions();
     /// @notice Thrown when the configured fee beneficiary is the zero address or the launcher.
@@ -181,10 +186,22 @@ contract InstantLaunchStrategy is IStrategy, ReentrancyGuardTransient, StrategyB
         if (_feeSplitter.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_feeSplitter.positionManager()));
         }
+        // The splitter only collects positions that pair its quote. A mismatch reverts every
+        // collectFees with QuoteCurrencyNotInPool and freezes fees forever.
+        if (!(_feeSplitter.quoteCurrency() == _poolConfig.quoteCurrency)) {
+            revert QuoteCurrencyMismatch(Currency.unwrap(_feeSplitter.quoteCurrency()));
+        }
         // Registration proves custody against the vault's own PositionManager; a mismatch would
         // revert every launch at registration.
         if (address(_beneficiaryVault) != address(0) && _beneficiaryVault.positionManager() != _positionManager) {
             revert PositionManagerMismatch(address(_beneficiaryVault.positionManager()));
+        }
+        // A vault quote mismatch routes the creator's unregistered quote share to the wrong fallback.
+        if (
+            address(_beneficiaryVault) != address(0)
+                && !(_beneficiaryVault.quoteCurrency() == _poolConfig.quoteCurrency)
+        ) {
+            revert QuoteCurrencyMismatch(Currency.unwrap(_beneficiaryVault.quoteCurrency()));
         }
         // All ticks must be aligned, ordered, and strictly inside the usable range so both quote
         // positions define valid, non-empty launch ranges: [minLaunchTick, initialTick] on the

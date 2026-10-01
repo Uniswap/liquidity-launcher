@@ -2,11 +2,11 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
 import {
@@ -97,16 +97,22 @@ abstract contract InstantLaunchTestBase is Test {
         vm.deal(address(this), 100_000 ether);
     }
 
-    /// @notice Deploys a splitter with the intended product configuration: ETH fees to the tokenJar,
-    ///         token fees burned, both with a 20% creator share.
+    /// @notice Deploys a native-quote splitter with the intended product configuration: quote fees to
+    ///         the tokenJar, token fees burned, both with a 20% creator share.
     function _deployFeeSplitter() internal returns (FeeSplitter) {
+        return _deployFeeSplitter(Currency.wrap(address(0)));
+    }
+
+    /// @notice Deploys a splitter and beneficiary vault for `quote`, replacing the shared collaborators.
+    function _deployFeeSplitter(Currency quote) internal returns (FeeSplitter) {
         FeeSplit[] memory splits = new FeeSplit[](3);
-        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, tokenJar, address(0xdead));
-        splits[0] = FeeSplit({recipient: tokenJar, nativeBps: 8_000, tokenBps: 0, useCallback: false});
-        splits[1] = FeeSplit({recipient: address(0xdead), nativeBps: 0, tokenBps: 8_000, useCallback: false});
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, quote, tokenJar, address(0xdead));
+        splits[0] = FeeSplit({recipient: tokenJar, quoteBps: 8_000, tokenBps: 0, useCallback: false});
+        splits[1] = FeeSplit({recipient: address(0xdead), quoteBps: 0, tokenBps: 8_000, useCallback: false});
         splits[2] =
-            FeeSplit({recipient: address(beneficiaryVault), nativeBps: 2_000, tokenBps: 2_000, useCallback: true});
-        return new FeeSplitter(POSITION_MANAGER, splits);
+            FeeSplit({recipient: address(beneficiaryVault), quoteBps: 2_000, tokenBps: 2_000, useCallback: true});
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, quote, splits);
+        return feeSplitter;
     }
 
     /// @notice Deploys a strategy with the given tick, the default native quote and mainnet tick
@@ -116,6 +122,7 @@ abstract contract InstantLaunchTestBase is Test {
     }
 
     /// @notice Deploys a strategy with the given quote currency and tick configuration.
+    /// @dev The constructor is the only external call, so tests can `expectRevert` around this helper.
     function _deployStrategy(Currency quoteCurrency, int24 initialTick, int24 minLaunchTick, int24 maxInitialTick)
         internal
         returns (InstantLaunchStrategy)
@@ -134,6 +141,17 @@ abstract contract InstantLaunchTestBase is Test {
                 minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR
             })
         );
+    }
+
+    /// @notice Deploys a strategy paired with a fee splitter and vault for the same quote currency.
+    function _deployQuotedStrategy(Currency quoteCurrency, int24 initialTick, int24 minLaunchTick, int24 maxInitialTick)
+        internal
+        returns (InstantLaunchStrategy)
+    {
+        if (!(feeSplitter.quoteCurrency() == quoteCurrency)) {
+            _deployFeeSplitter(quoteCurrency);
+        }
+        return _deployStrategy(quoteCurrency, initialTick, minLaunchTick, maxInitialTick);
     }
 
     /// @notice Deploys a strategy with no beneficiary vault: its launches carry no creator fee share.

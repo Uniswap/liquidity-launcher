@@ -21,7 +21,7 @@ import {
 ///      beneficiary NFT ownership surface required by `claimFrom`, and reenters when a target is set.
 contract MockClaimSource {
     IPositionManager public immutable positionManager;
-    address public constant nativeFallback = address(0xdead);
+    address public constant quoteFallback = address(0xdead);
     address public constant tokenFallback = address(0xbeef);
 
     Currency internal currency0;

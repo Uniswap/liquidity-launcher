@@ -3,8 +3,7 @@ pragma solidity ^0.8.26;
 
 // End-to-end coverage for instant launches against an ERC20 quote currency, in both orientations:
 // the token as currency1 (quote sorts below) and the token-as-currency0 pool (quote sorts
-// above). Fee collection through the FeeSplitter still requires a native currency0 and is asserted
-// as such below.
+// above). Fee collection routes through a FeeSplitter configured for the same quote currency.
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -19,7 +18,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {InstantLaunchStrategy} from "../../../src/strategies/InstantLaunchStrategy.sol";
-import {IFeeSplitter} from "../../../src/interfaces/IFeeSplitter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {InstantLaunchTestBase} from "./base/InstantLaunchTestBase.sol";
 
@@ -40,7 +38,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
     {
         quote = _deployQuoteToken(quoteAddress);
         InstantLaunchStrategy erc20QuoteStrategy =
-            _deployStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         token = _deployToken(TOTAL_SUPPLY);
         tokenId = POSITION_MANAGER.nextTokenId();
 
@@ -193,7 +191,7 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         MockERC20 quote = _deployQuoteToken(HIGH_QUOTE_ADDRESS);
         quote.transfer(address(POSITION_MANAGER), 1);
         InstantLaunchStrategy erc20QuoteStrategy =
-            _deployStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+            _deployQuotedStrategy(Currency.wrap(address(quote)), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
         MockERC20 token = _deployToken(TOTAL_SUPPLY);
 
         _initialize(erc20QuoteStrategy, IERC20(address(token)), TOTAL_SUPPLY, _defaultConfig());
@@ -202,23 +200,82 @@ contract InstantLaunchStrategyErc20QuoteE2ETest is InstantLaunchTestBase {
         assertEq(token.balanceOf(address(erc20QuoteStrategy)), 0);
     }
 
-    function test_erc20Quote_collectFeesRevertsWithInvalidBaseCurrency() public {
-        // The FeeSplitter only collects native-currency0 positions today: an ERC20-quote launch
-        // custodies its position but cannot collect fees until the splitter supports ERC20 quotes.
-        (, MockERC20 token, PoolKey memory key, uint256 tokenId) = _launchWithQuote(HIGH_QUOTE_ADDRESS);
+    function test_erc20Quote_collectFees_quoteAsCurrency0_distributesBothSides() public {
+        _assertCollectFeesDistributesBothSides(LOW_QUOTE_ADDRESS);
+    }
 
-        swapRouter.swap(
-            key,
-            SwapParams({zeroForOne: false, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            bytes("")
-        );
+    function test_erc20Quote_collectFees_quoteAsCurrency1_distributesBothSides() public {
+        _assertCollectFeesDistributesBothSides(HIGH_QUOTE_ADDRESS);
+    }
+
+    /// @dev Accrues quote-side and token-side fees, then asserts the generalized FeeSplitter routes
+    ///      each side to the configured recipient for either pool orientation.
+    function _assertCollectFeesDistributesBothSides(address quoteAddress) internal {
+        (MockERC20 quote, MockERC20 token, PoolKey memory key, uint256 tokenId) = _launchWithQuote(quoteAddress);
+        bool quoteIsCurrency0 = Currency.unwrap(key.currency0) == address(quote);
+
+        // A buy pays its LP fee in the quote; a sell pays in the token.
+        if (quoteIsCurrency0) {
+            swapRouter.swap(
+                key,
+                SwapParams({
+                    zeroForOne: true, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+                bytes("")
+            );
+            swapRouter.swap(
+                key,
+                SwapParams({
+                    zeroForOne: false, amountSpecified: -100_000 ether, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+                }),
+                PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+                bytes("")
+            );
+        } else {
+            swapRouter.swap(
+                key,
+                SwapParams({
+                    zeroForOne: false, amountSpecified: -10 ether, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+                }),
+                PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+                bytes("")
+            );
+            swapRouter.swap(
+                key,
+                SwapParams({
+                    zeroForOne: true, amountSpecified: -100_000 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+                bytes("")
+            );
+        }
+
+        uint256 quoteJarBefore = quote.balanceOf(tokenJar);
+        uint256 burnedBefore = token.balanceOf(address(0xdead));
+        uint128 liquidityBefore = POSITION_MANAGER.getPositionLiquidity(tokenId);
+        (uint160 priceBefore,,,) = POOL_MANAGER.getSlot0(key.toId());
 
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = tokenId;
-        vm.expectRevert(
-            abi.encodeWithSelector(IFeeSplitter.InvalidBaseCurrency.selector, tokenId, Currency.wrap(address(token)))
-        );
+        vm.prank(makeAddr("keeper"));
         feeSplitter.collectFees(tokenIds);
+
+        // Quote fees go to the token jar; token fees burn. Neither side is swapped.
+        assertGt(quote.balanceOf(tokenJar) - quoteJarBefore, 0);
+        assertEq(token.balanceOf(tokenJar), 0);
+        assertGt(token.balanceOf(address(0xdead)) - burnedBefore, 0);
+        assertEq(quote.balanceOf(address(0xdead)), 0);
+        (uint256 amount0, uint256 amount1) = beneficiaryVault.amounts(tokenId);
+        assertGt(amount0, 0);
+        assertGt(amount1, 0);
+        assertGt(beneficiaryVault.totalAmounts(Currency.wrap(address(quote))), 0);
+        assertGt(beneficiaryVault.totalAmounts(Currency.wrap(address(token))), 0);
+        // Only floor-division dust sticks to the splitter.
+        assertLe(quote.balanceOf(address(feeSplitter)), 1);
+        assertLe(token.balanceOf(address(feeSplitter)), 1);
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), liquidityBefore);
+        (uint160 priceAfter,,,) = POOL_MANAGER.getSlot0(key.toId());
+        assertEq(priceAfter, priceBefore);
     }
 }

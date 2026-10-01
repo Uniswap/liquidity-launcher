@@ -27,11 +27,15 @@ contract UERC20BeneficiaryVault is BeneficiaryVault {
     error NotAuthorized(uint256 tokenId, address caller);
 
     /// @param _positionManager The canonical v4 PositionManager
-    /// @param _nativeFallback Trusted receiver for unregistered positions' native fee shares
-    /// @param _tokenFallback Receiver for unregistered positions' token fee shares
-    constructor(IPositionManager _positionManager, address _nativeFallback, address _tokenFallback)
-        BeneficiaryVault(_positionManager, _nativeFallback, _tokenFallback)
-    {}
+    /// @param _quoteCurrency The quote currency whose fee shares route to the quote fallback
+    /// @param _quoteFallback Trusted receiver for unregistered positions' quote currency fee shares
+    /// @param _tokenFallback Receiver for unregistered positions' token-side fee shares
+    constructor(
+        IPositionManager _positionManager,
+        Currency _quoteCurrency,
+        address _quoteFallback,
+        address _tokenFallback
+    ) BeneficiaryVault(_positionManager, _quoteCurrency, _quoteFallback, _tokenFallback) {}
 
     /// @notice Override the BeneficiaryVault's registerBeneficiary to also support registering
     ///         positions via checking the token's graffiti.
