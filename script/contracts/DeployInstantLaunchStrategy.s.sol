@@ -35,9 +35,9 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
             beneficiaryVault == address(0) || IBeneficiaryVault(beneficiaryVault).quoteCurrency() == quoteCurrency,
             "env: BENEFICIARY_VAULT quoteCurrency must match QUOTE_CURRENCY"
         );
-        int24 minLaunchTick = int24(vm.envOr("MIN_LAUNCH_TICK", DEFAULT_MIN_LAUNCH_TICK));
-        int24 maxInitialTick = int24(vm.envOr("MAX_INITIAL_TICK", DEFAULT_MAX_INITIAL_TICK));
-        int24 initialTick = int24(vm.envOr("INITIAL_TICK", DEFAULT_INITIAL_TICK));
+        int24 minLaunchTick = _safeInt24(vm.envOr("MIN_LAUNCH_TICK", DEFAULT_MIN_LAUNCH_TICK), "env: MIN_LAUNCH_TICK out of int24 range");
+        int24 maxInitialTick = _safeInt24(vm.envOr("MAX_INITIAL_TICK", DEFAULT_MAX_INITIAL_TICK), "env: MAX_INITIAL_TICK out of int24 range");
+        int24 initialTick = _safeInt24(vm.envOr("INITIAL_TICK", DEFAULT_INITIAL_TICK), "env: INITIAL_TICK out of int24 range");
         // For native (ETH) quote the default 20_000_000 ether is safe.
         // For ERC20 quotes, minQuoteBlockerCost is interpreted in quote-token base units
         // (e.g. 6-dec USDC: set MIN_QUOTE_BLOCKER_COST=20000000000000 for 20_000_000e6).
@@ -91,5 +91,10 @@ contract DeployInstantLaunchStrategyScript is Script, Parameters {
         instantLaunchStrategy = Create2.deploy(0, salt, bytecode);
         console.log("InstantLaunchStrategy deployed to:", instantLaunchStrategy);
         return instantLaunchStrategy;
+    }
+
+    function _safeInt24(int256 value, string memory errMsg) internal pure returns (int24) {
+        require(value >= type(int24).min && value <= type(int24).max, errMsg);
+        return int24(value);
     }
 }
