@@ -30,7 +30,7 @@ contract UERC20BeneficiaryVaultTest is Test {
     int24 internal constant TICK_SPACING = 200;
 
     UERC20BeneficiaryVault internal vault;
-    address internal nativeFallback = makeAddr("nativeFallback");
+    address internal quoteFallback = makeAddr("quoteFallback");
     address internal tokenFallback = makeAddr("tokenFallback");
     address internal creator = makeAddr("creator");
     address internal stranger = makeAddr("stranger");
@@ -43,7 +43,7 @@ contract UERC20BeneficiaryVaultTest is Test {
             abi.encode(POOL_MANAGER, address(0), uint256(0), address(0), address(0)),
             address(POSITION_MANAGER)
         );
-        vault = new UERC20BeneficiaryVault(POSITION_MANAGER, nativeFallback, tokenFallback);
+        vault = new UERC20BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), quoteFallback, tokenFallback);
         vm.deal(address(this), 10_000 ether);
     }
 
@@ -184,7 +184,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         assertEq(vault.ownerOf(tokenId), creator);
         assertEq(creator.balance, 1 ether);
         assertEq(token.balanceOf(creator), 2 ether);
-        assertEq(nativeFallback.balance, 0);
+        assertEq(quoteFallback.balance, 0);
         assertEq(token.balanceOf(tokenFallback), 0);
         (uint128 credited0, uint128 credited1) = vault.amounts(tokenId);
         assertEq(credited0, 0);
@@ -262,7 +262,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         vm.expectRevert(abi.encodeWithSelector(UERC20BeneficiaryVault.NotAuthorized.selector, tokenId, stranger));
         vault.claim(tokenId, 0, 0);
 
-        assertEq(nativeFallback.balance, 0);
+        assertEq(quoteFallback.balance, 0);
         assertEq(token.balanceOf(tokenFallback), 0);
         (uint128 credited0, uint128 credited1) = vault.amounts(tokenId);
         assertEq(credited0, 1 ether);
@@ -277,7 +277,7 @@ contract UERC20BeneficiaryVaultTest is Test {
         vm.prank(stranger);
         vault.claim(tokenId, 0, 0);
 
-        assertEq(nativeFallback.balance, 1 ether);
+        assertEq(quoteFallback.balance, 1 ether);
         assertEq(token.balanceOf(tokenFallback), 2 ether);
     }
 

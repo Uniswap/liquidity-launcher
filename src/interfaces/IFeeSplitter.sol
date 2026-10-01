@@ -6,26 +6,26 @@ import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionMa
 
 /// @notice One recipient's fee allocation: independent shares of both currency sides.
 /// @param recipient The receiver of these shares; appears at most once in the splits.
-/// @param nativeBps The native ETH (currency0) share in basis points. All nativeBps sum to 10,000.
-/// @param tokenBps The token (currency1) share in basis points. All tokenBps sum to 10,000.
+/// @param quoteBps The quote currency share in basis points. All quoteBps sum to 10,000.
+/// @param tokenBps The token-side share in basis points. All tokenBps sum to 10,000.
 /// @param useCallback Whether the recipient is notified after receiving a fee share.
 struct FeeSplit {
     address recipient;
-    uint16 nativeBps;
+    uint16 quoteBps;
     uint16 tokenBps;
     bool useCallback;
 }
 
 /// @title IFeeSplitter
-/// @notice Immutable-configuration custodian of v4 native-ETH LP positions that permissionlessly
-///         collects their fees and pushes them to fixed recipients.
+/// @notice Immutable-configuration custodian of v4 LP positions pairing a configured quote currency
+///         that permissionlessly collects their fees and pushes them to fixed recipients.
 interface IFeeSplitter {
     /// @notice Emitted once per collected position.
     /// @param tokenId The position collected.
-    /// @param token The pool's currency1.
-    /// @param nativeAmount The native ETH fees collected.
-    /// @param tokenAmount The token fees collected.
-    event FeesCollected(uint256 indexed tokenId, address indexed token, uint256 nativeAmount, uint256 tokenAmount);
+    /// @param token The pool's token-side currency (the side that is not the quote).
+    /// @param quoteAmount The quote currency fees collected.
+    /// @param tokenAmount The token-side fees collected.
+    event FeesCollected(uint256 indexed tokenId, address indexed token, uint256 quoteAmount, uint256 tokenAmount);
 
     /// @notice Emitted for each nonzero amount pushed to a recipient. Native pushes are force-sent,
     ///         so the recipient is always the configured one.
@@ -64,10 +64,9 @@ interface IFeeSplitter {
     /// @notice Thrown when collectFees is called with no token IDs.
     error NoTokenIds();
 
-    /// @notice Thrown when a position's currency0 is not native ETH.
+    /// @notice Thrown when neither of a position's pool currencies is the quote currency.
     /// @param tokenId The offending position.
-    /// @param currency0 The unexpected currency0.
-    error InvalidBaseCurrency(uint256 tokenId, Currency currency0);
+    error QuoteCurrencyNotInPool(uint256 tokenId);
 
     /// @notice Thrown when an NFT other than a canonical PositionManager position is safe-transferred in.
     /// @param sender The rejected caller of onERC721Received.
@@ -85,8 +84,8 @@ interface IFeeSplitter {
     error PoolManagerAlreadyUnlocked();
 
     /// @notice Collects the accrued fees of each position and pushes the configured splits.
-    /// @dev Permissionless. Positions must be native-ETH pairs and be owned by the splitter,
-    ///      otherwise the call reverts with NotOwner. A recipient that reverts its notification
+    /// @dev Permissionless. Each position's pool must contain the quote currency and the position
+    ///      must be owned by the splitter. A recipient that reverts its notification
     ///      reverts this call, leaving those fees in the pool; other token IDs are unaffected.
     ///      Unlike `increaseLiquidity`, collection cannot run inside an existing PoolManager unlock:
     ///      it reverts with PoolManagerAlreadyUnlocked so recipients are never notified mid-lock.
@@ -115,6 +114,10 @@ interface IFeeSplitter {
     /// @notice The canonical v4 PositionManager holding the LP positions.
     /// @return The PositionManager this splitter collects through.
     function positionManager() external view returns (IPositionManager);
+
+    /// @notice The quote currency every serviced position must pair on one side.
+    /// @return The quote currency; the wrapped address is zero for the chain's native currency.
+    function quoteCurrency() external view returns (Currency);
 
     /// @notice The full immutable split configuration.
     /// @return The configured fee splits.

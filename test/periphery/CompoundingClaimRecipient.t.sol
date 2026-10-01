@@ -21,7 +21,7 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
     CompoundingClaimRecipient internal positionRecipient;
     MockCompoundingClaimExecutor internal executor;
     BeneficiaryVault internal beneficiaryVault;
-    address internal nativeFallback = makeAddr("nativeFallback");
+    address internal quoteFallback = makeAddr("quoteFallback");
     address internal tokenFallback = makeAddr("tokenFallback");
 
     function setUp() public override {
@@ -109,15 +109,15 @@ contract CompoundingClaimRecipientTest is PositionRecipientTestBase {
 
     function _productionSplitter(address vault, address recipient) internal returns (FeeSplitter splitter) {
         FeeSplit[] memory splits = new FeeSplit[](2);
-        splits[0] = FeeSplit({recipient: vault, nativeBps: 4_000, tokenBps: 0, useCallback: true});
-        splits[1] = FeeSplit({recipient: recipient, nativeBps: 6_000, tokenBps: 10_000, useCallback: true});
-        splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
+        splits[0] = FeeSplit({recipient: vault, quoteBps: 4_000, tokenBps: 0, useCallback: true});
+        splits[1] = FeeSplit({recipient: recipient, quoteBps: 6_000, tokenBps: 10_000, useCallback: true});
+        splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), Currency.wrap(address(0)), splits);
     }
 
     function _callbackSplitter(address recipient) internal returns (FeeSplitter splitter) {
         FeeSplit[] memory splits = new FeeSplit[](1);
-        splits[0] = FeeSplit({recipient: recipient, nativeBps: 10_000, tokenBps: 10_000, useCallback: true});
-        splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), splits);
+        splits[0] = FeeSplit({recipient: recipient, quoteBps: 10_000, tokenBps: 10_000, useCallback: true});
+        splitter = new FeeSplitter(IPositionManager(POSITION_MANAGER), Currency.wrap(address(0)), splits);
     }
 
     function _single(uint256 tokenId) internal pure returns (uint256[] memory tokenIds) {

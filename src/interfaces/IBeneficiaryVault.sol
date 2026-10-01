@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IClaimableRecipient} from "./IClaimableRecipient.sol";
 
 /// @title IBeneficiaryVault
@@ -35,11 +36,15 @@ interface IBeneficiaryVault is IClaimableRecipient {
     /// @param beneficiary The receiver of the beneficiary NFT.
     function registerBeneficiary(uint256 tokenId, address beneficiary) external;
 
-    /// @notice The receiver for unregistered positions' native fee shares.
-    /// @return The native fallback address.
-    function nativeFallback() external view returns (address);
+    /// @notice The quote currency whose fee shares route to the quote fallback.
+    /// @return The quote currency; the wrapped address is zero for the chain's native currency.
+    function quoteCurrency() external view returns (Currency);
 
-    /// @notice The receiver for unregistered positions' token fee shares.
+    /// @notice The receiver for unregistered positions' quote currency fee shares.
+    /// @return The quote fallback address.
+    function quoteFallback() external view returns (address);
+
+    /// @notice The receiver for unregistered positions' token-side fee shares.
     /// @return The token fallback address.
     function tokenFallback() external view returns (address);
 }
