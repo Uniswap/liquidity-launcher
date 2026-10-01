@@ -28,7 +28,11 @@ import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {LiquidityLauncher} from "../src/LiquidityLauncher.sol";
 import {Distribution} from "../src/types/Distribution.sol";
-import {InstantLaunchStrategy, InstantLaunchConfig} from "../src/strategies/InstantLaunchStrategy.sol";
+import {
+    InstantLaunchStrategy,
+    InstantLaunchConfig,
+    LaunchPoolConfig
+} from "../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../src/interfaces/IFeeSplitter.sol";
@@ -75,7 +79,18 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
         POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         // No hook handshake needed: the strategy's authorized launcher is the LiquidityLauncher itself.
         strategy = new InstantLaunchStrategy(
-            address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
+            address(launcher),
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(address(0)),
+                initialTick: INITIAL_TICK,
+                minLaunchTick: -160_100,
+                maxInitialTick: 251_325,
+                minQuoteBlockerCost: 20_000_000 ether
+            })
         );
     }
 
@@ -98,8 +113,8 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // The strategy ran end-to-end through the launcher and stood up the live pool.
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
-        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.positionLiquidity());
+        assertEq(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.quote0PositionLiquidity());
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
         // Launcher handed everything off; strategy retains nothing.
         assertEq(IERC20(token).balanceOf(address(launcher)), 0);
@@ -136,7 +151,7 @@ contract InstantLaunchStrategyLLIntegrationTest is Test, DeployPermit2 {
 
         // Launched and bought in the launch block: the pool is live and the creator holds the tokens.
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(_poolKeyFor(token).toId());
-        assertLt(sqrtPriceX96, strategy.initialSqrtPriceX96());
+        assertLt(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
         assertEq(IERC20(token).balanceOf(creator), buyAmount);
         assertEq(creator.balance, 0);
         assertEq(Preinstalls.MultiCall3.balance, 0);

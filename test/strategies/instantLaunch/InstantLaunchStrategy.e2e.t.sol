@@ -21,7 +21,11 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionInfo} from "@uniswap/v4-periphery/src/libraries/PositionInfoLibrary.sol";
-import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../src/strategies/InstantLaunchStrategy.sol";
+import {
+    InstantLaunchStrategy,
+    InstantLaunchConfig,
+    LaunchPoolConfig
+} from "../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../../src/periphery/BeneficiaryVault.sol";
 import {FeeSplit} from "../../../src/interfaces/IFeeSplitter.sol";
@@ -35,6 +39,8 @@ contract InstantLaunchStrategyE2ETest is Test {
     IPositionManager internal constant POSITION_MANAGER = IPositionManager(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e);
 
     int24 internal constant INITIAL_TICK = 121_975;
+    int24 internal constant MIN_LAUNCH_TICK = -160_100;
+    int24 internal constant MAX_INITIAL_TICK = 251_325;
     address internal constant BURN_ADDRESS = address(0xdead);
 
     address internal tokenJar = makeAddr("tokenJar");
@@ -65,7 +71,18 @@ contract InstantLaunchStrategyE2ETest is Test {
 
         POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         strategy = new InstantLaunchStrategy(
-            address(this), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
+            address(this),
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(address(0)),
+                initialTick: INITIAL_TICK,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: MAX_INITIAL_TICK,
+                minQuoteBlockerCost: 20_000_000 ether
+            })
         );
         swapRouter = new PoolSwapTest(POOL_MANAGER);
         vm.deal(address(this), 100_000 ether);
@@ -76,13 +93,13 @@ contract InstantLaunchStrategyE2ETest is Test {
 
         // The pool opens at the configured price with the full supply on the token side of it.
         (uint160 sqrtPriceX96, int24 tick,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertEq(sqrtPriceX96, strategy.initialSqrtPriceX96());
+        assertEq(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
         assertEq(tick, INITIAL_TICK);
 
         (, PositionInfo info) = POSITION_MANAGER.getPoolAndPositionInfo(tokenId);
-        assertEq(info.tickLower(), strategy.MIN_LAUNCH_TICK());
+        assertEq(info.tickLower(), strategy.minLaunchTick());
         assertEq(info.tickUpper(), INITIAL_TICK);
-        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.positionLiquidity());
+        assertEq(POSITION_MANAGER.getPositionLiquidity(tokenId), strategy.quote0PositionLiquidity());
         assertEq(IERC721(address(POSITION_MANAGER)).ownerOf(tokenId), recipient);
 
         // Whole supply accounted for: everything is in the pool except burned rounding dust.
@@ -167,8 +184,8 @@ contract InstantLaunchStrategyE2ETest is Test {
         assertGt(delta.amount1(), 0);
 
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertLt(sqrtPriceX96, strategy.initialSqrtPriceX96());
-        assertGt(sqrtPriceX96, TickMath.getSqrtPriceAtTick(strategy.MIN_LAUNCH_TICK()));
+        assertLt(sqrtPriceX96, strategy.quote0InitialSqrtPriceX96());
+        assertGt(sqrtPriceX96, TickMath.getSqrtPriceAtTick(strategy.minLaunchTick()));
 
         // Buys and sells both work immediately after — nothing gates the pool.
         swapRouter.swap{value: 1 ether}(

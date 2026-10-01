@@ -23,7 +23,11 @@ import {UERC20Factory} from "@uniswap/uerc20-factory/src/factories/UERC20Factory
 import {UERC20Metadata} from "@uniswap/uerc20-factory/src/libraries/UERC20MetadataLibrary.sol";
 import {LiquidityLauncher} from "../../src/LiquidityLauncher.sol";
 import {Distribution} from "../../src/types/Distribution.sol";
-import {InstantLaunchStrategy, InstantLaunchConfig} from "../../src/strategies/InstantLaunchStrategy.sol";
+import {
+    InstantLaunchStrategy,
+    InstantLaunchConfig,
+    LaunchPoolConfig
+} from "../../src/strategies/InstantLaunchStrategy.sol";
 import {UniversalRouterStrategy, UniversalRouterConfig} from "../../src/strategies/UniversalRouterStrategy.sol";
 import {FeeSplitter} from "../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../src/periphery/BeneficiaryVault.sol";
@@ -78,7 +82,18 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
 
         POOL_MANAGER.setProtocolFeeController(address(new MockV4FeeAdapter()));
         instantLaunch = new InstantLaunchStrategy(
-            address(launcher), POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
+            address(launcher),
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(address(0)),
+                initialTick: INITIAL_TICK,
+                minLaunchTick: -160_100,
+                maxInitialTick: 251_325,
+                minQuoteBlockerCost: 20_000_000 ether
+            })
         );
 
         router = new MockUniversalRouter(POOL_MANAGER);
@@ -97,7 +112,7 @@ contract UniversalRouterStrategyTest is Test, DeployPermit2 {
         launcher.multicall{value: buyAmount}(_launchAndBuyCalls(token, key, buyAmount, 0));
 
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(key.toId());
-        assertLt(sqrtPriceX96, instantLaunch.initialSqrtPriceX96(), "the buy did not move the price");
+        assertLt(sqrtPriceX96, instantLaunch.quote0InitialSqrtPriceX96(), "the buy did not move the price");
         assertGt(IERC20(token).balanceOf(creator), 0, "creator received no tokens");
         // Nothing is left anywhere in the path.
         assertEq(address(launcher).balance, 0, "launcher kept native");

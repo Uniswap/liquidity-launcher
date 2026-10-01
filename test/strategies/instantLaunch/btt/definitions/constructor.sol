@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {InstantLaunchTestBase} from "../../base/InstantLaunchTestBase.sol";
-import {InstantLaunchStrategy} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
+import {InstantLaunchStrategy, LaunchPoolConfig} from "../../../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../../src/periphery/FeeSplitter.sol";
 import {BeneficiaryVault} from "../../../../../src/periphery/BeneficiaryVault.sol";
 import {IFeeSplitter} from "../../../../../src/interfaces/IFeeSplitter.sol";
@@ -11,6 +11,8 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {MockERC20} from "../../../../mocks/MockERC20.sol";
 
@@ -22,27 +24,49 @@ import {MockERC20} from "../../../../mocks/MockERC20.sol";
 /// │   └── it reverts with ZeroAddress
 /// ├── when the fee splitter uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
-/// ├── when the fee splitter quote is not native
-/// │   └── it reverts with QuoteCurrencyNotNative
+/// ├── when the fee splitter quote does not match
+/// │   └── it reverts with QuoteCurrencyMismatch
 /// ├── when the beneficiary vault uses a different PositionManager
 /// │   └── it reverts with PositionManagerMismatch
-/// ├── when the beneficiary vault quote is not native
-/// │   └── it reverts with QuoteCurrencyNotNative
+/// ├── when the beneficiary vault quote does not match
+/// │   └── it reverts with QuoteCurrencyMismatch
 /// ├── when the beneficiary vault is zero
 /// │   └── it deploys with creator fees disabled
 /// ├── when the initial tick is not aligned
 /// │   └── it reverts with InvalidTickRange
-/// ├── when the initial tick exceeds the maximum initial tick
+/// ├── when the launch floor is not aligned
+/// │   └── it reverts with InvalidTickRange
+/// ├── when the initial tick cap is not aligned
+/// │   └── it reverts with InvalidTickRange
+/// ├── when the initial tick exceeds the initial tick cap
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick exceeds the maximum usable tick
 /// │   └── it reverts with InvalidTickRange
 /// ├── when the initial tick does not exceed the launch floor
 /// │   └── it reverts with InvalidTickRange
+/// ├── when the initial tick cap does not stay below the maximum usable tick
+/// │   └── it reverts with InvalidTickRange
+/// ├── when the launch floor does not stay above the minimum usable tick
+/// │   └── it reverts with InvalidTickRange
+/// ├── when the launch range prices the position liquidity above the per-tick maximum
+/// │   └── it reverts with InvalidPositionLiquidity
+/// ├── when a non-native quote has no code
+/// │   └── it reverts with InvalidQuoteCurrency
+/// ├── when the launch floor is cheap to saturate
+/// │   └── it reverts with UnsafeBlockerCost
+/// ├── when native quote and minQuoteBlockerCost is below UPPER_TICK_BLOCKER_COST_FLOOR
+/// │   └── it reverts with UnsafeBlockerCost
+/// ├── when ERC20 quote and minQuoteBlockerCost is zero
+/// │   └── it reverts with UnsafeBlockerCost
+/// ├── when ERC20 quote with unsafe upper-tick ticks and a positive minQuoteBlockerCost the cost cannot meet
+/// │   └── it reverts with UnsafeBlockerCost
 /// └── when the configuration is valid
 ///     ├── it stores the immutable configuration
-///     ├── it derives a position liquidity that fits in a single position
+///     ├── it derives a position liquidity for each quote position that fits in a single position
 ///     ├── it prices saturating the launch floor tick from either side above the total supply
-///     └── it prices saturating the maximum initial tick from either side above the blocker cost floors
+///     ├── it prices saturating the quote-as-currency1 launch floor tick from either side above the total supply
+///     ├── it prices saturating the maximum initial tick from either side above the blocker cost floors
+///     └── it prices saturating the quote-as-currency1 maximum initial tick from either side above the blocker cost floors
 contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenRequiredAddressIsZero(uint8 zeroIndex) public {
         // The beneficiary vault is not among the required addresses; see the zero-vault case below.
@@ -55,7 +79,7 @@ contract ConstructorTest is InstantLaunchTestBase {
             zeroIndex == 2 ? IPoolManager(address(0)) : poolManager,
             zeroIndex == 3 ? IFeeSplitter(address(0)) : feeSplitter,
             beneficiaryVault,
-            INITIAL_TICK
+            _defaultPoolConfig()
         );
     }
 
@@ -67,7 +91,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(address(deployed.beneficiaryVault()), address(0));
         assertEq(address(deployed.feeSplitter()), address(feeSplitter));
         assertEq(deployed.initialTick(), INITIAL_TICK);
-        assertGt(deployed.positionLiquidity(), 0);
+        assertGt(deployed.quote0PositionLiquidity(), 0);
     }
 
     function test_WhenFeeSplitterUsesDifferentPositionManager() public {
@@ -83,17 +107,30 @@ contract ConstructorTest is InstantLaunchTestBase {
                 InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
             )
         );
-        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
+        new InstantLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, _defaultPoolConfig()
+        );
     }
 
-    function test_WhenFeeSplitterQuoteIsNotNative() public {
-        // Instant launch always pairs native ETH; a non-native splitter quote freezes every launch's fees.
+    function test_WhenFeeSplitterQuoteDoesNotMatch(bool strategyIsNative) public {
+        // A splitter quote that is not the strategy quote freezes every launch's fees.
         MockERC20 quote = new MockERC20("Quote", "QUOTE", 0, address(this));
-        FeeSplitter mismatched =
-            new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
 
-        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote)));
-        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, mismatched, beneficiaryVault, INITIAL_TICK);
+        if (strategyIsNative) {
+            FeeSplitter erc20Splitter =
+                new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
+            vm.expectRevert(
+                abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(quote))
+            );
+            new InstantLaunchStrategy(
+                launcher, POSITION_MANAGER, POOL_MANAGER, erc20Splitter, beneficiaryVault, _defaultPoolConfig()
+            );
+        } else {
+            LaunchPoolConfig memory config = _defaultPoolConfig();
+            config.quoteCurrency = Currency.wrap(address(quote));
+            vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(0)));
+            new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, config);
+        }
     }
 
     function test_WhenBeneficiaryVaultUsesDifferentPositionManager() public {
@@ -108,30 +145,65 @@ contract ConstructorTest is InstantLaunchTestBase {
                 InstantLaunchStrategy.PositionManagerMismatch.selector, address(otherPositionManager)
             )
         );
-        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, INITIAL_TICK);
+        new InstantLaunchStrategy(
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, _defaultPoolConfig()
+        );
     }
 
-    function test_WhenBeneficiaryVaultQuoteIsNotNative() public {
-        // A vault quote mismatch would route unregistered creator quote shares to tokenFallback.
+    function test_WhenBeneficiaryVaultQuoteDoesNotMatch(bool strategyIsNative) public {
+        // A vault quote mismatch routes unregistered creator quote shares to the wrong fallback.
         MockERC20 quote = new MockERC20("Quote", "QUOTE", 0, address(this));
-        BeneficiaryVault mismatched =
-            new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), tokenJar, address(0xdead));
 
-        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyNotNative.selector, address(quote)));
-        new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, mismatched, INITIAL_TICK);
+        if (strategyIsNative) {
+            BeneficiaryVault erc20Vault =
+                new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(quote)), tokenJar, address(0xdead));
+            vm.expectRevert(
+                abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(quote))
+            );
+            new InstantLaunchStrategy(
+                launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, erc20Vault, _defaultPoolConfig()
+            );
+        } else {
+            FeeSplitter erc20Splitter =
+                new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(quote)), feeSplitter.getSplits());
+            LaunchPoolConfig memory config = _defaultPoolConfig();
+            config.quoteCurrency = Currency.wrap(address(quote));
+            vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.QuoteCurrencyMismatch.selector, address(0)));
+            new InstantLaunchStrategy(launcher, POSITION_MANAGER, POOL_MANAGER, erc20Splitter, beneficiaryVault, config);
+        }
     }
 
     function test_fuzz_WhenInitialTickIsNotAligned(int24 initialTick) public {
         // Bounded to the valid tick range so alignment is the only violated condition.
-        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK, strategy.MAX_INITIAL_TICK()));
+        initialTick = int24(bound(initialTick, LOWEST_LAUNCH_TICK, strategy.maxInitialTick()));
         vm.assume(initialTick % strategy.TICK_SPACING() != 0);
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(initialTick);
     }
 
+    function test_fuzz_WhenLaunchFloorIsNotAligned(int24 minLaunchTick) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        // Bounded to the valid floor range so alignment is the only violated condition.
+        minLaunchTick = int24(bound(minLaunchTick, TickMath.minUsableTick(tickSpacing) + 1, INITIAL_TICK - tickSpacing));
+        vm.assume(minLaunchTick % tickSpacing != 0);
+
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(NATIVE, INITIAL_TICK, minLaunchTick, MAX_INITIAL_TICK);
+    }
+
+    function test_fuzz_WhenInitialTickCapIsNotAligned(int24 maxInitialTick) public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        // Bounded to the valid cap range so alignment is the only violated condition.
+        maxInitialTick = int24(bound(maxInitialTick, INITIAL_TICK, TickMath.maxUsableTick(tickSpacing) - 1));
+        vm.assume(maxInitialTick % tickSpacing != 0);
+
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(NATIVE, INITIAL_TICK, MIN_LAUNCH_TICK, maxInitialTick);
+    }
+
     function test_WhenInitialTickExceedsMaxInitialTick() public {
-        int24 firstTickAboveCap = strategy.MAX_INITIAL_TICK() + strategy.TICK_SPACING();
+        int24 firstTickAboveCap = strategy.maxInitialTick() + strategy.TICK_SPACING();
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(firstTickAboveCap);
     }
@@ -140,7 +212,7 @@ contract ConstructorTest is InstantLaunchTestBase {
         int24 tickSpacing = strategy.TICK_SPACING();
         // Aligned ticks above the cap, up to and beyond the maximum usable tick.
         initialTick = int24(
-            bound(initialTick, strategy.MAX_INITIAL_TICK() / tickSpacing + 1, type(int24).max / tickSpacing)
+            bound(initialTick, strategy.maxInitialTick() / tickSpacing + 1, type(int24).max / tickSpacing)
         ) * tickSpacing;
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
@@ -154,7 +226,7 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_WhenInitialTickEqualsLaunchFloor() public {
-        int24 floorTick = strategy.MIN_LAUNCH_TICK();
+        int24 floorTick = strategy.minLaunchTick();
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(floorTick);
     }
@@ -162,11 +234,42 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenInitialTickIsBelowLaunchFloor(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         // Aligned ticks at or below the launch floor, so the floor check is what reverts rather than alignment.
-        initialTick = int24(bound(initialTick, type(int24).min / tickSpacing, strategy.MIN_LAUNCH_TICK() / tickSpacing))
+        initialTick = int24(bound(initialTick, type(int24).min / tickSpacing, strategy.minLaunchTick() / tickSpacing))
             * tickSpacing;
 
         vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
         _deployStrategy(initialTick);
+    }
+
+    function test_WhenInitialTickCapReachesMaximumUsableTick() public {
+        // The cap must stay strictly below the usable range so the quote-as-currency1 floor does too.
+        int24 tickSpacing = strategy.TICK_SPACING();
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(NATIVE, INITIAL_TICK, MIN_LAUNCH_TICK, TickMath.maxUsableTick(tickSpacing));
+    }
+
+    function test_WhenLaunchFloorReachesMinimumUsableTick() public {
+        // The floor must stay strictly above the usable range so the quote-as-currency1 cap does too.
+        int24 tickSpacing = strategy.TICK_SPACING();
+        vm.expectRevert(InstantLaunchStrategy.InvalidTickRange.selector);
+        _deployStrategy(NATIVE, INITIAL_TICK, TickMath.minUsableTick(tickSpacing), MAX_INITIAL_TICK);
+    }
+
+    function test_WhenLaunchRangeExceedsMaxLiquidityPerTick() public {
+        // A one-spacing range this deep prices the full supply above the per-tick liquidity maximum,
+        // which would fail the exact-liquidity check on every launch.
+        int24 minLaunchTick = -200_000;
+        int24 initialTick = minLaunchTick + strategy.TICK_SPACING();
+
+        uint256 liquidity = FullMath.mulDiv(
+            TOTAL_SUPPLY,
+            FixedPoint96.Q96,
+            TickMath.getSqrtPriceAtTick(initialTick) - TickMath.getSqrtPriceAtTick(minLaunchTick)
+        );
+        assertGt(liquidity, Pool.tickSpacingToMaxLiquidityPerTick(strategy.TICK_SPACING()));
+
+        vm.expectRevert(abi.encodeWithSelector(InstantLaunchStrategy.InvalidPositionLiquidity.selector, liquidity));
+        _deployStrategy(NATIVE, initialTick, minLaunchTick, MAX_INITIAL_TICK);
     }
 
     function test_WhenInitialTickIsLowestLaunchTick_deploys() public {
@@ -175,10 +278,10 @@ contract ConstructorTest is InstantLaunchTestBase {
     }
 
     function test_WhenInitialTickIsMaxInitialTick_deploys() public {
-        int24 maxInitial = strategy.MAX_INITIAL_TICK();
+        int24 maxInitial = strategy.maxInitialTick();
         InstantLaunchStrategy deployed = _deployStrategy(maxInitial);
         assertEq(deployed.initialTick(), maxInitial);
-        assertGt(deployed.positionLiquidity(), 0);
+        assertGt(deployed.quote0PositionLiquidity(), 0);
     }
 
     function test_WhenConfigurationIsValid_storesConfiguration() public view {
@@ -187,14 +290,43 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertEq(address(strategy.poolManager()), address(poolManager));
         assertEq(address(strategy.feeSplitter()), address(feeSplitter));
         assertEq(address(strategy.beneficiaryVault()), address(beneficiaryVault));
+        assertEq(Currency.unwrap(strategy.quoteCurrency()), Currency.unwrap(NATIVE));
         assertEq(strategy.initialTick(), INITIAL_TICK);
-        assertEq(strategy.initialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
-        assertGt(strategy.positionLiquidity(), 0);
+        assertEq(strategy.minLaunchTick(), MIN_LAUNCH_TICK);
+        assertEq(strategy.maxInitialTick(), MAX_INITIAL_TICK);
+        assertEq(strategy.quote0InitialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(INITIAL_TICK));
+        assertEq(strategy.quote1InitialSqrtPriceX96(), TickMath.getSqrtPriceAtTick(-INITIAL_TICK));
+        assertGt(strategy.quote0PositionLiquidity(), 0);
+        assertGt(strategy.quote1PositionLiquidity(), 0);
+    }
+
+    function test_WhenConfigurationIsValid_storesErc20QuoteCurrency() public {
+        _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        Currency quote = Currency.wrap(HIGH_QUOTE_ADDRESS);
+        InstantLaunchStrategy deployed = _deployQuotedStrategy(quote, INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+        assertEq(Currency.unwrap(deployed.quoteCurrency()), HIGH_QUOTE_ADDRESS);
+        assertEq(Currency.unwrap(IFeeSplitter(address(deployed.feeSplitter())).quoteCurrency()), HIGH_QUOTE_ADDRESS);
+        assertEq(Currency.unwrap(deployed.beneficiaryVault().quoteCurrency()), HIGH_QUOTE_ADDRESS);
+    }
+
+    function test_WhenNonNativeQuoteHasNoCode_reverts() public {
+        // An EOA quote cannot settle launches; the constructor rejects empty code.
+        vm.expectRevert(InstantLaunchStrategy.InvalidQuoteCurrency.selector);
+        _deployStrategy(Currency.wrap(HIGH_QUOTE_ADDRESS), INITIAL_TICK, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+    }
+
+    function test_WhenLaunchFloorIsCheapToSaturate_reverts() public {
+        // A deep, wide-range floor leaves remaining maxLiquidityPerTick capacity cheap in tokens.
+        int24 unsafeFloor = -800_000;
+        // Align to TICK_SPACING.
+        unsafeFloor -= unsafeFloor % 25;
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        _deployStrategy(NATIVE, INITIAL_TICK, unsafeFloor, MAX_INITIAL_TICK);
     }
 
     function test_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply() public {
         int24 tickSpacing = strategy.TICK_SPACING();
-        int24 floorTick = strategy.MIN_LAUNCH_TICK();
+        int24 floorTick = strategy.minLaunchTick();
         assertEq(floorTick % tickSpacing, 0);
         assertGt(floorTick, TickMath.minUsableTick(tickSpacing));
         assertGt(floorTick - tickSpacing, TickMath.minUsableTick(tickSpacing));
@@ -209,10 +341,23 @@ contract ConstructorTest is InstantLaunchTestBase {
     function test_fuzz_WhenConfigurationIsValid_saturatingLaunchFloorExceedsTotalSupply(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         initialTick = int24(
-            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.MAX_INITIAL_TICK() / tickSpacing)
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.maxInitialTick() / tickSpacing)
         ) * tickSpacing;
 
         (uint256 costAbove, uint256 costBelow) = _floorBlockerCosts(_deployStrategy(initialTick));
+        assertGt(costAbove, strategy.TOTAL_SUPPLY());
+        assertGt(costBelow, strategy.TOTAL_SUPPLY());
+    }
+
+    function test_fuzz_WhenConfigurationIsValid_saturatingQuote1LaunchFloorExceedsTotalSupply(int24 initialTick)
+        public
+    {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        initialTick = int24(
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.maxInitialTick() / tickSpacing)
+        ) * tickSpacing;
+
+        (uint256 costAbove, uint256 costBelow) = _quote1FloorBlockerCosts(_deployStrategy(initialTick));
         assertGt(costAbove, strategy.TOTAL_SUPPLY());
         assertGt(costBelow, strategy.TOTAL_SUPPLY());
     }
@@ -227,8 +372,9 @@ contract ConstructorTest is InstantLaunchTestBase {
         returns (uint256 costAbove, uint256 costBelow)
     {
         int24 tickSpacing = deployed.TICK_SPACING();
-        int24 floorTick = deployed.MIN_LAUNCH_TICK();
-        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+        int24 floorTick = deployed.minLaunchTick();
+        uint128 blockerLiquidity =
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote0PositionLiquidity();
 
         costAbove = SqrtPriceMath.getAmount1Delta(
             TickMath.getSqrtPriceAtTick(floorTick),
@@ -244,9 +390,35 @@ contract ConstructorTest is InstantLaunchTestBase {
         );
     }
 
+    /// @notice The quote-as-currency1 equivalent of `_floorBlockerCosts`: the token is currency0,
+    ///         the floor negates to -minLaunchTick above the price, and blockers there fund in amount0.
+    function _quote1FloorBlockerCosts(InstantLaunchStrategy deployed)
+        private
+        view
+        returns (uint256 costAbove, uint256 costBelow)
+    {
+        int24 tickSpacing = deployed.TICK_SPACING();
+        int24 quote1FloorTick = -deployed.minLaunchTick();
+        uint128 blockerLiquidity =
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote1PositionLiquidity();
+
+        costAbove = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(quote1FloorTick),
+            TickMath.getSqrtPriceAtTick(quote1FloorTick + tickSpacing),
+            blockerLiquidity,
+            true
+        );
+        costBelow = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(quote1FloorTick - tickSpacing),
+            TickMath.getSqrtPriceAtTick(quote1FloorTick),
+            blockerLiquidity,
+            true
+        );
+    }
+
     function test_WhenConfigurationIsValid_saturatingMaxInitialTickIsProhibitivelyExpensive() public {
         int24 tickSpacing = strategy.TICK_SPACING();
-        int24 capTick = strategy.MAX_INITIAL_TICK();
+        int24 capTick = strategy.maxInitialTick();
         assertEq(capTick % tickSpacing, 0);
         assertLt(capTick, TickMath.maxUsableTick(tickSpacing));
 
@@ -255,7 +427,8 @@ contract ConstructorTest is InstantLaunchTestBase {
         // The launch position opens at its upper tick, so the range above that tick is funded in ETH and
         // the range below it in tokens. Both load the same liquidityGross, so both must be costly. The ETH
         // side gets cheaper as the tick rises, which makes the cap the binding deployment for it.
-        uint128 blockerLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.positionLiquidity();
+        uint128 blockerLiquidity =
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote0PositionLiquidity();
         uint256 costAbove = SqrtPriceMath.getAmount0Delta(
             TickMath.getSqrtPriceAtTick(capTick),
             TickMath.getSqrtPriceAtTick(capTick + tickSpacing),
@@ -272,14 +445,114 @@ contract ConstructorTest is InstantLaunchTestBase {
         assertGt(costBelow, strategy.TOTAL_SUPPLY());
     }
 
+    function test_WhenConfigurationIsValid_saturatingQuote1MaxInitialTickIsProhibitivelyExpensive() public {
+        int24 tickSpacing = strategy.TICK_SPACING();
+        int24 capTick = strategy.maxInitialTick();
+
+        InstantLaunchStrategy deployed = _deployStrategy(capTick);
+
+        // When the quote is currency1 the pool opens at the position's lower tick -capTick: the range
+        // below it is funded in the quote currency, the range above it in tokens. The quote-side cost
+        // floor is denominated in the quote currency's smallest unit.
+        int24 quote1CapTick = -capTick;
+        uint128 blockerLiquidity =
+            Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing) - deployed.quote1PositionLiquidity();
+        uint256 costBelowInQuote = SqrtPriceMath.getAmount1Delta(
+            TickMath.getSqrtPriceAtTick(quote1CapTick - tickSpacing),
+            TickMath.getSqrtPriceAtTick(quote1CapTick),
+            blockerLiquidity,
+            true
+        );
+        uint256 costAboveInToken = SqrtPriceMath.getAmount0Delta(
+            TickMath.getSqrtPriceAtTick(quote1CapTick),
+            TickMath.getSqrtPriceAtTick(quote1CapTick + tickSpacing),
+            blockerLiquidity,
+            true
+        );
+        assertGt(costBelowInQuote, UPPER_TICK_BLOCKER_COST_FLOOR);
+        assertGt(costAboveInToken, strategy.TOTAL_SUPPLY());
+    }
+
     function test_fuzz_WhenConfigurationIsValid_positionLiquidityFitsInSinglePosition(int24 initialTick) public {
         int24 tickSpacing = strategy.TICK_SPACING();
         initialTick = int24(
-            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.MAX_INITIAL_TICK() / tickSpacing)
+            bound(initialTick, LOWEST_LAUNCH_TICK / tickSpacing, strategy.maxInitialTick() / tickSpacing)
         ) * tickSpacing;
 
         InstantLaunchStrategy deployed = _deployStrategy(initialTick);
-        assertGt(deployed.positionLiquidity(), 0);
-        assertLe(deployed.positionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+        assertGt(deployed.quote0PositionLiquidity(), 0);
+        assertLe(deployed.quote0PositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+        assertGt(deployed.quote1PositionLiquidity(), 0);
+        assertLe(deployed.quote1PositionLiquidity(), Pool.tickSpacingToMaxLiquidityPerTick(tickSpacing));
+    }
+
+    function test_WhenNativeQuoteAndMinQuoteBlockerCostBelowFloor_reverts() public {
+        // A native deployment that undercuts the ETH cost floor must be rejected at construction so
+        // a deployer cannot inadvertently weaken the upper-tick quote-side blocker guarantee.
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: NATIVE,
+                initialTick: INITIAL_TICK,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: MAX_INITIAL_TICK,
+                minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR - 1
+            })
+        );
+    }
+
+    function test_WhenErc20QuoteAndMinQuoteBlockerCostIsZero_reverts() public {
+        // An ERC20 deployment with a zero floor provides no protection; the constructor must reject it.
+        _deployQuoteToken(HIGH_QUOTE_ADDRESS);
+        _deployFeeSplitter(Currency.wrap(HIGH_QUOTE_ADDRESS));
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(HIGH_QUOTE_ADDRESS),
+                initialTick: INITIAL_TICK,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: MAX_INITIAL_TICK,
+                minQuoteBlockerCost: 0
+            })
+        );
+    }
+
+    function test_WhenErc20QuoteAndUpperTickCheaperThanFloor_reverts() public {
+        // An ERC20 configuration with an extreme initial tick produces an almost-zero quote-side
+        // upper blocker cost. Even a modest floor (far below UPPER_TICK_BLOCKER_COST_FLOOR) must
+        // catch this, proving the check is unconditional for ERC20.
+        //
+        // At initialTick = maxInitialTick = 887200, getSqrtPriceAtTick(887200..887225) is so close
+        // to the tick ceiling that amount0 per unit of liquidity is near zero. The 18-decimal ERC20
+        // mock has the same precision as native ETH, so the cost falls well below 1 ether.
+        int24 unsafeInitialTick = 887200; // aligned to TICK_SPACING=25; far below maxUsableTick(25)=887250
+        int24 unsafeMaxInitialTick = unsafeInitialTick;
+        _deployQuoteToken(LOW_QUOTE_ADDRESS);
+        _deployFeeSplitter(Currency.wrap(LOW_QUOTE_ADDRESS));
+        vm.expectRevert(InstantLaunchStrategy.UnsafeBlockerCost.selector);
+        new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: Currency.wrap(LOW_QUOTE_ADDRESS),
+                initialTick: unsafeInitialTick,
+                minLaunchTick: MIN_LAUNCH_TICK,
+                maxInitialTick: unsafeMaxInitialTick,
+                minQuoteBlockerCost: 1 ether
+            })
+        );
     }
 }

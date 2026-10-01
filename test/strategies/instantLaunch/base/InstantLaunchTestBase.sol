@@ -9,7 +9,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
 import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
-import {InstantLaunchStrategy, InstantLaunchConfig} from "../../../../src/strategies/InstantLaunchStrategy.sol";
+import {
+    InstantLaunchStrategy,
+    InstantLaunchConfig,
+    LaunchPoolConfig
+} from "../../../../src/strategies/InstantLaunchStrategy.sol";
 import {FeeSplitter} from "../../../../src/periphery/FeeSplitter.sol";
 import {IFeeSplitter, FeeSplit} from "../../../../src/interfaces/IFeeSplitter.sol";
 import {BeneficiaryVault} from "../../../../src/periphery/BeneficiaryVault.sol";
@@ -52,9 +56,21 @@ abstract contract InstantLaunchTestBase is Test {
     /// @dev Minimum ETH cost to saturate the launch position's upper tick at MAX_INITIAL_TICK.
     uint256 internal constant UPPER_TICK_BLOCKER_COST_FLOOR = 20_000_000 ether;
     int24 internal constant INITIAL_TICK = 121_975;
+    /// @dev The mainnet launch floor and initial-tick cap, used as the default deployment bounds.
+    int24 internal constant MIN_LAUNCH_TICK = -160_100;
+    int24 internal constant MAX_INITIAL_TICK = 251_325;
     /// @dev Lowest deployable initial tick: one spacing above the launch floor. The full supply fits under
     ///      maxLiquidityPerTick at every tick above the floor, so the floor check is the only lower bound.
     int24 internal constant LOWEST_LAUNCH_TICK = -160_075;
+    /// @notice The native quote currency used by the default strategy deployment.
+    Currency internal constant NATIVE = Currency.wrap(address(0));
+    /// @dev CREATE addresses are keccak-derived, so an ERC20 quote etched here sorts below every
+    ///      test-deployed token: launches keep the token as currency1. The address sits just above
+    ///      the range Foundry reserves for precompiles.
+    address internal constant LOW_QUOTE_ADDRESS = address(0x1000);
+    /// @dev An ERC20 quote etched at the top of the address space sorts above every test-deployed
+    ///      token: launches place the token as currency0 with the quote as currency1.
+    address internal constant HIGH_QUOTE_ADDRESS = address(type(uint160).max);
 
     address internal launcher = address(this);
     address internal tokenJar = makeAddr("tokenJar");
@@ -77,37 +93,92 @@ abstract contract InstantLaunchTestBase is Test {
         feeSplitter = _deployFeeSplitter();
         feeAdapter = new MockV4FeeAdapter();
         poolManager.setProtocolFeeController(address(feeAdapter));
-        strategy = new InstantLaunchStrategy(
-            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, INITIAL_TICK
-        );
+        strategy = _deployStrategy(INITIAL_TICK);
         vm.deal(address(this), 100_000 ether);
     }
 
-    /// @notice Deploys a splitter with the intended product configuration: ETH fees to the tokenJar,
-    ///         token fees burned, both with a 20% creator share.
+    /// @notice Deploys a native-quote splitter with the intended product configuration: quote fees to
+    ///         the tokenJar, token fees burned, both with a 20% creator share.
     function _deployFeeSplitter() internal returns (FeeSplitter) {
+        return _deployFeeSplitter(Currency.wrap(address(0)));
+    }
+
+    /// @notice Deploys a splitter and beneficiary vault for `quote`, replacing the shared collaborators.
+    function _deployFeeSplitter(Currency quote) internal returns (FeeSplitter) {
         FeeSplit[] memory splits = new FeeSplit[](3);
-        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, Currency.wrap(address(0)), tokenJar, address(0xdead));
+        beneficiaryVault = new BeneficiaryVault(POSITION_MANAGER, quote, tokenJar, address(0xdead));
         splits[0] = FeeSplit({recipient: tokenJar, quoteBps: 8_000, tokenBps: 0, useCallback: false});
         splits[1] = FeeSplit({recipient: address(0xdead), quoteBps: 0, tokenBps: 8_000, useCallback: false});
         splits[2] =
             FeeSplit({recipient: address(beneficiaryVault), quoteBps: 2_000, tokenBps: 2_000, useCallback: true});
-        return new FeeSplitter(POSITION_MANAGER, Currency.wrap(address(0)), splits);
+        feeSplitter = new FeeSplitter(POSITION_MANAGER, quote, splits);
+        return feeSplitter;
     }
 
-    /// @notice Deploys a strategy with the given tick and the shared collaborators (used by constructor tests).
+    /// @notice Deploys a strategy with the given tick, the default native quote and mainnet tick
+    ///         bounds, and the shared collaborators.
     function _deployStrategy(int24 initialTick) internal returns (InstantLaunchStrategy) {
-        return
-            new InstantLaunchStrategy(
-                launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, beneficiaryVault, initialTick
-            );
+        return _deployStrategy(NATIVE, initialTick, MIN_LAUNCH_TICK, MAX_INITIAL_TICK);
+    }
+
+    /// @notice Deploys a strategy with the given quote currency and tick configuration.
+    /// @dev The constructor is the only external call, so tests can `expectRevert` around this helper.
+    function _deployStrategy(Currency quoteCurrency, int24 initialTick, int24 minLaunchTick, int24 maxInitialTick)
+        internal
+        returns (InstantLaunchStrategy)
+    {
+        return new InstantLaunchStrategy(
+            launcher,
+            POSITION_MANAGER,
+            POOL_MANAGER,
+            feeSplitter,
+            beneficiaryVault,
+            LaunchPoolConfig({
+                quoteCurrency: quoteCurrency,
+                initialTick: initialTick,
+                minLaunchTick: minLaunchTick,
+                maxInitialTick: maxInitialTick,
+                minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR
+            })
+        );
+    }
+
+    /// @notice Deploys a strategy paired with a fee splitter and vault for the same quote currency.
+    function _deployQuotedStrategy(Currency quoteCurrency, int24 initialTick, int24 minLaunchTick, int24 maxInitialTick)
+        internal
+        returns (InstantLaunchStrategy)
+    {
+        if (!(feeSplitter.quoteCurrency() == quoteCurrency)) {
+            _deployFeeSplitter(quoteCurrency);
+        }
+        return _deployStrategy(quoteCurrency, initialTick, minLaunchTick, maxInitialTick);
     }
 
     /// @notice Deploys a strategy with no beneficiary vault: its launches carry no creator fee share.
     function _deployStrategyWithoutBeneficiaryVault() internal returns (InstantLaunchStrategy) {
         return new InstantLaunchStrategy(
-            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, IBeneficiaryVault(address(0)), INITIAL_TICK
+            launcher, POSITION_MANAGER, POOL_MANAGER, feeSplitter, IBeneficiaryVault(address(0)), _defaultPoolConfig()
         );
+    }
+
+    /// @notice The default native-quote pool configuration with the mainnet tick bounds.
+    function _defaultPoolConfig() internal pure returns (LaunchPoolConfig memory) {
+        return LaunchPoolConfig({
+            quoteCurrency: NATIVE,
+            initialTick: INITIAL_TICK,
+            minLaunchTick: MIN_LAUNCH_TICK,
+            maxInitialTick: MAX_INITIAL_TICK,
+            minQuoteBlockerCost: UPPER_TICK_BLOCKER_COST_FLOOR
+        });
+    }
+
+    /// @notice Etches an 18-decimal ERC20 quote at a fixed address so its sort order against
+    ///         test-deployed tokens is deterministic.
+    function _deployQuoteToken(address at) internal returns (MockERC20 quote) {
+        deployCodeTo(
+            "test/mocks/MockERC20.sol:MockERC20", abi.encode("Quote Token", "QUOTE", TOTAL_SUPPLY, address(this)), at
+        );
+        return MockERC20(at);
     }
 
     /// @notice Mints a fresh 1B-supply / 18-decimal token to this contract.
@@ -117,8 +188,15 @@ abstract contract InstantLaunchTestBase is Test {
 
     /// @notice Approves and launches `token` through the strategy as the launcher.
     function _initialize(IERC20 token, uint256 totalSupply, bytes memory configData) internal {
-        token.approve(address(strategy), totalSupply);
-        strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
+        _initialize(strategy, token, totalSupply, configData);
+    }
+
+    /// @notice Approves and launches `token` through the given strategy as the launcher.
+    function _initialize(InstantLaunchStrategy _strategy, IERC20 token, uint256 totalSupply, bytes memory configData)
+        internal
+    {
+        token.approve(address(_strategy), totalSupply);
+        _strategy.initializeDistribution(address(token), totalSupply, configData, bytes32(0));
     }
 
     /// @notice The default launch configuration naming the fee beneficiary.
