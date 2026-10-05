@@ -213,6 +213,7 @@ Restricts pool initialization to a deployed LBPStrategy instance.
 
 | Date | Auditor | Report |
 | --- | --- | --- |
+| 2026-08-21 | OpenZeppelin | [v3.0.0](./docs/audit/OpenZeppelin_v3.0.0.pdf) |
 | 2026-01-23 | OpenZeppelin | [v2.0.0](./docs/audit/OpenZeppelin_v2.0.0.pdf) |
 | 2026-01-21 | Spearbit | [v2.0.0](./docs/audit/uniswap-liquidity-launcher-v2.0.0.pdf) |
 | 2025-10-27 | Spearbit | [Cantina](./docs/audit/report-cantinacode-uniswap-token-launcher-1027.pdf) |
