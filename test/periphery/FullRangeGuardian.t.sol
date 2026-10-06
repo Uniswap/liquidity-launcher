@@ -266,6 +266,52 @@ contract FullRangeGuardianTest is Test {
         g_.register(g);
     }
 
+    function test_register_revertsWhenLowerCompanionDoesNotShareBoundary() public {
+        _mintCompanions();
+        uint256 wrongLowerId =
+            _mint(lowerBoundary + TICK_SPACING, lowerBoundary + 2 * TICK_SPACING, 1e18, address(this));
+        FullRangeGuardian g_ = _deployBare();
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(g_), wrongLowerId);
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(g_), upperId);
+
+        FullRangeGuardian.GuardedPosition[] memory g = new FullRangeGuardian.GuardedPosition[](1);
+        g[0] = FullRangeGuardian.GuardedPosition(
+            guardedTokenId, FullRangeGuardian.Companions(uint128(wrongLowerId), uint128(upperId))
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(FullRangeGuardian.InvalidCompanion.selector, guardedTokenId, wrongLowerId)
+        );
+        g_.register(g);
+    }
+
+    function test_register_revertsWhenCompanionBelongsToDifferentPool() public {
+        PoolKey memory otherKey = PoolKey({
+            currency0: key.currency0,
+            currency1: key.currency1,
+            fee: 3_000,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+        POOL_MANAGER.initialize(otherKey, TickMath.getSqrtPriceAtTick(LAUNCH_TICK));
+        uint256 wrongPoolLowerId = _mintInPool(
+            otherKey, lowerBoundary, lowerBoundary + TICK_SPACING, 1e18, address(this)
+        );
+        _mintCompanions();
+
+        FullRangeGuardian g_ = _deployBare();
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(g_), wrongPoolLowerId);
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(g_), upperId);
+
+        FullRangeGuardian.GuardedPosition[] memory g = new FullRangeGuardian.GuardedPosition[](1);
+        g[0] = FullRangeGuardian.GuardedPosition(
+            guardedTokenId, FullRangeGuardian.Companions(uint128(wrongPoolLowerId), uint128(upperId))
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(FullRangeGuardian.InvalidCompanion.selector, guardedTokenId, wrongPoolLowerId)
+        );
+        g_.register(g);
+    }
+
     function test_burnOwner_locksCompanionsForever() public {
         _deployGuard();
 
@@ -429,15 +475,22 @@ contract FullRangeGuardianTest is Test {
         private
         returns (uint256 tokenId)
     {
+        return _mintInPool(key, tickLower, tickUpper, liquidity, owner);
+    }
+
+    function _mintInPool(PoolKey memory mintKey, int24 tickLower, int24 tickUpper, uint128 liquidity, address owner)
+        private
+        returns (uint256 tokenId)
+    {
         bytes memory actions = abi.encodePacked(
             uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE), uint8(Actions.SETTLE), uint8(Actions.TAKE_PAIR)
         );
         bytes[] memory params = new bytes[](4);
         params[0] =
-            abi.encode(key, tickLower, tickUpper, liquidity, type(uint128).max, type(uint128).max, owner, bytes(""));
-        params[1] = abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false);
-        params[2] = abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false);
-        params[3] = abi.encode(key.currency0, key.currency1, address(this));
+            abi.encode(mintKey, tickLower, tickUpper, liquidity, type(uint128).max, type(uint128).max, owner, bytes(""));
+        params[1] = abi.encode(mintKey.currency0, ActionConstants.CONTRACT_BALANCE, false);
+        params[2] = abi.encode(mintKey.currency1, ActionConstants.CONTRACT_BALANCE, false);
+        params[3] = abi.encode(mintKey.currency0, mintKey.currency1, address(this));
 
         tokenId = POSITION_MANAGER.nextTokenId();
         token.transfer(address(POSITION_MANAGER), token.balanceOf(address(this)) / 2);
