@@ -17,6 +17,7 @@
     - [LBP Hook Requirement](#lbp-hook-requirement)
     - [LP Fee Flow for Searchers](#lp-fee-flow-for-searchers)
 - [Key Interfaces](#key-interfaces)
+- [Native ETH Transfers After Glamsterdam](#native-eth-transfers-after-glamsterdam)
 - [Important Safety Notes](#important-safety-notes)
 
 ## Core Components
@@ -272,6 +273,36 @@ flowchart TD
 **IDistributorFactory** — implemented by factories that parent strategies use to deploy distributors, such as the LBP strategy's initializer factory. Exposes `create(...)` and a sender-aware `getAddress(...)`; it does not fund the distributor, so the calling strategy remains responsible for token movement and `onTokensReceived()`.
 
 **ITokenFactory** — the token-creation interface (from uerc20-factory) that `createToken` calls into.
+
+## Native ETH Transfers After Glamsterdam
+
+The deployed contracts do not change. Their gas use on Ethereum mainnet changes after the Glamsterdam activation (EIP-7773). Other chains keep their current gas rules until they adopt the same changes. The numbers below use the EIP values at the time of writing.
+
+`LBPStrategy._transferCurrency` and `FeeSplitter._transfer` send native ETH with Solady `SafeTransferLib.forceSafeTransferETH`. It calls the recipient with a gas limit of 100,000 (`GAS_STIPEND_NO_GRIEF`). If that call fails, it deploys a contract that self-destructs and sends the ETH to the recipient without calling it. The `LBPStrategy` v3.3.0 deployments and the `FeeSplitter` source use this path (Solady commit `33b4b98`).
+
+After the activation, a new storage slot costs 97,920 state gas (EIP-8037). State gas comes first from a reservoir. In a transaction with a gas limit of 2^24 (16,777,216) or less, the reservoir starts empty and only receives state gas back when the transaction clears a slot that an earlier frame created. Without reservoir, a call with a fixed gas limit pays this state gas out of its own gas limit. A write to a new storage slot then costs about 110,000 gas, which is more than the 100,000 stipend. In a transaction with a gas limit above 2^24, the part above 2^24 is a state gas reservoir, and the call can take its state gas from it.
+
+Measured with the same Solady code on reth and Geth (Sepolia, `eth_simulateV1`) and on a patched anvil. The table shows the gas used by a transaction that sends 0.001 ETH with `forceSafeTransferETH`.
+
+| Recipient | Gas limit 2,000,000 | Gas limit 2^24 + 8,000,000 |
+| --- | --- | --- |
+| Existing account without code | 27,969, delivered by call | Same |
+| New account without code | 211,569, delivered by call | Same |
+| Contract whose `receive` writes no new slot | 54,731, `receive` runs | Same |
+| Contract whose `receive` writes one new slot | 330,910, delivered by force send, `receive` does not run | 165,064, `receive` runs |
+
+Results:
+
+- Without reservoir, a contract recipient whose `receive` writes a new storage slot gets the ETH by force send, without running `receive`. Its ETH balance increases, but its own accounting does not. The ETH balance alone does not show which path ran.
+- When the force send runs, it deploys a new contract. In the measured case the transaction used 330,910 gas. If the remaining gas does not cover it, the force send reverts. In the final sweep of `tryMigrate`, this revert fails the migration attempt and `migrate` runs the recovery path. In the recovery path and in `collectFees`, it reverts the transaction.
+- ETH sent to a new account costs 183,600 state gas for the new account. This is paid by the sender frame, not by the stipend.
+- `FeeSplitter` calls `onAmountsReceived` with all remaining gas when a split sets `useCallback`. That callback also costs more after the activation, and a revert in it reverts the whole `collectFees` call.
+
+Recommendations:
+
+- Estimate gas for `migrate` and `collectFees` with `eth_estimateGas` on a node that runs the new rules. Do not reuse gas limits from before the activation.
+- Do not configure a contract recipient whose `receive` must write new storage. Use a recipient that only accepts ETH, or one that does its accounting in a later call.
+- The recipient contracts in this repository have an empty `receive` and are not affected.
 
 ## Important Safety Notes
 
